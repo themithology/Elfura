@@ -1,0 +1,23 @@
+{
+  "name": "elfura-player",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Elfura — a small, fast, embeddable HLS/DASH player with multi-audio and fully customisable subtitles.",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && npm run build:embed && npm run build:lib",
+    "build:embed": "vite build",
+    "build:lib": "vite build --config vite.lib.config.ts",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dashjs": "^5.1.1",
+    "hls.js": "^1.6.15"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}

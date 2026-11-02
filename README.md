@@ -1,1 +1,178 @@
-# Elfura
+# Elfura Player
+
+A small, fast, embeddable HLS/DASH player. JW-Player-grade restraint on the
+outside; a fully dynamic input schema, real multi-language audio and a
+completely customisable subtitle renderer underneath.
+
+**Size:** initial chunk **22.9 KB gzip**. `hls.js` and `dash.js` are separate
+chunks loaded on demand — an HLS title never downloads the DASH engine.
+
+```
+npm run dev        # vite dev server on 0.0.0.0:5173
+npm run build      # typecheck + embed page + library bundle
+```
+
+---
+
+## 1. How the player takes input
+
+**One declarative schema drives everything.** `src/core/params.ts` holds a
+single table of parameters; parsing, validation, clamping, defaults and the
+generated docs all derive from it. There is exactly one place that reads a
+query string, so a new knob added there immediately works in all three
+channels.
+
+Three channels converge on one config, in this precedence order:
+
+| # | Channel | When | Notes |
+|---|---------|------|-------|
+| 1 | `PARAM_SCHEMA` defaults | boot | |
+| 2 | stored preferences | boot | audio language + subtitle style from `localStorage` |
+| 3 | JS config object | boot | `Elfura.mount(el, {...})` / `Elfura.create(el, {...})` |
+| 4 | **URL query params** | boot | win — the URL is the shareable, debuggable statement of intent |
+| 5 | postMessage commands | runtime | mutate live state only |
+| 6 | user interaction | runtime | clicks, keys, drag |
+
+URL beats JS config on purpose: for an embeddable player the publisher's URL is
+the more specific claim. Self-hosted code that wants the opposite passes
+`ignoreUrlParams: true`. Bad input never throws — it is clamped or dropped and
+reported in `issues` (visible with `?debug=1`).
+
+Key parameters (full list: `Elfura.schemaDocs()`):
+
+| Param | Type | Example | Purpose |
+|---|---|---|---|
+| `src` | url | `…/master.m3u8` | media URL; HLS/DASH/mp4 sniffed from extension |
+| `type` | enum | `hls` | force a protocol instead of sniffing |
+| `servers` | pairlist | `a:URL,b:URL` | ordered fallback servers; silent failover on fatal error |
+| `t` | time | `1:30:00` | start position; accepts `90`, `1:30`, `01:02:03`, `1h2m3s` |
+| `lang` | bcp47 | `hi` | preferred audio language |
+| `audioTracks` | pairlist | `hi:URL,ta:URL` | **external dubs**, merged with manifest tracks |
+| `sublang` | bcp47 | `en` | preferred subtitle language |
+| `subsrc` | pairlist | `en:URL,hi:URL` | external subtitle files (VTT / SRT / ASS) |
+| `substyle` | mini-lang | `size:120\|color:#ffd54a` | preset any subtitle style property |
+| `color` | hex | `00b4ff` | accent; derived shades computed automatically |
+| `skipStep` | int | `30` | ± seek seconds; buttons self-hide on short titles |
+| `intro` / `outro` | range | `0:52` | coloured scrubber segments + skip pill |
+| `autoplay` `muted` `loop` `speed` `volume` `quality` | — | | playback boot state |
+| `controls` `keyboard` `back` `brand` `skin` | — | | chrome |
+| `origin` | origin | `https://site.com` | locks the postMessage channel both ways |
+| `pltoken` `nonce` | opaque | | forwarded verbatim on manifest requests, **never logged or posted** |
+
+Time and colour coercion is forgiving by design (`ARGB` hex, `mm:ss`, bare
+seconds all work) because embed builders emit inconsistent values in the wild.
+
+## 2. Multi-language audio
+
+Two kinds of track exist and conflating them is the usual cause of
+"switching language stutters":
+
+- **Native** (muxed in the manifest). HLS `EXT-X-MEDIA:TYPE=AUDIO`, DASH
+  `AdaptationSet contentType="audio"`. Switching is an in-band operation — the
+  engine swaps the audio SourceBuffer without touching the clock, so video
+  never blinks.
+- **External** (a separate file per language, `?audioTracks=hi:URL`). Common
+  when dubs are produced apart from the video. There is no clean in-band switch,
+  so the player keeps the video element running muted and drives a **second
+  `<audio>` element locked to the video clock** (`core/audio.ts` →
+  `ExternalAudioSync`), correcting drift continuously: hard-seek above 350 ms,
+  gentle playback-rate nudge between 60–350 ms.
+
+Both surface as one unified `AudioTrack[]`. Rules:
+
+- **Matching:** `?lang=hi` matches `hi` exactly first, then primary subtag
+  (`hi` satisfies `hi-IN`). Same rules for subtitles.
+- **De-duplication:** an external track is dropped if the manifest already
+  carries that language natively (native switches more cleanly).
+- **Precedence:** explicit `?lang=` → stored preference → manifest `DEFAULT=YES`
+  → first track.
+- **Persistence:** the chosen language is remembered per browser and applied to
+  future titles when `persistAudio=1` (default on). Turn off for a kiosk.
+- **UI:** the audio button and the audio tab only appear when there is more
+  than one track. A stream with one language shows nothing.
+
+## 3. Subtitle customisation
+
+Native `<track>::cue` cannot express per-property opacity, free positioning or
+font control, and differs per browser — so the player parses **VTT, SRT and
+SSA/ASS itself** (`subs/parser.ts`) and paints a DOM overlay (`subs/renderer.ts`).
+
+Everything below is a key in `SubtitleStyle`, settable via the style panel, via
+`?substyle=k:v|k:v`, or via the `setSubtitleStyle` postMessage command:
+
+| Group | Controls |
+|---|---|
+| Colour | text colour, background colour |
+| **Transparency** | **text transparency and background transparency, independently** (0–100%). The UI speaks "transparency"; the model stores opacity, so "transparent box, solid text" is one slider each |
+| Font | family (8 stacks), size (40–220%), weight (Regular→Extra bold), italic, uppercase, letter spacing |
+| Legibility | outline on/off + colour + width; drop shadow on/off + blur |
+| Box | padding, corner radius, max width |
+| **Position** | top/bottom edge, distance from edge (0–45%), left/centre/right align, horizontal nudge (−40…40%) — **plus drag-the-captions-directly-on-the-video**, which writes back to the same sliders so both stay in sync |
+
+Font size is a percentage of a **720p baseline scaled to the actual player
+height**, so 100% reads identically in a 480 px embed and in fullscreen.
+
+Persistence: the user's style is saved to `localStorage` and reused across
+titles and embeds on the origin (`persistSubs=1`, default on); a publisher's
+`?substyle=` always overrides the stored value for that embed.
+
+The style panel edits a **live preview renderer** (a real `SubtitleRenderer`
+over a synthetic surface), so every slider is verifiable before it touches the
+video — and the same changes apply to real cues immediately.
+
+## 4. Chrome behaviour (per the reference design)
+
+- Thin full-width scrubber riding on a solid control bar; ±step, volume, time
+  on the left; audio / CC / settings / PiP / fullscreen on the right.
+- Settings is an **icon-tabbed overlay**: Quality · Subtitles · Speed · Audio.
+  Tabs exist only when the stream offers something — no audio tab with one
+  track, no CC tab with none, no gear at all when there is nothing to set.
+- Quality HUD top-right shows `Quality: Auto` plus a pill with the **effective**
+  resolution the ABR is actually serving (`LEVEL_SWITCHED` / `QUALITY_CHANGE_RENDERED`).
+- Centre state flash on play/pause/seek; buffering spinner; auto-hide after 2.6 s.
+- Intro/outro render as coloured segments inside the scrubber plus a skip pill.
+
+### Nothing is hardcoded
+Quality rows come from the manifest; tabs, buttons and segments derive from
+stream capability and config; time format adapts to duration; the accent and
+every derived shade come from one CSS custom property.
+
+### It stays fast
+One `requestAnimationFrame` loop drives time/scrubber/buffer and writes a DOM
+property only when the value changed; the panel body is built once per open and
+tab switches swap only the body; no `innerHTML` in the hot path; engines are
+code-split and fetched only when needed.
+
+## 5. Embedding & the postMessage protocol
+
+```html
+<iframe src="https://play.example.com/embed.html?src=…&lang=hi&color=00b4ff"
+        allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+```
+
+Versioned envelope, origin-locked in both directions:
+
+```js
+// -> iframe   { __elfura:1, v:1, kind:'cmd',   name:'setSubtitleStyle', data:{ value:{ fontSizePct:130 } }, reqId }
+// <- iframe   { __elfura:1, v:1, kind:'ack',   reqId, ok:true }
+// <- iframe   { __elfura:1, v:1, kind:'event', name:'audioChange', data:{ lang:'hi', label:'Hindi' } }
+```
+
+Commands are acked, so a host can `await` them: `createHostClient(iframe).send('seek', { value: 90 })`.
+`pltoken` / `nonce` are redacted from every outbound message and log.
+
+## 6. Layout
+
+```
+src/core/params.ts    input schema (single source of truth)
+src/core/config.ts    precedence + provenance + redaction
+src/core/events.ts    event bus + origin-locked postMessage bridge
+src/core/audio.ts     native/external tracks, language matching, sync engine
+src/core/player.ts    engine adapters (lazy), failover, track wiring
+src/subs/parser.ts    VTT / SRT / ASS -> Cue[]
+src/subs/renderer.ts  DOM overlay renderer, drag-to-position
+src/subs/style.ts     SubtitleStyle model, clamping, persistence
+src/ui/controls.ts    chrome, icon-tab panel, rAF loop
+src/ui/styles.css     one accent property, derived shades
+embed.html            iframe surface (URL params only)
+```
