@@ -26,8 +26,12 @@ export type EventName =
   | 'buffered'
   | 'error'
   | 'server:switch'
+  | 'sources'
+  | 'sourceChange'
   | 'audioTracks'
   | 'audioChange'
+  | 'audio:searching'
+  | 'audio:unavailable'
   | 'subtitleTracks'
   | 'subtitleChange'
   | 'subtitleStyle'
@@ -53,6 +57,7 @@ export type CommandName =
   | 'mute'
   | 'setSpeed'
   | 'setQuality'
+  | 'setSource'
   | 'setAudio'
   | 'setSubtitle'
   | 'setSubtitleStyle'
@@ -145,10 +150,11 @@ export class PostMessageBridge {
     const forward = (name: EventName) => (data: unknown) => this.post('event', name, data);
     const EVENTS: EventName[] = [
       'ready', 'state', 'timeupdate', 'progress', 'durationchange', 'play', 'pause', 'ended',
-      'buffering', 'buffered', 'error', 'server:switch', 'audioTracks', 'audioChange',
-      'subtitleTracks', 'subtitleChange', 'subtitleStyle', 'qualityLevels', 'qualityChange',
-      'qualityEffective', 'volumechange', 'speedchange', 'autoplay:blocked', 'fullscreen',
-      'back', 'episode:next', 'config',
+      'buffering', 'buffered', 'error', 'server:switch', 'sources', 'sourceChange',
+      'audioTracks', 'audioChange', 'audio:searching', 'audio:unavailable',
+      'subtitleTracks', 'subtitleChange', 'subtitleStyle',
+      'qualityLevels', 'qualityChange', 'qualityEffective', 'volumechange', 'speedchange',
+      'autoplay:blocked', 'fullscreen', 'back', 'episode:next', 'config',
     ];
     for (const e of EVENTS) bus.on(e, forward(e));
 

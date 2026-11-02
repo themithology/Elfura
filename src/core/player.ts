@@ -37,10 +37,11 @@ function getDash(): Promise<typeof import('dashjs').MediaPlayer> {
 
 import {
   buildTrackList,
+  canonLang,
   ExternalAudioSync,
   languageLabel,
   loadPreferredAudio,
-  pickTrack,
+  matchScore,
   savePreferredAudio,
   type AudioTrack,
 } from './audio';
@@ -66,6 +67,22 @@ export interface QualityLevel {
   label: string;
 }
 
+export interface SourceOption {
+  id: string;
+  sourceId: string;
+  label: string;
+  type: 'hls' | 'dash' | 'mp4';
+  url: string;
+  quality: string;
+  fingerprint?: string;
+  latencyHintMs?: number;
+  audioLang?: string;
+  availableAudioLangs?: string[];
+  multiAudio?: boolean;
+  audioTracks: { lang: string; label: string; url: string }[];
+  subtitles: { lang: string; label: string; url: string }[];
+}
+
 export interface PlayerState {
   playing: boolean;
   time: number;
@@ -78,10 +95,13 @@ export interface PlayerState {
   qualityMode: string;
   /** What the ABR actually picked right now (0 until known). */
   effectiveHeight: number;
+  audioId: string | null;
   audioLang: string | null;
+  subtitleId: string | null;
   subtitleLang: string | null;
   subtitlesOn: boolean;
   server: string | null;
+  source: string | null;
   fullscreen: boolean;
   canPip: boolean;
   canFullscreen: boolean;
@@ -98,6 +118,8 @@ interface DashExtras {
   getBitrateInfoListFor(type: 'video' | 'audio'): { bitrate: number; height: number; width: number; qualityIndex: number }[];
   setQualityFor(type: 'video' | 'audio', quality: number): void;
   getQualityFor(type: 'video' | 'audio'): number;
+  updateSettings?(settings: Record<string, unknown>): void;
+  extend?(name: string, factory: () => unknown, override?: boolean): void;
 }
 
 export class ElfuraPlayer {
@@ -114,6 +136,10 @@ export class ElfuraPlayer {
   private dash: MediaPlayerClass | null = null;
   private externalAudio = new ExternalAudioSync();
 
+  private sources: SourceOption[] = [];
+  private currentSource: SourceOption | null = null;
+  private failedSourceIds = new Set<string>();
+  private failedFingerprints = new Set<string>();
   private audioTracks: AudioTrack[] = [];
   private currentAudio: AudioTrack | null = null;
   private subtitleTracks: SubtitleTrack[] = [];
@@ -127,6 +153,15 @@ export class ElfuraPlayer {
   bridge!: PostMessageBridge;
 
   private fatalCount = 0;
+  private initialAudioApplied = false;
+  private desiredAudioLang: string | null = null;
+  private audioSearchSeq = 0;
+  private activeProbe: {
+    seq: number;
+    targetLang: string;
+    opt: SourceOption;
+    settle: (res: { ok: boolean; loadFailed?: boolean }) => void;
+  } | null = null;
   private destroyed = false;
 
   constructor(options: ElfuraPlayerOptions = {}, search = window.location.search) {
@@ -144,7 +179,7 @@ export class ElfuraPlayer {
     this.video.className = 'elf-video';
     this.video.playsInline = true;
     this.video.setAttribute('playsinline', '');
-    this.video.preload = 'metadata';
+    this.video.preload = 'auto';
     if (cfg.poster) this.video.poster = cfg.poster;
     if (cfg.loop) this.video.loop = true;
     this.surface.appendChild(this.video);
@@ -162,7 +197,24 @@ export class ElfuraPlayer {
     this.setupBridge();
     this.bindMediaEvents();
 
-    if (cfg.src) void this.load(String(cfg.src));
+    if (cfg.src) {
+      if (cfg.servers?.length) {
+        this.sources = cfg.servers.map((s, idx) => ({
+          id: s.lang || `server-${idx + 1}`,
+          sourceId: s.lang || `server-${idx + 1}`,
+          label: s.label || s.lang || `Source ${idx + 1}`,
+          type: sniff(s.url) === 'native' ? 'mp4' : (sniff(s.url) as 'hls' | 'dash'),
+          url: s.url,
+          quality: 'auto',
+          audioTracks: [],
+          subtitles: [],
+        }));
+        this.currentSource = this.sources.find((s) => s.url === cfg.src) ?? this.sources[0] ?? null;
+      }
+      void this.load(String(cfg.src));
+    } else if (cfg.tmdb) {
+      void this.resolveFromBackend();
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -189,16 +241,22 @@ export class ElfuraPlayer {
       speed: v.playbackRate,
       qualityMode: this.qualityMode,
       effectiveHeight: this.effectiveHeight,
+      audioId: this.currentAudio?.id ?? null,
       audioLang: this.currentAudio?.lang ?? null,
+      subtitleId: this.currentSubtitle?.id ?? null,
       subtitleLang: this.currentSubtitle?.lang ?? null,
       subtitlesOn: this.renderer?.getEnabled() ?? false,
       server: this.input.config.server ?? null,
+      source: this.currentSource?.id ?? null,
       fullscreen: document.fullscreenElement === this.shell,
       canPip: typeof v.requestPictureInPicture === 'function' && !v.disablePictureInPicture,
       canFullscreen: typeof this.shell.requestFullscreen === 'function',
     };
   }
 
+  getSources(): SourceOption[] {
+    return this.sources;
+  }
   getAudioTracks(): AudioTrack[] {
     return this.audioTracks;
   }
@@ -212,12 +270,488 @@ export class ElfuraPlayer {
     return this.cues;
   }
 
+  async setSource(id: string): Promise<boolean> {
+    const opt = this.sources.find((s) => s.id === id || s.sourceId === id);
+    if (!opt) return false;
+    this.audioSearchSeq++;
+    this.activeProbe = null;
+    this.failedSourceIds.clear();
+    this.failedFingerprints.clear();
+    this.desiredAudioLang = opt.audioLang && opt.audioLang !== 'und' ? canonLang(opt.audioLang) : null;
+    this.initialAudioApplied = true;
+    await this.activateSourceOption(opt, true, true);
+    return true;
+  }
+
+  private isCandidateFailed(opt: SourceOption): boolean {
+    if (this.failedSourceIds.has(opt.id)) return true;
+    if (opt.fingerprint && this.failedFingerprints.has(opt.fingerprint)) return true;
+    return false;
+  }
+
+  private markCandidateFailed(opt: SourceOption): void {
+    this.failedSourceIds.add(opt.id);
+    if (opt.fingerprint) this.failedFingerprints.add(opt.fingerprint);
+  }
+
+  private canPreProbeViaFetch(opt: SourceOption): boolean {
+    if (typeof fetch !== 'function') return false;
+    try {
+      const base = new URL(window.location.href);
+      const target = new URL(opt.url, base);
+      return (target.protocol === 'http:' || target.protocol === 'https:') && target.origin === base.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  private qualityRank(opt: SourceOption): number {
+    const q = (opt.quality || '').toLowerCase();
+    let res = 720;
+    if (q.includes('4k') || q.includes('2160')) res = 2160;
+    else if (q.includes('1440')) res = 1440;
+    else if (q.includes('1080')) res = 1080;
+    else if (q.includes('720')) res = 720;
+    else if (q.includes('480')) res = 480;
+    else if (q.includes('360')) res = 360;
+    else if (q === 'auto') res = 960;
+    return res + (opt.multiAudio ? 250 : 0);
+  }
+
+  /**
+   * Lightweight concurrent probe against our uniform `/api/v1/stream` relay.
+   * Measures true end-to-end upstream latency, verifies the stream is alive
+   * (and actually carries `targetLang` when probing multi-audio HLS), and
+   * warms the backend RAM manifest cache so `hls.js` / `dash.js` starts in <2ms.
+   */
+  private async probeCandidateViaFetch(
+    opt: SourceOption,
+    targetLang: string | null,
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number }> {
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+
+    const cfg = this.input.config;
+    const headers: Record<string, string> = {};
+    if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+
+    const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
+    const timeoutSig =
+      typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.any([signal, AbortSignal.timeout(4500)])
+        : signal;
+
+    try {
+      if (opt.type === 'mp4') {
+        const res = await fetch(resolvedUrl, {
+          method: 'GET',
+          headers: { ...headers, Range: 'bytes=0-1023' },
+          signal: timeoutSig,
+        });
+        const ok = res.ok || res.status === 206;
+        try {
+          await res.body?.cancel();
+        } catch {
+          /* ignore */
+        }
+        if (!ok) return { ok: false, loadFailed: true, rttMs: nowMs() };
+        if (targetLang && targetLang !== 'und') {
+          const matches =
+            matchScore(targetLang, opt.audioLang ?? 'und') >= 0 ||
+            (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0) ||
+            !!opt.multiAudio;
+          if (!matches) return { ok: false, loadFailed: false, rttMs: nowMs() };
+        }
+        return { ok: true, loadFailed: false, rttMs: nowMs() };
+      }
+
+      const res = await fetch(resolvedUrl, { headers, signal: timeoutSig });
+      if (!res.ok) return { ok: false, loadFailed: true, rttMs: nowMs() };
+      const text = await res.text();
+      const lead = text.trimStart();
+
+      if (opt.type === 'dash' || lead.includes('<MPD')) {
+        if (!lead.includes('<MPD')) return { ok: false, loadFailed: true, rttMs: nowMs() };
+        return { ok: true, loadFailed: false, rttMs: nowMs() };
+      }
+
+      if (!lead.startsWith('#EXTM3U')) {
+        return { ok: false, loadFailed: true, rttMs: nowMs() };
+      }
+
+      const lines = text.split(/\r?\n/);
+      let matchedAudioUri: string | null = null;
+      const audioMediaLines = lines.filter((l) => /^#EXT-X-MEDIA:.*TYPE=AUDIO\b/i.test(l.trim()));
+
+      if (targetLang && targetLang !== 'und') {
+        const hasSidecarMatch = (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0);
+        if (!hasSidecarMatch) {
+          if (audioMediaLines.length > 0) {
+            let foundInManifest = false;
+            for (const al of audioMediaLines) {
+              const langAttr = al.match(/\bLANGUAGE="([^"]*)"/i)?.[1] ?? '';
+              const nameAttr = al.match(/\bNAME="([^"]*)"/i)?.[1] ?? '';
+              const uriAttr = al.match(/\bURI="([^"]*)"/i)?.[1] ?? '';
+              const candidateCanon = canonLang(langAttr || nameAttr);
+              const nameCanon = canonLang(nameAttr);
+              if (
+                (candidateCanon !== 'und' && matchScore(targetLang, candidateCanon) >= 0) ||
+                (nameCanon !== 'und' && matchScore(targetLang, nameCanon) >= 0)
+              ) {
+                foundInManifest = true;
+                if (uriAttr && !matchedAudioUri) matchedAudioUri = uriAttr;
+                break;
+              }
+            }
+            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
+              return { ok: false, loadFailed: false, rttMs: nowMs() };
+            }
+          } else if (opt.multiAudio && !opt.availableAudioLangs?.length && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
+            return { ok: false, loadFailed: false, rttMs: nowMs() };
+          }
+        }
+      }
+
+      // If master playlist has child variant/audio playlists, verify & warm one child playlist too
+      if (/#EXT-X-STREAM-INF\b/i.test(text)) {
+        let childTarget = matchedAudioUri;
+        if (!childTarget) {
+          for (let i = 0; i < lines.length; i++) {
+            if (/^#EXT-X-STREAM-INF\b/i.test(lines[i].trim())) {
+              for (let j = i + 1; j < lines.length; j++) {
+                const candLine = lines[j].trim();
+                if (!candLine) continue;
+                if (!candLine.startsWith('#')) childTarget = candLine;
+                break;
+              }
+              if (childTarget) break;
+            }
+          }
+        }
+        if (childTarget) {
+          const childUrl = new URL(this.decorate(childTarget), resolvedUrl).toString();
+          const childRes = await fetch(childUrl, { headers, signal: timeoutSig });
+          if (!childRes.ok) return { ok: false, loadFailed: true, rttMs: nowMs() };
+          const childText = await childRes.text();
+          if (!childText.trimStart().startsWith('#EXTM3U')) {
+            return { ok: false, loadFailed: true, rttMs: nowMs() };
+          }
+        }
+      }
+
+      return { ok: true, loadFailed: false, rttMs: nowMs() };
+    } catch {
+      if (signal.aborted) return { ok: false, loadFailed: false, rttMs: nowMs() };
+      return { ok: false, loadFailed: true, rttMs: nowMs() };
+    }
+  }
+
+  /**
+   * Concurrently races a batch of candidate servers and returns the fastest
+   * healthy server (with a 65ms tie-breaker if a higher-resolution server is
+   * right behind it), aborting slower in-flight probes immediately.
+   */
+  private async raceCandidatesBatch(
+    batch: SourceOption[],
+    targetLang: string | null,
+  ): Promise<{ winner: SourceOption | null; failed: SourceOption[] }> {
+    if (batch.length === 0) return { winner: null, failed: [] };
+
+    const controllers = batch.map(() => new AbortController());
+    const failed: SourceOption[] = [];
+    const successes: { opt: SourceOption; rttMs: number; rank: number }[] = [];
+    let pending = batch.length;
+    let settled = false;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    return new Promise((resolve) => {
+      const finish = (winner: SourceOption | null) => {
+        if (settled) return;
+        settled = true;
+        if (graceTimer) clearTimeout(graceTimer);
+        for (const c of controllers) {
+          try {
+            c.abort();
+          } catch {
+            /* ignore */
+          }
+        }
+        resolve({ winner, failed });
+      };
+
+      const pickBestSuccess = (): SourceOption | null => {
+        if (!successes.length) return null;
+        successes.sort((a, b) => b.rank - a.rank || a.rttMs - b.rttMs);
+        return successes[0].opt;
+      };
+
+      batch.forEach((opt, idx) => {
+        const optRank = this.qualityRank(opt);
+        void this.probeCandidateViaFetch(opt, targetLang, controllers[idx].signal).then((res) => {
+          pending--;
+          if (settled) return;
+
+          if (res.ok) {
+            successes.push({ opt, rttMs: res.rttMs, rank: optRank });
+            // Check if any still-in-flight candidate in this batch has higher quality rank
+            const hasHigherInFlight = batch.some(
+              (other, j) => j !== idx && !controllers[j].signal.aborted && this.qualityRank(other) > optRank &&
+                !failed.includes(other) && !successes.some((s) => s.opt.id === other.id),
+            );
+            if (!hasHigherInFlight || pending === 0) {
+              finish(pickBestSuccess());
+              return;
+            }
+            if (!graceTimer) {
+              graceTimer = setTimeout(() => finish(pickBestSuccess()), 65);
+            }
+          } else {
+            if (res.loadFailed) failed.push(opt);
+            if (pending === 0) {
+              finish(pickBestSuccess());
+            }
+          }
+        });
+      });
+    });
+  }
+
+  private async selectFastestInitialSource(
+    allSources: SourceOption[],
+    fallbackPrimary: SourceOption,
+  ): Promise<SourceOption> {
+    // Gather top distinct-fingerprint general/default candidates across all sources
+    const preferredPool = allSources.filter((s) => {
+      if (this.isCandidateFailed(s) || !this.canPreProbeViaFetch(s)) return false;
+      if (s.multiAudio) return true;
+      const lang = canonLang(s.audioLang);
+      return lang === 'und' || lang === 'en';
+    });
+    const pool = preferredPool.length > 0
+      ? preferredPool
+      : allSources.filter((s) => !this.isCandidateFailed(s) && this.canPreProbeViaFetch(s));
+
+    if (pool.length <= 1) {
+      return pool[0] ?? fallbackPrimary;
+    }
+
+    const sortedPool = [...pool].sort(
+      (a, b) =>
+        (a.multiAudio === b.multiAudio ? 0 : a.multiAudio ? -1 : 1) ||
+        (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600) ||
+        this.qualityRank(b) - this.qualityRank(a),
+    );
+
+    const seenFingerprints = new Set<string>();
+    const wave: SourceOption[] = [];
+    for (const s of sortedPool) {
+      const fp = s.fingerprint || s.id;
+      if (seenFingerprints.has(fp)) continue;
+      seenFingerprints.add(fp);
+      wave.push(s);
+      if (wave.length >= 4) break;
+    }
+
+    if (wave.length <= 1) return wave[0] ?? fallbackPrimary;
+
+    const { winner, failed } = await this.raceCandidatesBatch(wave, null);
+    for (const f of failed) this.markCandidateFailed(f);
+    if (winner) return winner;
+
+    const nextAlive = allSources.find((s) => !this.isCandidateFailed(s));
+    return nextAlive ?? fallbackPrimary;
+  }
+
+  private async resolveFromBackend(): Promise<void> {
+    const cfg = this.input.config;
+    if (!cfg.tmdb || this.destroyed) return;
+
+    this.shell.dataset.buffering = 'true';
+    this.emit('buffering', {});
+
+    // Preload hls.js concurrently while /api/v1/playback resolves on the backend
+    void getHls().catch(() => undefined);
+
+    try {
+      const apiBase = cfg.api || '/api/v1/playback';
+      const apiUrl = new URL(apiBase, window.location.href);
+
+      // Mint a short-lived playback session token if SSR boot did not already inject one
+      if (!cfg.pltoken) {
+        const sessionUrl = new URL('/api/v1/session', apiUrl);
+        try {
+          const sessRes = await fetch(sessionUrl.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: cfg.mediaType || 'movie', tmdb: String(cfg.tmdb) }),
+          });
+          if (sessRes.ok) {
+            const sessJson = (await sessRes.json()) as { pltoken?: string; nonce?: string };
+            if (sessJson.pltoken) cfg.pltoken = sessJson.pltoken;
+            if (sessJson.nonce) cfg.nonce = sessJson.nonce;
+          }
+        } catch {
+          /* continue — backend may run with REQUIRE_PLAYBACK_TOKEN=0 in custom setups */
+        }
+      }
+
+      apiUrl.searchParams.set('type', cfg.mediaType || 'movie');
+      apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
+      if ((cfg.mediaType || 'movie') === 'tv') {
+        apiUrl.searchParams.set('s', String(cfg.season ?? 1));
+        apiUrl.searchParams.set('e', String(cfg.episode ?? 1));
+      }
+      if (cfg.source) apiUrl.searchParams.set('source', String(cfg.source));
+      if (cfg.lang) apiUrl.searchParams.set('lang', String(cfg.lang));
+      if (cfg.nonce) apiUrl.searchParams.set('nonce', String(cfg.nonce));
+
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+
+      const res = await fetch(apiUrl.toString(), { headers });
+      if (this.destroyed) return;
+      if (!res.ok) {
+        this.shell.dataset.buffering = 'false';
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+        this.emit('error', {
+          code: `resolve-${res.status}`,
+          message: errBody.error || `Playback resolution returned ${res.status}`,
+        });
+        return;
+      }
+
+      const data = (await res.json()) as {
+        ok?: boolean;
+        media?: { title?: string; poster?: string | null; backdrop?: string | null };
+        primary?: SourceOption;
+        sources?: SourceOption[];
+        segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
+      };
+      if (this.destroyed) return;
+
+      if (!data?.ok || !data.sources?.length) {
+        this.shell.dataset.buffering = 'false';
+        this.emit('error', { code: 'no-sources', message: 'No playable sources found' });
+        return;
+      }
+
+      if (!cfg.title && data.media?.title) {
+        cfg.title = data.media.title;
+      }
+      const posterCandidate = data.media?.backdrop || data.media?.poster;
+      if (!cfg.poster && posterCandidate) {
+        cfg.poster = posterCandidate;
+        this.video.poster = posterCandidate;
+      }
+      if (data.segments) {
+        const segIntro = data.segments.intro ?? data.segments.recap;
+        if (!cfg.intro && segIntro) {
+          cfg.intro = [{ lang: String(segIntro[0]), url: String(segIntro[1]) }];
+        }
+        if (!cfg.outro && data.segments.outro) {
+          cfg.outro = [{ lang: String(data.segments.outro[0]), url: String(data.segments.outro[1]) }];
+        }
+        this.emit('segments:invalidate', {});
+      }
+
+      this.sources = data.sources;
+      this.failedSourceIds.clear();
+      this.failedFingerprints.clear();
+      this.initialAudioApplied = false;
+      this.emit('config', redacted(cfg as unknown as Record<string, unknown>));
+      this.emit('sources', this.sources);
+
+      const storedLang = !cfg.lang ? loadPreferredAudio() : null;
+      const storedMatchesAny =
+        storedLang &&
+        this.sources.some(
+          (s) =>
+            (s.audioLang && matchScore(storedLang, s.audioLang) >= 0) ||
+            (s.availableAudioLangs ?? []).some((l) => matchScore(storedLang, l) >= 0) ||
+            (s.audioTracks ?? []).some((a) => matchScore(storedLang, a.lang) >= 0),
+        );
+
+      if (cfg.lang) {
+        this.initialAudioApplied = true;
+        await this.setAudio(String(cfg.lang));
+      } else if (storedLang && storedMatchesAny) {
+        this.initialAudioApplied = true;
+        await this.setAudio(storedLang);
+      } else {
+        const fallbackPrimary = data.primary ?? data.sources[0];
+        const fastest = await this.selectFastestInitialSource(this.sources, fallbackPrimary);
+        if (this.destroyed) return;
+        await this.activateSourceOption(fastest, false);
+      }
+    } catch (err) {
+      if (!this.destroyed) {
+        this.shell.dataset.buffering = 'false';
+        this.emit('error', { code: 'resolve-failed', message: String(err) });
+      }
+    }
+  }
+
+  private async activateSourceOption(
+    opt: SourceOption,
+    preservePosition: boolean,
+    manual = false,
+  ): Promise<void> {
+    const cfg = this.input.config;
+    const prevTime = preservePosition && Number.isFinite(this.video.currentTime) ? this.video.currentTime : 0;
+    const wasPlaying = preservePosition && !this.video.paused;
+
+    this.currentSource = opt;
+    cfg.src = opt.url;
+    cfg.server = opt.id;
+    cfg.audioTracks = opt.audioTracks?.map((a) => ({ lang: a.lang, label: a.label, url: a.url })) ?? [];
+    cfg.subsrc = opt.subtitles?.map((s) => ({ lang: s.lang, label: s.label, url: s.url })) ?? [];
+
+    const engineHint = opt.type === 'mp4' ? 'native' : opt.type;
+    await this.load(opt.url, engineHint);
+
+    if (prevTime > 0.5) {
+      const restore = () => {
+        this.seek(prevTime);
+        if (wasPlaying) void this.play();
+      };
+      if (this.video.readyState >= 1) restore();
+      else this.video.addEventListener('loadedmetadata', restore, { once: true });
+    } else if (wasPlaying) {
+      void this.play();
+    }
+
+    this.emit('sourceChange', {
+      id: opt.id,
+      sourceId: opt.sourceId,
+      label: opt.label,
+      type: opt.type,
+      quality: opt.quality,
+      manual,
+    });
+  }
+
   async load(url: string, typeHint?: string): Promise<void> {
     const kind = (typeHint ?? this.input.config.type ?? 'auto') as string;
-    const engine: EngineKind = kind === 'auto' ? sniff(url) : (kind as EngineKind);
+    const mappedKind = kind === 'mp4' ? 'native' : kind;
+    const engine: EngineKind =
+      mappedKind === 'auto'
+        ? this.currentSource
+          ? this.currentSource.type === 'mp4'
+            ? 'native'
+            : this.currentSource.type
+          : sniff(url)
+        : (mappedKind as EngineKind);
+
     this.teardownEngine();
     this.engineKind = engine;
     this.fatalCount = 0;
+
+    // Seed audio & subtitle lists dynamically from active config + discovered raw sources.
+    if ((this.input.config.audioTracks?.length ?? 0) > 0 || this.sources.length > 0) {
+      this.mergeNativeAudio([]);
+    }
+    if ((this.input.config.subsrc?.length ?? 0) > 0) this.mergeExternalSubs();
 
     if (engine === 'hls') void this.loadHls(url);
     else if (engine === 'dash') void this.loadDash(url);
@@ -256,28 +790,327 @@ export class ElfuraPlayer {
   }
 
   async setAudio(idOrLang: string): Promise<boolean> {
-    const track = this.audioTracks.find((t) => t.id === idOrLang) ?? pickTrack(this.audioTracks, idOrLang);
-    if (!track) return false;
+    const exactTrack = this.audioTracks.find((t) => t.id === idOrLang);
+    const targetLang = exactTrack ? exactTrack.lang : canonLang(idOrLang);
+    const displayLabel = exactTrack
+      ? exactTrack.label
+      : languageLabel(targetLang, idOrLang.includes(':') ? undefined : idOrLang);
 
-    if (track.kind === 'native') {
-      this.externalAudio.deactivate();
-      if (this.hls && typeof track.ref === 'number') this.hls.audioTrack = track.ref;
-      else if (this.dash) {
-        const native = this.dash.getTracksFor('audio').find((t) => t.lang?.toLowerCase() === track.lang);
-        if (native) this.dash.setCurrentTrack(native);
+    this.initialAudioApplied = true;
+    this.desiredAudioLang = targetLang;
+
+    const currentHealthy = !!this.currentSource && !this.isCandidateFailed(this.currentSource);
+
+    // 1) Try instant in-band native track on the currently active healthy stream
+    if (currentHealthy || (!this.sources.length && this.audioTracks.length > 0)) {
+      const nativeMatch =
+        exactTrack?.kind === 'native'
+          ? exactTrack
+          : this.audioTracks.find((t) => t.kind === 'native' && matchScore(targetLang, t.lang) >= 0);
+
+      if (nativeMatch) {
+        this.externalAudio.deactivate();
+        if (this.hls && typeof nativeMatch.ref === 'number') {
+          this.hls.audioTrack = nativeMatch.ref;
+        } else if (this.dash) {
+          const native = this.dash
+            .getTracksFor('audio')
+            .find((t) => matchScore(targetLang, t.lang ?? '') >= 0);
+          if (native) this.dash.setCurrentTrack(native);
+        }
+        this.currentAudio = nativeMatch;
+        if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+        this.emit('audioChange', {
+          id: nativeMatch.id,
+          lang: nativeMatch.lang,
+          label: nativeMatch.label,
+          kind: nativeMatch.kind,
+        });
+        return true;
       }
-    } else {
-      const res = await this.externalAudio.activate(track);
-      if (!res.ok) {
-        this.emit('error', { code: 'audio-load-failed', message: res.error, lang: track.lang });
-        return false;
+
+      // 2) Try sidecar external audio file on the currently active stream
+      const externalMatch =
+        exactTrack?.kind === 'external'
+          ? exactTrack
+          : this.audioTracks.find((t) => t.kind === 'external' && matchScore(targetLang, t.lang) >= 0);
+
+      if (externalMatch) {
+        const res = await this.externalAudio.activate(externalMatch);
+        if (res.ok) {
+          this.currentAudio = externalMatch;
+          if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+          this.emit('audioChange', {
+            id: externalMatch.id,
+            lang: externalMatch.lang,
+            label: externalMatch.label,
+            kind: externalMatch.kind,
+          });
+          return true;
+        }
+        // External file failed — fall through and search all other raw sources for targetLang!
+      }
+
+      // 3) Check if current healthy single-dub stream already matches targetLang
+      if (
+        this.currentSource &&
+        !this.currentSource.multiAudio &&
+        matchScore(targetLang, this.currentSource.audioLang ?? 'und') >= 0 &&
+        (this.video.readyState >= 1 || this.qualityLevels.length > 0)
+      ) {
+        const activeTrack =
+          this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0) ?? {
+            id: `source:${targetLang}`,
+            kind: 'source' as const,
+            lang: targetLang,
+            label: displayLabel,
+            ref: targetLang,
+            default: true,
+          };
+        this.currentAudio = activeTrack;
+        if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+        this.emit('audioChange', {
+          id: activeTrack.id,
+          lang: activeTrack.lang,
+          label: activeTrack.label,
+          kind: activeTrack.kind,
+        });
+        return true;
       }
     }
 
-    this.currentAudio = track;
-    if (this.input.config.persistAudio) savePreferredAudio(track.lang);
-    this.emit('audioChange', { id: track.id, lang: track.lang, label: track.label, kind: track.kind });
-    return true;
+    // 4) Concurrently race & exhaustively try ALL raw sources that carry targetLang
+    return this.searchRawSourcesForLanguage(targetLang, displayLabel);
+  }
+
+  /**
+   * Races candidate raw sources for `targetLang` concurrently in parallel waves
+   * so the fastest lowest-buffer server wins immediately instead of walking
+   * servers top-to-bottom. Exhaustively checks every distinct candidate before
+   * restoring playback and displaying:
+   *   `Sorry, we searched all sources yet didn't find it in "<Language>"`
+   */
+  private async searchRawSourcesForLanguage(
+    targetLang: string,
+    displayLabel: string,
+    excludeIds = new Set<string>(),
+  ): Promise<boolean> {
+    const seq = ++this.audioSearchSeq;
+    const prevWorkingSource =
+      this.currentSource && !this.isCandidateFailed(this.currentSource) && !excludeIds.has(this.currentSource.id)
+        ? this.currentSource
+        : null;
+    const savedTime = Number.isFinite(this.video.currentTime) ? this.video.currentTime : 0;
+    const wasPlaying = !this.video.paused;
+
+    const matchesLang = (s: SourceOption): boolean => {
+      if (targetLang === 'und') {
+        return !s.multiAudio && canonLang(s.audioLang) === 'und';
+      }
+      if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
+      if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
+      if ((s.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0)) return true;
+      return false;
+    };
+
+    const priorityMatches = this.sources
+      .filter((s) => !this.isCandidateFailed(s) && !excludeIds.has(s.id) && matchesLang(s))
+      .sort(
+        (a, b) =>
+          (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600) ||
+          this.qualityRank(b) - this.qualityRank(a),
+      );
+    const untriedMultiAudio =
+      targetLang === 'und'
+        ? []
+        : this.sources
+            .filter(
+              (s) =>
+                !this.isCandidateFailed(s) &&
+                !excludeIds.has(s.id) &&
+                !priorityMatches.some((p) => p.id === s.id) &&
+                !!s.multiAudio &&
+                !s.availableAudioLangs?.length,
+            )
+            .sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
+
+    const candidates = [...priorityMatches, ...untriedMultiAudio];
+
+    if (candidates.length > 0) {
+      this.shell.dataset.buffering = 'true';
+      this.emit('audio:searching', {
+        lang: targetLang,
+        label: displayLabel,
+        count: candidates.length,
+      });
+    }
+
+    const finalizeChosenCandidate = (cand: SourceOption): boolean => {
+      this.shell.dataset.buffering = 'false';
+      if (savedTime > 0.5) {
+        const restore = () => {
+          this.seek(savedTime);
+          if (wasPlaying) void this.play();
+        };
+        if (this.video.readyState >= 1) restore();
+        else this.video.addEventListener('loadedmetadata', restore, { once: true });
+      } else if (wasPlaying) {
+        void this.play();
+      }
+
+      const matchedTrack =
+        this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0) ?? {
+          id: `source:${targetLang}`,
+          kind: 'source' as const,
+          lang: targetLang,
+          label: displayLabel,
+          ref: targetLang,
+          default: true,
+        };
+      this.currentAudio = matchedTrack;
+      if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+
+      this.emit('sourceChange', {
+        id: cand.id,
+        sourceId: cand.sourceId,
+        label: cand.label,
+        type: cand.type,
+        quality: cand.quality,
+        manual: false,
+      });
+      this.emit('audioChange', {
+        id: matchedTrack.id,
+        lang: matchedTrack.lang,
+        label: matchedTrack.label,
+        kind: matchedTrack.kind,
+      });
+      return true;
+    };
+
+    const rejectedFingerprints = new Set<string>();
+    const triedEngineIds = new Set<string>();
+
+    // Phase A: Concurrent parallel waves for relay-backed candidates (fastest server wins!)
+    const fetchPool = candidates.filter((c) => this.canPreProbeViaFetch(c));
+    let cursor = 0;
+    while (cursor < fetchPool.length) {
+      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+
+      const wave: SourceOption[] = [];
+      const waveFps = new Set<string>();
+      while (cursor < fetchPool.length && wave.length < 5) {
+        const c = fetchPool[cursor++];
+        if (this.isCandidateFailed(c)) continue;
+        const fp = c.fingerprint || c.id;
+        if (rejectedFingerprints.has(fp) || waveFps.has(fp)) continue;
+        waveFps.add(fp);
+        wave.push(c);
+      }
+      if (!wave.length) continue;
+
+      const { winner, failed } = await this.raceCandidatesBatch(wave, targetLang);
+      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+
+      for (const f of failed) this.markCandidateFailed(f);
+
+      if (winner) {
+        triedEngineIds.add(winner.id);
+        const attachRes = await this.probeRawCandidateForLanguage(winner, targetLang, seq);
+        if (this.destroyed || this.audioSearchSeq !== seq) return false;
+        if (attachRes.ok) {
+          return finalizeChosenCandidate(winner);
+        }
+        if (attachRes.loadFailed) this.markCandidateFailed(winner);
+        if (winner.fingerprint) rejectedFingerprints.add(winner.fingerprint);
+        // Re-scan remaining pool in case another candidate in `wave` was also healthy
+        cursor = Math.max(0, cursor - wave.length);
+      } else {
+        for (const w of wave) {
+          if (w.fingerprint) rejectedFingerprints.add(w.fingerprint);
+          triedEngineIds.add(w.id);
+        }
+      }
+    }
+
+    // Phase B: Engine-level fallback for any remaining untried / external-origin candidates
+    for (const cand of candidates) {
+      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+      if (triedEngineIds.has(cand.id) || this.isCandidateFailed(cand)) continue;
+      if (cand.fingerprint && rejectedFingerprints.has(cand.fingerprint)) continue;
+
+      const probeResult = await this.probeRawCandidateForLanguage(cand, targetLang, seq);
+      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+
+      if (probeResult.ok) {
+        return finalizeChosenCandidate(cand);
+      }
+
+      if (probeResult.loadFailed) {
+        this.markCandidateFailed(cand);
+      } else if (cand.fingerprint) {
+        rejectedFingerprints.add(cand.fingerprint);
+      }
+    }
+
+    // All candidate raw sources were searched and none could play targetLang.
+    this.activeProbe = null;
+    this.desiredAudioLang = null;
+
+    const cleanName = displayLabel || languageLabel(targetLang);
+    const unavailableMessage = `Sorry, we searched all sources yet didn't find it in "${cleanName}"`;
+
+    // Restore playable video so the player does not remain on a dead/unloaded screen
+    const fallbackOpt =
+      prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
+    if (fallbackOpt && (this.currentSource?.id !== fallbackOpt.id || (this.currentSource && this.isCandidateFailed(this.currentSource)))) {
+      await this.activateSourceOption(fallbackOpt, savedTime > 0.5);
+      if (savedTime > 0.5 && wasPlaying) void this.play();
+    } else {
+      this.shell.dataset.buffering = 'false';
+    }
+
+    this.emit('audio:unavailable', {
+      lang: targetLang,
+      label: cleanName,
+      triedSources: candidates.length,
+      message: unavailableMessage,
+    });
+    return false;
+  }
+
+  private probeRawCandidateForLanguage(
+    opt: SourceOption,
+    targetLang: string,
+    seq: number,
+  ): Promise<{ ok: boolean; loadFailed?: boolean }> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        finish({ ok: false, loadFailed: true });
+      }, 8500);
+
+      const finish = (res: { ok: boolean; loadFailed?: boolean }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.activeProbe?.seq === seq && this.activeProbe.opt.id === opt.id) {
+          this.activeProbe = null;
+        }
+        resolve(res);
+      };
+
+      this.activeProbe = { seq, targetLang, opt, settle: finish };
+
+      const cfg = this.input.config;
+      this.currentSource = opt;
+      cfg.src = opt.url;
+      cfg.server = opt.id;
+      cfg.audioTracks = opt.audioTracks?.map((a) => ({ lang: a.lang, label: a.label, url: a.url })) ?? [];
+      cfg.subsrc = opt.subtitles?.map((s) => ({ lang: s.lang, label: s.label, url: s.url })) ?? [];
+
+      const engineHint = opt.type === 'mp4' ? 'native' : opt.type;
+      void this.load(opt.url, engineHint);
+    });
   }
 
   async setSubtitle(idOrLang: string | null): Promise<boolean> {
@@ -379,9 +1212,14 @@ export class ElfuraPlayer {
       this.dash.reset();
       this.dash = null;
     }
+    this.externalAudio.deactivate();
     this.audioTracks = [];
+    this.subtitleTracks = [];
     this.qualityLevels = [];
     this.currentAudio = null;
+    this.currentSubtitle = null;
+    this.cues = [];
+    this.renderer?.setCues([]);
     this.effectiveHeight = 0;
   }
 
@@ -394,9 +1232,9 @@ export class ElfuraPlayer {
     if (!Hls.isSupported()) {
       if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
         this.engineKind = 'native';
-        this.video.src = this.decorate(url);
-        void this.handleAutoplay();
+        this.loadNative(url);
       } else {
+        this.activeProbe?.settle({ ok: false, loadFailed: true });
         this.emit('error', { code: 'hls-unsupported', message: 'No MSE and no native HLS' });
       }
       return;
@@ -404,7 +1242,13 @@ export class ElfuraPlayer {
 
     const hls = new Hls({
       enableWorker: true,
-      backBufferLength: 90,
+      backBufferLength: 60,
+      maxBufferLength: 20,
+      maxMaxBufferLength: 60,
+      startFragPrefetch: true,
+      manifestLoadingTimeOut: 8000,
+      levelLoadingTimeOut: 8000,
+      fragLoadingTimeOut: 10000,
       xhrSetup: (xhr) => {
         if (cfg.pltoken) xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
       },
@@ -423,6 +1267,35 @@ export class ElfuraPlayer {
         .sort((a, b) => b.height - a.height);
       this.emit('qualityLevels', this.qualityLevels);
       this.applyQualityCap();
+
+      const probe = this.activeProbe;
+      if (probe && this.currentSource?.id === probe.opt.id) {
+        queueMicrotask(() => {
+          if (this.activeProbe?.seq !== probe.seq || this.hls !== hls) return;
+          const nativeMatch = this.audioTracks.find(
+            (t) => t.kind === 'native' && matchScore(probe.targetLang, t.lang) >= 0,
+          );
+          if (nativeMatch && typeof nativeMatch.ref === 'number') {
+            hls.audioTrack = nativeMatch.ref;
+          } else if (probe.opt.multiAudio || (data.audioTracks?.length ?? 0) > 1) {
+            probe.settle({ ok: false, loadFailed: false });
+            return;
+          } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') < 0) {
+            probe.settle({ ok: false, loadFailed: false });
+            return;
+          }
+
+          const confirmAlive = () => {
+            hls.off(Hls.Events.LEVEL_LOADED, confirmAlive);
+            hls.off(Hls.Events.AUDIO_TRACK_LOADED, confirmAlive);
+            hls.off(Hls.Events.FRAG_LOADED, confirmAlive);
+            probe.settle({ ok: true });
+          };
+          hls.on(Hls.Events.LEVEL_LOADED, confirmAlive);
+          hls.on(Hls.Events.AUDIO_TRACK_LOADED, confirmAlive);
+          hls.on(Hls.Events.FRAG_LOADED, confirmAlive);
+        });
+      }
     });
 
     // The truth behind "Auto": what ABR is really serving right now.
@@ -448,7 +1321,7 @@ export class ElfuraPlayer {
       this.subtitleTracks = (data.subtitleTracks ?? []).map((t) => ({
         id: `native:${t.id}`,
         kind: 'native' as const,
-        lang: (t.lang ?? 'und').toLowerCase(),
+        lang: canonLang(t.lang || t.name),
         label: languageLabel(t.lang ?? 'und', t.name || undefined),
         url: t.url,
       }));
@@ -467,22 +1340,37 @@ export class ElfuraPlayer {
   }
 
   private async loadDash(url: string): Promise<void> {
+    const cfg = this.input.config;
     const Dash = await getDash();
     if (this.destroyed) return;
     const player = Dash().create();
     this.dash = player;
+    const extras = player as unknown as DashExtras;
+    if (cfg.pltoken && extras.extend) {
+      extras.extend(
+        'RequestModifier',
+        () => ({
+          modifyRequestHeader: (xhr: XMLHttpRequest) => {
+            xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
+            return xhr;
+          },
+          modifyRequestURL: (u: string) => u,
+        }),
+        true,
+      );
+    }
     player.initialize(this.video, this.decorate(url), false);
 
     player.on(Dash.events.STREAM_INITIALIZED, () => {
+      const dashAudio = player.getTracksFor('audio');
       this.mergeNativeAudio(
-        player.getTracksFor('audio').map((t: MediaInfo, i: number) => ({
+        dashAudio.map((t: MediaInfo, i: number) => ({
           id: i,
           lang: t.lang ?? 'und',
           label: t.labels?.length ? String(t.labels[0].text) : undefined,
           default: i === 0,
         })),
       );
-      const extras = player as unknown as DashExtras;
       this.qualityLevels = extras
         .getBitrateInfoListFor('video')
         .map((b) => ({
@@ -494,15 +1382,31 @@ export class ElfuraPlayer {
         }))
         .sort((a, b) => b.height - a.height);
       this.emit('qualityLevels', this.qualityLevels);
+      this.applyQualityCap();
 
       this.subtitleTracks = player.getTracksFor('text').map((t: MediaInfo, i: number) => ({
         id: `native:text:${i}`,
         kind: 'native' as const,
-        lang: (t.lang ?? 'und').toLowerCase(),
+        lang: canonLang(t.lang),
         label: languageLabel(t.lang ?? 'und'),
       }));
       this.mergeExternalSubs();
       this.emit('subtitleTracks', this.subtitleTracks);
+
+      const probe = this.activeProbe;
+      if (probe && this.currentSource?.id === probe.opt.id) {
+        const match = dashAudio.find((t: MediaInfo) => matchScore(probe.targetLang, t.lang ?? '') >= 0);
+        if (match) {
+          player.setCurrentTrack(match);
+          probe.settle({ ok: true });
+        } else if (probe.opt.multiAudio || dashAudio.length > 1) {
+          probe.settle({ ok: false, loadFailed: false });
+        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0) {
+          probe.settle({ ok: true });
+        } else {
+          probe.settle({ ok: false, loadFailed: false });
+        }
+      }
     });
 
     player.on(Dash.events.QUALITY_CHANGE_RENDERED, (e: { mediaType?: string; newQuality?: number }) => {
@@ -514,6 +1418,10 @@ export class ElfuraPlayer {
     });
 
     player.on(Dash.events.ERROR, (e: { error?: unknown; message?: string }) => {
+      if (this.activeProbe) {
+        this.activeProbe.settle({ ok: false, loadFailed: true });
+        return;
+      }
       this.emit('error', { code: 'dash-error', message: e.message ?? String(e.error ?? 'unknown') });
       this.failover();
     });
@@ -522,7 +1430,27 @@ export class ElfuraPlayer {
   }
 
   private loadNative(url: string): void {
+    const probe = this.activeProbe;
+    if (probe && this.currentSource?.id === probe.opt.id) {
+      const onLoaded = () => {
+        this.video.removeEventListener('loadedmetadata', onLoaded);
+        if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
+          probe.settle({ ok: true });
+        } else {
+          probe.settle({ ok: false, loadFailed: false });
+        }
+      };
+      this.video.addEventListener('loadedmetadata', onLoaded, { once: true });
+    }
     this.video.src = this.decorate(url);
+    this.video.onerror = () => {
+      if (this.activeProbe) {
+        this.activeProbe.settle({ ok: false, loadFailed: true });
+        return;
+      }
+      this.emit('error', { code: 'native-error', message: this.video.error?.message ?? 'media error' });
+      this.failover();
+    };
     void this.handleAutoplay();
   }
 
@@ -560,26 +1488,73 @@ export class ElfuraPlayer {
 
   private applyQualityCap(): void {
     const q = this.input.config.quality;
-    if (!q || q === 'auto' || !this.hls) return;
+    if (!q || q === 'auto') return;
     const cap = Number(q);
     if (!Number.isFinite(cap)) return;
     const allowed = this.qualityLevels.filter((l) => l.height > 0 && l.height <= cap);
-    this.hls.autoLevelCapping = allowed.length ? Math.max(...allowed.map((l) => l.height)) : -1;
+    if (this.hls) {
+      this.hls.autoLevelCapping = allowed.length ? Math.max(...allowed.map((l) => l.id)) : -1;
+    } else if (this.dash && allowed.length) {
+      const top = allowed.reduce((a, b) => (a.bitrate >= b.bitrate ? a : b));
+      const extras = this.dash as unknown as DashExtras;
+      extras.updateSettings?.({
+        streaming: { abr: { maxBitrate: { video: Math.ceil(top.bitrate / 1000) } } },
+      });
+    }
   }
 
   private handleFatal(type: string, url: string): void {
+    if (this.activeProbe) {
+      this.activeProbe.settle({ ok: false, loadFailed: true });
+      return;
+    }
     this.fatalCount++;
     const Hls = this.HlsClass;
     if (this.hls && Hls) {
-      if (type === Hls.ErrorTypes.MEDIA_ERROR) this.hls.recoverMediaError();
-      else if (type === Hls.ErrorTypes.NETWORK_ERROR && this.fatalCount < 3) this.hls.startLoad();
+      if (type === Hls.ErrorTypes.MEDIA_ERROR && this.fatalCount < 2) {
+        this.hls.recoverMediaError();
+        return;
+      }
+      if (type === Hls.ErrorTypes.NETWORK_ERROR && this.fatalCount < 2) {
+        this.hls.startLoad();
+        return;
+      }
     }
     this.emit('error', { code: 'fatal', type, fatalCount: this.fatalCount, url });
     this.failover();
   }
 
-  /** Walk `servers` on fatal error; the UI toasts, the user never sees a dead player. */
+  /**
+   * Walk `sources` on fatal error. If an audio language is actively selected,
+   * first try all remaining raw sources of that selected language before
+   * showing the unavailable-language notice and falling back.
+   */
   private failover(): void {
+    if (this.sources.length > 1) {
+      if (this.currentSource) this.markCandidateFailed(this.currentSource);
+
+      if (this.desiredAudioLang) {
+        const lang = this.desiredAudioLang;
+        void this.searchRawSourcesForLanguage(lang, languageLabel(lang), new Set(this.failedSourceIds));
+        return;
+      }
+
+      const curIdx = this.currentSource ? this.sources.findIndex((s) => s.id === this.currentSource!.id) : -1;
+      const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
+        (s) => !this.isCandidateFailed(s),
+      );
+      ordered.sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
+      const next = ordered[0];
+      if (!next) return;
+      this.emit('server:switch', {
+        from: this.currentSource?.label ?? null,
+        to: next.label,
+        reason: 'fatal-error',
+      });
+      void this.activateSourceOption(next, true);
+      return;
+    }
+
     const cfg = this.input.config;
     const servers = cfg.servers ?? [];
     if (servers.length < 2) return;
@@ -593,26 +1568,63 @@ export class ElfuraPlayer {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Tracks                                                              */
+  /* Dynamic Tracks (zero hardcoded audio/subtitle lists)                */
   /* ------------------------------------------------------------------ */
 
   private mergeNativeAudio(native: { id: number; lang: string; label?: string; default?: boolean }[]): void {
     const external = (this.input.config.audioTracks ?? []).map((x) => ({ lang: x.lang, label: x.label, url: x.url }));
-    this.audioTracks = buildTrackList({ native, external });
+
+    // Dynamically gather audio languages actually reported across resolved raw sources
+    const discoveredSourceLangs: { lang: string; label?: string; active?: boolean }[] = [];
+    if (this.currentSource && !this.currentSource.multiAudio) {
+      discoveredSourceLangs.push({
+        lang: this.currentSource.audioLang ?? 'und',
+        active: true,
+      });
+    }
+    for (const s of this.sources) {
+      if (this.isCandidateFailed(s)) continue;
+      if (!s.multiAudio && s.audioLang) {
+        discoveredSourceLangs.push({
+          lang: s.audioLang,
+          active: s.id === this.currentSource?.id,
+        });
+      }
+      for (const l of s.availableAudioLangs ?? []) {
+        discoveredSourceLangs.push({ lang: l });
+      }
+      for (const a of s.audioTracks ?? []) {
+        discoveredSourceLangs.push({ lang: a.lang, label: a.label });
+      }
+    }
+
+    this.audioTracks = buildTrackList({ native, external, discoveredSourceLangs });
+
+    // Reflect active single-dub source in currentAudio unless an initial preference is pending
+    if (!this.currentAudio && this.audioTracks.length > 0 && !this.activeProbe) {
+      const def = this.audioTracks.find((t) => t.default) ?? this.audioTracks[0];
+      if (def) this.currentAudio = def;
+    }
+
     this.emit('audioTracks', this.audioTracks);
-    this.applyInitialAudio();
+    if (!this.activeProbe) this.applyInitialAudio();
   }
 
   private mergeExternalSubs(): void {
     const external = (this.input.config.subsrc ?? []).map((x, i) => ({
-      id: `external:${x.lang}:${i}`,
+      id: `external:${canonLang(x.lang || x.label)}:${i}`,
       kind: 'external' as const,
-      lang: (x.lang || 'und').toLowerCase(),
+      lang: canonLang(x.lang || x.label),
       label: languageLabel(x.lang, x.label),
       url: x.url,
     }));
     const merged = [...this.subtitleTracks];
-    for (const e of external) if (!merged.some((t) => t.lang === e.lang)) merged.push(e);
+    for (const e of external) {
+      const dup = merged.some(
+        (t) => (e.url && t.url === e.url) || (t.kind === 'native' && t.lang === e.lang && t.label === e.label),
+      );
+      if (!dup) merged.push(e);
+    }
     this.subtitleTracks = merged;
     this.emit('subtitleTracks', this.subtitleTracks);
     this.applyInitialSubtitle();
@@ -624,9 +1636,25 @@ export class ElfuraPlayer {
   }
 
   private applyInitialAudio(): void {
-    if (this.currentAudio || !this.audioTracks.length) return;
-    const pick = pickTrack(this.audioTracks, this.input.config.lang ?? loadPreferredAudio());
-    if (pick) void this.setAudio(pick.id);
+    if (this.initialAudioApplied || !this.audioTracks.length) return;
+    const explicitLang = this.input.config.lang;
+    const storedLang = loadPreferredAudio();
+    const wanted = explicitLang ?? storedLang;
+    if (!wanted) {
+      this.initialAudioApplied = true;
+      return;
+    }
+
+    const match = this.audioTracks.find((t) => matchScore(wanted, t.lang) >= 0);
+    if (explicitLang) {
+      this.initialAudioApplied = true;
+      void this.setAudio(explicitLang);
+    } else if (match) {
+      this.initialAudioApplied = true;
+      void this.setAudio(match.id);
+    } else {
+      this.initialAudioApplied = true;
+    }
   }
 
   private applyInitialSubtitle(): void {
@@ -634,15 +1662,15 @@ export class ElfuraPlayer {
     if (this.input.config.subtitles === false) return;
     const want = this.input.config.sublang;
     const pick =
-      (want && this.subtitleTracks.find((t) => t.lang === want || t.lang.split('-')[0] === want.split('-')[0])) ??
+      (want && this.subtitleTracks.find((t) => matchScore(want, t.lang) >= 0)) ??
       null;
     if (pick) void this.setSubtitle(pick.id);
   }
 
   /**
-   * Native HLS subtitles arrive as a media playlist of .vtt segments, not one
-   * file. Resolve it, concatenate in order, then parse with our own parser so
-   * styling stays under our control.
+   * Native HLS subtitles arrive as a media playlist of subtitle segments, not one
+   * file. Resolve all non-comment segment URIs (including `/api/v1/stream?t=...`
+   * tickets), concatenate in order, and parse with our own subtitle engine.
    */
   private async loadSubtitleCues(track: SubtitleTrack): Promise<void> {
     const grab = async (u: string) => (await fetch(u, { credentials: 'omit' })).text();
@@ -662,7 +1690,10 @@ export class ElfuraPlayer {
           return;
         }
         const base = new URL(track.url, window.location.href);
-        const segs = [...body.matchAll(/^([^#\s][^\n]*\.vtt[^\n]*)$/gim)].map((m) => m[1].trim());
+        const segs = body
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0 && !l.startsWith('#'));
         const parts: string[] = [];
         for (const seg of segs) {
           try {
@@ -734,6 +1765,7 @@ export class ElfuraPlayer {
     cmd('mute', (d) => this.setMuted(val(d) !== false));
     cmd('setSpeed', (d) => this.setSpeed(Number(val(d))));
     cmd('setQuality', (d) => this.setQuality(String(val(d))));
+    cmd('setSource', async (d) => this.setSource(String(val(d))));
     cmd('setAudio', async (d) => this.setAudio(String(val(d))));
     cmd('setSubtitle', async (d) => {
       const v = val(d);

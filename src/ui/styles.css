@@ -105,10 +105,14 @@
 /* --------------------------------- toast ------------------------------- */
 .elf-toast {
   position: absolute; left: 50%; top: 52px; transform: translateX(-50%) translateY(-8px); z-index: 7;
-  padding: 7px 14px; border-radius: 999px; background: rgba(10,10,12,.88);
-  border: 1px solid rgba(255,255,255,.12); color: #fff; font: 600 11.5px/1 var(--elf-font);
-  backdrop-filter: blur(8px); opacity: 0; pointer-events: none; white-space: nowrap;
+  max-width: min(90%, 440px); padding: 8px 15px; border-radius: 14px; background: rgba(10,10,12,.92);
+  border: 1px solid rgba(255,255,255,.14); color: #fff; font: 600 12px/1.35 var(--elf-font);
+  text-align: center; white-space: normal; backdrop-filter: blur(8px); opacity: 0; pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.elf-toast[data-kind='warn'] {
+  border-color: color-mix(in srgb, var(--elf-accent) 70%, rgba(255,255,255,.25));
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
 }
 .elf-toast[data-show='true'] { opacity: 1; transform: translateX(-50%) translateY(0); }
 

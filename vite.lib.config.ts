@@ -6,7 +6,7 @@ export default defineConfig({
     outDir: 'dist/lib',
     emptyOutDir: true,
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: false,
     lib: {
       entry: 'src/index.ts',
       name: 'Elfura',

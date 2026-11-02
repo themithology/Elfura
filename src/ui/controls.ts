@@ -32,15 +32,20 @@ import { SubtitleRenderer } from '../subs/renderer';
 /* Icons (injected once at build time, never in the hot path)              */
 /* ---------------------------------------------------------------------- */
 
+const stepSvg = (dir: 'back' | 'fwd', step: number) =>
+  dir === 'back'
+    ? `<svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/><text x="12" y="16.4" text-anchor="middle" font-size="7.6" font-weight="700" font-family="inherit">${step}</text></svg>`
+    : `<svg viewBox="0 0 24 24"><path d="M12 5V2l5 4-5 4V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/><text x="12" y="16.4" text-anchor="middle" font-size="7.6" font-weight="700" font-family="inherit">${step}</text></svg>`;
+
 const I = {
   play: '<svg viewBox="0 0 24 24"><path d="M8 5.1v13.8a1 1 0 0 0 1.5.9l11.2-6.9a1 1 0 0 0 0-1.7L9.5 4.2A1 1 0 0 0 8 5.1z"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><path d="M7 4h3.6v16H7zm6.4 0H17v16h-3.6z"/></svg>',
-  back10:
-    '<svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/><text x="12" y="16.4" text-anchor="middle" font-size="7.6" font-weight="700" font-family="inherit">10</text></svg>',
-  fwd10:
-    '<svg viewBox="0 0 24 24"><path d="M12 5V2l5 4-5 4V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/><text x="12" y="16.4" text-anchor="middle" font-size="7.6" font-weight="700" font-family="inherit">10</text></svg>',
+  back10: stepSvg('back', 10),
+  fwd10: stepSvg('fwd', 10),
   vol: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a3.5 3.5 0 0 0-2-3.2v6.4a3.5 3.5 0 0 0 2-3.2zm-2-7.7v2.1a5.7 5.7 0 0 1 0 11.2v2.1a7.8 7.8 0 0 0 0-15.4z"/></svg>',
   mute: '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zm15.5 3 2-2-1.4-1.4-2 2-2-2L14.7 10l2 2-2 2 1.4 1.4 2-2 2 2 1.4-1.4-2-2z"/></svg>',
+  layers:
+    '<svg viewBox="0 0 24 24"><path d="M12 3 2 8l10 5 10-5-10-5zm0 13L4.5 12.2 2 13.5 12 18.5l10-5-2.5-1.3L12 16zm0 4.5L4.5 16.7 2 18l10 5 10-5-2.5-1.3L12 20.5z"/></svg>',
   phones:
     '<svg viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 0-8 8v6a3 3 0 0 0 3 3h2v-8H6v-1a6 6 0 1 1 12 0v1h-3v8h2a3 3 0 0 0 3-3v-6a8 8 0 0 0-8-8z"/></svg>',
   cc: '<svg viewBox="0 0 24 24"><path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8.5 11.5A3.5 3.5 0 0 1 7 12a3.5 3.5 0 0 1 6.3-2.1l-1.4.9A1.9 1.9 0 0 0 8.9 12a1.9 1.9 0 0 0 3 1.2l1.4.9a3.5 3.5 0 0 1-2.8 1.4zm6 0A3.5 3.5 0 0 1 13 12a3.5 3.5 0 0 1 6.3-2.1l-1.4.9A1.9 1.9 0 0 0 14.9 12a1.9 1.9 0 0 0 3 1.2l1.4.9a3.5 3.5 0 0 1-2.8 1.4z"/></svg>',
@@ -73,11 +78,12 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 
-type TabId = 'quality' | 'subs' | 'speed' | 'audio' | 'style';
+type TabId = 'sources' | 'quality' | 'subs' | 'speed' | 'audio' | 'style';
 
 export class PlayerUI {
   private player: ElfuraPlayer;
 
+  private titleEl!: HTMLElement;
   private hud!: HTMLElement;
   private hudMode!: HTMLElement;
   private hudPill!: HTMLElement;
@@ -102,6 +108,7 @@ export class PlayerUI {
   private volBtn!: HTMLButtonElement;
   private volSlider!: HTMLInputElement;
   private timeEl!: HTMLElement;
+  private sourceBtn!: HTMLButtonElement;
   private audioBtn!: HTMLButtonElement;
   private ccBtn!: HTMLButtonElement;
   private gearBtn!: HTMLButtonElement;
@@ -117,6 +124,9 @@ export class PlayerUI {
   private raf = 0;
   private hideTimer = 0;
   private toastTimer = 0;
+  private toastWarnUntil = 0;
+  private searchingTimer = 0;
+  private hasRenderedAudioSelection = false;
   private flashTimer = 0;
   private dragging = false;
 
@@ -154,9 +164,9 @@ export class PlayerUI {
       b.onclick = () => this.player.bus.emit('back', {});
       top.appendChild(b);
     }
-    const title = el('div', 'elf-title');
-    title.textContent = cfg.title ?? '';
-    top.appendChild(title);
+    this.titleEl = el('div', 'elf-title');
+    this.titleEl.textContent = cfg.title ?? '';
+    top.appendChild(this.titleEl);
     if (cfg.brand) top.appendChild(el('div', 'elf-brand', esc(String(cfg.brand))));
     shell.appendChild(top);
 
@@ -201,10 +211,11 @@ export class PlayerUI {
     shell.appendChild(this.scrub);
 
     /* control bar */
+    const step = Number(cfg.skipStep ?? 10);
     this.bar = el('div', 'elf-bar');
     this.playBtn = this.iconBtn(I.play, 'Play');
-    this.back10 = this.iconBtn(I.back10, 'Back 10 seconds');
-    this.fwd10 = this.iconBtn(I.fwd10, 'Forward 10 seconds');
+    this.back10 = this.iconBtn(stepSvg('back', step), `Back ${step} seconds`);
+    this.fwd10 = this.iconBtn(stepSvg('fwd', step), `Forward ${step} seconds`);
     this.volBtn = this.iconBtn(I.vol, 'Mute');
     const volWrap = el('div', 'elf-vol-slider');
     this.volSlider = el('input') as HTMLInputElement;
@@ -217,6 +228,7 @@ export class PlayerUI {
     volWrap.appendChild(this.volSlider);
     this.timeEl = el('div', 'elf-time', '0:00 / 0:00');
 
+    this.sourceBtn = this.iconBtn(I.layers, 'Sources');
     this.audioBtn = this.iconBtn(I.phones, 'Audio');
     this.ccBtn = this.iconBtn(I.cc, 'Subtitles');
     this.gearBtn = this.iconBtn(I.gear, 'Settings');
@@ -226,7 +238,7 @@ export class PlayerUI {
     this.bar.append(
       this.playBtn, this.back10, this.fwd10, this.volBtn, volWrap, this.timeEl,
       el('div', 'elf-spacer'),
-      this.audioBtn, this.ccBtn, this.gearBtn, this.pipBtn, this.fsBtn,
+      this.sourceBtn, this.audioBtn, this.ccBtn, this.gearBtn, this.pipBtn, this.fsBtn,
     );
     shell.appendChild(this.bar);
 
@@ -258,10 +270,11 @@ export class PlayerUI {
 
     this.playBtn.onclick = () => this.player.toggle();
     this.bigPlay.onclick = () => this.player.toggle();
-    this.back10.onclick = () => { this.player.skipBy(-step); this.flashIcon(I.back10); };
-    this.fwd10.onclick = () => { this.player.skipBy(step); this.flashIcon(I.fwd10); };
+    this.back10.onclick = () => { this.player.skipBy(-step); this.flashIcon(stepSvg('back', step)); };
+    this.fwd10.onclick = () => { this.player.skipBy(step); this.flashIcon(stepSvg('fwd', step)); };
     this.volBtn.onclick = () => this.player.setMuted(!v.muted);
     this.volSlider.oninput = () => this.player.setVolume(Number(this.volSlider.value));
+    this.sourceBtn.onclick = () => this.togglePanel('sources');
     this.audioBtn.onclick = () => this.togglePanel('audio');
     this.ccBtn.onclick = () => this.togglePanel('subs');
     this.gearBtn.onclick = () => this.togglePanel(this.tab);
@@ -281,20 +294,59 @@ export class PlayerUI {
     v.addEventListener('pause', () => { shell.dataset.playing = 'false'; this.flashIcon(I.pause); this.showUI(); });
     v.addEventListener('waiting', () => (shell.dataset.buffering = 'true'));
     v.addEventListener('playing', () => (shell.dataset.buffering = 'false'));
+    v.addEventListener('loadeddata', () => (shell.dataset.buffering = 'false'));
 
+    bus.on('config', () => {
+      this.titleEl.textContent = this.player.config.title ?? '';
+      this.renderSegments();
+    });
+    bus.on('sources', () => { this.syncCapabilities(); this.rebuildTabsIfOpen(); });
+    bus.on('sourceChange', (d) => {
+      this.syncCapabilities();
+      this.rebuildTabsIfOpen();
+      const ev = d as { label?: string; manual?: boolean } | undefined;
+      if (ev?.manual && ev.label) this.showToast(ev.label);
+    });
     bus.on('qualityLevels', () => { this.syncCapabilities(); this.rebuildTabsIfOpen(); });
     bus.on('qualityEffective', (d) => this.syncHud(d as { mode?: string; height?: number }));
     bus.on('qualityChange', (d) => this.syncHud(d as { mode?: string; height?: number }));
     bus.on('audioTracks', () => { this.syncCapabilities(); this.rebuildTabsIfOpen(); });
-    bus.on('audioChange', (d) => { this.rebuildTabsIfOpen(); this.showToast(`Audio · ${(d as { label?: string })?.label ?? ''}`); });
+    bus.on('audioChange', (d) => {
+      clearTimeout(this.searchingTimer);
+      this.rebuildTabsIfOpen();
+      const label = (d as { label?: string })?.label ?? '';
+      if (this.hasRenderedAudioSelection && label) {
+        this.showToast(`Audio · ${label}`);
+      }
+      this.hasRenderedAudioSelection = true;
+    });
+    bus.on('audio:searching', (d) => {
+      clearTimeout(this.searchingTimer);
+      const label = (d as { label?: string })?.label ?? '';
+      this.searchingTimer = window.setTimeout(() => {
+        if (label) this.showToast(`Switching to ${label}…`, 3500);
+      }, 350);
+    });
+    bus.on('audio:unavailable', (d) => {
+      clearTimeout(this.searchingTimer);
+      const msg =
+        (d as { message?: string })?.message ??
+        `Sorry, we searched all sources yet didn't find it in "${(d as { label?: string })?.label ?? 'that language'}"`;
+      this.rebuildTabsIfOpen();
+      this.showToast(msg, 6000, 'warn');
+    });
     bus.on('subtitleTracks', () => { this.syncCapabilities(); this.rebuildTabsIfOpen(); });
     bus.on('subtitleChange', () => { this.rebuildTabsIfOpen(); this.syncCc(); });
     bus.on('volumechange', (d) => this.syncVolume(d as { volume: number; muted: boolean }));
     bus.on('segments:invalidate', () => this.renderSegments());
     bus.on('durationchange', () => this.renderSegments());
-    bus.on('server:switch', (d) => this.showToast(`Switched to ${(d as { to?: string })?.to ?? 'another server'}`));
     bus.on('autoplay:blocked', () => this.showToast('Tap to play with sound'));
-    bus.on('error', (d) => this.showToast(`Error · ${(d as { code?: string })?.code ?? 'playback'}`));
+    bus.on('error', (d) => {
+      const code = (d as { code?: string })?.code ?? '';
+      if (code === 'no-sources' || code.startsWith('resolve-')) {
+        this.showToast('Stream currently unavailable', 4500, 'warn');
+      }
+    });
     bus.on('episode:next', () => this.showToast('Loading next…'));
     bus.on('fullscreen', (d) => { this.fsBtn.innerHTML = (d as { on?: boolean })?.on ? I.fsExit : I.fs; });
 
@@ -306,6 +358,7 @@ export class PlayerUI {
   /** Hide anything the browser or the stream cannot offer. */
   private syncCapabilities(): void {
     const st = this.player.getState();
+    const sources = this.player.getSources();
     const ql = this.player.getQualityLevels();
     const audio = this.player.getAudioTracks();
     const subs = this.player.getSubtitleTracks();
@@ -313,6 +366,7 @@ export class PlayerUI {
     this.hud.hidden = ql.length === 0;
     this.pipBtn.hidden = !st.canPip;
     this.fsBtn.hidden = !st.canFullscreen;
+    this.sourceBtn.hidden = sources.length < 2;
     this.audioBtn.hidden = audio.length < 2;
     this.ccBtn.hidden = subs.length === 0;
 
@@ -323,7 +377,7 @@ export class PlayerUI {
     this.fwd10.hidden = hideSkip;
 
     // A gear with nothing inside it is dead weight.
-    this.gearBtn.hidden = ql.length === 0 && subs.length === 0 && audio.length < 2;
+    this.gearBtn.hidden = ql.length === 0 && subs.length === 0 && audio.length < 2 && sources.length < 2 && d === 0;
 
     this.syncHud();
     this.syncCc();
@@ -498,8 +552,8 @@ export class PlayerUI {
       const d = Number.isFinite(v.duration) ? v.duration : 0;
       switch (e.key.toLowerCase()) {
         case ' ': case 'k': this.player.toggle(); break;
-        case 'arrowright': case 'l': this.player.skipBy(step); this.flashIcon(I.fwd10); break;
-        case 'arrowleft': case 'j': this.player.skipBy(-step); this.flashIcon(I.back10); break;
+        case 'arrowright': case 'l': this.player.skipBy(step); this.flashIcon(stepSvg('fwd', step)); break;
+        case 'arrowleft': case 'j': this.player.skipBy(-step); this.flashIcon(stepSvg('back', step)); break;
         case 'arrowup': this.player.setVolume(v.volume + 0.05); break;
         case 'arrowdown': this.player.setVolume(v.volume - 0.05); break;
         case 'm': this.player.setMuted(!v.muted); break;
@@ -529,6 +583,7 @@ export class PlayerUI {
 
   private availableTabs(): { id: TabId; icon: string; label: string }[] {
     const tabs: { id: TabId; icon: string; label: string }[] = [];
+    if (this.player.getSources().length > 1) tabs.push({ id: 'sources', icon: I.layers, label: 'Sources' });
     if (this.player.getQualityLevels().length) tabs.push({ id: 'quality', icon: I.bars, label: 'Quality' });
     if (this.player.getSubtitleTracks().length) tabs.push({ id: 'subs', icon: I.cc, label: 'Subtitles' });
     tabs.push({ id: 'speed', icon: I.gauge, label: 'Speed' });
@@ -568,7 +623,13 @@ export class PlayerUI {
   private buildTabs(): void {
     const tabs = this.availableTabs();
     const signature = tabs.map((t) => t.id).join(',');
-    if (this.tabsEl.dataset.signature === signature && this.tab !== 'style') return;
+    if (this.tabsEl.dataset.signature === signature) {
+      for (const child of this.tabsEl.querySelectorAll<HTMLElement>('[data-tab]')) {
+        const id = child.dataset.tab;
+        child.dataset.on = String(this.tab === id || (this.tab === 'style' && id === 'subs'));
+      }
+      return;
+    }
     this.tabsEl.dataset.signature = signature;
     this.tabsEl.replaceChildren();
 
@@ -593,6 +654,7 @@ export class PlayerUI {
     this.previewRenderer = null;
     this.panelBody.replaceChildren();
     switch (this.tab) {
+      case 'sources': this.renderSources(); break;
       case 'quality': this.renderQuality(); break;
       case 'subs': this.renderSubs(); break;
       case 'style': this.renderStyle(); break;
@@ -600,6 +662,19 @@ export class PlayerUI {
       case 'audio': this.renderAudio(); break;
     }
     this.panelBody.scrollTop = 0;
+  }
+
+  private renderSources(): void {
+    const st = this.player.getState();
+    for (const s of this.player.getSources()) {
+      const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
+      this.panelBody.appendChild(
+        this.row(s.label, qualityBadge, s.id === st.source, () => {
+          void this.player.setSource(s.id);
+          this.renderTab();
+        }),
+      );
+    }
   }
 
   private row(label: string, sub: string, selected: boolean, onClick: () => void) {
@@ -614,13 +689,13 @@ export class PlayerUI {
 
   private renderQuality(): void {
     const st = this.player.getState();
-    this.panelBody.appendChild(this.row('Auto', st.effectiveHeight ? `${st.effectiveHeight}p` : 'recommended', st.qualityMode === 'auto', () => {
+    this.panelBody.appendChild(this.row('Auto', st.effectiveHeight ? `${st.effectiveHeight}p` : '', st.qualityMode === 'auto', () => {
       this.player.setQuality('auto');
       this.renderTab();
     }));
     for (const l of this.player.getQualityLevels()) {
       this.panelBody.appendChild(
-        this.row(l.label, `${Math.round(l.bitrate / 1000)} kbps`, st.qualityMode === String(l.height), () => {
+        this.row(l.label, '', st.qualityMode === String(l.height), () => {
           this.player.setQuality(l.height);
           this.renderTab();
         }),
@@ -630,17 +705,18 @@ export class PlayerUI {
 
   private renderSubs(): void {
     const st = this.player.getState();
-    this.panelBody.appendChild(this.row('Off', '', !st.subtitleLang, () => { void this.player.setSubtitle(null); this.renderTab(); }));
+    this.panelBody.appendChild(this.row('Off', '', !st.subtitleId && !st.subtitleLang, () => { void this.player.setSubtitle(null); this.renderTab(); }));
     for (const t of this.player.getSubtitleTracks()) {
+      const selected = st.subtitleId ? t.id === st.subtitleId : t.lang === st.subtitleLang;
       this.panelBody.appendChild(
-        this.row(t.label, t.kind === 'external' ? 'external' : 'in stream', t.lang === st.subtitleLang, () => {
+        this.row(t.label, '', selected, () => {
           void this.player.setSubtitle(t.id);
           this.renderTab();
         }),
       );
     }
     const style = el('button', 'elf-menu-item');
-    style.innerHTML = `<span class="elf-mi-label">Customise style<span class="elf-mi-sub"> · colour · size · font · position · transparency</span></span>`;
+    style.innerHTML = `<span class="elf-mi-label">Subtitle appearance</span>`;
     style.onclick = () => { this.tab = 'style'; this.buildTabs(); this.renderTab(); };
     this.panelBody.appendChild(style);
   }
@@ -649,9 +725,12 @@ export class PlayerUI {
     const st = this.player.getState();
     const tracks: AudioTrack[] = this.player.getAudioTracks();
     for (const t of tracks) {
+      const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
       this.panelBody.appendChild(
-        this.row(t.label, t.kind === 'external' ? 'external dub' : 'in stream', t.lang === st.audioLang, () => {
+        this.row(t.label, '', selected, () => {
+          this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
+          this.renderTab();
         }),
       );
     }
@@ -660,7 +739,7 @@ export class PlayerUI {
   private renderSpeed(): void {
     const st = this.player.getState();
     for (const s of [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) {
-      this.panelBody.appendChild(this.row(`${s}×`, s === 1 ? 'normal' : '', s === st.speed, () => {
+      this.panelBody.appendChild(this.row(`${s}×`, s === 1 ? 'Normal' : '', s === st.speed, () => {
         this.player.setSpeed(s);
         this.renderTab();
       }));
@@ -840,17 +919,24 @@ export class PlayerUI {
     }, 2600);
   }
 
-  showToast(msg: string, ms = 2200): void {
+  showToast(msg: string, ms = 2200, kind: 'info' | 'warn' = 'info'): void {
+    if (kind === 'info' && Date.now() < this.toastWarnUntil) return;
+    if (kind === 'warn') this.toastWarnUntil = Date.now() + ms;
     this.toastEl.textContent = msg;
+    this.toastEl.dataset.kind = kind;
     this.toastEl.dataset.show = 'true';
     clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => (this.toastEl.dataset.show = 'false'), ms);
+    this.toastTimer = window.setTimeout(() => {
+      this.toastEl.dataset.show = 'false';
+      this.toastEl.dataset.kind = 'info';
+    }, ms);
   }
 
   destroy(): void {
     cancelAnimationFrame(this.raf);
     clearTimeout(this.hideTimer);
     clearTimeout(this.toastTimer);
+    clearTimeout(this.searchingTimer);
     clearTimeout(this.flashTimer);
     this.previewRenderer?.destroy();
   }

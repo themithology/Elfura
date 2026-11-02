@@ -3,3 +3,8 @@ dist/
 .DS_Store
 *.local
 .vite/
+.env
+.env.*
+!.env.example
+*.zip
+!elfura-pterodactyl.zip
