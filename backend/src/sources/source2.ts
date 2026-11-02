@@ -1,17 +1,21 @@
 /**
  * Elfura Backend — Source 2 Adapter
  * =================================
- * Multi-CDN 30-server stream resolver verified across Hollywood blockbusters,
- * K-dramas, TV anime, and theatrical anime films:
- *   - Queries `/api/extract` once to harvest all 30+ upstream edge servers in
- *     `byServer` alongside `scanReport` latency telemetry, `dubs`, and `subtitles`.
+ * Multi-CDN 30-server stream & multi-audio resolver verified across Hollywood
+ * blockbusters, K-dramas, TV anime, and theatrical anime films:
+ *   - Enriches `/api/extract` with TMDB `title`, `year`, `date`, `latestDate`,
+ *     and `imdbId` (matching upstream client queries so sniper/zxc/vidbolt
+ *     providers unlock every regional & anime dub on the first pass).
+ *   - Automatically recovers from cold-cache `success: false` responses by
+ *     triggering `/api/scan` warm-up and retrying fast alternate provider
+ *     families (`atlas`, `alatreon`) without caching empty results.
  *   - Unwraps `/api/proxy-m3u8` and `/api/proxy-segment` wrappers directly to
- *     the underlying CDNs while injecting required `Referer` + `Origin` headers
- *     server-side (including on `img.rousav.tech` multi-audio masters).
- *   - Preserves all 30+ online server nodes sorted by measured upstream edge
+ *     the underlying CDNs while preserving outer worker query signatures on
+ *     `dash-hls-bridge` URLs and injecting required `Referer` + `Origin`
+ *     headers server-side on `vidbolt` / `rousav` streams.
+ *   - Harvests all 30+ online server nodes sorted by measured upstream edge
  *     latency (`latencyMs` ascending) PLUS every distinct audio dub / quality
- *     variant across all servers, attaching an internal `fingerprint` so the
- *     player can race distinct CDNs in parallel without duplicate probes.
+ *     variant across all buckets with true minimum group latency.
  */
 
 import type { BackendConfig } from '../config.js';
@@ -65,6 +69,8 @@ const PREFERRED_SERVER_ORDER = [
 
 const HARDSUB_LABEL_RE = /\bsub(?:bed|s)?$/i;
 const HEVC_PATH_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
+const WORKER_BRIDGE_HOST_RE = /(?:workers\.dev|hakunaymatata\.com)$/i;
+const VIDBOLT_ECOSYSTEM_RE = /(?:vidbolt|rousav)/i;
 
 interface ExtractSourceItem {
   url?: string;
@@ -83,7 +89,7 @@ interface ExtractDubItem {
   lanCode?: string;
   lanName?: string;
   original?: boolean;
-  dubType?: string;
+  dubType?: string | number;
 }
 
 interface ExtractSubtitleItem {
@@ -106,7 +112,9 @@ interface ExtractServerBucket {
 
 interface ExtractScanReportItem {
   id?: string;
+  serverId?: string;
   available?: boolean;
+  status?: string;
   latencyMs?: number;
 }
 
@@ -114,9 +122,17 @@ interface ExtractApiResponse {
   success?: boolean;
   sources?: ExtractSourceItem[];
   byServer?: Record<string, ExtractServerBucket>;
-  scanReport?: ExtractScanReportItem[];
+  scanReport?: ExtractScanReportItem[] | { servers?: ExtractScanReportItem[] };
   dubs?: ExtractDubItem[];
   subtitles?: ExtractSubtitleItem[];
+}
+
+interface ExtractMetaHint {
+  title?: string;
+  year?: string;
+  releaseDate?: string;
+  latestDate?: string;
+  imdbId?: string | null;
 }
 
 function unwrapUpstreamUrl(
@@ -135,8 +151,12 @@ function unwrapUpstreamUrl(
   }
 
   let targetUrl = resolvedOuter.toString();
-  let referer = explicitHeaders?.Referer || explicitHeaders?.referer || DEFAULT_STREAM_REFERER;
+  let unwrappedProxy = false;
+  let proxyRefParam = '';
 
+  // Only unwrap `/api/proxy-m3u8` and `/api/proxy-segment`; NEVER unwrap external
+  // worker bridges like `dash-hls-bridge.*.workers.dev/?url=...&Policy=...`
+  // whose CloudFront Policy/Signature/Key-Pair-Id live on the outer query string.
   if (
     resolvedOuter.pathname === '/api/proxy-m3u8' ||
     resolvedOuter.pathname === '/api/proxy-segment'
@@ -144,11 +164,34 @@ function unwrapUpstreamUrl(
     const inner = resolvedOuter.searchParams.get('url')?.trim();
     if (!inner) return null;
     targetUrl = inner;
-    const refParam = resolvedOuter.searchParams.get('ref')?.trim();
-    if (refParam) referer = refParam;
+    unwrappedProxy = true;
+    proxyRefParam = resolvedOuter.searchParams.get('ref')?.trim() || '';
   }
 
   if (!isSafeUpstreamUrl(targetUrl)) return null;
+
+  let targetParsed: URL | null = null;
+  try {
+    targetParsed = new URL(targetUrl);
+  } catch {
+    /* ignore */
+  }
+
+  const isWorkerBridge = targetParsed ? WORKER_BRIDGE_HOST_RE.test(targetParsed.hostname) : false;
+  const isVidboltOrRousav = targetParsed
+    ? VIDBOLT_ECOSYSTEM_RE.test(targetParsed.hostname) ||
+      (targetParsed.pathname.startsWith('/m/') && targetParsed.searchParams.get('f') === '.m3u8')
+    : false;
+
+  const referer =
+    explicitHeaders?.Referer ||
+    explicitHeaders?.referer ||
+    proxyRefParam ||
+    (unwrappedProxy || isVidboltOrRousav
+      ? DEFAULT_STREAM_REFERER
+      : isWorkerBridge
+        ? ''
+        : DEFAULT_STREAM_REFERER);
 
   const headers: Record<string, string> = {
     'User-Agent': BROWSER_UA,
@@ -217,7 +260,7 @@ function canonicalDedupeIdentity(
     try {
       const innerU = new URL(bridgedInner);
       return {
-        groupKey: `bridge:${innerU.origin}${innerU.pathname}`,
+        groupKey: `bridge:${innerU.origin}${innerU.pathname}:${langKey}`,
         host: u.host.toLowerCase(),
         allowMirrorStandby: true,
       };
@@ -230,7 +273,7 @@ function canonicalDedupeIdentity(
   const hlsMpsMatch = u.pathname.match(/^\/hls_mps\/([A-Za-z0-9_-]+)\/(\d+)\//i);
   if (hlsMpsMatch) {
     return {
-      groupKey: `hls_mps:${hlsMpsMatch[1]}:${hlsMpsMatch[2]}`,
+      groupKey: `hls_mps:${hlsMpsMatch[1]}:${hlsMpsMatch[2]}:${langKey}`,
       host: u.host.toLowerCase(),
       allowMirrorStandby: true,
     };
@@ -285,23 +328,34 @@ function mapSubtitles(
   return out;
 }
 
-async function fetchExtractPayload(
-  cfg: BackendConfig['source2'],
+function buildSearchParams(
   query: SourceQuery,
-  metaHint?: { title?: string; year?: string },
-): Promise<{ payload: ExtractApiResponse; requestLatencyMs: number } | null> {
+  serverId: string,
+  meta?: ExtractMetaHint,
+): URLSearchParams {
   const params = new URLSearchParams({
     tmdbId: String(query.tmdbId),
     mediaType: query.type,
-    server: cfg.defaultServer,
+    server: serverId,
     season: String(query.type === 'tv' ? (query.season ?? 1) : 1),
     episode: String(query.type === 'tv' ? (query.episode ?? 1) : 1),
   });
-  if (metaHint?.title) {
-    params.set('title', metaHint.title);
-    if (metaHint.year) params.set('year', String(metaHint.year));
-  }
+  if (meta?.title) params.set('title', meta.title);
+  if (meta?.year) params.set('year', String(meta.year));
+  if (meta?.releaseDate) params.set('date', meta.releaseDate);
+  if (meta?.latestDate) params.set('latestDate', meta.latestDate);
+  if (meta?.imdbId) params.set('imdbId', meta.imdbId);
+  return params;
+}
 
+async function fetchExtractPayload(
+  cfg: BackendConfig['source2'],
+  query: SourceQuery,
+  serverId: string,
+  metaHint?: ExtractMetaHint,
+  timeoutMs = 6000,
+): Promise<{ payload: ExtractApiResponse; requestLatencyMs: number } | null> {
+  const params = buildSearchParams(query, serverId, metaHint);
   const embedPath =
     query.type === 'movie'
       ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
@@ -309,8 +363,8 @@ async function fetchExtractPayload(
 
   try {
     const sig = query.signal
-      ? AbortSignal.any([query.signal, AbortSignal.timeout(6500)])
-      : AbortSignal.timeout(6500);
+      ? AbortSignal.any([query.signal, AbortSignal.timeout(timeoutMs)])
+      : AbortSignal.timeout(timeoutMs);
 
     const t0 = performance.now();
     const res = await fetch(`${cfg.embedOrigin}/api/extract?${params.toString()}`, {
@@ -335,6 +389,45 @@ async function fetchExtractPayload(
   }
 }
 
+function triggerScanWarmup(
+  cfg: BackendConfig['source2'],
+  query: SourceQuery,
+  metaHint?: ExtractMetaHint,
+): void {
+  const params = buildSearchParams(query, cfg.defaultServer, metaHint);
+  params.delete('server');
+  const embedPath =
+    query.type === 'movie'
+      ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
+      : `/embed/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
+  void fetch(`${cfg.embedOrigin}/api/scan?${params.toString()}`, {
+    headers: {
+      Accept: 'application/json',
+      Origin: cfg.embedOrigin,
+      Referer: `${cfg.embedOrigin}${embedPath}`,
+      'User-Agent': BROWSER_UA,
+    },
+    signal: query.signal
+      ? AbortSignal.any([query.signal, AbortSignal.timeout(3500)])
+      : AbortSignal.timeout(3500),
+  }).catch(() => undefined);
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted || ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 function hasAnySources(payload: ExtractApiResponse | null | undefined): boolean {
   if (!payload) return false;
   if (Array.isArray(payload.sources) && payload.sources.length > 0) return true;
@@ -344,6 +437,19 @@ function hasAnySources(payload: ExtractApiResponse | null | undefined): boolean 
     }
   }
   return false;
+}
+
+function extractLabelAudioHints(rawLabel?: string): string[] {
+  const label = String(rawLabel ?? '').trim();
+  if (!label || !/multi[- ]?audio/i.test(label)) return [];
+  const out: string[] = [];
+  for (const match of label.matchAll(/[(\[]([^)\]]+)[)\]]/g)) {
+    for (const part of match[1].split(/[,+/|&•·]+/)) {
+      const cleaned = part.trim();
+      if (cleaned && !/^\d{3,4}p?$/i.test(cleaned)) out.push(cleaned);
+    }
+  }
+  return out;
 }
 
 interface ParsedCandidateItem {
@@ -370,42 +476,98 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
     enabled: () => cfg.enabled,
 
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
-      let fetched = await fetchExtractPayload(cfg, query);
-      if (!hasAnySources(fetched?.payload)) {
-        let fallbackTitle = query.title;
-        let fallbackYear = query.year;
-        if (!fallbackTitle && query.resolveMetaFallback) {
-          const lazy = await query.resolveMetaFallback().catch(() => null);
-          fallbackTitle = lazy?.title;
-          fallbackYear = lazy?.year;
+      const isLoopbackMock = (() => {
+        try {
+          const h = new URL(cfg.embedOrigin).hostname.toLowerCase();
+          return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+        } catch {
+          return false;
         }
-        if (fallbackTitle) {
-          fetched = await fetchExtractPayload(cfg, query, {
-            title: fallbackTitle,
-            year: fallbackYear,
-          });
+      })();
+
+      // Give self-hosted TMDB metadata a fast 260ms head-start window (0ms if cached in RAM)
+      // so `/api/extract` receives `title`, `year`, `date`, and `imdbId` on the first pass.
+      let metaHint: ExtractMetaHint = {
+        title: query.title,
+        year: query.year,
+        releaseDate: query.releaseDate,
+        latestDate: query.latestDate,
+        imdbId: query.imdbId,
+      };
+      if (!metaHint.title && query.resolveMetaFallback) {
+        const quickMeta = await Promise.race([
+          query.resolveMetaFallback().catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), 260)),
+        ]);
+        if (quickMeta) {
+          metaHint = {
+            title: quickMeta.rawTitle || quickMeta.title || metaHint.title,
+            year: quickMeta.year || metaHint.year,
+            releaseDate: quickMeta.releaseDate || metaHint.releaseDate,
+            latestDate: quickMeta.latestDate || metaHint.latestDate,
+            imdbId: quickMeta.imdbId ?? metaHint.imdbId,
+          };
         }
       }
+
+      let fetched = await fetchExtractPayload(cfg, query, cfg.defaultServer, metaHint);
+
+      // Cold-cache recovery: upstream returns `success: false, sources: []` on an uncached
+      // title while warming its 30 providers, then succeeds ~1-2s later on fast nodes (`atlas` / `alatreon`).
+      if (!hasAnySources(fetched?.payload) && !query.signal?.aborted) {
+        if (!metaHint.title && query.resolveMetaFallback) {
+          const fullMeta = await query.resolveMetaFallback().catch(() => null);
+          if (fullMeta) {
+            metaHint = {
+              title: fullMeta.rawTitle || fullMeta.title || metaHint.title,
+              year: fullMeta.year || metaHint.year,
+              releaseDate: fullMeta.releaseDate || metaHint.releaseDate,
+              latestDate: fullMeta.latestDate || metaHint.latestDate,
+              imdbId: fullMeta.imdbId ?? metaHint.imdbId,
+            };
+          }
+        }
+
+        if (!isLoopbackMock) {
+          triggerScanWarmup(cfg, query, metaHint);
+          const retryServers = [...new Set(['atlas', 'alatreon', cfg.defaultServer])];
+          for (let attempt = 0; attempt < retryServers.length && !hasAnySources(fetched?.payload); attempt++) {
+            if (query.signal?.aborted) break;
+            await abortableDelay(attempt === 0 ? 850 : 950, query.signal);
+            if (query.signal?.aborted) break;
+            fetched = await fetchExtractPayload(cfg, query, retryServers[attempt], metaHint, 5000);
+          }
+        } else if (metaHint.title) {
+          fetched = await fetchExtractPayload(cfg, query, cfg.defaultServer, metaHint);
+        }
+      }
+
       if (!fetched || !hasAnySources(fetched.payload)) {
         return { candidates: [] };
       }
 
       const { payload, requestLatencyMs } = fetched;
 
-      // Build dynamic dub name -> language code lookup from response metadata
+      // Build dynamic dub name & non-standard code -> canonical BCP-47 lookup from response metadata
       const dubCodeByName = new Map<string, string>();
-      let originalLangCode = '';
+      const dubCodeByRawCode = new Map<string, string>();
+      let originalLangCode = query.originalLanguage
+        ? normalizeLang(query.originalLanguage).code
+        : '';
+
       const registerDubs = (dubs?: ExtractDubItem[]) => {
         if (!Array.isArray(dubs)) return;
         for (const d of dubs) {
           const code = String(d?.lanCode ?? '').trim();
           const name = String(d?.lanName ?? '').trim();
-          if (code && name && !HARDSUB_LABEL_RE.test(name)) {
-            dubCodeByName.set(name.toLowerCase(), code);
-          }
-          if (d?.original && code) {
-            const normOrig = normalizeLang(code, name);
-            if (normOrig.code !== 'und') originalLangCode = normOrig.code;
+          if (HARDSUB_LABEL_RE.test(name)) continue;
+          const resolved = normalizeLang(name || code, name || code);
+          if (resolved.code && resolved.code !== 'und') {
+            if (name) dubCodeByName.set(name.toLowerCase(), resolved.code);
+            if (code) dubCodeByRawCode.set(code.toLowerCase(), resolved.code);
+            if (d?.original && (!originalLangCode || originalLangCode === 'und')) {
+              originalLangCode = resolved.code;
+            }
           }
         }
       };
@@ -416,22 +578,25 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
         registerDubs(bucket?.dubs);
       }
 
-      // Gather subtitles from top-level and server buckets
+      // Gather subtitles from top-level and all server buckets
       const rawSubs: ExtractSubtitleItem[] = [...(payload.subtitles ?? [])];
       for (const bucket of Object.values(byServer)) {
         if (Array.isArray(bucket?.subtitles)) rawSubs.push(...bucket.subtitles);
       }
       const sharedSubs = mapSubtitles(rawSubs, cfg.embedOrigin);
 
-      // Build server latency map from scanReport + byServer.latencyMs
+      // Build server latency map from both array and `{ servers: [...] }` scanReport formats
       const scanLatencyByServer = new Map<string, number>();
-      if (Array.isArray(payload.scanReport)) {
-        for (const row of payload.scanReport) {
-          const id = String(row?.id ?? '').trim();
-          const ms = Number(row?.latencyMs);
-          if (id && Number.isFinite(ms) && ms > 0) {
-            scanLatencyByServer.set(id, Math.round(ms));
-          }
+      const scanRows: ExtractScanReportItem[] = Array.isArray(payload.scanReport)
+        ? payload.scanReport
+        : Array.isArray(payload.scanReport?.servers)
+          ? payload.scanReport.servers
+          : [];
+      for (const row of scanRows) {
+        const id = String(row?.id || row?.serverId || '').trim();
+        const ms = Number(row?.latencyMs);
+        if (id && Number.isFinite(ms) && ms > 0) {
+          scanLatencyByServer.set(id, Math.round(ms));
         }
       }
 
@@ -471,39 +636,64 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
 
       const resolveTokenLang = (rawToken: string): { code: string; label: string } => {
         const trimmed = rawToken.trim();
-        const hintedCode = dubCodeByName.get(trimmed.toLowerCase());
+        if (!trimmed) return { code: 'und', label: 'Original' };
         if (/\([^)]+\)/.test(trimmed)) {
           return normalizeLang(trimmed, trimmed);
         }
+        const lower = trimmed.toLowerCase();
+        const hintedCode = dubCodeByName.get(lower) || dubCodeByRawCode.get(lower);
         return normalizeLang(hintedCode || trimmed, trimmed);
       };
 
-      const parseItem = (item: ExtractSourceItem, latencyMs: number): ParsedCandidateItem | null => {
+      const parseItem = (
+        item: ExtractSourceItem,
+        latencyMs: number,
+        bucketDubs?: ExtractDubItem[],
+      ): ParsedCandidateItem | null => {
         if (!item?.url) return null;
         const unwrapped = unwrapUpstreamUrl(item.url, cfg.embedOrigin, item.headers);
         if (!unwrapped) return null;
 
         const rawPrimaryLang = String(item.language ?? '').trim();
+        const rawLabel = String(item.label ?? '').trim();
         const isHardsub =
           HARDSUB_LABEL_RE.test(rawPrimaryLang) ||
+          HARDSUB_LABEL_RE.test(rawLabel) ||
           (Array.isArray(item.audioLanguages) &&
             item.audioLanguages.length === 1 &&
             HARDSUB_LABEL_RE.test(String(item.audioLanguages[0] ?? '')));
 
         const discoveredCodes: string[] = [];
-        if (!isHardsub && Array.isArray(item.audioLanguages)) {
-          for (const rawAudio of item.audioLanguages) {
-            if (!rawAudio || HARDSUB_LABEL_RE.test(rawAudio)) continue;
-            const norm = resolveTokenLang(rawAudio);
-            if (norm.code && norm.code !== 'und' && !discoveredCodes.includes(norm.code)) {
-              discoveredCodes.push(norm.code);
-            }
+        const addAudioToken = (tok?: string) => {
+          if (!tok || HARDSUB_LABEL_RE.test(tok)) return;
+          const norm = resolveTokenLang(tok);
+          if (norm.code && norm.code !== 'und' && !discoveredCodes.includes(norm.code)) {
+            discoveredCodes.push(norm.code);
+          }
+        };
+
+        if (!isHardsub) {
+          if (Array.isArray(item.audioLanguages)) {
+            for (const rawAudio of item.audioLanguages) addAudioToken(rawAudio);
+          }
+          for (const hinted of extractLabelAudioHints(rawLabel)) {
+            addAudioToken(hinted);
           }
         }
 
         const isMultiAudio =
           !isHardsub &&
-          (discoveredCodes.length > 1 || /multi[- ]?audio/i.test(String(item.label ?? '')));
+          (discoveredCodes.length > 1 || /multi[- ]?audio/i.test(rawLabel));
+
+        if (isMultiAudio && discoveredCodes.length <= 1 && Array.isArray(bucketDubs)) {
+          for (const bd of bucketDubs) {
+            if (bd?.lanName && !HARDSUB_LABEL_RE.test(bd.lanName)) {
+              addAudioToken(bd.lanName);
+            } else if (bd?.lanCode) {
+              addAudioToken(bd.lanCode);
+            }
+          }
+        }
 
         let singleCode: string | undefined;
         let singleLabel: string | undefined;
@@ -528,7 +718,7 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
           : [];
         const ladderKey = ladderNums.join(',') || quality;
         const langKey = isHardsub
-          ? `hardsub:${rawPrimaryLang.toLowerCase()}`
+          ? `hardsub:${(rawPrimaryLang || rawLabel).toLowerCase()}`
           : isMultiAudio
             ? `mul:${discoveredCodes.join(',')}`
             : singleCode || 'und';
@@ -580,17 +770,27 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
       const parsedByServer = serverEntries.map((entry) => ({
         ...entry,
         items: (entry.bucket.sources ?? [])
-          .map((item) => parseItem(item, entry.latencyMs))
+          .map((item) => parseItem(item, entry.latencyMs, entry.bucket.dubs))
           .filter((x): x is ParsedCandidateItem => x !== null),
       }));
+      const fastestOverallLatency =
+        serverEntries.length > 0 ? serverEntries[0].latencyMs : requestLatencyMs;
       const parsedTopLevel = (payload.sources ?? [])
-        .map((item) => parseItem(item, requestLatencyMs))
+        .map((item) => {
+          const originSrv = item?.originServer ? scanLatencyByServer.get(item.originServer) : undefined;
+          return parseItem(item, originSrv ?? fastestOverallLatency, payload.dubs);
+        })
         .filter((x): x is ParsedCandidateItem => x !== null);
 
-      // Collect cross-host mirror standbys per canonical groupKey
+      // Track the fastest server latency & cross-host mirror standby per canonical groupKey
+      const minLatencyByGroup = new Map<string, number>();
       const primaryHostByGroup = new Map<string, { host: string; url: string }>();
       const standbyByGroup = new Map<string, { url: string; headers: Record<string, string> }>();
       for (const p of [...parsedByServer.flatMap((s) => s.items), ...parsedTopLevel]) {
+        const prevMin = minLatencyByGroup.get(p.groupKey);
+        if (prevMin === undefined || p.latencyMs < prevMin) {
+          minLatencyByGroup.set(p.groupKey, p.latencyMs);
+        }
         const first = primaryHostByGroup.get(p.groupKey);
         if (!first) {
           primaryHostByGroup.set(p.groupKey, { host: p.host, url: p.url });
@@ -625,16 +825,24 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
         return 3;
       };
 
-      const toCandidate = (p: ParsedCandidateItem, key: string, tieOffset: number): RawStreamCandidate => {
+      const toCandidate = (
+        p: ParsedCandidateItem,
+        key: string,
+        tieOffset: number,
+        useGroupMinLatency = false,
+      ): RawStreamCandidate => {
         const standby =
           p.allowMirrorStandby && standbyByGroup.get(p.groupKey)?.url !== p.url
             ? standbyByGroup.get(p.groupKey)
             : undefined;
-        const latencyPenalty = Math.min(p.latencyMs, 5000) / 1000;
+        const effectiveLatency = useGroupMinLatency
+          ? (minLatencyByGroup.get(p.groupKey) ?? p.latencyMs)
+          : p.latencyMs;
+        const latencyPenalty = Math.min(effectiveLatency, 5000) / 1000;
         return {
           key,
           fingerprint: p.groupKey,
-          latencyMs: p.latencyMs,
+          latencyMs: effectiveLatency,
           type: p.type,
           url: p.url,
           headers: p.headers,
@@ -667,18 +875,19 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
 
         emittedGroups.add(bestForServer.groupKey);
         emittedCandidates.push(
-          toCandidate(bestForServer, `srv:${srv.srvId}:primary`, sIdx * 0.01),
+          toCandidate(bestForServer, `srv:${srv.srvId}:primary`, sIdx * 0.01, false),
         );
       }
 
       // Pass 2: Emit every remaining distinct language dub / resolution / stream across all buckets & top-level sources
+      // inheriting the fastest server latency among all nodes serving that canonical group.
       const allRemaining = [...parsedByServer.flatMap((s) => s.items), ...parsedTopLevel];
       let extraIdx = 0;
       for (const p of allRemaining) {
         if (emittedGroups.has(p.groupKey)) continue;
         emittedGroups.add(p.groupKey);
         emittedCandidates.push(
-          toCandidate(p, `group:${p.groupKey}`, 0.5 + extraIdx++ * 0.01),
+          toCandidate(p, `group:${p.groupKey}`, 0.25 + extraIdx++ * 0.01, true),
         );
       }
 

@@ -207,6 +207,8 @@ export interface StreamTicketPayload {
   h?: Record<string, string>;
   /** Hint: 'm' = manifest, 's' = subtitle, 'a' = asset/segment */
   k?: 'm' | 's' | 'a';
+  /** Optional canonical BCP-47 language hint for single-dub manifests lacking LANGUAGE tags. */
+  l?: string;
   /** Unix seconds expiration. */
   exp: number;
 }

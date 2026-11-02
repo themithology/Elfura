@@ -195,7 +195,7 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
 
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 
-const mockUpstream = http.createServer((req, res) => {
+const mockUpstream = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
 
@@ -233,9 +233,44 @@ const mockUpstream = http.createServer((req, res) => {
     );
     return;
   }
+  if (u.pathname === '/tmdb/movie/1218925') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        id: 1218925,
+        title: 'Chainsaw Man - The Movie: Reze Arc',
+        original_language: 'ja',
+        release_date: '2025-09-19',
+        poster_path: '/rezePoster.jpg',
+        backdrop_path: '/rezeBackdrop.jpg',
+        external_ids: { imdb_id: 'tt30472557' },
+      }),
+    );
+    return;
+  }
   if (u.pathname === '/api/m/533535') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, links: [] }));
+    return;
+  }
+  if (u.pathname === '/api/m/1218925') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        ok: true,
+        links: [
+          {
+            server: 'MHBD Dead Child',
+            label: 'Multi-Audio [HIN + ENG]',
+            quality: '1080p',
+            type: 'hls',
+            multi_audio: true,
+            audios: ['hin', 'eng'],
+            url: `${origin}/dead-child-stream/master.m3u8?v=1`,
+          },
+        ],
+      }),
+    );
     return;
   }
   if (u.pathname === '/race/dead.mp4') {
@@ -266,6 +301,35 @@ const mockUpstream = http.createServer((req, res) => {
 
   if (req.method === 'POST' && u.pathname.startsWith('/_serverFn/ff183e')) {
     assert.equal(req.headers['x-tsr-serverfn'], 'true');
+    const reqChunks = [];
+    for await (const ch of req) reqChunks.push(ch);
+    const reqBodyStr = Buffer.concat(reqChunks).toString('utf8');
+    if (reqBodyStr.includes('1218925')) {
+      const inner1218925 = JSON.stringify({
+        ok: true,
+        imdb_id: 'tt30472557',
+        title: 'Chainsaw Man - The Movie: Reze Arc',
+        links: [
+          {
+            server: 'MHBD Dead Child',
+            label: 'Multi-Audio [HIN + ENG]',
+            quality: '1080p',
+            type: 'hls',
+            multi_audio: true,
+            audios: ['hin', 'eng'],
+            url: `${origin}/dead-child-stream/master.m3u8?v=1`,
+          },
+        ],
+      });
+      const ser1218925 = Buffer.from(serializeSerovalEnvelope({ p: scrambleForTest(inner1218925) }), 'utf8');
+      const fh = Buffer.alloc(9);
+      fh[0] = 0;
+      fh.writeUInt32BE(0, 1);
+      fh.writeUInt32BE(ser1218925.length, 5);
+      res.writeHead(200, { 'Content-Type': 'application/x-tss-framed', 'X-Tss-Serialized': 'true' });
+      res.end(Buffer.concat([fh, ser1218925]));
+      return;
+    }
     const inner = JSON.stringify({
       ok: true,
       imdb_id: 'tt11126994',
@@ -352,6 +416,27 @@ const mockUpstream = http.createServer((req, res) => {
   }
 
   if (u.pathname === '/api/core/streams' || u.pathname === '/api/stream') {
+    if (u.searchParams.get('id') === '1218925') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          sources:
+            u.pathname === '/api/core/streams'
+              ? [
+                  {
+                    provider: { id: 'vidzee', name: 'VidZee' },
+                    directUrl: `${origin}/dead-direct/bigtits.m3u8`,
+                    url: `/api/core/proxy?data=vidzee_live_hi_1218925`,
+                    type: 'hls',
+                    quality: 'Auto',
+                    audioLanguage: 'hi',
+                  },
+                ]
+              : [],
+        }),
+      );
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -369,9 +454,185 @@ const mockUpstream = http.createServer((req, res) => {
     );
     return;
   }
+  if (u.pathname === '/api/core/proxy') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:5.0,\n/cdn/hub/seg0.m4s\n#EXT-X-ENDLIST\n');
+    return;
+  }
+  if (u.pathname === '/dead-direct/bigtits.m3u8') {
+    res.writeHead(403, { 'Content-Type': 'text/html' });
+    res.end('<html><head><title>403 Forbidden</title></head><body>Forbidden</body></html>');
+    return;
+  }
+  if (u.pathname === '/dead-child-stream/master.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Malay",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE=hin,URI="/dead-child-stream/audio0.m3u8"',
+        '#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080,AUDIO="audio"',
+        '/cdn/hub/v0.m3u8',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/dead-child-stream/audio0.m3u8' || u.pathname === '/dead-html-segment.ts') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end('<!DOCTYPE html><html><body>CDN Marketing Landing Page</body></html>');
+    return;
+  }
 
   // Source 2 unified /api/extract mock (models 30-server byServer + proxy-m3u8 + rousav + worker dubs)
   if (u.pathname === '/api/extract') {
+    if (u.searchParams.get('tmdbId') === '1218925') {
+      assert.equal(u.searchParams.get('mediaType'), 'movie');
+      assert.equal(u.searchParams.get('title'), 'Chainsaw Man - The Movie: Reze Arc');
+      assert.equal(u.searchParams.get('year'), '2025');
+      assert.equal(u.searchParams.get('date'), '2025-09-19');
+      assert.equal(u.searchParams.get('imdbId'), 'tt30472557');
+
+      const makeBridge = (slug, sig = 'SIG_OUTER_OK') =>
+        `${origin}/dash-hls-bridge/?url=${encodeURIComponent(`${origin}/dash/1218925_0_0_1080_h265_${slug}/master.m3u8`)}&Policy=POL123&Signature=${sig}&Key-Pair-Id=KP123`;
+      const vidboltEn1080 = `/api/proxy-m3u8?url=${encodeURIComponent(`${origin}/m/tok_1218925_atlas_en1080?f=.m3u8`)}&ref=${encodeURIComponent('https://vidbolt.xyz/')}`;
+      const rousavMulti = `${origin}/media/rousav1218925/index.m3u8?api_key=testkey`;
+      const deadMirror = `${origin}/dead-direct/bigtits.m3u8`;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          success: true,
+          sources: [
+            {
+              url: makeBridge('ja01'),
+              type: 'hls',
+              resolution: 1080,
+              resolutions: [1080, 720, 480],
+              label: '1080p • Japanese',
+              language: 'Japanese',
+              audioLanguages: ['Japanese'],
+              originServer: 'atlas',
+            },
+          ],
+          byServer: {
+            atlas: {
+              latencyMs: 390,
+              dubs: [
+                { lanCode: 'ja', lanName: 'Japanese', original: true, dubType: '0' },
+                { lanCode: 'hi', lanName: 'Hindi', original: false, dubType: '0' },
+                { lanCode: 'en', lanName: 'English', original: false, dubType: '0' },
+                { lanCode: 'fr', lanName: 'French', original: false, dubType: '0' },
+                { lanCode: 'ar', lanName: 'Arabic', original: false, dubType: '0' },
+                { lanCode: 'in', lanName: 'Indonesian', original: false, dubType: '0' },
+                { lanCode: 'ku', lanName: 'Kurdish sub', original: false, dubType: '0' },
+              ],
+              sources: [
+                {
+                  url: vidboltEn1080,
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080, 720, 360],
+                  label: '1080p • English',
+                  language: 'English',
+                  audioLanguages: ['English'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('ja01'),
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080, 720, 480],
+                  label: '1080p • Japanese',
+                  language: 'Japanese',
+                  audioLanguages: ['Japanese'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('hi01'),
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080, 720, 480],
+                  label: '1080p • Hindi',
+                  language: 'Hindi',
+                  audioLanguages: ['Hindi'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('fr01'),
+                  type: 'hls',
+                  resolution: 360,
+                  resolutions: [360],
+                  label: '360p • French',
+                  language: 'French',
+                  audioLanguages: ['French'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('ar01'),
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080],
+                  label: '1080p • Arabic',
+                  language: 'Arabic',
+                  audioLanguages: ['Arabic'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('id01'),
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080],
+                  label: '1080p • Indonesian',
+                  language: 'in',
+                  audioLanguages: ['in'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: makeBridge('ku_sub'),
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080],
+                  label: '1080p • Kurdish sub',
+                  language: 'Kurdish sub',
+                  audioLanguages: ['Kurdish sub'],
+                  originServer: 'atlas',
+                },
+                {
+                  url: deadMirror,
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080],
+                  label: '1080p • German',
+                  language: 'German',
+                  audioLanguages: ['German'],
+                  originServer: 'atlas',
+                },
+              ],
+            },
+            callisto: {
+              latencyMs: 410,
+              sources: [
+                {
+                  url: rousavMulti,
+                  type: 'hls',
+                  resolution: 1080,
+                  resolutions: [1080, 720],
+                  label: '1080p • Multi-Audio (Hindi, English)',
+                  language: 'Hindi',
+                  audioLanguages: ['Hindi', 'English'],
+                  originServer: 'callisto',
+                },
+              ],
+            },
+          },
+          scanReport: [
+            { id: 'atlas', available: true, latencyMs: 390 },
+            { id: 'callisto', available: true, latencyMs: 410 },
+          ],
+        }),
+      );
+      return;
+    }
+
     if (u.searchParams.get('tmdbId') === '533535') {
       assert.equal(u.searchParams.get('mediaType'), 'movie');
       const thirtyIds = [
@@ -601,7 +862,13 @@ const mockUpstream = http.createServer((req, res) => {
     );
     return;
   }
-  if (u.pathname === '/media/rousav94605/video_720p.m3u8') {
+  if (
+    u.pathname === '/media/rousav94605/video_720p.m3u8' ||
+    u.pathname === '/media/rousav94605/track_english.m3u8' ||
+    u.pathname === '/media/rousav94605/track_hindi.m3u8' ||
+    u.pathname === '/media/rousav1218925/video_720p.m3u8' ||
+    u.pathname === '/media/rousav1218925/track_hi.m3u8'
+  ) {
     if (req.headers.referer !== 'https://vidbolt.xyz/') {
       res.writeHead(404);
       res.end('404 Not Found (nginx)');
@@ -609,6 +876,51 @@ const mockUpstream = http.createServer((req, res) => {
     }
     res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
     res.end('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:5.0,\n/cdn/hub/seg0.m4s\n#EXT-X-ENDLIST\n');
+    return;
+  }
+  if (u.pathname === '/media/rousav1218925/index.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",LANGUAGE="hin",NAME="Hindi",DEFAULT=YES,URI="track_hi.m3u8"',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",LANGUAGE="eng",NAME="English",DEFAULT=NO,URI="track_hi.m3u8"',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",LANGUAGE="kor",NAME="Korean",DEFAULT=NO,URI="track_hi.m3u8"',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",LANGUAGE="tha",NAME="Thai",DEFAULT=NO,URI="track_hi.m3u8"',
+        '#EXT-X-STREAM-INF:BANDWIDTH=4500000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="aud"',
+        'video_720p.m3u8',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/bridge/' || u.pathname === '/bridge') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:5.0,\n/cdn/hub/seg0.m4s\n#EXT-X-ENDLIST\n');
+    return;
+  }
+  if (u.pathname === '/dash-hls-bridge/' || u.pathname === '/dash-hls-bridge') {
+    // Outer CloudFront query params MUST be preserved (never unwrapped to bare `url=`)!
+    if (u.searchParams.get('Signature') !== 'SIG_OUTER_OK') {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Missing outer CloudFront signature');
+      return;
+    }
+    if (u.searchParams.get('mode') === 'variant') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end('#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:6\n#EXT-X-MAP:URI="/cdn/hub/init.mp4"\n#EXTINF:6.0,\n/cdn/hub/seg0.m4s\n#EXT-X-ENDLIST\n');
+      return;
+    }
+    const innerParam = u.searchParams.get('url') || '';
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        `#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,URI="${origin}/dash-hls-bridge/?mode=variant&v=3&url=${encodeURIComponent(innerParam)}&Signature=SIG_OUTER_OK"`,
+        `#EXT-X-STREAM-INF:BANDWIDTH=2328000,RESOLUTION=2542x1080,AUDIO="audio"`,
+        `${origin}/dash-hls-bridge/?mode=variant&v=0&url=${encodeURIComponent(innerParam)}&Signature=SIG_OUTER_OK`,
+      ].join('\n'),
+    );
     return;
   }
   if (u.pathname === '/media/rousav94605/subs_en.vtt') {
@@ -1186,7 +1498,233 @@ try {
     );
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, TMDB, 30-server Source 2, fastest-server racer & clean UI tests passed.');
+  // 11. Verify movie/1218925 (Chainsaw Man - The Movie: Reze Arc):
+  //     - Deep liveness prunes master-alive/child-HTML dead streams & 403 mirrors BEFORE player
+  //     - VidZee routes via vidsync `/api/core/proxy` instead of dead direct `bigtits.m3u8`
+  //     - Source 2 receives TMDB `title`, `year`, `date`, `imdbId` and unlocks all multi-language dubs
+  //       (`ja`, `hi`, `en`, `fr`, `ar`, `id` + in-manifest `ko`, `th` discovered from `#EXTM3U`)
+  //     - `dash-hls-bridge` preserves outer `Signature`, stamps `LANGUAGE="ja",NAME="Japanese"` on
+  //       single-dub `NAME="Audio"`, tags `_h265_` with `CODECS="hvc1..."`, and spawns zero "Original" ghosts
+  //     - HEVC-unsupported MSE skips HEVC-only streams and picks H.264 immediately
+  const sessRezeRes = await fetch(`${apiBase}/api/v1/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://watch.elfura.example' },
+    body: JSON.stringify({ type: 'movie', tmdb: '1218925' }),
+  });
+  const sessReze = await sessRezeRes.json();
+  const pbRezeRes = await fetch(
+    `${apiBase}/api/v1/playback?type=movie&tmdb=1218925&nonce=${encodeURIComponent(sessReze.nonce)}`,
+    {
+      headers: {
+        Origin: 'https://watch.elfura.example',
+        'X-Playback-Token': sessReze.pltoken,
+      },
+    },
+  );
+  assert.equal(pbRezeRes.status, 200);
+  const pbReze = await pbRezeRes.json();
+  assert.equal(pbReze.ok, true);
+  assert.equal(pbReze.media.title, 'Chainsaw Man - The Movie: Reze Arc');
+
+  // Dead Source 1 `MHBD Dead Child` (multi-audio `[hi, en]` whose audio0.m3u8 returned HTML) MUST be pruned!
+  const s1Reze = pbReze.sources.filter((s) => s.sourceId === 'source-1');
+  assert(
+    !s1Reze.some((s) => s.multiAudio),
+    'Master-alive / child-HTML dead Source 1 stream must be pruned before entering playback response',
+  );
+  // Meanwhile Source 1's VidZee Hindi stream routed via `/api/core/proxy` MUST be alive!
+  assert(
+    s1Reze.some((s) => s.audioLang === 'hi'),
+    'Expected VidSync proxy-backed Hindi stream to survive deep liveness check',
+  );
+
+  // Dead Source 2 `German` (`403` mirror) MUST be pruned, and `Kurdish sub` hardsub must not claim `ku` audio!
+  const s2Reze = pbReze.sources.filter((s) => s.sourceId === 'source-2');
+  assert(!s2Reze.some((s) => s.audioLang === 'de'), 'Dead 403 Source 2 mirror must be pruned server-side');
+  assert(!s2Reze.some((s) => s.audioLang === 'ku'), 'Kurdish hardsub must never masquerade as Kurdish audio');
+
+  // Verify ALL real Source 2 audio languages + in-manifest discovered languages (`ko`, `th`) are unlocked!
+  const discoveredRezeLangs = new Set();
+  for (const s of s2Reze) {
+    if (s.audioLang) discoveredRezeLangs.add(s.audioLang);
+    for (const l of s.availableAudioLangs || []) discoveredRezeLangs.add(l);
+  }
+  for (const expectedLang of ['ja', 'hi', 'en', 'fr', 'ar', 'id', 'ko', 'th']) {
+    assert(
+      discoveredRezeLangs.has(expectedLang),
+      `Expected Source 2 to unlock "${expectedLang}" audio track (got ${[...discoveredRezeLangs].join(',')})`,
+    );
+  }
+
+  // Verify `dash-hls-bridge` Japanese single-dub stream kept outer Signature, stamped `LANGUAGE="ja",NAME="Japanese"`, and tagged `hvc1`!
+  const jaOpt = s2Reze.find((s) => s.audioLang === 'ja');
+  assert(jaOpt, 'Expected Source 2 Japanese dub option');
+  const jaMasterRes = await fetch(`${apiBase}${jaOpt.url}`, { headers: browserHeaders });
+  assert.equal(jaMasterRes.status, 200, 'Expected outer-signed dash-hls-bridge stream to return 200');
+  const jaMasterText = await jaMasterRes.text();
+  assert(
+    jaMasterText.includes('LANGUAGE="ja"') && jaMasterText.includes('NAME="Japanese"'),
+    `Expected single-dub NAME="Audio" manifest to be stamped as Japanese, got:\n${jaMasterText}`,
+  );
+  assert(
+    jaMasterText.includes('CODECS="hvc1.'),
+    'Expected _h265_ dash-hls-bridge variant to receive explicit HEVC CODECS tag',
+  );
+
+  // Verify relay.ts strictly rejects HTML manifest and HTML segment responses with 502 no-store
+  const htmlManifestTicket = sealStreamTicket(secret, { u: `${upBase}/dead-child-stream/audio0.m3u8`, k: 'm' });
+  const htmlManifestRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(htmlManifestTicket)}`, {
+    headers: browserHeaders,
+  });
+  assert.equal(htmlManifestRes.status, 502, 'Relay must reject HTML masquerading as an HLS manifest with 502');
+  assert(
+    (htmlManifestRes.headers.get('cache-control') || '').includes('no-store'),
+    'Rejected HTML manifest must never be cached at Cloudflare edge',
+  );
+
+  const htmlSegTicket = sealStreamTicket(secret, { u: `${upBase}/dead-html-segment.ts`, k: 'a' });
+  const htmlSegRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(htmlSegTicket)}`, {
+    headers: browserHeaders,
+  });
+  assert.equal(htmlSegRes.status, 502, 'Relay must reject HTML masquerading as a binary media segment with 502');
+
+  // Verify single-dub native audio inheritance in ElfuraPlayer produces zero ghost "Original" track
+  const singleDubPlayer = new ElfuraPlayer({ postMessage: false });
+  singleDubPlayer.sources = [jaOpt];
+  singleDubPlayer.currentSource = jaOpt;
+  singleDubPlayer.mergeNativeAudio([{ id: 0, lang: 'und', label: 'Original', default: true }]);
+  assert.deepEqual(
+    singleDubPlayer.getAudioTracks().map((t) => ({ lang: t.lang, label: t.label })),
+    [{ lang: 'ja', label: 'Japanese' }],
+    'Single-dub source must not emit a bogus "Original" audio track alongside "Japanese"',
+  );
+  singleDubPlayer.destroy();
+
+  // Verify HEVC-unsupported MSE pre-probe skips HEVC-only candidate and picks H.264 stream immediately
+  globalThis.window.location = {
+    pathname: '/player-test',
+    search: '',
+    href: `${apiBase}/player-test`,
+  };
+  globalThis.fetch = (input, init = {}) =>
+    rawNodeFetch(input, {
+      ...init,
+      headers: {
+        Referer: globalThis.window.location.href,
+        ...(init.headers || {}),
+      },
+    });
+  globalThis.MediaSource = {
+    isTypeSupported: (mime) => !/hvc1|hev1/i.test(mime),
+  };
+
+  const enH264Opt = s2Reze.find((s) => s.audioLang === 'en');
+  assert(enH264Opt, 'Expected H.264 English option');
+  const hevcGuardPlayer = new ElfuraPlayer({ postMessage: false });
+  const pickedForNoHevc = await hevcGuardPlayer.selectFastestInitialSource(
+    [
+      { ...jaOpt, audioLang: 'en', latencyHintMs: 50 }, // faster hint, HEVC-only
+      { ...enH264Opt, latencyHintMs: 200 }, // H.264
+    ],
+    enH264Opt,
+  );
+  assert.equal(
+    pickedForNoHevc.id,
+    enH264Opt.id,
+    'Devices without MSE HEVC support must skip HEVC-only stream and pick H.264 stream immediately',
+  );
+  hevcGuardPlayer.destroy();
+  delete globalThis.MediaSource;
+  globalThis.fetch = rawNodeFetch;
+
+  // 12. Verify Source 2 cold-cache `success: false` recovery + `/api/scan` warm-up + `atlas` retry
+  const { createSource2Adapter } = await import('../../dist/backend/sources/source2.js');
+  const coldCalls = [];
+  globalThis.fetch = async (input) => {
+    const urlStr = typeof input === 'string' ? input : input.url;
+    if (urlStr.startsWith('https://cold-embed.example')) {
+      const cu = new URL(urlStr);
+      coldCalls.push(`${cu.pathname}?server=${cu.searchParams.get('server') || ''}`);
+      if (cu.pathname === '/api/scan') {
+        return new Response(JSON.stringify({ servers: [{ id: 'atlas', available: true, latencyMs: 390 }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (cu.pathname === '/api/extract' && cu.searchParams.get('server') === 'orion') {
+        return new Response(
+          JSON.stringify({ success: false, sources: [], scanReport: [{ id: 'orion', available: false }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (cu.pathname === '/api/extract' && cu.searchParams.get('server') === 'atlas') {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            sources: [
+              {
+                url: 'https://cold-cdn.example/m/tok_hi?f=.m3u8',
+                type: 'hls',
+                resolution: 1080,
+                resolutions: [1080, 720],
+                label: '1080p • Hindi',
+                language: 'Hindi',
+                audioLanguages: ['Hindi'],
+                originServer: 'atlas',
+              },
+              {
+                url: 'https://cold-cdn.example/m/tok_ja?f=.m3u8',
+                type: 'hls',
+                resolution: 1080,
+                resolutions: [1080],
+                label: '1080p • Japanese',
+                language: 'Japanese',
+                audioLanguages: ['Japanese'],
+                originServer: 'atlas',
+              },
+            ],
+            scanReport: [{ id: 'atlas', available: true, latencyMs: 390 }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+    return rawNodeFetch(input);
+  };
+
+  const coldAdapter = createSource2Adapter({
+    enabled: true,
+    embedOrigin: 'https://cold-embed.example',
+    defaultServer: 'orion',
+  });
+  const coldResolved = await coldAdapter.resolve({
+    type: 'movie',
+    tmdbId: '1218925',
+    resolveMetaFallback: async () => ({
+      title: 'Chainsaw Man - The Movie: Reze Arc',
+      rawTitle: 'Chainsaw Man - The Movie: Reze Arc',
+      year: '2025',
+      releaseDate: '2025-09-19',
+      imdbId: 'tt30472557',
+    }),
+  });
+  globalThis.fetch = rawNodeFetch;
+
+  assert(
+    coldCalls.some((c) => c.startsWith('/api/scan')),
+    'Expected cold Source 2 miss to trigger `/api/scan` warm-up',
+  );
+  assert(
+    coldCalls.includes('/api/extract?server=atlas'),
+    'Expected cold Source 2 miss on `orion` to retry fast `atlas` server',
+  );
+  assert.deepEqual(
+    coldResolved.candidates.map((c) => c.audioLang).sort(),
+    ['hi', 'ja'],
+    'Expected cold-cache retry on `atlas` to recover Hindi & Japanese candidates',
+  );
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, TMDB, 30-server Source 2, cold-miss recovery, multi-audio discovery, deep dead-stream pruning & clean UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

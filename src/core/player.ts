@@ -162,6 +162,8 @@ export class ElfuraPlayer {
     opt: SourceOption;
     settle: (res: { ok: boolean; loadFailed?: boolean }) => void;
   } | null = null;
+  private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private hevcSupportedCache: boolean | null = null;
   private destroyed = false;
 
   constructor(options: ElfuraPlayerOptions = {}, search = window.location.search) {
@@ -305,6 +307,33 @@ export class ElfuraPlayer {
     }
   }
 
+  private supportsHevc(): boolean {
+    if (this.hevcSupportedCache !== null) return this.hevcSupportedCache;
+    try {
+      const ms = (globalThis as unknown as { MediaSource?: { isTypeSupported?: (t: string) => boolean } }).MediaSource;
+      if (ms && typeof ms.isTypeSupported === 'function') {
+        const ok =
+          ms.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"') ||
+          ms.isTypeSupported('video/mp4; codecs="hev1.1.6.L93.B0"') ||
+          Boolean(this.video.canPlayType?.('video/mp4; codecs="hvc1.1.6.L93.B0"'));
+        this.hevcSupportedCache = ok;
+        return ok;
+      }
+      if (typeof this.video.canPlayType === 'function') {
+        const nativeHls = this.video.canPlayType('application/vnd.apple.mpegurl');
+        if (nativeHls) {
+          const ok = Boolean(this.video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"'));
+          this.hevcSupportedCache = ok;
+          return ok;
+        }
+      }
+    } catch {
+      /* ignore capability probe failure */
+    }
+    this.hevcSupportedCache = true;
+    return true;
+  }
+
   private qualityRank(opt: SourceOption): number {
     const q = (opt.quality || '').toLowerCase();
     let res = 720;
@@ -381,8 +410,27 @@ export class ElfuraPlayer {
       }
 
       const lines = text.split(/\r?\n/);
+      const streamInfLines = lines.filter((l) => /^#EXT-X-STREAM-INF\b/i.test(l.trim()));
+
+      // Reject HEVC-only streams before attaching hls.js when the device/browser MSE lacks HEVC hardware decode
+      if (
+        streamInfLines.length > 0 &&
+        streamInfLines.every((l) => /\bCODECS="[^"]*\b(?:hvc1|hev1)\b/i.test(l)) &&
+        !this.supportsHevc()
+      ) {
+        return { ok: false, loadFailed: true, rttMs: nowMs() };
+      }
+
       let matchedAudioUri: string | null = null;
+      let defaultAudioUri: string | null = null;
       const audioMediaLines = lines.filter((l) => /^#EXT-X-MEDIA:.*TYPE=AUDIO\b/i.test(l.trim()));
+      for (const al of audioMediaLines) {
+        const uriAttr = al.match(/\bURI="([^"]*)"/i)?.[1] ?? '';
+        if (uriAttr) {
+          if (!defaultAudioUri) defaultAudioUri = uriAttr;
+          if (/DEFAULT=YES\b/i.test(al)) defaultAudioUri = uriAttr;
+        }
+      }
 
       if (targetLang && targetLang !== 'und') {
         const hasSidecarMatch = (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0);
@@ -413,31 +461,44 @@ export class ElfuraPlayer {
         }
       }
 
-      // If master playlist has child variant/audio playlists, verify & warm one child playlist too
-      if (/#EXT-X-STREAM-INF\b/i.test(text)) {
-        let childTarget = matchedAudioUri;
-        if (!childTarget) {
-          for (let i = 0; i < lines.length; i++) {
-            if (/^#EXT-X-STREAM-INF\b/i.test(lines[i].trim())) {
-              for (let j = i + 1; j < lines.length; j++) {
-                const candLine = lines[j].trim();
-                if (!candLine) continue;
-                if (!candLine.startsWith('#')) childTarget = candLine;
-                break;
-              }
-              if (childTarget) break;
+      // If master playlist has child variant AND/OR audio playlists, verify BOTH in parallel
+      // so master-alive / child-dead HTML redirects (like `cdn.mhbdtv.top`) are caught immediately.
+      if (streamInfLines.length > 0) {
+        let variantChildUri: string | null = null;
+        for (let i = 0; i < lines.length; i++) {
+          if (/^#EXT-X-STREAM-INF\b/i.test(lines[i].trim())) {
+            for (let j = i + 1; j < lines.length; j++) {
+              const candLine = lines[j].trim();
+              if (!candLine) continue;
+              if (!candLine.startsWith('#')) variantChildUri = candLine;
+              break;
             }
+            if (variantChildUri) break;
           }
         }
-        if (childTarget) {
-          const childUrl = new URL(this.decorate(childTarget), resolvedUrl).toString();
-          const childRes = await fetch(childUrl, { headers, signal: timeoutSig });
-          if (!childRes.ok) return { ok: false, loadFailed: true, rttMs: nowMs() };
-          const childText = await childRes.text();
-          if (!childText.trimStart().startsWith('#EXTM3U')) {
+
+        const audioChildUri = matchedAudioUri || defaultAudioUri;
+        const childTargets = [...new Set([variantChildUri, audioChildUri].filter((x): x is string => Boolean(x)))];
+        if (childTargets.length > 0) {
+          const childResults = await Promise.all(
+            childTargets.map(async (targetRef) => {
+              const childUrl = new URL(this.decorate(targetRef), resolvedUrl).toString();
+              const childRes = await fetch(childUrl, { headers, signal: timeoutSig });
+              if (!childRes.ok) return false;
+              const childText = await childRes.text();
+              const childLead = childText.trimStart();
+              return (
+                childLead.startsWith('#EXTM3U') &&
+                /#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(childText)
+              );
+            }),
+          );
+          if (childResults.some((okChild) => !okChild)) {
             return { ok: false, loadFailed: true, rttMs: nowMs() };
           }
         }
+      } else if (!/#EXTINF\b|#EXT-X-MAP\b/i.test(text)) {
+        return { ok: false, loadFailed: true, rttMs: nowMs() };
       }
 
       return { ok: true, loadFailed: false, rttMs: nowMs() };
@@ -1205,7 +1266,32 @@ export class ElfuraPlayer {
   /* Engines                                                             */
   /* ------------------------------------------------------------------ */
 
+  private clearStartupWatchdog(): void {
+    if (this.startupWatchdogTimer) {
+      clearTimeout(this.startupWatchdogTimer);
+      this.startupWatchdogTimer = null;
+    }
+  }
+
+  private armStartupWatchdog(expectedSourceId: string | undefined): void {
+    this.clearStartupWatchdog();
+    if (!expectedSourceId || this.sources.length < 2 || this.activeProbe) return;
+    this.startupWatchdogTimer = setTimeout(() => {
+      this.startupWatchdogTimer = null;
+      if (
+        this.destroyed ||
+        this.activeProbe ||
+        this.currentSource?.id !== expectedSourceId ||
+        this.video.readyState >= 1
+      ) {
+        return;
+      }
+      this.failover();
+    }, 7500);
+  }
+
   private teardownEngine(): void {
+    this.clearStartupWatchdog();
     this.hls?.destroy();
     this.hls = null;
     if (this.dash) {
@@ -1255,7 +1341,20 @@ export class ElfuraPlayer {
     });
     this.hls = hls;
 
+    let startupFragErrors = 0;
+    this.armStartupWatchdog(this.currentSource?.id);
+
     hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+      // Guard against HEVC-only levels on MSE engines without hardware HEVC support
+      const hasPlayableCodec =
+        data.levels.length === 0 ||
+        this.supportsHevc() ||
+        data.levels.some((l) => !/\b(?:hvc1|hev1)\b/i.test(String(l.videoCodec || l.codecSet || '')));
+      if (!hasPlayableCodec) {
+        this.handleFatal(Hls.ErrorTypes.MEDIA_ERROR, url, true);
+        return;
+      }
+
       this.qualityLevels = data.levels
         .map((l, i) => ({
           id: i,
@@ -1285,17 +1384,22 @@ export class ElfuraPlayer {
             return;
           }
 
+          // Require an actual media fragment / buffer append before confirming alive
+          // so dead segments (403/404) or codec errors never falsely pass probing!
           const confirmAlive = () => {
-            hls.off(Hls.Events.LEVEL_LOADED, confirmAlive);
-            hls.off(Hls.Events.AUDIO_TRACK_LOADED, confirmAlive);
             hls.off(Hls.Events.FRAG_LOADED, confirmAlive);
+            hls.off(Hls.Events.BUFFER_APPENDED, confirmAlive);
             probe.settle({ ok: true });
           };
-          hls.on(Hls.Events.LEVEL_LOADED, confirmAlive);
-          hls.on(Hls.Events.AUDIO_TRACK_LOADED, confirmAlive);
           hls.on(Hls.Events.FRAG_LOADED, confirmAlive);
+          hls.on(Hls.Events.BUFFER_APPENDED, confirmAlive);
         });
       }
+    });
+
+    hls.on(Hls.Events.FRAG_LOADED, () => {
+      startupFragErrors = 0;
+      this.clearStartupWatchdog();
     });
 
     // The truth behind "Auto": what ABR is really serving right now.
@@ -1330,8 +1434,26 @@ export class ElfuraPlayer {
     });
 
     hls.on(Hls.Events.ERROR, (_e, data) => {
+      const details = String(data.details || '');
+      const unrecoverableCodec =
+        details === 'bufferAddCodecError' || details === 'manifestIncompatibleCodecsError';
+      if (unrecoverableCodec) {
+        this.handleFatal(data.type, url, true);
+        return;
+      }
+      if (
+        !data.fatal &&
+        this.video.readyState === 0 &&
+        /^(?:fragLoadError|fragLoadTimeOut|keyLoadError|levelLoadError|audioTrackLoadError)$/i.test(details)
+      ) {
+        startupFragErrors++;
+        if (startupFragErrors >= 2) {
+          this.handleFatal(data.type, url, true);
+          return;
+        }
+      }
       if (!data.fatal) return;
-      this.handleFatal(data.type, url);
+      this.handleFatal(data.type, url, false);
     });
 
     hls.loadSource(this.decorate(url));
@@ -1503,14 +1625,14 @@ export class ElfuraPlayer {
     }
   }
 
-  private handleFatal(type: string, url: string): void {
+  private handleFatal(type: string, url: string, immediateFailover = false): void {
     if (this.activeProbe) {
       this.activeProbe.settle({ ok: false, loadFailed: true });
       return;
     }
     this.fatalCount++;
     const Hls = this.HlsClass;
-    if (this.hls && Hls) {
+    if (!immediateFailover && this.hls && Hls) {
       if (type === Hls.ErrorTypes.MEDIA_ERROR && this.fatalCount < 2) {
         this.hls.recoverMediaError();
         return;
@@ -1574,6 +1696,26 @@ export class ElfuraPlayer {
   private mergeNativeAudio(native: { id: number; lang: string; label?: string; default?: boolean }[]): void {
     const external = (this.input.config.audioTracks ?? []).map((x) => ({ lang: x.lang, label: x.label, url: x.url }));
 
+    // Single-dub HLS/DASH manifests (e.g. `NAME="Audio"` with no LANGUAGE attribute)
+    // inherit the known canonical language of `this.currentSource` so no bogus "Original" track appears.
+    const singleSourceCanon =
+      this.currentSource && !this.currentSource.multiAudio && this.currentSource.audioLang
+        ? canonLang(this.currentSource.audioLang)
+        : 'und';
+    const normalizedNative =
+      native.length === 1 &&
+      singleSourceCanon !== 'und' &&
+      canonLang(native[0].lang) === 'und' &&
+      canonLang(native[0].label) === 'und'
+        ? [
+            {
+              ...native[0],
+              lang: singleSourceCanon,
+              label: languageLabel(singleSourceCanon),
+            },
+          ]
+        : native;
+
     // Dynamically gather audio languages actually reported across resolved raw sources
     const discoveredSourceLangs: { lang: string; label?: string; active?: boolean }[] = [];
     if (this.currentSource && !this.currentSource.multiAudio) {
@@ -1598,12 +1740,22 @@ export class ElfuraPlayer {
       }
     }
 
-    this.audioTracks = buildTrackList({ native, external, discoveredSourceLangs });
+    this.audioTracks = buildTrackList({ native: normalizedNative, external, discoveredSourceLangs });
 
-    // Reflect active single-dub source in currentAudio unless an initial preference is pending
-    if (!this.currentAudio && this.audioTracks.length > 0 && !this.activeProbe) {
-      const def = this.audioTracks.find((t) => t.default) ?? this.audioTracks[0];
-      if (def) this.currentAudio = def;
+    // Reflect active desired/source language in currentAudio unless an engine probe is active
+    if (this.audioTracks.length > 0 && !this.activeProbe) {
+      const targetMatchLang =
+        this.desiredAudioLang && this.desiredAudioLang !== 'und'
+          ? this.desiredAudioLang
+          : singleSourceCanon !== 'und'
+            ? singleSourceCanon
+            : null;
+      const preferred =
+        (targetMatchLang
+          ? this.audioTracks.find((t) => matchScore(targetMatchLang, t.lang) >= 0)
+          : null) ??
+        (!this.currentAudio ? this.audioTracks.find((t) => t.default) ?? this.audioTracks[0] : null);
+      if (preferred) this.currentAudio = preferred;
     }
 
     this.emit('audioTracks', this.audioTracks);
@@ -1731,7 +1883,11 @@ export class ElfuraPlayer {
       if (this.input.config.autoplayNextEp || this.input.config.next) this.emit('episode:next', {});
     });
     v.addEventListener('waiting', () => this.emit('buffering', {}));
-    v.addEventListener('playing', () => this.emit('buffered', {}));
+    v.addEventListener('loadedmetadata', () => this.clearStartupWatchdog());
+    v.addEventListener('playing', () => {
+      this.clearStartupWatchdog();
+      this.emit('buffered', {});
+    });
     v.addEventListener('durationchange', () => {
       this.emit('durationchange', { duration: v.duration });
       this.emit('segments:invalidate', {});

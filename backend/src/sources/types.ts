@@ -17,13 +17,20 @@ export interface SourceQuery {
   imdbId?: string | null;
   title?: string;
   year?: string;
+  releaseDate?: string;
+  latestDate?: string;
+  originalLanguage?: string;
   season?: number;
   episode?: number;
   preferredLang?: string;
   /** Lazy metadata resolver so adapters never block waiting on TMDB unless needed for fallback. */
   resolveMetaFallback?: () => Promise<{
     title?: string;
+    rawTitle?: string;
     year?: string;
+    releaseDate?: string;
+    latestDate?: string;
+    originalLanguage?: string;
     imdbId?: string | null;
   }>;
   signal?: AbortSignal;

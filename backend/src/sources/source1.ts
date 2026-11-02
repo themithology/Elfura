@@ -738,8 +738,13 @@ async function fetchFromVidSync(
     const sharedDirectAcrossLangs =
       directCandidate && (langsByDirectUrl.get(directCandidate)?.size ?? 0) > 1 && norm.code !== 'en';
     const isIpBound = IP_LOCKED_RE.test(directCandidate);
+    const hasCustomDirectHeaders = !!(row.headers && Object.keys(row.headers).length > 0);
 
-    const preferProxy = (sharedDirectAcrossLangs || isIpBound) && !!proxyCandidate;
+    // Prefer vidsync's `/api/core/proxy` whenever provided (activates upstream standby failover
+    // and avoids 403/IP-bound direct CDN rejections on VidZee `fastcloud.live` & multi-dub Castle).
+    const preferProxy =
+      !!proxyCandidate &&
+      (providerKey !== 'castle' || sharedDirectAcrossLangs || isIpBound || !hasCustomDirectHeaders);
     const primaryUrl = preferProxy ? proxyCandidate : directCandidate || proxyCandidate;
     if (!primaryUrl || !isSafeUpstreamUrl(primaryUrl) || seenPrimaryUrl.has(primaryUrl)) continue;
     seenPrimaryUrl.add(primaryUrl);

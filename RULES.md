@@ -92,4 +92,8 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
      while keeping/restoring playable video cleanly without crashing the player.
 4. **Clean Consumer UI (Zero Developer / Internal Clutter):**
    - Never display internal/technical stream labels (`other stream`, `in stream`, `external dub`, `external`, raw `kbps`, `HLS · N CC`, or raw internal error codes) in player menus or toasts. Keep Audio, Subtitles, Quality, and Sources menus clean and viewer-friendly.
+5. **Deep Stream Liveness Verification (Zero Dead Streams Entering the Player):**
+   - Never rely on master-only `#EXTM3U` checks: both Part 2 (`backend/src/sources/liveness.ts`) and Part 1 (`ElfuraPlayer`) must verify child variant & default audio playlists in parallel so master-alive / child-HTML dead streams, `403` direct links, and dead mirrors are pruned before playback starts, while pre-warming the bounded RAM manifest cache and harvesting all `#EXT-X-MEDIA:TYPE=AUDIO` / `<AdaptationSet>` languages directly from live manifests.
+   - `/api/v1/stream` must strictly reject `text/html` / non-manifest bodies on manifest (`k='m'`) and media segment (`k='a'`) tickets with `502` `no-store` so soft-403 HTML pages are never cached at Cloudflare edge or fed to `hls.js`.
+   - Single-dub manifests emitting generic `#EXT-X-MEDIA:TYPE=AUDIO,NAME="Audio"` without `LANGUAGE=` must preserve their known canonical dub language (`l` ticket hint + player inheritance) so bogus `"Original"` ghost tracks never appear alongside real languages, and HEVC-only (`hvc1`/`hev1`) variants must be skipped on MSE engines lacking hardware HEVC support.
 

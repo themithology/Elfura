@@ -12,6 +12,7 @@ import type { BackendConfig } from '../config.js';
 import { sealStreamTicket } from '../security.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
+import { verifyAndFilterCandidates } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource2Adapter } from './source2.js';
 import type {
@@ -155,13 +156,31 @@ export class SourceRegistry {
 
     const media = await mediaPromise;
 
+    // Deep-verify unique upstream URLs across all adapters in parallel so dead
+    // streams (e.g. master-alive/child-HTML redirects, 403s, dead mirrors) never
+    // reach the player, while pre-warming the RAM manifest cache and harvesting
+    // in-manifest `#EXT-X-MEDIA:TYPE=AUDIO` languages dynamically.
+    const verifiedEntries = await Promise.all(
+      settled
+        .filter(
+          (
+            e,
+          ): e is PromiseFulfilledResult<{
+            adapter: SourceAdapter;
+            result: RawSourceResult;
+          }> => e.status === 'fulfilled',
+        )
+        .map(async (entry) => ({
+          adapter: entry.value.adapter,
+          result: entry.value.result,
+          liveCandidates: await verifyAndFilterCandidates(entry.value.result.candidates),
+        })),
+    );
+
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;
 
-    for (const entry of settled) {
-      if (entry.status !== 'fulfilled') continue;
-      const { adapter, result } = entry.value;
-
+    for (const { adapter, result, liveCandidates } of verifiedEntries) {
       if (!mergedSegments && result.segments) {
         mergedSegments = result.segments;
       }
@@ -177,11 +196,11 @@ export class SourceRegistry {
       const labelCounts = new Map<string, number>();
       let optionSeq = 0;
 
-      for (const cand of result.candidates) {
+      for (const cand of liveCandidates) {
         const sealed = this.sealCandidate(adapter, cand, ++optionSeq, labelCounts, streamBase);
         uniformOptions.push(sealed);
 
-        // If candidate includes a distinct standby backup URL, expose as automatic failover slot
+        // If candidate includes a distinct healthy standby backup URL, expose as automatic failover slot
         if (cand.standbyUrl && cand.standbyUrl !== cand.url) {
           const backupCand: RawStreamCandidate = {
             ...cand,
@@ -260,10 +279,14 @@ export class SourceRegistry {
       .digest('hex')
       .slice(0, 12);
 
+    const singleDubHint =
+      !cand.multiAudio && cand.audioLang && cand.audioLang !== 'und' ? cand.audioLang : undefined;
+
     const streamTicket = sealStreamTicket(this.cfg.secret, {
       u: cand.url,
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
+      ...(singleDubHint ? { l: singleDubHint } : {}),
     });
 
     const audioTracks = (cand.audioTracks ?? []).map((t) => ({

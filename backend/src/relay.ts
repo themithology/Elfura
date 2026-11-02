@@ -35,6 +35,8 @@ const MAX_MANIFEST_BYTES = 4 * 1024 * 1024; // 4 MiB safety ceiling for text man
 const UPSTREAM_TRACK_WATERMARK_RE =
   /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|^(?:audio|track\s*\d*|sound|stream)$/i;
 
+const HEVC_HINT_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
+
 const WEBVTT_SPAM_CUE_RE =
   /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|tgflix|tgvid|moviehub|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
 
@@ -82,17 +84,44 @@ function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlayl
   return 'a';
 }
 
-function sanitizeExtXMediaLines(lines: string[]): string[] {
-  // First pass: check which AUDIO GROUP-IDs already have a DEFAULT=YES track
+export function extractManifestAudioLangs(manifestText: string): string[] {
+  const out: string[] = [];
+  for (const rawLine of manifestText.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!/^#EXT-X-MEDIA:/i.test(trimmed) || !/TYPE=AUDIO\b/i.test(trimmed)) continue;
+    const langMatch = trimmed.match(/LANGUAGE=(?:"([^"]+)"|([^,\s]+))/i);
+    const rawLang = (langMatch?.[1] ?? langMatch?.[2] ?? '')
+      .trim()
+      .replace(/[.\-_]*\[[^\]]*\]/g, '');
+    const nameMatch = trimmed.match(/NAME="([^"]*)"/i);
+    const rawName = (nameMatch?.[1] ?? '').trim();
+    const unnumberedName = rawName.replace(/^\d+\s*[.)\-:]\s*/, '').trim();
+    const norm = normalizeLang(rawLang || unnumberedName, unnumberedName);
+    if (norm.code && norm.code !== 'und' && !out.includes(norm.code)) {
+      out.push(norm.code);
+    }
+  }
+  return out;
+}
+
+function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string[] {
+  // First pass: check which AUDIO GROUP-IDs already have a DEFAULT=YES track + count total AUDIO renditions
   const audioGroupHasDefault = new Map<string, boolean>();
+  let totalAudioTracks = 0;
   for (const rawLine of lines) {
     const t = rawLine.trim();
     if (!/^#EXT-X-MEDIA:/i.test(t) || !/TYPE=AUDIO\b/i.test(t)) continue;
+    totalAudioTracks++;
     const gMatch = t.match(/GROUP-ID="([^"]+)"/i);
     const gid = gMatch?.[1] ?? 'default';
     if (!audioGroupHasDefault.has(gid)) audioGroupHasDefault.set(gid, false);
     if (/DEFAULT=YES\b/i.test(t)) audioGroupHasDefault.set(gid, true);
   }
+
+  const singleTrackHint =
+    totalAudioTracks === 1 && hintAudioLang && hintAudioLang !== 'und'
+      ? normalizeLang(hintAudioLang)
+      : null;
 
   const labelCounts = new Map<string, number>();
   const promotedGroups = new Set<string>();
@@ -114,7 +143,10 @@ function sanitizeExtXMediaLines(lines: string[]): string[] {
     const rawName = (nameMatch?.[1] ?? '').trim();
     const unnumberedName = rawName.replace(/^\d+\s*[.)\-:]\s*/, '').trim();
 
-    const norm = normalizeLang(rawLang || unnumberedName, unnumberedName);
+    let norm = normalizeLang(rawLang || unnumberedName, unnumberedName);
+    if (isAudio && norm.code === 'und' && singleTrackHint && singleTrackHint.code !== 'und') {
+      norm = singleTrackHint;
+    }
 
     // Preserve meaningful subtitle qualifiers like Forced / SDH / CC
     let qualifier = '';
@@ -174,7 +206,18 @@ export function rewriteHlsManifest(
   headers: Record<string, string> | undefined,
   secret: Buffer,
   streamPath = '/api/v1/stream',
+  hintAudioLang?: string,
 ): string {
+  const isBaseHevc = (() => {
+    if (HEVC_HINT_RE.test(baseUrl)) return true;
+    try {
+      const inner = new URL(baseUrl).searchParams.get('url') || '';
+      return HEVC_HINT_RE.test(inner);
+    } catch {
+      return false;
+    }
+  })();
+
   const wrapUrl = (rawRef: string, kind: 'm' | 's' | 'a'): string => {
     const trimmed = rawRef.trim();
     if (!trimmed || trimmed.startsWith('data:')) return rawRef;
@@ -205,26 +248,44 @@ export function rewriteHlsManifest(
     dedupedHeaderLines.push(l);
   }
 
-  const lines = sanitizeExtXMediaLines(dedupedHeaderLines);
+  const lines = sanitizeExtXMediaLines(dedupedHeaderLines, hintAudioLang);
   let expectVariantUri = false;
 
-  const rewritten = lines.map((line) => {
+  const rewritten = lines.map((line, lineIdx) => {
     const trimmed = line.trim();
     if (!trimmed) return line;
 
     if (trimmed.startsWith('#')) {
       const isStreamInf = /^#EXT-X-STREAM-INF\b/i.test(trimmed);
-      if (isStreamInf) expectVariantUri = true;
+      let workingLine = line;
+      if (isStreamInf) {
+        expectVariantUri = true;
+        if (!/\bCODECS=/i.test(trimmed)) {
+          const nextNonEmpty = lines.slice(lineIdx + 1).find((n) => n.trim() && !n.trim().startsWith('#')) || '';
+          let nextHevc = isBaseHevc || HEVC_HINT_RE.test(nextNonEmpty);
+          if (!nextHevc && nextNonEmpty) {
+            try {
+              const nu = new URL(nextNonEmpty.trim(), baseUrl);
+              nextHevc = HEVC_HINT_RE.test(nu.searchParams.get('url') || '');
+            } catch {
+              /* ignore */
+            }
+          }
+          if (nextHevc) {
+            workingLine = `${trimmed},CODECS="hvc1.1.6.L120.90,mp4a.40.2"`;
+          }
+        }
+      }
 
-      if (!trimmed.includes('URI="')) return line;
-      return line.replace(/URI="([^"]+)"/gi, (_full, uriVal: string) => {
+      if (!workingLine.includes('URI="')) return workingLine;
+      return workingLine.replace(/URI="([^"]+)"/gi, (_full, uriVal: string) => {
         let abs = uriVal;
         try {
           abs = new URL(uriVal, baseUrl).toString();
         } catch {
           /* keep raw */
         }
-        const kind = inferChildKind(trimmed, abs, false);
+        const kind = inferChildKind(workingLine, abs, false);
         const proxied = wrapUrl(uriVal, kind);
         return proxied ? `URI="${proxied}"` : 'URI=""';
       });
@@ -327,6 +388,18 @@ function setCachedManifest(key: string, entry: Omit<CachedUpstreamManifest, 'exp
   });
 }
 
+export function buildManifestCacheKey(url: string, headers?: Record<string, string>): string {
+  return `${url}|${JSON.stringify(headers ?? {})}`;
+}
+
+export function seedManifestRamCache(
+  url: string,
+  headers: Record<string, string> | undefined,
+  entry: Omit<CachedUpstreamManifest, 'expiresAt'>,
+): void {
+  setCachedManifest(buildManifestCacheKey(url, headers), entry);
+}
+
 function sendRewrittenManifest(
   res: ServerResponse,
   kind: 'hls' | 'dash',
@@ -335,10 +408,11 @@ function sendRewrittenManifest(
   ticketHeaders: Record<string, string> | undefined,
   secret: Buffer,
   streamPath: string,
+  hintAudioLang?: string,
 ): void {
   const rewritten =
     kind === 'hls'
-      ? rewriteHlsManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath)
+      ? rewriteHlsManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath, hintAudioLang)
       : rewriteDashManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath);
   const buf = Buffer.from(rewritten, 'utf8');
   setCloudflareCache(res, 'manifest');
@@ -383,7 +457,7 @@ export async function handleStreamRelay(
   const streamPath = opts.streamPath || '/api/v1/stream';
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
-      ? `${ticket.u}|${JSON.stringify(ticket.h ?? {})}`
+      ? buildManifestCacheKey(ticket.u, ticket.h)
       : '';
 
   if (manifestCacheKey) {
@@ -397,6 +471,7 @@ export async function handleStreamRelay(
         ticket.h,
         opts.secret,
         streamPath,
+        ticket.l,
       );
       return;
     }
@@ -471,7 +546,7 @@ export async function handleStreamRelay(
             bodyText,
           });
         }
-        sendRewrittenManifest(res, 'hls', bodyText, finalUrl, ticket.h, opts.secret, streamPath);
+        sendRewrittenManifest(res, 'hls', bodyText, finalUrl, ticket.h, opts.secret, streamPath, ticket.l);
         return;
       }
 
@@ -483,7 +558,15 @@ export async function handleStreamRelay(
             bodyText,
           });
         }
-        sendRewrittenManifest(res, 'dash', bodyText, finalUrl, ticket.h, opts.secret, streamPath);
+        sendRewrittenManifest(res, 'dash', bodyText, finalUrl, ticket.h, opts.secret, streamPath, ticket.l);
+        return;
+      }
+
+      // Reject dead soft-403 / HTML / invalid bodies on manifest tickets so they are never cached or fed to hls.js
+      if (ticket.k === 'm' || /^<!doctype\s+html\b|^<html\b/i.test(trimmedLead) || !trimmedLead) {
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'invalid upstream manifest payload' }));
         return;
       }
 
@@ -494,6 +577,19 @@ export async function handleStreamRelay(
         'Content-Length': String(fallbackBuf.byteLength),
       });
       res.end(fallbackBuf);
+      return;
+    }
+
+    // Never pipe HTML error/redirect pages as binary media segments or MP4 byte ranges
+    if (ticket.k === 'a' && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+      try {
+        await upstreamRes.body?.cancel();
+      } catch {
+        /* ignore */
+      }
+      setCloudflareCache(res, 'no-store');
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
       return;
     }
 

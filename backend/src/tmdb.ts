@@ -15,7 +15,15 @@ export interface MediaMetadata {
   season?: number;
   episode?: number;
   title: string;
+  /** Clean movie or series title without episode suffix, for upstream search queries. */
+  rawTitle?: string;
   year: string;
+  /** Primary release / first-air date (YYYY-MM-DD) when available. */
+  releaseDate?: string;
+  /** Episode air date or series last-air date (YYYY-MM-DD) when available. */
+  latestDate?: string;
+  /** Original ISO 639-1 language code reported by TMDB (e.g. 'ja', 'en', 'ko'). */
+  originalLanguage?: string;
   overview: string;
   poster: string | null;
   backdrop: string | null;
@@ -155,11 +163,13 @@ export async function fetchTmdbMetadata(
             ? extIds.imdb_id
             : null;
 
-      let baseTitle = String(
+      const cleanSeriesOrMovieTitle = String(
         data.title ?? data.name ?? data.original_title ?? data.original_name ?? '',
       ).trim();
+      let baseTitle = cleanSeriesOrMovieTitle;
       let overview = String(data.overview ?? '').trim();
       let backdrop = fullImageUrl(cfg.imageBase, data.backdrop_path ?? data.backdrop, 'w1280');
+      let latestDateRaw = String(data.last_air_date ?? '').trim();
 
       if (params.type === 'tv' && params.season && params.episode) {
         const epData = unwrapPayload(rawEpJson);
@@ -172,6 +182,9 @@ export async function fetchTmdbMetadata(
           }
           if (typeof epData.overview === 'string' && epData.overview.trim()) {
             overview = epData.overview.trim();
+          }
+          if (typeof epData.air_date === 'string' && epData.air_date.trim()) {
+            latestDateRaw = epData.air_date.trim();
           }
           const still = fullImageUrl(cfg.imageBase, epData.still_path, 'w1280');
           if (still) backdrop = still;
@@ -189,8 +202,12 @@ export async function fetchTmdbMetadata(
       const logoPath =
         typeof pickedLogo?.file_path === 'string' ? pickedLogo.file_path.replace(/\.svg$/i, '.png') : null;
 
-      const releaseRaw = String(data.release_date ?? data.first_air_date ?? data.year ?? '');
+      const releaseRaw = String(data.release_date ?? data.first_air_date ?? data.year ?? '').trim();
       const year = releaseRaw.slice(0, 4);
+      const originalLanguage =
+        typeof data.original_language === 'string' && data.original_language.trim()
+          ? data.original_language.trim().toLowerCase()
+          : undefined;
 
       const resolved: MediaMetadata = {
         type: params.type,
@@ -198,7 +215,11 @@ export async function fetchTmdbMetadata(
         imdbId,
         ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
         title: baseTitle,
+        ...(cleanSeriesOrMovieTitle ? { rawTitle: cleanSeriesOrMovieTitle } : {}),
         year,
+        ...(releaseRaw.length >= 8 ? { releaseDate: releaseRaw.slice(0, 10) } : {}),
+        ...(latestDateRaw.length >= 8 ? { latestDate: latestDateRaw.slice(0, 10) } : {}),
+        ...(originalLanguage ? { originalLanguage } : {}),
         overview,
         poster: fullImageUrl(cfg.imageBase, data.poster_path ?? data.poster, 'w780'),
         backdrop,
