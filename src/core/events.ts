@@ -45,6 +45,7 @@ export type EventName =
   | 'fullscreen'
   | 'back'
   | 'episode:next'
+  | 'media'
   | 'config';
 
 export type CommandName =

@@ -14,6 +14,7 @@ export interface MediaMetadata {
   imdbId: string | null;
   season?: number;
   episode?: number;
+  episodeName?: string;
   title: string;
   /** Clean movie or series title without episode suffix, for upstream search queries. */
   rawTitle?: string;
@@ -24,6 +25,9 @@ export interface MediaMetadata {
   latestDate?: string;
   /** Original ISO 639-1 language code reported by TMDB (e.g. 'ja', 'en', 'ko'). */
   originalLanguage?: string;
+  tagline?: string;
+  rating?: number | null;
+  genres?: string[];
   overview: string;
   poster: string | null;
   backdrop: string | null;
@@ -167,6 +171,7 @@ export async function fetchTmdbMetadata(
         data.title ?? data.name ?? data.original_title ?? data.original_name ?? '',
       ).trim();
       let baseTitle = cleanSeriesOrMovieTitle;
+      let episodeName = '';
       let overview = String(data.overview ?? '').trim();
       let backdrop = fullImageUrl(cfg.imageBase, data.backdrop_path ?? data.backdrop, 'w1280');
       let latestDateRaw = String(data.last_air_date ?? '').trim();
@@ -174,9 +179,9 @@ export async function fetchTmdbMetadata(
       if (params.type === 'tv' && params.season && params.episode) {
         const epData = unwrapPayload(rawEpJson);
         if (epData) {
-          const epName = typeof epData.name === 'string' ? epData.name.trim() : '';
-          if (epName && baseTitle) {
-            baseTitle = `${baseTitle} · S${params.season}E${params.episode} — ${epName}`;
+          episodeName = typeof epData.name === 'string' ? epData.name.trim() : '';
+          if (episodeName && baseTitle) {
+            baseTitle = `${baseTitle} · S${params.season}E${params.episode} — ${episodeName}`;
           } else if (baseTitle) {
             baseTitle = `${baseTitle} · S${params.season}E${params.episode}`;
           }
@@ -193,14 +198,52 @@ export async function fetchTmdbMetadata(
         }
       }
 
-      const images =
+      let images =
         data.images && typeof data.images === 'object'
           ? (data.images as { logos?: Record<string, unknown>[] })
           : null;
+      if (!images?.logos) {
+        try {
+          const imgRes = await fetch(
+            buildUrl(`/${params.type}/${encodeURIComponent(params.tmdbId)}/images`, {
+              include_image_language: 'en,null',
+            }),
+            { headers, signal: AbortSignal.timeout(Math.min(2000, cfg.timeoutMs)) },
+          );
+          if (imgRes.ok) {
+            const imgData = unwrapPayload(await imgRes.json());
+            if (imgData && Array.isArray(imgData.logos)) {
+              images = { logos: imgData.logos as Record<string, unknown>[] };
+            }
+          }
+        } catch {
+          /* non-fatal */
+        }
+      }
       const logos = Array.isArray(images?.logos) ? images!.logos : [];
       const pickedLogo = logos.find((l) => l?.iso_639_1 === 'en') ?? logos[0];
       const logoPath =
-        typeof pickedLogo?.file_path === 'string' ? pickedLogo.file_path.replace(/\.svg$/i, '.png') : null;
+        typeof pickedLogo?.file_path === 'string'
+          ? pickedLogo.file_path.replace(/\.svg$/i, '.png')
+          : typeof data.logo === 'string'
+            ? data.logo
+            : null;
+
+      const tagline = typeof data.tagline === 'string' ? data.tagline.trim() : '';
+      const rawVote = Number(data.vote_average ?? data.rating);
+      const rating = Number.isFinite(rawVote) && rawVote > 0 ? Math.round(rawVote * 10) / 10 : null;
+      const genres: string[] = Array.isArray(data.genres)
+        ? data.genres
+            .map((g) =>
+              typeof g === 'string'
+                ? g.trim()
+                : g && typeof g === 'object' && typeof (g as { name?: unknown }).name === 'string'
+                  ? String((g as { name: string }).name).trim()
+                  : '',
+            )
+            .filter(Boolean)
+            .slice(0, 3)
+        : [];
 
       const releaseRaw = String(data.release_date ?? data.first_air_date ?? data.year ?? '').trim();
       const year = releaseRaw.slice(0, 4);
@@ -214,12 +257,16 @@ export async function fetchTmdbMetadata(
         tmdbId: params.tmdbId,
         imdbId,
         ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
+        ...(episodeName ? { episodeName } : {}),
         title: baseTitle,
         ...(cleanSeriesOrMovieTitle ? { rawTitle: cleanSeriesOrMovieTitle } : {}),
         year,
         ...(releaseRaw.length >= 8 ? { releaseDate: releaseRaw.slice(0, 10) } : {}),
         ...(latestDateRaw.length >= 8 ? { latestDate: latestDateRaw.slice(0, 10) } : {}),
         ...(originalLanguage ? { originalLanguage } : {}),
+        ...(tagline ? { tagline } : {}),
+        ...(rating !== null ? { rating } : {}),
+        ...(genres.length ? { genres } : {}),
         overview,
         poster: fullImageUrl(cfg.imageBase, data.poster_path ?? data.poster, 'w780'),
         backdrop,

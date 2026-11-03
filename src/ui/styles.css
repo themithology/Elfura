@@ -15,6 +15,7 @@
   --elf-radius: 14px;
   --elf-bar-h: 48px;
   --elf-font: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --elf-cartoon-font: 'Fredoka', 'Bubblegum Sans', 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', 'Trebuchet MS', cursive, sans-serif;
   --elf-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --elf-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -92,7 +93,7 @@
   bottom: var(--elf-sub-inset, 9%);
 }
 .elf-shell[data-ui='visible'] .elf-surface > .elf-sub-root[data-edge='bottom'] {
-  transform: translateY(-44px);
+  transform: translateY(-64px);
 }
 .elf-sub-root[data-edge='top'] {
   top: var(--elf-sub-inset, 9%);
@@ -144,23 +145,179 @@
 .elf-sub-span[data-underline] { text-decoration: underline; }
 
 /* ==========================================================================
-   Top Bar (Title Left · Quality + Audio & Subtitles + Screen Lock Right)
+   Persistent Top-Left Brand Cluster (`<- Back` + `TheOGPirateBot` + TV Ep)
+   - `<- Back` & TV Episode text appear ONLY when player UI is ON.
+   - `[ Logo  TheOGPirateBot ]` STAYS ON TOP even when player UI is OFF:
+     100% opacity when started or paused; fades smoothly while playing.
+   ========================================================================== */
+.elf-brand-cluster {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  right: 310px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  min-width: 0;
+}
+.elf-shell[data-controls='false'] .elf-brand-cluster {
+  display: none;
+}
+
+/* `<- Back` pill button — ONLY visible when player UI is ON */
+.elf-pill-back {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(14, 16, 22, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  height: 36px;
+  max-width: 110px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  flex-shrink: 0;
+  pointer-events: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition:
+    opacity 0.24s var(--elf-ease),
+    max-width 0.28s var(--elf-ease),
+    padding 0.28s var(--elf-ease),
+    margin 0.28s var(--elf-ease),
+    border-width 0.24s ease,
+    background 0.16s ease,
+    transform 0.2s var(--elf-spring);
+}
+.elf-pill-back:hover {
+  background: rgba(28, 32, 44, 0.86);
+}
+.elf-pill-back:active {
+  transform: scale(0.94);
+}
+.elf-pill-back-ico {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.elf-pill-back-ico svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Collapse `<- Back` completely when UI turns off so ONLY `TheOGPirateBot` stays on top */
+.elf-shell[data-ui='hidden'] .elf-pill-back,
+.elf-shell[data-locked='true'] .elf-pill-back {
+  opacity: 0;
+  max-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  margin-right: -8px;
+  border-width: 0;
+  pointer-events: none;
+}
+
+/* Persistent Brand Pill (`[ TV-Logo  TheOGPirateBot ]`) */
+.elf-og-pill {
+  height: 36px;
+  padding: 0 13px 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(14, 16, 22, 0.68);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.32);
+  /* Playing state -> smoothly faded watermark opacity */
+  opacity: 0.34;
+  transition: opacity 0.45s var(--elf-ease), transform 0.28s var(--elf-ease);
+}
+/* Started OR Paused -> 100% opacity! */
+.elf-shell[data-brand-full='true'] .elf-og-pill,
+.elf-shell[data-playing='false'] .elf-og-pill,
+.elf-shell[data-pause-screen='true'] .elf-og-pill {
+  opacity: 1;
+}
+
+.elf-og-icon-box {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.elf-og-icon-box img {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  display: block;
+}
+.elf-og-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+/* Top Episode Label (`S1 · E1 — Episode Name` for TV shows; hidden when UI is off) */
+.elf-top-episode {
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.22);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: opacity 0.24s var(--elf-ease), transform 0.24s var(--elf-ease);
+}
+.elf-shell[data-ui='hidden'] .elf-top-episode,
+.elf-shell[data-locked='true'] .elf-top-episode {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Top-Right Bar (`Quality` + `Audio & Subtitles` + `Screen Lock`)
    ========================================================================== */
 .elf-top {
   position: absolute;
   inset: 0 0 auto 0;
   z-index: 6;
-  padding: 16px 22px 42px;
+  padding: 15px 20px 42px;
   background: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.82) 0%,
-    rgba(0, 0, 0, 0.42) 52%,
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(0, 0, 0, 0.38) 52%,
     rgba(0, 0, 0, 0) 100%
   );
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  pointer-events: none;
   transition: opacity 0.25s var(--elf-ease), transform 0.25s var(--elf-ease);
 }
 .elf-shell[data-ui='hidden'] .elf-top,
@@ -168,44 +325,23 @@
 .elf-shell[data-locked='true'] .elf-top {
   opacity: 0;
   transform: translateY(-8px);
-  pointer-events: none;
 }
-
-.elf-top-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
+.elf-top-spacer {
   flex: 1 1 auto;
 }
-.elf-title {
-  font-size: clamp(15px, 2vw, 20px);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: #fff;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.elf-brand {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.85);
-  flex-shrink: 0;
-}
-
 .elf-top-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  pointer-events: auto;
 }
+.elf-shell[data-ui='hidden'] .elf-top-actions,
+.elf-shell[data-controls='false'] .elf-top-actions,
+.elf-shell[data-locked='true'] .elf-top-actions {
+  pointer-events: none;
+}
+
 .elf-top-btn {
   appearance: none;
   border: 0;
@@ -252,6 +388,153 @@
 }
 .elf-lock-trigger {
   padding: 0 9px;
+}
+
+/* ==========================================================================
+   Title Logo & Cartoony Font Fallback (Shared by Paused Screen & Bottom Dock)
+   ========================================================================== */
+.elf-title-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 18px rgba(0, 0, 0, 0.78));
+}
+.elf-title-logo--pause {
+  max-height: clamp(50px, 16vh, 102px);
+  max-width: min(74vw, 390px);
+  margin-bottom: 4px;
+}
+.elf-title-logo--dock {
+  max-height: clamp(28px, 6.8vh, 46px);
+  max-width: min(46vw, 220px);
+}
+
+/* Playful Cartoony Font Fallback when official Title Logo is unavailable ;) */
+.elf-title-cartoon {
+  font-family: var(--elf-cartoon-font);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 2px rgba(0, 0, 0, 0.88);
+  text-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.9),
+    0 8px 22px rgba(0, 0, 0, 0.72);
+}
+.elf-title-cartoon--pause {
+  font-size: clamp(26px, 5vw, 48px);
+  line-height: 1.06;
+  max-width: min(82vw, 540px);
+  margin-bottom: 4px;
+}
+.elf-title-cartoon--dock {
+  font-size: clamp(18px, 2.8vw, 28px);
+  line-height: 1.08;
+  max-width: min(50vw, 320px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Cinema Paused Screen (Reference Screenshot Layout)
+   ========================================================================== */
+.elf-pause-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  background:
+    radial-gradient(
+      95% 120% at 18% 52%,
+      rgba(0, 0, 0, 0.86) 0%,
+      rgba(0, 0, 0, 0.64) 52%,
+      rgba(0, 0, 0, 0.34) 100%
+    );
+  opacity: 0;
+  transition: opacity 0.34s var(--elf-ease);
+}
+.elf-shell[data-pause-screen='true'] .elf-pause-screen {
+  opacity: 1;
+}
+
+.elf-pause-card {
+  padding: clamp(58px, 13vh, 92px) clamp(22px, 5.5vw, 60px) clamp(20px, 6vh, 44px);
+  max-width: min(90vw, 640px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  transform: translateY(10px);
+  transition: transform 0.38s var(--elf-ease);
+}
+.elf-shell[data-pause-screen='true'] .elf-pause-card {
+  transform: translateY(0);
+}
+
+.elf-pause-word {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.56);
+  margin-top: 2px;
+}
+.elf-pause-tagline {
+  font-size: clamp(13.5px, 1.85vw, 16.5px);
+  font-style: italic;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.65);
+}
+.elf-pause-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  margin-top: 1px;
+}
+.elf-pf-dot {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+}
+.elf-pf-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fbbf24;
+  font-weight: 700;
+}
+.elf-pf-star {
+  width: 13px;
+  height: 13px;
+  display: inline-flex;
+}
+.elf-pf-star svg {
+  width: 100%;
+  height: 100%;
+}
+.elf-pf-ep,
+.elf-pf-genre {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.elf-pause-overview {
+  margin: 4px 0 0;
+  font-size: clamp(12.5px, 1.55vw, 14.5px);
+  line-height: 1.52;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ==========================================================================
@@ -575,16 +858,15 @@
     transform 0.32s var(--elf-spring),
     bottom 0.26s var(--elf-ease);
 }
-/* Float cleanly above timeline & controls whenever chrome is visible */
+/* Float cleanly above timeline & dock whenever chrome is visible */
 .elf-shell[data-ui='visible'] .elf-hotstar-lang {
-  bottom: 108px;
+  bottom: 138px;
 }
 .elf-hotstar-lang[data-show='true'] {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
   pointer-events: auto;
 }
-/* Subtle 5-second countdown bar along bottom edge (paused until playing) */
 .elf-hotstar-lang[data-show='true']::after {
   content: '';
   position: absolute;
@@ -702,22 +984,22 @@
 }
 
 /* ==========================================================================
-   Bottom Dock (Source Pill + Inline Timestamp Timeline + Control Bar)
+   Bottom Dock (Title Logo + Submeta · Source Pill · Inline Timeline · Bar)
    ========================================================================== */
 .elf-bottom-dock {
   position: absolute;
   inset: auto 0 0 0;
   z-index: 6;
-  padding: 36px 20px 10px;
+  padding: 44px 20px 10px;
   background: linear-gradient(
     to top,
-    rgba(0, 0, 0, 0.88) 0%,
-    rgba(0, 0, 0, 0.56) 54%,
+    rgba(0, 0, 0, 0.9) 0%,
+    rgba(0, 0, 0, 0.58) 56%,
     rgba(0, 0, 0, 0) 100%
   );
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   transition: opacity 0.25s var(--elf-ease), transform 0.25s var(--elf-ease);
 }
 .elf-shell[data-ui='hidden'] .elf-bottom-dock,
@@ -728,12 +1010,44 @@
   pointer-events: none;
 }
 
-/* Branded Source Pill Switcher above right end of timeline (matches screenshot!) */
+/* Upper Dock Row: [Title Logo / Cartoony Title + Movie·Genre·Year] ... [Source 1 | Source 2] */
+.elf-dock-upper {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 4px;
+  min-height: 24px;
+}
+.elf-dock-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.elf-dock-logo-slot {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.elf-dock-submeta {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Branded Source Pill Switcher above right end of timeline */
 .elf-source-row {
   display: flex;
   justify-content: flex-end;
+  margin-left: auto;
   padding-right: 2px;
-  margin-bottom: 2px;
+  flex-shrink: 0;
 }
 .elf-source-pill {
   display: inline-flex;
@@ -826,7 +1140,7 @@
   background: #ffffff;
 }
 
-/* Exact vertical rounded white capsule scrubber thumb from screenshot! */
+/* Vertical rounded white capsule scrubber thumb */
 .elf-scrub-knob {
   position: absolute;
   top: 50%;
@@ -930,7 +1244,7 @@
   100% { transform: scale(1); }
 }
 
-/* `<< 10` and `10 >>` exact screenshot skip buttons */
+/* `<< 10` and `10 >>` skip buttons */
 .elf-skip10-btn {
   width: auto;
   padding: 0 9px;
@@ -1030,7 +1344,7 @@
   color: #fff;
 }
 
-/* Animated 4-Corner Bracket Fullscreen Button (exact screenshot icon!) */
+/* Animated 4-Corner Bracket Fullscreen Button */
 .elf-fs-svg {
   width: 22px !important;
   height: 22px !important;
@@ -1046,7 +1360,6 @@
 .elf-fs-btn:hover .elf-fs-bl { transform: translate(-1.3px, 1.3px); }
 .elf-fs-btn:hover .elf-fs-br { transform: translate(1.3px, 1.3px); }
 
-/* Active Fullscreen rotates all 4 corners inward with spring bounce! */
 .elf-shell[data-fullscreen='true'] .elf-fs-tl { transform: translate(1px, 1px) rotate(180deg); }
 .elf-shell[data-fullscreen='true'] .elf-fs-tr { transform: translate(-1px, 1px) rotate(180deg); }
 .elf-shell[data-fullscreen='true'] .elf-fs-bl { transform: translate(1px, -1px) rotate(180deg); }
@@ -1463,7 +1776,7 @@
 .elf-skip {
   position: absolute;
   right: 22px;
-  bottom: 104px;
+  bottom: 132px;
   z-index: 7;
   padding: 9px 18px;
   border-radius: 999px;
@@ -1524,11 +1837,50 @@
    Mobile & Compact Viewport Refinements
    ========================================================================== */
 @media (max-width: 640px) {
-  .elf-top { padding: 12px 14px 32px; }
-  .elf-bottom-dock { padding: 28px 14px 8px; }
-  .elf-top-btn { padding: 0 8px; gap: 6px; font-size: 12.5px; }
+  .elf-brand-cluster {
+    top: 12px;
+    left: 14px;
+    right: 138px;
+    gap: 6px;
+  }
+  .elf-pill-back {
+    height: 32px;
+    padding: 0 11px 0 9px;
+    font-size: 12px;
+  }
+  .elf-og-pill {
+    height: 32px;
+    padding: 0 10px 0 5px;
+    gap: 6px;
+  }
+  .elf-og-icon-box {
+    width: 21px;
+    height: 21px;
+  }
+  .elf-og-icon-box img {
+    width: 15px;
+    height: 15px;
+  }
+  .elf-og-name {
+    font-size: 12px;
+  }
+  .elf-top-episode {
+    font-size: 12px;
+    padding-left: 8px;
+  }
+  .elf-top { padding: 11px 14px 32px; }
+  .elf-bottom-dock { padding: 32px 14px 8px; }
+  .elf-top-btn { padding: 0 8px; gap: 6px; font-size: 12.5px; height: 34px; }
   .elf-top-meta { display: none; }
   .elf-vol-btn, .elf-vol-slider { display: none; }
+  .elf-pause-card {
+    padding: 50px 18px 18px;
+    gap: 5px;
+  }
+  .elf-pause-overview {
+    -webkit-line-clamp: 2;
+    font-size: 12px;
+  }
   .elf-panel, .elf-panel[data-wide='true'] {
     left: 10px;
     right: 10px;
@@ -1546,12 +1898,13 @@
     max-width: 94vw;
   }
   .elf-shell[data-ui='visible'] .elf-hotstar-lang {
-    bottom: 98px;
+    bottom: 122px;
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 480px) {
   .elf-top-label { display: none; }
+  .elf-brand-cluster { right: 126px; }
   .elf-as-grid[data-dual='true'] { grid-template-columns: 1fr; }
 }
 

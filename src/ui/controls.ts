@@ -1,35 +1,47 @@
 /**
- * Elfura Player — Modern OTT Chrome (Part 1 UI)
+ * Elfura Player — Cinema OTT Chrome (Part 1 UI)
  * =============================================
- * Clean cinema-grade OTT interface modeled after our reference design +
- * Netflix / Hotstar / YouTube mobile ergonomics:
- *   - Top bar: Title on left; Screen Lock, Quality (`720p` / `Auto · 1080p`),
- *     and unified `Audio & Subtitles` trigger on right (with exact reference
- *     outlined icons).
- *   - Branded source pill (`Source 1` / `Source 2`) above the right end of the
- *     timeline when multiple sources exist (strictly zero provider leaks).
- *   - Hotstar-style bottom floating language selector pill bar during the
- *     first 5 seconds whenever multiple dynamic audio tracks are discovered.
- *   - Inline `0:09 [====|---------] 1:33:49` timeline with vertical capsule
- *     scrubber handle, buffered progress, hover preview, and intro/outro cues.
- *   - Bottom bar: `<< 10`, spring-morphing Play/Pause, `10 >>`, Volume, Speed,
- *     PiP, and 4-corner spring-animated Fullscreen button (zero skip clutter
- *     in the center overlay).
- *   - Touch & pointer gestures: left/right double-tap `10s` skip with radial
- *     ripple & cascading chevrons (accumulating `10s -> 20s -> 30s`), press-
- *     and-hold anywhere for temporary `2x` speed, and full Screen Lock mode.
+ * Clean cinema-grade OTT interface combining:
+ *   - Persistent top-left brand badge (`[ TV-Logo  TheOGPirateBot ]`) using the
+ *     exact `icon-maskable-512` mark: 100% opacity when started or paused,
+ *     fading smoothly to a subtle watermark while playing; stays on top even
+ *     when player controls hide.
+ *   - `<- Back` pill button on top-left ONLY when player UI is visible (never
+ *     when UI is off; no Home button clutter).
+ *   - Top episode text (`S1 · E1 — Episode Name`) for TV series when UI is on
+ *     (no duplicate top title logo).
+ *   - Title Logo (with playful cartoony display-font fallback when TMDB has no
+ *     logo) + compact `Movie · Genre · Year` metadata above the seekbar when
+ *     controls are visible.
+ *   - Cinema Paused Screen when paused: dark vignette, large Title Logo (or
+ *     cartoony title fallback), `PAUSED`, italic `"Tagline"`, `Year • ★ Rating`,
+ *     and synopsis paragraph.
+ *   - Top-right `Quality`, unified side-by-side `Audio & Subtitles`, and
+ *     `Screen Lock`; Hotstar-style 5-second bottom language selector; inline
+ *     capsule-thumb seekbar; animated Play/Pause & 4-corner Fullscreen; left/
+ *     right double-tap 10s skip; press-and-hold for 2× speed; zero center skip
+ *     clutter.
  *
  * Strictly zero hardcoded audio tracks or static language lists.
  */
 
-import type { ElfuraPlayer } from '../core/player';
+import type { ElfuraPlayer, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import type { AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
 
 /* ---------------------------------------------------------------------- */
-/* Crisp Reference Icons (SVG strings built once, zero hot-path overhead)  */
+/* Brand Mark (`icon-maskable-512.png`, lossless 64x64 RGBA, 377 bytes)   */
+/* ---------------------------------------------------------------------- */
+
+const BRAND_ICON_URI =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABQElEQVR42u3bMW7CQBCFYSf0zg3ScACEuAARUqBC3AIiUTmgdLlBjpGOinNwCwo6SqjQMEix5MKJbbyzsdb/SK+zrH2fLHuLdSQiUZsTAQAAAC4Te1h03FSArmavSQzLjzVHzahpAGn5dBKj8uef+59cIViUt0DIlheXCHUX9vRLeZcIeeWzCL3/fgLW8vckRuVv863pNOEdYIFgXt71V8AlwquP8hb7ABcI3spb7QTrIHgtb7kVvgfBe/kigIHmrUZ2BQhfmWs/CsofNMsaa5loHqsAfEp4s81DyCv/rLlImDMrAzCUcOe9DMBLwAArAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA1p8SC/mc4FRafFJ0o3mQCmeF+5q5ZhFARnnlhR8nAQCg9QBXIzKsKaB4oWUAAAAASUVORK5CYII=';
+
+const DEFAULT_BRAND_NAME = 'TheOGPirateBot';
+
+/* ---------------------------------------------------------------------- */
+/* Crisp Reference Icons (SVG strings built once, zero hot-path overhead) */
 /* ---------------------------------------------------------------------- */
 
 const skipBarSvg = (dir: 'back' | 'fwd', step: number) =>
@@ -87,6 +99,8 @@ const I = {
     '<svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   back:
     '<svg viewBox="0 0 24 24" fill="none"><path d="M19 12H5m6-6-6 6 6 6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  star:
+    '<svg viewBox="0 0 24 24"><path d="m12 2.6 2.84 5.76 6.36.92-4.6 4.48 1.09 6.33L12 17.1l-5.69 2.99 1.09-6.33-4.6-4.48 6.36-.92L12 2.6z" fill="currentColor"/></svg>',
   doubleChevRight:
     '<svg viewBox="0 0 24 24" fill="none"><path class="elf-c1" d="m6 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="elf-c2" d="m13 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   doubleChevLeft:
@@ -113,16 +127,47 @@ const esc = (s: string) =>
 
 type PanelMode = 'audiosubs' | 'quality' | 'sources' | 'speed' | 'style';
 
+interface DisplayMedia {
+  mediaType: 'movie' | 'tv';
+  mainTitle: string;
+  season?: number;
+  episode?: number;
+  episodeName: string;
+  year: string;
+  tagline: string;
+  rating: number | null;
+  genres: string[];
+  overview: string;
+  logo: string | null;
+}
+
 export class PlayerUI {
   private player: ElfuraPlayer;
 
-  /* Top chrome */
+  /* Persistent top-left Brand + UI-only Back + TV Episode bar */
+  private topBrandCluster!: HTMLElement;
+  private backPillBtn!: HTMLButtonElement;
+  private brandPill!: HTMLElement;
+  private brandTextEl!: HTMLElement;
+  private topEpisodeEl!: HTMLElement;
+  private startWindowTimer = 0;
+
+  /* Top-right chrome (visible only when UI is on) */
   private topEl!: HTMLElement;
-  private titleEl!: HTMLElement;
   private qualityTopBtn!: HTMLButtonElement;
   private qualitySubText!: HTMLElement;
   private audioSubsTopBtn!: HTMLButtonElement;
   private lockBtn!: HTMLButtonElement;
+
+  /* Cinema Paused Screen (Image 3 layout) */
+  private pauseScreen!: HTMLElement;
+  private pauseTitleSlot!: HTMLElement;
+  private pauseTaglineEl!: HTMLElement;
+  private pauseFactsEl!: HTMLElement;
+  private pauseOverviewEl!: HTMLElement;
+  private pauseIdleTimer = 0;
+  private hasStartedPlayback = false;
+  private failedLogoUrl = '';
 
   /* Locked-state floating unlock pill */
   private unlockPill!: HTMLButtonElement;
@@ -141,7 +186,10 @@ export class PlayerUI {
   private toastEl!: HTMLElement;
   private skipBtn!: HTMLButtonElement;
 
-  /* Branded source toggle pill above right end of timeline */
+  /* Bottom dock: Title Logo / Cartoony Title + Submeta (left) & Source Pill (right) */
+  private dockIdentityEl!: HTMLElement;
+  private dockLogoSlot!: HTMLElement;
+  private dockSubmetaEl!: HTMLElement;
   private sourceSwitchWrap!: HTMLElement;
 
   /* Hotstar-style bottom language selector (shows in first 5 seconds) */
@@ -214,12 +262,14 @@ export class PlayerUI {
   private lastDurStr = '';
   private lastQualitySummary = '';
   private lastSourceSig = '';
+  private lastMediaSig = '';
   private skipRanges: { kind: string; start: number; end: number; label: string }[] = [];
 
   constructor(player: ElfuraPlayer) {
     this.player = player;
     this.build();
     this.wire();
+    this.syncMediaMetadata();
     this.syncCapabilities();
     this.showUI();
     this.startLoop();
@@ -236,24 +286,48 @@ export class PlayerUI {
     shell.dataset.playing = 'false';
     shell.dataset.fullscreen = 'false';
     shell.dataset.locked = 'false';
+    shell.dataset.pauseScreen = 'false';
+    // At initial load ("started"), brand badge opacity is 100%!
+    shell.dataset.brandFull = 'true';
 
-    /* 1. Top bar: Title on left, Quality + Audio & Subtitles + Screen Lock on right */
+    /* 1A. Persistent Top-Left Cluster:
+           - `[ <- Back ]` pill (shown ONLY when player UI is visible)
+           - `[ TV-Logo  TheOGPirateBot ]` pill (STAYS ON TOP even when UI is off;
+             100% opacity when started or paused, fades while playing!)
+           - `S1 · E1 — Episode Name` for TV series (shown ONLY when UI is visible;
+             never shows a duplicate top title logo). */
+    this.topBrandCluster = el('div', 'elf-brand-cluster');
+
+    this.backPillBtn = el(
+      'button',
+      'elf-pill-back',
+      `<span class="elf-pill-back-ico">${I.back}</span><span>Back</span>`,
+    ) as HTMLButtonElement;
+    this.backPillBtn.title = 'Back';
+    this.backPillBtn.setAttribute('aria-label', 'Back');
+    this.backPillBtn.hidden = cfg.back === false;
+
+    this.brandPill = el('div', 'elf-og-pill');
+    const brandIconWrap = el('span', 'elf-og-icon-box');
+    const brandImg = document.createElement('img');
+    brandImg.src = BRAND_ICON_URI;
+    brandImg.alt = '';
+    brandImg.decoding = 'async';
+    brandIconWrap.appendChild(brandImg);
+
+    this.brandTextEl = el('span', 'elf-og-name');
+    this.brandTextEl.textContent = String(cfg.brand || DEFAULT_BRAND_NAME);
+    this.brandPill.append(brandIconWrap, this.brandTextEl);
+
+    this.topEpisodeEl = el('div', 'elf-top-episode');
+    this.topEpisodeEl.hidden = true;
+
+    this.topBrandCluster.append(this.backPillBtn, this.brandPill, this.topEpisodeEl);
+    shell.appendChild(this.topBrandCluster);
+
+    /* 1B. Top-Right Chrome Bar (`Quality` + `Audio & Subtitles` + `Screen Lock`) */
     this.topEl = el('div', 'elf-top');
-    const topLeft = el('div', 'elf-top-left');
-    if (cfg.back) {
-      const b = el('button', 'elf-btn elf-back-btn', I.back) as HTMLButtonElement;
-      b.title = 'Back';
-      b.setAttribute('aria-label', 'Back');
-      b.onclick = () => this.player.bus.emit('back', {});
-      topLeft.appendChild(b);
-    }
-    this.titleEl = el('div', 'elf-title');
-    this.titleEl.textContent = cfg.title ?? '';
-    topLeft.appendChild(this.titleEl);
-    if (cfg.brand) {
-      topLeft.appendChild(el('span', 'elf-brand', esc(String(cfg.brand))));
-    }
-
+    const topSpacer = el('div', 'elf-top-spacer');
     const topRight = el('div', 'elf-top-actions');
 
     this.qualityTopBtn = el('button', 'elf-top-btn elf-quality-trigger') as HTMLButtonElement;
@@ -276,10 +350,28 @@ export class PlayerUI {
     this.lockBtn.appendChild(el('span', 'elf-top-icon', I.lockOpen));
 
     topRight.append(this.qualityTopBtn, this.audioSubsTopBtn, this.lockBtn);
-    this.topEl.append(topLeft, topRight);
+    this.topEl.append(topSpacer, topRight);
     shell.appendChild(this.topEl);
 
-    /* 2. Screen-Lock floating unlock pill (only shown when locked) */
+    /* 2. Cinema Paused Screen (exact clean layout from reference screenshot) */
+    this.pauseScreen = el('div', 'elf-pause-screen');
+    const pauseCard = el('div', 'elf-pause-card');
+    this.pauseTitleSlot = el('div', 'elf-pause-title-slot');
+    const pauseWord = el('div', 'elf-pause-word', 'PAUSED');
+    this.pauseTaglineEl = el('div', 'elf-pause-tagline');
+    this.pauseFactsEl = el('div', 'elf-pause-facts');
+    this.pauseOverviewEl = el('p', 'elf-pause-overview');
+    pauseCard.append(
+      this.pauseTitleSlot,
+      pauseWord,
+      this.pauseTaglineEl,
+      this.pauseFactsEl,
+      this.pauseOverviewEl,
+    );
+    this.pauseScreen.appendChild(pauseCard);
+    shell.appendChild(this.pauseScreen);
+
+    /* 3. Screen-Lock floating unlock pill (only shown when locked) */
     this.unlockPill = el(
       'button',
       'elf-unlock-pill',
@@ -288,7 +380,7 @@ export class PlayerUI {
     this.unlockPill.dataset.show = 'false';
     shell.appendChild(this.unlockPill);
 
-    /* 3. Hold-for-2x floating badge */
+    /* 4. Hold-for-2x floating badge */
     this.speedHoldBadge = el(
       'div',
       'elf-hold2x-pill',
@@ -297,7 +389,7 @@ export class PlayerUI {
     this.speedHoldBadge.dataset.show = 'false';
     shell.appendChild(this.speedHoldBadge);
 
-    /* 4. Double-tap left / right animated ripple zones */
+    /* 5. Double-tap left / right animated ripple zones */
     this.dtapLeftEl = el('div', 'elf-dtap-zone elf-dtap-left');
     this.dtapLeftEl.dataset.show = 'false';
     this.dtapLeftText = el('div', 'elf-dtap-label', '10s');
@@ -316,7 +408,7 @@ export class PlayerUI {
 
     shell.append(this.dtapLeftEl, this.dtapRightEl);
 
-    /* 5. Center layer: subtle state flash + buffering ring + initial play (NO center -10/+10!) */
+    /* 6. Center layer: subtle state flash + buffering ring + initial play (NO center -10/+10!) */
     const center = el('div', 'elf-center');
     this.flash = el('div', 'elf-flash', I.playSolid);
     this.spinner = el('div', 'elf-spinner');
@@ -325,7 +417,7 @@ export class PlayerUI {
     center.append(this.flash, this.spinner, this.bigPlay);
     shell.appendChild(center);
 
-    /* 6. Toast & Intro/Outro skip pill */
+    /* 7. Toast & Intro/Outro skip pill */
     this.toastEl = el('div', 'elf-toast');
     this.toastEl.dataset.show = 'false';
     shell.appendChild(this.toastEl);
@@ -334,7 +426,7 @@ export class PlayerUI {
     this.skipBtn.dataset.visible = 'false';
     shell.appendChild(this.skipBtn);
 
-    /* 7. Hotstar-style bottom language selector pill bar (first 5 seconds) */
+    /* 8. Hotstar-style bottom language selector pill bar (first 5 seconds) */
     this.hotstarBar = el('div', 'elf-hotstar-lang');
     this.hotstarBar.dataset.show = 'false';
     const hsTag = el('span', 'elf-hotstar-tag', `${I.langSpark}<span>Audio</span>`);
@@ -348,12 +440,19 @@ export class PlayerUI {
     this.hotstarBar.append(hsTag, this.hotstarPills, hsClose);
     shell.appendChild(this.hotstarBar);
 
-    /* 8. Bottom dock: Source pill + Inline timeline (`0:09 --- 1:33:49`) + Control bar */
+    /* 9. Bottom dock: [Title Logo / Cartoony Title + Submeta | Source Pill] + Inline Timeline + Control Bar */
     const bottomDock = el('div', 'elf-bottom-dock');
+
+    const dockUpper = el('div', 'elf-dock-upper');
+    this.dockIdentityEl = el('div', 'elf-dock-identity');
+    this.dockLogoSlot = el('div', 'elf-dock-logo-slot');
+    this.dockSubmetaEl = el('div', 'elf-dock-submeta');
+    this.dockIdentityEl.append(this.dockLogoSlot, this.dockSubmetaEl);
 
     this.sourceSwitchWrap = el('div', 'elf-source-row');
     this.sourceSwitchWrap.hidden = true;
-    bottomDock.appendChild(this.sourceSwitchWrap);
+    dockUpper.append(this.dockIdentityEl, this.sourceSwitchWrap);
+    bottomDock.appendChild(dockUpper);
 
     this.timelineRow = el('div', 'elf-timeline-row');
     this.curTimeEl = el('span', 'elf-time-inline elf-time-cur', '0:00');
@@ -425,7 +524,7 @@ export class PlayerUI {
     bottomDock.appendChild(this.bar);
     shell.appendChild(bottomDock);
 
-    /* 9. Modal / Sheet Overlay for Audio & Subtitles, Quality, Speed, Sources, Style */
+    /* 10. Modal / Sheet Overlay for Audio & Subtitles, Quality, Speed, Sources, Style */
     this.panelBackdrop = el('div', 'elf-panel-backdrop');
     this.panelBackdrop.dataset.open = 'false';
 
@@ -453,6 +552,175 @@ export class PlayerUI {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Title Logo / Cartoony Fallback + Paused Cinema Screen Sync          */
+  /* ------------------------------------------------------------------ */
+
+  private resolveDisplayMedia(): DisplayMedia {
+    const cfg = this.player.config;
+    const m: TitleMediaInfo | null =
+      typeof this.player.getMediaInfo === 'function' ? this.player.getMediaInfo() : null;
+
+    const rawCfgTitle = String(cfg.title ?? '').trim();
+    // Parse "Series · S1E1 — Episode Name" if present in cfg.title
+    const epPattern = /^(.*?)\s*·\s*S(\d+)E(\d+)(?:\s*[—-]\s*(.*))?$/i.exec(rawCfgTitle);
+
+    const mediaType: 'movie' | 'tv' =
+      m?.type ?? (cfg.mediaType === 'tv' || epPattern ? 'tv' : 'movie');
+
+    const season =
+      m?.season ?? (mediaType === 'tv' ? (epPattern ? Number(epPattern[2]) : cfg.season) : undefined);
+    const episode =
+      m?.episode ?? (mediaType === 'tv' ? (epPattern ? Number(epPattern[3]) : cfg.episode) : undefined);
+    const episodeName = String(m?.episodeName ?? (epPattern?.[4] ?? '')).trim();
+
+    const mainTitle = String(
+      m?.rawTitle || (epPattern ? epPattern[1] : '') || m?.title || rawCfgTitle || '',
+    ).trim();
+
+    const logo = m?.logo && m.logo !== this.failedLogoUrl ? m.logo : null;
+    const year = String(m?.year ?? '').trim();
+    const tagline = String(m?.tagline ?? '').trim();
+    const rating = typeof m?.rating === 'number' && Number.isFinite(m.rating) && m.rating > 0 ? m.rating : null;
+    const genres = Array.isArray(m?.genres) ? m.genres.filter(Boolean) : [];
+    const overview = String(m?.overview ?? '').trim();
+
+    return {
+      mediaType,
+      mainTitle,
+      season,
+      episode,
+      episodeName,
+      year,
+      tagline,
+      rating,
+      genres,
+      overview,
+      logo,
+    };
+  }
+
+  private createTitleVisual(dm: DisplayMedia, variant: 'dock' | 'pause'): HTMLElement | null {
+    if (dm.logo) {
+      const img = document.createElement('img');
+      img.className = `elf-title-logo elf-title-logo--${variant}`;
+      img.src = dm.logo;
+      img.alt = dm.mainTitle || 'Title';
+      img.decoding = 'async';
+      img.onerror = () => {
+        if (dm.logo && this.failedLogoUrl !== dm.logo) {
+          this.failedLogoUrl = dm.logo;
+          this.lastMediaSig = '';
+          this.syncMediaMetadata();
+        }
+      };
+      return img;
+    }
+    if (dm.mainTitle) {
+      const cartoon = el('div', `elf-title-cartoon elf-title-cartoon--${variant}`);
+      cartoon.textContent = dm.mainTitle;
+      return cartoon;
+    }
+    return null;
+  }
+
+  private syncMediaMetadata(): void {
+    const cfg = this.player.config;
+    this.backPillBtn.hidden = cfg.back === false;
+    this.brandTextEl.textContent = String(cfg.brand || DEFAULT_BRAND_NAME);
+
+    const dm = this.resolveDisplayMedia();
+    const sig = JSON.stringify(dm);
+    if (sig === this.lastMediaSig) return;
+    this.lastMediaSig = sig;
+
+    /* A. Top bar TV Episode indicator (NO top title logo — only S# · E# — Episode Name!) */
+    if (dm.mediaType === 'tv' && dm.season && dm.episode) {
+      const epCode = `S${dm.season} · E${dm.episode}`;
+      this.topEpisodeEl.textContent = dm.episodeName ? `${epCode} — ${dm.episodeName}` : epCode;
+      this.topEpisodeEl.hidden = false;
+    } else {
+      this.topEpisodeEl.textContent = '';
+      this.topEpisodeEl.hidden = true;
+    }
+
+    /* B. Bottom-dock Title Logo (or Cartoony Font fallback) + `Movie · Genre · Year` */
+    this.dockLogoSlot.replaceChildren();
+    const dockVisual = this.createTitleVisual(dm, 'dock');
+    if (dockVisual) this.dockLogoSlot.appendChild(dockVisual);
+
+    const dockParts: string[] = [];
+    if (dm.mainTitle || dm.logo) {
+      dockParts.push(dm.mediaType === 'tv' ? 'Series' : 'Movie');
+    }
+    if (dm.mediaType === 'tv' && dm.season && dm.episode) {
+      dockParts.push(`S${dm.season} E${dm.episode}`);
+    } else if (dm.genres.length > 0) {
+      dockParts.push(dm.genres[0]);
+    }
+    if (dm.year) dockParts.push(dm.year);
+    this.dockSubmetaEl.textContent = dockParts.join(' · ');
+    this.dockSubmetaEl.hidden = dockParts.length === 0;
+    this.dockIdentityEl.hidden = !dockVisual && dockParts.length === 0;
+
+    /* C. Cinema Paused Screen (Title Logo / Cartoony Title + PAUSED + "Tagline" + Year • ★ Rating + Overview) */
+    this.pauseTitleSlot.replaceChildren();
+    const pauseVisual = this.createTitleVisual(dm, 'pause');
+    if (pauseVisual) this.pauseTitleSlot.appendChild(pauseVisual);
+
+    if (dm.tagline) {
+      const cleanTag = dm.tagline.replace(/^["“]+|["”]+$/g, '');
+      this.pauseTaglineEl.textContent = `“${cleanTag}”`;
+      this.pauseTaglineEl.hidden = false;
+    } else {
+      this.pauseTaglineEl.textContent = '';
+      this.pauseTaglineEl.hidden = true;
+    }
+
+    const factItems: string[] = [];
+    if (dm.year) factItems.push(`<span class="elf-pf-year">${esc(dm.year)}</span>`);
+    if (dm.rating !== null) {
+      factItems.push(
+        `<span class="elf-pf-rating"><span class="elf-pf-star">${I.star}</span>${esc(dm.rating.toFixed(1))}</span>`,
+      );
+    }
+    if (dm.mediaType === 'tv' && dm.season && dm.episode) {
+      const epStr = dm.episodeName
+        ? `S${dm.season} E${dm.episode} · ${dm.episodeName}`
+        : `S${dm.season} E${dm.episode}`;
+      factItems.push(`<span class="elf-pf-ep">${esc(epStr)}</span>`);
+    } else if (dm.genres.length > 0 && dm.rating === null) {
+      factItems.push(`<span class="elf-pf-genre">${esc(dm.genres.slice(0, 2).join(', '))}</span>`);
+    }
+    this.pauseFactsEl.innerHTML = factItems.join('<span class="elf-pf-dot">•</span>');
+    this.pauseFactsEl.hidden = factItems.length === 0;
+
+    this.pauseOverviewEl.textContent = dm.overview;
+    this.pauseOverviewEl.hidden = !dm.overview;
+  }
+
+  private enterPauseScreen(): void {
+    if (this.locked || this.panel.dataset.open === 'true') return;
+    clearTimeout(this.hideTimer);
+    clearTimeout(this.pauseIdleTimer);
+    this.player.shell.dataset.pauseScreen = 'true';
+    this.player.shell.dataset.ui = 'hidden';
+    // Paused -> brand logo & name at 100% opacity!
+    this.player.shell.dataset.brandFull = 'true';
+  }
+
+  private schedulePauseScreen(ms = 3200): void {
+    clearTimeout(this.pauseIdleTimer);
+    if (!this.player.video.paused || !this.hasStartedPlayback || this.locked || this.panel.dataset.open === 'true') {
+      return;
+    }
+    this.pauseIdleTimer = window.setTimeout(() => {
+      if (this.player.video.paused && this.hasStartedPlayback && this.panel.dataset.open !== 'true' && !this.locked) {
+        this.enterPauseScreen();
+      }
+    }, ms);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Wiring & Gestures                                                   */
   /* ------------------------------------------------------------------ */
 
@@ -461,6 +729,18 @@ export class PlayerUI {
     const shell = this.player.shell;
     const bus = this.player.bus;
     const step = Number(this.player.config.skipStep ?? 10);
+
+    this.backPillBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.player.bus.emit('back', {});
+      try {
+        if (window === window.top && window.history.length > 1) {
+          window.history.back();
+        }
+      } catch {
+        /* cross-origin parent iframe — postMessage bridge already delivered `back` */
+      }
+    };
 
     this.playBtn.onclick = () => {
       this.triggerBtnPop(this.playBtn);
@@ -544,28 +824,64 @@ export class PlayerUI {
 
     shell.addEventListener('pointermove', (e) => {
       if (this.locked) return;
-      if (e.pointerType === 'mouse') this.showUI();
+      if (e.pointerType === 'mouse') {
+        this.showUI();
+      }
     });
     shell.addEventListener('pointerleave', (e) => {
-      if (e.pointerType === 'mouse' && !this.locked) this.scheduleHide();
+      if (e.pointerType === 'mouse' && !this.locked) {
+        if (v.paused && this.hasStartedPlayback) this.enterPauseScreen();
+        else this.scheduleHide();
+      }
     });
 
     v.addEventListener('play', () => {
+      const firstStart = !this.hasStartedPlayback;
+      this.hasStartedPlayback = true;
+      clearTimeout(this.pauseIdleTimer);
+      shell.dataset.pauseScreen = 'false';
       shell.dataset.playing = 'true';
       shell.dataset.paused = 'false';
       this.playBtn.setAttribute('aria-label', 'Pause');
+
+      // Brand pill: 100% opacity when started, then fades smoothly while playing!
+      clearTimeout(this.startWindowTimer);
+      if (firstStart) {
+        shell.dataset.brandFull = 'true';
+        this.startWindowTimer = window.setTimeout(() => {
+          if (!this.player.video.paused) {
+            shell.dataset.brandFull = 'false';
+          }
+        }, 3600);
+      } else {
+        shell.dataset.brandFull = 'false';
+      }
+
       this.flashIcon(I.playSolid);
       this.maybeTriggerHotstarBar();
       this.scheduleHide();
     });
+
     v.addEventListener('pause', () => {
       this.stopHold2x();
+      clearTimeout(this.startWindowTimer);
       shell.dataset.playing = 'false';
       shell.dataset.paused = 'true';
+      // When paused: brand logo & TheOGPirateBot opacity is 100%!
+      shell.dataset.brandFull = 'true';
       this.playBtn.setAttribute('aria-label', 'Play');
       this.flashIcon(I.pauseSolid);
-      if (!this.locked) this.showUI();
+
+      if (!this.locked) {
+        if (this.hasStartedPlayback || v.currentTime > 0) {
+          this.hasStartedPlayback = true;
+          this.enterPauseScreen();
+        } else {
+          this.showUI();
+        }
+      }
     });
+
     v.addEventListener('waiting', () => (shell.dataset.buffering = 'true'));
     v.addEventListener('playing', () => {
       shell.dataset.buffering = 'false';
@@ -576,18 +892,21 @@ export class PlayerUI {
       this.maybeTriggerHotstarBar();
     });
 
+    bus.on('media', () => {
+      this.failedLogoUrl = '';
+      this.syncMediaMetadata();
+    });
     bus.on('config', () => {
-      const nextTitle = this.player.config.title ?? '';
-      if (nextTitle !== this.titleEl.textContent) {
-        this.titleEl.textContent = nextTitle;
-        this.hotstarShownForTitle = false;
-        this.hotstarDismissed = false;
-      }
+      this.syncMediaMetadata();
       this.renderSegments();
     });
     bus.on('sources', () => {
       this.hotstarShownForTitle = false;
       this.hotstarDismissed = false;
+      this.hasStartedPlayback = false;
+      shell.dataset.pauseScreen = 'false';
+      shell.dataset.brandFull = 'true';
+      this.syncMediaMetadata();
       this.syncCapabilities();
       this.rebuildPanelIfOpen();
     });
@@ -684,7 +1003,7 @@ export class PlayerUI {
     if (!(target instanceof HTMLElement)) return false;
     return Boolean(
       target.closest(
-        '.elf-top, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-hotstar-lang, .elf-skip, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
+        '.elf-brand-cluster, .elf-top-actions, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-hotstar-lang, .elf-skip, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
       ),
     );
   }
@@ -746,7 +1065,6 @@ export class PlayerUI {
     shell.addEventListener('pointerup', (e) => finishPointer(e, false));
     shell.addEventListener('pointercancel', (e) => finishPointer(e, true));
 
-    // Prevent synthetic click after pointerup gesture handling
     shell.addEventListener('click', (e) => {
       if (this.isInteractiveChrome(e.target)) return;
       if (Date.now() < this.suppressClickUntil || this.locked) {
@@ -757,12 +1075,12 @@ export class PlayerUI {
   }
 
   private handleSurfaceTap(clientX: number, pointerType: string, step: number): void {
-    const rect = this.player.shell.getBoundingClientRect();
+    const shell = this.player.shell;
+    const rect = shell.getBoundingClientRect();
     const relX = (clientX - rect.left) / Math.max(1, rect.width);
     const zone: 'left' | 'center' | 'right' =
       relX < 0.36 ? 'left' : relX > 0.64 ? 'right' : 'center';
 
-    // If a double-tap sequence is already accumulating on left/right, every rapid tap adds +10s immediately!
     if (this.dtapAccumSec > 0 && this.tapZone === zone && (zone === 'left' || zone === 'right')) {
       clearTimeout(this.singleTapTimer);
       this.triggerDoubleTapSkip(zone, step);
@@ -775,7 +1093,7 @@ export class PlayerUI {
       if (zone === 'left' || zone === 'right') {
         this.triggerDoubleTapSkip(zone, step);
       } else if (pointerType === 'mouse') {
-        void this.player.fullscreen(document.fullscreenElement !== this.player.shell);
+        void this.player.fullscreen(document.fullscreenElement !== shell);
       } else {
         this.player.toggle();
       }
@@ -792,9 +1110,16 @@ export class PlayerUI {
         return;
       }
       if (pointerType === 'touch') {
-        if (this.player.shell.dataset.ui === 'visible') {
-          this.player.shell.dataset.ui = 'hidden';
-          clearTimeout(this.hideTimer);
+        if (shell.dataset.pauseScreen === 'true') {
+          // Single tap on Paused Cinema Screen wakes up controls (and drifts back to Paused Screen if left idle)
+          this.showUI();
+        } else if (shell.dataset.ui === 'visible') {
+          if (this.player.video.paused && this.hasStartedPlayback) {
+            this.enterPauseScreen();
+          } else {
+            shell.dataset.ui = 'hidden';
+            clearTimeout(this.hideTimer);
+          }
         } else {
           this.showUI();
         }
@@ -864,8 +1189,10 @@ export class PlayerUI {
       this.stopHold2x();
       this.closePanel();
       this.dismissHotstarBar(false);
+      shell.dataset.pauseScreen = 'false';
       shell.dataset.ui = 'hidden';
       clearTimeout(this.hideTimer);
+      clearTimeout(this.pauseIdleTimer);
       this.peekUnlockPill();
     } else {
       clearTimeout(this.lockPeekTimer);
@@ -919,7 +1246,6 @@ export class PlayerUI {
     if (tracks.length < 2) return;
     const v = this.player.video;
 
-    // Already shown and currently open -> start the 5s countdown once playback begins
     if (this.hotstarShownForTitle) {
       if (this.hotstarBar.dataset.show === 'true' && !v.paused && !this.hotstarTimer) {
         this.armHotstarHide(5000);
@@ -927,7 +1253,6 @@ export class PlayerUI {
       return;
     }
 
-    // Only auto-trigger during the initial start window of a title
     if (v.currentTime > 8 && !v.paused) return;
 
     this.hotstarShownForTitle = true;
@@ -984,12 +1309,7 @@ export class PlayerUI {
     const st = this.player.getState();
     const mode = d?.mode ?? st.qualityMode ?? 'auto';
     const eff = d?.height ?? st.effectiveHeight;
-    let summary = 'Auto';
-    if (mode === 'auto') {
-      summary = eff ? `Auto · ${eff}p` : 'Auto';
-    } else {
-      summary = `${mode}p`;
-    }
+    const summary = mode === 'auto' ? (eff ? `Auto · ${eff}p` : 'Auto') : `${mode}p`;
     if (summary !== this.lastQualitySummary) {
       this.qualitySubText.textContent = summary;
       this.lastQualitySummary = summary;
@@ -1004,7 +1324,6 @@ export class PlayerUI {
       return;
     }
 
-    // Group cleanly by branded sourceId (`source-1` -> `Source 1`, `source-2` -> `Source 2`)
     const groups: { sourceId: string; shortLabel: string; firstOptionId: string }[] = [];
     for (const s of sources) {
       if (!groups.some((g) => g.sourceId === s.sourceId)) {
@@ -1240,8 +1559,9 @@ export class PlayerUI {
       switch (e.key.toLowerCase()) {
         case ' ':
         case 'k':
+          e.preventDefault();
           this.player.toggle();
-          break;
+          return;
         case 'arrowright':
         case 'l':
           this.triggerDoubleTapSkip('right', step);
@@ -1332,6 +1652,8 @@ export class PlayerUI {
     this.panelMode =
       mode === 'style' || modes.some((m) => m.id === mode) ? mode : (modes[0]?.id ?? 'speed');
     this.dismissHotstarBar(false);
+    clearTimeout(this.pauseIdleTimer);
+    this.player.shell.dataset.pauseScreen = 'false';
     this.panel.dataset.open = 'true';
     this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
     this.panelBackdrop.dataset.open = 'true';
@@ -1349,7 +1671,11 @@ export class PlayerUI {
     this.audioSubsTopBtn.dataset.active = 'false';
     this.previewRenderer?.destroy();
     this.previewRenderer = null;
-    this.scheduleHide();
+    if (this.player.video.paused && this.hasStartedPlayback) {
+      this.schedulePauseScreen(2600);
+    } else {
+      this.scheduleHide();
+    }
   }
 
   private rebuildPanelIfOpen(): void {
@@ -1415,7 +1741,6 @@ export class PlayerUI {
     this.panelBody.scrollTop = 0;
   }
 
-  /** Netflix-style side-by-side Audio & Subtitles sheet! */
   private renderAudioAndSubs(): void {
     const st = this.player.getState();
     const audioTracks: AudioTrack[] = this.player.getAudioTracks();
@@ -1424,7 +1749,6 @@ export class PlayerUI {
     const grid = el('div', 'elf-as-grid');
     grid.dataset.dual = String(audioTracks.length > 0 && subTracks.length >= 0);
 
-    /* Left Column: Audio */
     if (audioTracks.length > 0) {
       const colAudio = el('div', 'elf-as-col');
       colAudio.appendChild(el('div', 'elf-col-heading', 'Audio'));
@@ -1443,7 +1767,6 @@ export class PlayerUI {
       grid.appendChild(colAudio);
     }
 
-    /* Right Column: Subtitles */
     const colSubs = el('div', 'elf-as-col');
     colSubs.appendChild(el('div', 'elf-col-heading', 'Subtitles'));
     const listSubs = el('div', 'elf-col-list');
@@ -1749,8 +2072,13 @@ export class PlayerUI {
 
   private showUI(): void {
     if (this.locked) return;
+    this.player.shell.dataset.pauseScreen = 'false';
     this.player.shell.dataset.ui = 'visible';
-    this.scheduleHide();
+    if (this.player.video.paused && this.hasStartedPlayback) {
+      this.schedulePauseScreen(3500);
+    } else {
+      this.scheduleHide();
+    }
   }
 
   private scheduleHide(): void {
@@ -1778,6 +2106,8 @@ export class PlayerUI {
   destroy(): void {
     cancelAnimationFrame(this.raf);
     clearTimeout(this.hideTimer);
+    clearTimeout(this.pauseIdleTimer);
+    clearTimeout(this.startWindowTimer);
     clearTimeout(this.toastTimer);
     clearTimeout(this.searchingTimer);
     clearTimeout(this.flashTimer);

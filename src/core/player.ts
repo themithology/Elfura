@@ -83,6 +83,24 @@ export interface SourceOption {
   subtitles: { lang: string; label: string; url: string }[];
 }
 
+export interface TitleMediaInfo {
+  type?: 'movie' | 'tv';
+  tmdbId?: string;
+  season?: number;
+  episode?: number;
+  episodeName?: string;
+  title?: string;
+  rawTitle?: string;
+  year?: string;
+  tagline?: string;
+  rating?: number | null;
+  genres?: string[];
+  overview?: string;
+  poster?: string | null;
+  backdrop?: string | null;
+  logo?: string | null;
+}
+
 export interface PlayerState {
   playing: boolean;
   time: number;
@@ -148,6 +166,7 @@ export class ElfuraPlayer {
   private qualityLevels: QualityLevel[] = [];
   private qualityMode = 'auto';
   private effectiveHeight = 0;
+  private mediaInfo: TitleMediaInfo | null = null;
 
   renderer: SubtitleRenderer | null = null;
   bridge!: PostMessageBridge;
@@ -270,6 +289,13 @@ export class ElfuraPlayer {
   }
   getCues(): Cue[] {
     return this.cues;
+  }
+  getMediaInfo(): TitleMediaInfo | null {
+    return this.mediaInfo;
+  }
+  setMediaInfo(info: TitleMediaInfo | null): void {
+    this.mediaInfo = info;
+    if (info) this.emit('media', info);
   }
 
   async setSource(id: string): Promise<boolean> {
@@ -684,7 +710,7 @@ export class ElfuraPlayer {
 
       const data = (await res.json()) as {
         ok?: boolean;
-        media?: { title?: string; poster?: string | null; backdrop?: string | null };
+        media?: TitleMediaInfo;
         primary?: SourceOption;
         sources?: SourceOption[];
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
@@ -697,6 +723,9 @@ export class ElfuraPlayer {
         return;
       }
 
+      if (data.media) {
+        this.mediaInfo = data.media;
+      }
       if (!cfg.title && data.media?.title) {
         cfg.title = data.media.title;
       }
@@ -720,6 +749,7 @@ export class ElfuraPlayer {
       this.failedSourceIds.clear();
       this.failedFingerprints.clear();
       this.initialAudioApplied = false;
+      if (this.mediaInfo) this.emit('media', this.mediaInfo);
       this.emit('config', redacted(cfg as unknown as Record<string, unknown>));
       this.emit('sources', this.sources);
 

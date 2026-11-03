@@ -206,10 +206,16 @@ const mockUpstream = http.createServer(async (req, res) => {
         id: 94605,
         name: 'Arcane',
         first_air_date: '2021-11-06',
+        tagline: 'Every legend has a beginning.',
+        vote_average: 8.76,
+        genres: [{ name: 'Animation' }, { name: 'Action' }],
         overview: 'Amid the stark discord of twin cities Piltover and Zaun...',
         poster_path: '/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg',
         backdrop_path: '/rkB4LyZHo1NHXFEDHl9vSD9r1lI.jpg',
         external_ids: { imdb_id: 'tt11126994' },
+        images: {
+          logos: [{ iso_639_1: 'en', file_path: '/arcaneTitleLogo.png' }],
+        },
       }),
     );
     return;
@@ -1724,22 +1730,37 @@ try {
     'Expected cold-cache retry on `atlas` to recover Hindi & Japanese candidates',
   );
 
-  // 13. Verify OTT Player UI Overhaul (Part 1 `src/ui/`):
-  //     - Top-right `Quality`, `Audio & Subtitles`, and `Screen Lock` triggers
-  //     - Zero center forward/backward 10s skip buttons (`.elf-center` contains only play/spinner/flash)
-  //     - Animated Play/Pause morph SVG (`.elf-pp-svg`) + 4-corner animated Fullscreen SVG (`.elf-fs-svg`)
-  //     - Double-tap left/right 10s skip zones (`.elf-dtap-left` / `.elf-dtap-right`)
-  //     - Hold-for-2x badge (`.elf-hold2x-pill`) + Screen Lock pill (`.elf-unlock-pill`)
-  //     - Hotstar-style bottom language selector (`.elf-hotstar-lang`) dynamically driven by audio tracks
+  // 13. Verify OTT Player UI Overhaul + Cinema Paused Screen + Brand Watermark:
+  //     - TMDB `media` carries `episodeName`, `tagline`, `rating`, `genres`, and `logo`
+  //     - Persistent `TheOGPirateBot` brand badge (100% opacity when started/paused, faded while playing)
+  //     - `Back` button only when UI is on (no `Home` button), and `S# · E# — Episode Name` on top for TV
+  //     - Title Logo with playful Cartoony Font fallback (`elf-title-cartoon`) when logo is unavailable
+  //     - Cinema Paused Screen (`elf-pause-screen`: Title Logo/Cartoon, `PAUSED`, tagline, year + ★ rating, overview)
+  //     - Zero center forward/backward 10s skip buttons, animated Play/Pause & 4-corner Fullscreen,
+  //       double-tap 10s skip, hold-for-2x, Screen Lock, and Hotstar 5s bottom language selector
+  assert.equal(pb.media.episodeName, 'Welcome to the Playground');
+  assert.equal(pb.media.tagline, 'Every legend has a beginning.');
+  assert.equal(pb.media.rating, 8.8);
+  assert.deepEqual(pb.media.genres, ['Animation', 'Action']);
+  assert.equal(pb.media.logo, 'https://image.tmdb.org/t/p/w780/arcaneTitleLogo.png');
+
   const cssAssetsDir = new URL('../../dist/assets/', import.meta.url);
   const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.endsWith('.css'));
   assert(cssFile, 'Expected built player CSS asset in dist/assets/');
   const builtCss = fs.readFileSync(new URL(cssFile, cssAssetsDir), 'utf8');
 
   for (const requiredToken of [
+    'TheOGPirateBot',
     'Audio & Subtitles',
     'Screen Locked',
     '2× Speed',
+    'PAUSED',
+    'elf-og-pill',
+    'elf-pill-back',
+    'elf-top-episode',
+    'elf-pause-screen',
+    'elf-title-logo',
+    'elf-title-cartoon',
     'elf-hotstar-lang',
     'elf-pp-svg',
     'elf-fs-svg',
@@ -1751,9 +1772,18 @@ try {
   ]) {
     assert(libBundle.includes(requiredToken), `Expected PlayerUI bundle to contain "${requiredToken}"`);
   }
-  // Ensure center container never mounts skip10 buttons
   assert(!libBundle.includes('center.append(this.back10'), 'Center container must not include 10s skip buttons');
-  for (const requiredCss of ['.elf-hotstar-lang', '.elf-fs-tl', '.elf-pp-pause', '.elf-dtap-ripple', '.elf-scrub-knob']) {
+  for (const requiredCss of [
+    '.elf-og-pill',
+    '.elf-pill-back',
+    '.elf-pause-screen',
+    '.elf-title-cartoon',
+    '.elf-hotstar-lang',
+    '.elf-fs-tl',
+    '.elf-pp-pause',
+    '.elf-dtap-ripple',
+    '.elf-scrub-knob',
+  ]) {
     assert(builtCss.includes(requiredCss), `Expected built CSS to include "${requiredCss}"`);
   }
 

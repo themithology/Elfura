@@ -434,9 +434,9 @@ export const PARAM_SCHEMA: readonly ParamSpec[] = [
   {
     key: 'back',
     type: 'boolean',
-    default: false,
+    default: true,
     group: 'ui',
-    desc: 'Show a back arrow in the top bar; posts a `back` message to the parent instead of navigating.',
+    desc: 'Show a back button in the top bar while player UI is visible; posts a `back` message to the parent (or navigates back when standalone).',
   },
   {
     key: 'episodeSelector',
