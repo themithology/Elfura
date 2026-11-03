@@ -1724,7 +1724,40 @@ try {
     'Expected cold-cache retry on `atlas` to recover Hindi & Japanese candidates',
   );
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, TMDB, 30-server Source 2, cold-miss recovery, multi-audio discovery, deep dead-stream pruning & clean UI tests passed.');
+  // 13. Verify OTT Player UI Overhaul (Part 1 `src/ui/`):
+  //     - Top-right `Quality`, `Audio & Subtitles`, and `Screen Lock` triggers
+  //     - Zero center forward/backward 10s skip buttons (`.elf-center` contains only play/spinner/flash)
+  //     - Animated Play/Pause morph SVG (`.elf-pp-svg`) + 4-corner animated Fullscreen SVG (`.elf-fs-svg`)
+  //     - Double-tap left/right 10s skip zones (`.elf-dtap-left` / `.elf-dtap-right`)
+  //     - Hold-for-2x badge (`.elf-hold2x-pill`) + Screen Lock pill (`.elf-unlock-pill`)
+  //     - Hotstar-style bottom language selector (`.elf-hotstar-lang`) dynamically driven by audio tracks
+  const cssAssetsDir = new URL('../../dist/assets/', import.meta.url);
+  const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.endsWith('.css'));
+  assert(cssFile, 'Expected built player CSS asset in dist/assets/');
+  const builtCss = fs.readFileSync(new URL(cssFile, cssAssetsDir), 'utf8');
+
+  for (const requiredToken of [
+    'Audio & Subtitles',
+    'Screen Locked',
+    '2× Speed',
+    'elf-hotstar-lang',
+    'elf-pp-svg',
+    'elf-fs-svg',
+    'elf-dtap-left',
+    'elf-dtap-right',
+    'elf-unlock-pill',
+    'elf-timeline-row',
+    'elf-skip10-btn',
+  ]) {
+    assert(libBundle.includes(requiredToken), `Expected PlayerUI bundle to contain "${requiredToken}"`);
+  }
+  // Ensure center container never mounts skip10 buttons
+  assert(!libBundle.includes('center.append(this.back10'), 'Center container must not include 10s skip buttons');
+  for (const requiredCss of ['.elf-hotstar-lang', '.elf-fs-tl', '.elf-pp-pause', '.elf-dtap-ripple', '.elf-scrub-knob']) {
+    assert(builtCss.includes(requiredCss), `Expected built CSS to include "${requiredCss}"`);
+  }
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, TMDB, 30-server Source 2, cold-miss recovery, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();
