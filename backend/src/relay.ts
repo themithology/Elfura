@@ -659,7 +659,12 @@ async function sendRewrittenManifest(
     if (samples.size > 0) {
       await Promise.all(
         [...samples.entries()].map(async ([bucket, sampleUrl]) => {
-          const ok = await verifyDirectSegmentOffload(sampleUrl, relayOpts.requireHttpsOffload);
+          // Never stall initial manifest delivery waiting >260ms on a cold CORS preflight;
+          // if the CDN takes longer, let the probe finish into RAM cache in the background!
+          const ok = await Promise.race([
+            verifyDirectSegmentOffload(sampleUrl, relayOpts.requireHttpsOffload),
+            new Promise<boolean>((r) => setTimeout(() => r(false), 260)),
+          ]);
           if (ok) allowedBuckets.add(bucket);
         }),
       );

@@ -156,7 +156,7 @@ async function verifyChildHlsPlaylist(
     method: 'GET',
     headers,
     redirect: 'follow',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(1500)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(1150)]),
   });
   const finalUrl = res.url || childUrl;
   if (!isSafeUpstreamUrl(finalUrl)) return false;
@@ -206,8 +206,8 @@ async function runSingleProbe(
     const t0 = performance.now();
     const elapsed = () => Math.max(1, Math.round(performance.now() - t0));
     const sig = outerSignal
-      ? AbortSignal.any([outerSignal, AbortSignal.timeout(1900)])
-      : AbortSignal.timeout(1900);
+      ? AbortSignal.any([outerSignal, AbortSignal.timeout(1500)])
+      : AbortSignal.timeout(1500);
 
     try {
       if (cand.type === 'mp4') {
@@ -387,29 +387,37 @@ export async function verifyAndFilterCandidates(
 ): Promise<RawStreamCandidate[]> {
   if (!candidates.length) return [];
 
-  // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead
-  const uniqueTargets = new Map<string, { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string> }>();
+  // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead.
+  // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
+  const uniqueTargets = new Map<
+    string,
+    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; priority: number }
+  >();
   for (const c of candidates) {
     const pKey = cacheKeyFor(c.url, c.headers);
-    if (!uniqueTargets.has(pKey)) {
-      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers });
+    const candPrio = (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
+    const prev = uniqueTargets.get(pKey);
+    if (!prev || candPrio < prev.priority) {
+      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, priority: candPrio });
     }
     if (c.standbyUrl && c.standbyUrl !== c.url) {
       const sHeaders = c.standbyHeaders ?? c.headers;
       const sKey = cacheKeyFor(c.standbyUrl, sHeaders);
-      if (!uniqueTargets.has(sKey)) {
-        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders });
+      const standbyPrio = candPrio + 1500;
+      const prevS = uniqueTargets.get(sKey);
+      if (!prevS || standbyPrio < prevS.priority) {
+        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders, priority: standbyPrio });
       }
     }
   }
 
   const budgetSig = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(2400)])
-    : AbortSignal.timeout(2400);
+    ? AbortSignal.any([signal, AbortSignal.timeout(1950)])
+    : AbortSignal.timeout(1950);
 
   const outcomes = new Map<string, LivenessProbeOutcome>();
-  const entries = [...uniqueTargets.entries()];
-  const concurrency = Math.min(12, entries.length);
+  const entries = [...uniqueTargets.entries()].sort((a, b) => a[1].priority - b[1].priority);
+  const concurrency = Math.min(20, entries.length);
   let cursor = 0;
 
   await Promise.all(

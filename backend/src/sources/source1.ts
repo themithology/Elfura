@@ -543,31 +543,54 @@ async function fetchFromRiftBoot(
       (s) => typeof s?.url === 'string' && s.url.includes('/api/orion/'),
     );
 
-    // Fetch subtitles once from the first Orion stream that returns tracks
+    // Fetch subtitles with a fast 950ms cap (direct Orion when playbackToken is present, else relay)
     let sharedSubs: RawTrackRef[] = [];
-    for (const item of orion) {
-      const hash = item.url?.split('/api/orion/')[1]?.split('/')[0];
-      if (!hash) continue;
+    const firstHash = orion[0]?.url?.split('/api/orion/')[1]?.split('/')[0];
+    if (firstHash) {
       try {
-        const subJsonUrl = wrapRelay(`${cfg.riftOrigin}/api/orion/${hash}/subtitles.json`, false);
-        const subRes = await fetch(subJsonUrl, {
-          headers: { 'User-Agent': BROWSER_UA },
-          signal: AbortSignal.timeout(2200),
-        });
-        if (!subRes.ok) continue;
-        const subBody = (await subRes.json()) as { tracks?: { label?: string; lang?: string; url?: string }[] };
-        if (Array.isArray(subBody?.tracks) && subBody.tracks.length > 0) {
-          sharedSubs = mapSubtitles(
-            subBody.tracks.map((t) => ({
-              label: t.label,
-              lang: t.lang,
-              url: t.url ? wrapRelay(`${cfg.riftOrigin}${t.url}`, false) : undefined,
-            })),
-          );
-          break;
+        const directSubUrl = `${cfg.riftOrigin}/api/orion/${firstHash}/subtitles.json`;
+        const relaySubUrl = wrapRelay(directSubUrl, false);
+        const subRes = riftPlaybackToken
+          ? await fetch(directSubUrl, {
+              headers: {
+                Referer: `${cfg.riftOrigin}/`,
+                Origin: cfg.riftOrigin,
+                'User-Agent': BROWSER_UA,
+                'X-Playback-Token': riftPlaybackToken,
+              },
+              signal: AbortSignal.timeout(950),
+            }).catch(() => null)
+          : await fetch(relaySubUrl, {
+              headers: { 'User-Agent': BROWSER_UA },
+              signal: AbortSignal.timeout(950),
+            }).catch(() => null);
+        if (subRes?.ok) {
+          const subBody = (await subRes.json()) as { tracks?: { label?: string; lang?: string; url?: string }[] };
+          if (Array.isArray(subBody?.tracks) && subBody.tracks.length > 0) {
+            const directHeaders = riftPlaybackToken
+              ? {
+                  Referer: `${cfg.riftOrigin}/`,
+                  Origin: cfg.riftOrigin,
+                  'User-Agent': BROWSER_UA,
+                  'X-Playback-Token': riftPlaybackToken,
+                }
+              : undefined;
+            sharedSubs = mapSubtitles(
+              subBody.tracks.map((t) => ({
+                label: t.label,
+                lang: t.lang,
+                url: t.url
+                  ? riftPlaybackToken
+                    ? `${cfg.riftOrigin}${t.url}`
+                    : wrapRelay(`${cfg.riftOrigin}${t.url}`, false)
+                  : undefined,
+              })),
+              directHeaders,
+            );
+          }
         }
       } catch {
-        /* try next stream */
+        /* ignore subtitle timeout */
       }
     }
 
@@ -596,15 +619,27 @@ async function fetchFromRiftBoot(
         const absTarget = /^https?:\/\//i.test(s.url)
           ? s.url
           : `${cfg.riftOrigin}/api/orion/${hash}/master.m3u8`;
-        finalUrl = wrapRelay(absTarget, streamType === 'hls');
-        if (absTarget !== finalUrl && isSafeUpstreamUrl(absTarget)) {
-          standbyUrl = absTarget;
-          standbyHeaders = {
-            Referer: `${cfg.riftOrigin}/`,
-            Origin: cfg.riftOrigin,
-            'User-Agent': BROWSER_UA,
-            ...(riftPlaybackToken ? { 'X-Playback-Token': riftPlaybackToken } : {}),
-          };
+        const relayedTarget = wrapRelay(absTarget, streamType === 'hls');
+        const directOrionHeaders: Record<string, string> = {
+          Referer: `${cfg.riftOrigin}/`,
+          Origin: cfg.riftOrigin,
+          'User-Agent': BROWSER_UA,
+          ...(riftPlaybackToken ? { 'X-Playback-Token': riftPlaybackToken } : {}),
+        };
+        if (riftPlaybackToken && isSafeUpstreamUrl(absTarget)) {
+          // Prefer direct Orion HLS when boot provided a live playbackToken (avoids paused external relays)
+          finalUrl = absTarget;
+          headers = directOrionHeaders;
+          if (relayedTarget !== absTarget && isSafeUpstreamUrl(relayedTarget)) {
+            standbyUrl = relayedTarget;
+            standbyHeaders = { 'User-Agent': BROWSER_UA };
+          }
+        } else {
+          finalUrl = relayedTarget;
+          if (absTarget !== finalUrl && isSafeUpstreamUrl(absTarget)) {
+            standbyUrl = absTarget;
+            standbyHeaders = directOrionHeaders;
+          }
         }
       }
 
@@ -898,8 +933,12 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
           releaseEarly?.();
           return;
         }
+        // Once the main multi-audio pipeline (`secure`) + at least one companion pipeline
+        // (`sync` or `rift`) have settled with candidates, only allow a brief 320ms window
+        // for blocked/slow endpoints (`public`) instead of stalling startup for 1.4s+.
         if (hasCandidates && settledCount >= 2 && !graceTimer) {
-          graceTimer = setTimeout(() => releaseEarly?.(), 1400);
+          const fastWindowMs = slots.secure && (slots.sync || slots.rift) ? 260 : 420;
+          graceTimer = setTimeout(() => releaseEarly?.(), fastWindowMs);
         }
       };
 
@@ -943,11 +982,13 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         new Promise<undefined>((r) => setTimeout(() => r(undefined), 180)),
       ]);
 
+      // Do NOT stamp upstream JSON-scraper RPC duration onto `latencyMs`: leave `latencyMs`
+      // unset unless known so `liveness.ts` populates the true measured CDN manifest RTT!
       const withTiming = (list: RawStreamCandidate[], ms: number): RawStreamCandidate[] =>
         list.map((c) => ({
           ...c,
           fingerprint: c.fingerprint || c.key,
-          latencyMs: c.latencyMs ?? ms,
+          ...(c.latencyMs !== undefined ? { latencyMs: c.latencyMs } : {}),
           rank: c.rank + Math.min(ms, 5000) / 1000,
         }));
 

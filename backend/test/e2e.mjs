@@ -2064,7 +2064,7 @@ try {
       h: { Referer: 'https://vidbolt.xyz/' },
       k: 'm',
     });
-    const refLockRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(refLockTicket)}`, {
+    const refLockRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(noCorsTicket ? refLockTicket : '')}`, {
       headers: browserHeaders,
     });
     const refLockText = await refLockRes.text();
@@ -2076,7 +2076,134 @@ try {
     delete process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST;
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, TMDB, 30-server Source 2, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
+  // 15. Verify Dynamic Language-Aware Server Hierarchy & Multi-Audio Hindi Speed Priority:
+  //   (a) Backend `/api/v1/playback?...&lang=hi` ranks fast Multi-Audio Hindi at #1 (`primary`) ahead of slow direct Hindi dubs
+  const pbHiRes = await fetch(
+    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&lang=hi&nonce=${encodeURIComponent(boot.nonce)}`,
+    {
+      headers: {
+        ...browserHeaders,
+        'X-Playback-Token': boot.pltoken,
+      },
+    },
+  );
+  assert.equal(pbHiRes.status, 200);
+  const pbHi = await pbHiRes.json();
+  assert.equal(pbHi.ok, true);
+  assert.equal(
+    pbHi.primary.multiAudio,
+    true,
+    'Fast Multi-Audio Hindi server must rank #1 (`primary`) ahead of slower direct Hindi dubs when lang=hi',
+  );
+  assert(pbHi.primary.availableAudioLangs?.includes('hi'));
+
+  //   (b) ElfuraPlayer races Multi-Audio Hindi head-to-head against direct Hindi in Wave 1 (even if untagged
+  //       or given a higher initial latencyHintMs!) AND dynamically re-orders `getSources()` so the fastest
+  //       Hindi server (Multi-Audio Hindi!) moves to #1 on top of the server hierarchy!
+  globalThis.window.location = {
+    pathname: '/player-test',
+    search: '',
+    href: `${apiBase}/player-test`,
+  };
+  const origFetchForMultiRace = globalThis.fetch;
+  globalThis.fetch = (input, init = {}) =>
+    origFetchForMultiRace(input, {
+      ...init,
+      headers: {
+        Referer: globalThis.window.location.href,
+        ...(init.headers || {}),
+      },
+    });
+  try {
+    const multiRacePlayer = new ElfuraPlayer({ postMessage: false });
+    multiRacePlayer.sources = [
+      {
+        id: 'en-fast',
+        sourceId: 'source-1',
+        label: 'Source 1 · English',
+        type: 'mp4',
+        url: fastTicket,
+        fingerprint: 'fp_m_en_01',
+        latencyHintMs: 25,
+        quality: '1080p',
+        audioLang: 'en',
+        audioTracks: [],
+        subtitles: [],
+      },
+      {
+        id: 'hi-direct-slow-1',
+        sourceId: 'source-2',
+        label: 'Source 2 · Hindi',
+        type: 'mp4',
+        url: slowTicket,
+        fingerprint: 'fp_m_hi_slow1',
+        latencyHintMs: 180,
+        quality: '1080p',
+        audioLang: 'hi',
+        audioTracks: [],
+        subtitles: [],
+      },
+      {
+        id: 'hi-direct-slow-2',
+        sourceId: 'source-1',
+        label: 'Source 1 · Hindi',
+        type: 'mp4',
+        url: slowTicket,
+        fingerprint: 'fp_m_hi_slow2',
+        latencyHintMs: 210,
+        quality: '1080p',
+        audioLang: 'hi',
+        audioTracks: [],
+        subtitles: [],
+      },
+      {
+        id: 'multi-hi-fast',
+        sourceId: 'source-2',
+        label: 'Source 2 · Multi-Audio',
+        type: 'mp4',
+        url: fastTicket,
+        fingerprint: 'fp_m_multi_fast',
+        latencyHintMs: 360,
+        quality: '1080p',
+        multiAudio: true,
+        audioTracks: [],
+        subtitles: [],
+      },
+    ];
+    await multiRacePlayer.setSource('en-fast');
+    await new Promise((r) => setTimeout(r, 15));
+
+    const tStartHi = Date.now();
+    const okHi = await multiRacePlayer.setAudio('hi');
+    const elapsedHi = Date.now() - tStartHi;
+
+    assert.equal(okHi, true);
+    assert.equal(
+      multiRacePlayer.getState().source,
+      'multi-hi-fast',
+      'Fast Multi-Audio Hindi server must beat slow direct Hindi servers in Wave 1',
+    );
+    assert(
+      elapsedHi < 280,
+      `Multi-Audio Hindi switch must not wait on 550ms slow direct Hindi servers (took ${elapsedHi}ms)`,
+    );
+    const rankedIds = multiRacePlayer.getSources().map((s) => s.id);
+    assert.equal(
+      rankedIds[0],
+      'multi-hi-fast',
+      `Dynamic hierarchy must place fastest Hindi server (Multi-Audio) at #1 on top (got ${rankedIds.join(', ')})`,
+    );
+    assert.equal(
+      rankedIds[rankedIds.length - 1],
+      'en-fast',
+      'Non-Hindi servers must move below Hindi-capable servers when Hindi is selected',
+    );
+    multiRacePlayer.destroy();
+  } finally {
+    globalThis.fetch = origFetchForMultiRace;
+  }
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, TMDB, 30-server Source 2, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

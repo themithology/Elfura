@@ -122,9 +122,6 @@ export class SourceRegistry {
       episode: params.episode,
     });
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.cfg.resolveTimeoutMs);
-
     const query: SourceQuery = {
       type: params.type,
       tmdbId: params.tmdbId,
@@ -132,50 +129,102 @@ export class SourceRegistry {
       episode: params.episode,
       preferredLang: params.preferredLang,
       resolveMetaFallback: () => mediaPromise,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
     };
 
-    let settled: PromiseSettledResult<{
-      adapter: SourceAdapter;
-      result: RawSourceResult;
-    }>[];
+    // Launch all active adapters in parallel; if one adapter finishes quickly with candidates
+    // while another is stuck in a multi-second upstream cold scan (>2.6s slower), proceed early
+    // once fast candidates pass verification while letting the slower adapter warm `ramCache` in background!
+    const slots: ({ adapter: SourceAdapter; result: RawSourceResult } | null)[] =
+      activeAdapters.map(() => null);
+    let doneCount = 0;
+    let firstWithCandidatesDone = false;
+    let earlyRelease: (() => void) | null = null;
+    let lagTimer: ReturnType<typeof setTimeout> | null = null;
 
-    try {
-      settled = await Promise.allSettled(
-        activeAdapters.map(async (adapter) => {
-          const cacheKey = `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`;
-          return {
-            adapter,
-            result: await this.resolveAdapterWithCache(adapter, cacheKey, query),
-          };
-        }),
+    const adapterTasks = activeAdapters.map(async (adapter, idx) => {
+      const cacheKey = `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`;
+      try {
+        const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
+        slots[idx] = { adapter, result };
+        if (result.candidates.length > 0 && !firstWithCandidatesDone) {
+          firstWithCandidatesDone = true;
+          if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
+            lagTimer = setTimeout(() => earlyRelease?.(), 2600);
+          }
+        }
+      } catch {
+        /* adapter failed */
+      } finally {
+        doneCount++;
+        if (doneCount >= activeAdapters.length) {
+          earlyRelease?.();
+        }
+      }
+    });
+
+    await Promise.race([
+      Promise.allSettled(adapterTasks),
+      new Promise<void>((r) => {
+        earlyRelease = r;
+      }),
+    ]);
+    if (lagTimer) clearTimeout(lagTimer);
+
+    const verifyCurrentSlots = async () => {
+      const ready = slots.filter(
+        (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
       );
-    } finally {
-      clearTimeout(timer);
+      const tagged = ready.flatMap((entry, adapterIdx) =>
+        entry.result.candidates.map((cand) => ({
+          ...cand,
+          key: `${adapterIdx}::${cand.key}`,
+        })),
+      );
+      const vFlat = await verifyAndFilterCandidates(tagged);
+      const byIdx = new Map<number, RawStreamCandidate[]>();
+      for (const vc of vFlat) {
+        const sep = vc.key.indexOf('::');
+        const aIdx = Number(vc.key.slice(0, sep));
+        const origKey = vc.key.slice(sep + 2);
+        const list = byIdx.get(aIdx) ?? [];
+        list.push({ ...vc, key: origKey });
+        byIdx.set(aIdx, list);
+      }
+      return {
+        entries: ready.map((entry, idx) => ({
+          adapter: entry.adapter,
+          result: entry.result,
+          liveCandidates: byIdx.get(idx) ?? [],
+        })),
+        totalLive: vFlat.length,
+        vFlat,
+      };
+    };
+
+    let verifiedBatch = await verifyCurrentSlots();
+
+    // If an adapter is still in flight AND our fast batch either had 0 live streams OR lacked
+    // the requested `preferredLang`, wait for all remaining adapters so no language dub is missed!
+    if (doneCount < activeAdapters.length) {
+      const wantCode = params.preferredLang ? normalizeLang(params.preferredLang).code : '';
+      const wantPrimary = wantCode && wantCode !== 'und' ? wantCode.split('-')[0] : '';
+      const fastHasWantedLang =
+        !wantPrimary ||
+        verifiedBatch.vFlat.some(
+          (c) =>
+            c.audioLang === wantCode ||
+            c.audioLang?.split('-')[0] === wantPrimary ||
+            c.availableAudioLangs?.some((l) => l === wantCode || l.split('-')[0] === wantPrimary),
+        );
+      if (verifiedBatch.totalLive === 0 || !fastHasWantedLang) {
+        await Promise.allSettled(adapterTasks);
+        verifiedBatch = await verifyCurrentSlots();
+      }
     }
 
     const media = await mediaPromise;
-
-    // Deep-verify unique upstream URLs across all adapters in parallel so dead
-    // streams (e.g. master-alive/child-HTML redirects, 403s, dead mirrors) never
-    // reach the player, while pre-warming the RAM manifest cache and harvesting
-    // in-manifest `#EXT-X-MEDIA:TYPE=AUDIO` languages dynamically.
-    const verifiedEntries = await Promise.all(
-      settled
-        .filter(
-          (
-            e,
-          ): e is PromiseFulfilledResult<{
-            adapter: SourceAdapter;
-            result: RawSourceResult;
-          }> => e.status === 'fulfilled',
-        )
-        .map(async (entry) => ({
-          adapter: entry.value.adapter,
-          result: entry.value.result,
-          liveCandidates: await verifyAndFilterCandidates(entry.value.result.candidates),
-        })),
-    );
+    const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;
@@ -218,26 +267,30 @@ export class SourceRegistry {
     if (!uniformOptions.length) return null;
 
     // When a preferred audio language is requested, promote matching streams
-    // across all active adapters ordered by match quality + edge latency hint.
+    // across ALL active adapters ordered dynamically by real server speed —
+    // explicitly treating Multi-Audio streams that carry `prefCode` as top-tier
+    // citizens alongside direct dubs (with a -65ms ABR CDN bonus over slow single-dub re-encodes).
     if (params.preferredLang) {
       const prefCode = normalizeLang(params.preferredLang).code;
       if (prefCode && prefCode !== 'und') {
         const prefPrimary = prefCode.split('-')[0];
         const scoreOpt = (opt: UniformStreamOption): number => {
-          if (opt.audioLang === prefCode || opt.availableAudioLangs?.includes(prefCode)) return 0;
-          if (
-            opt.audioLang?.split('-')[0] === prefPrimary ||
-            opt.availableAudioLangs?.some((l) => l.split('-')[0] === prefPrimary)
-          ) {
-            return 1;
-          }
-          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 2;
-          return 3;
+          const exactDirect = opt.audioLang === prefCode;
+          const exactMulti = !!opt.availableAudioLangs?.includes(prefCode);
+          const subtagDirect = opt.audioLang?.split('-')[0] === prefPrimary;
+          const subtagMulti = !!opt.availableAudioLangs?.some((l) => l.split('-')[0] === prefPrimary);
+          if (exactDirect || exactMulti || subtagDirect || subtagMulti) return 0;
+          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 1;
+          return 2;
+        };
+        const effectiveSpeedMs = (opt: UniformStreamOption): number => {
+          const base = opt.latencyHintMs ?? 550;
+          return opt.multiAudio ? base - 65 : base;
         };
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
-            (a.latencyHintMs ?? 999) - (b.latencyHintMs ?? 999),
+            effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
       }
     }

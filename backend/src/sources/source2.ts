@@ -770,7 +770,13 @@ export function createSource2Adapter(cfg: BackendConfig['source2']): SourceAdapt
       const parsedByServer = serverEntries.map((entry) => ({
         ...entry,
         items: (entry.bucket.sources ?? [])
-          .map((item) => parseItem(item, entry.latencyMs, entry.bucket.dubs))
+          .map((item) =>
+            parseItem(
+              item,
+              entry.latencyMs,
+              entry.bucket.dubs?.length ? entry.bucket.dubs : payload.dubs,
+            ),
+          )
           .filter((x): x is ParsedCandidateItem => x !== null),
       }));
       const fastestOverallLatency =
