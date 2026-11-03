@@ -61,6 +61,12 @@ export interface BackendConfig {
     embedOrigin: string;
     defaultServer: string;
   };
+  /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
+  subtitles: {
+    enabled: boolean;
+    openSubtitlesBase: string;
+    timeoutMs: number;
+  };
 }
 
 function parseOrigins(raw?: string): string[] {
@@ -152,6 +158,13 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       enabled: env.SOURCE2_ENABLED !== '0',
       embedOrigin: (env.SOURCE2_EMBED_ORIGIN || 'https://embed.aethoflix.world').replace(/\/+$/, ''),
       defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
+    },
+    subtitles: {
+      enabled: env.OPENSUBTITLES_ENABLED !== '0',
+      openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
+        .trim()
+        .replace(/\/+$/, ''),
+      timeoutMs: Math.max(800, Number(env.OPENSUBTITLES_TIMEOUT_MS || 2800)),
     },
   };
 }

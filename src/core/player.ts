@@ -83,12 +83,43 @@ export interface SourceOption {
   subtitles: { lang: string; label: string; url: string }[];
 }
 
+export interface SeasonSummaryInfo {
+  seasonNumber: number;
+  name: string;
+  episodeCount: number;
+}
+
+export interface EpisodeItemInfo {
+  episodeNumber: number;
+  seasonNumber: number;
+  name: string;
+  overview: string;
+  runtime: number | null;
+  rating: number | null;
+  airDate: string;
+  still: string | null;
+}
+
+export interface SeasonCatalogInfo {
+  tmdbId: string;
+  season: number;
+  seasons: SeasonSummaryInfo[];
+  episodes: EpisodeItemInfo[];
+}
+
+export interface NextEpisodeTarget {
+  season: number;
+  episode: number;
+  name?: string;
+}
+
 export interface TitleMediaInfo {
   type?: 'movie' | 'tv';
   tmdbId?: string;
   season?: number;
   episode?: number;
   episodeName?: string;
+  seasons?: SeasonSummaryInfo[];
   title?: string;
   rawTitle?: string;
   year?: string;
@@ -121,6 +152,9 @@ export interface PlayerState {
   server: string | null;
   source: string | null;
   fullscreen: boolean;
+  zoomMode: 'fit' | 'cover';
+  audioBoostPct: number;
+  subtitleOffsetSec: number;
   canPip: boolean;
   canFullscreen: boolean;
 }
@@ -168,6 +202,23 @@ export class ElfuraPlayer {
   private qualityMode = 'auto';
   private effectiveHeight = 0;
   private mediaInfo: TitleMediaInfo | null = null;
+  private zoomMode: 'fit' | 'cover' = 'fit';
+  private audioBoostPct = 100;
+  private audioBoostCtx: AudioContext | null = null;
+  private audioBoostShelf: BiquadFilterNode | null = null;
+  private audioBoostGain: GainNode | null = null;
+  private subtitleOffsetSec = 0;
+  private seasonCatalogCache = new Map<number, SeasonCatalogInfo>();
+  private nextEpisodeTarget: NextEpisodeTarget | null = null;
+  private prewarmedKeyTriggered = '';
+  private prewarmedNext: {
+    season: number;
+    episode: number;
+    media?: TitleMediaInfo;
+    sources: SourceOption[];
+    fastest: SourceOption;
+    segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
+  } | null = null;
 
   renderer: SubtitleRenderer | null = null;
   bridge!: PostMessageBridge;
@@ -213,7 +264,7 @@ export class ElfuraPlayer {
       { host: this.surface, onStyleChange: (s) => this.emit('subtitleStyle', s), draggable: true },
       this.input.subtitleStyle,
     );
-    this.renderer.bindClock(() => this.video.currentTime);
+    this.renderer.bindClock(() => this.video.currentTime - this.subtitleOffsetSec);
     this.renderer.setEnabled(cfg.subtitles !== false);
 
     this.setupBridge();
@@ -271,6 +322,9 @@ export class ElfuraPlayer {
       server: this.input.config.server ?? null,
       source: this.currentSource?.id ?? null,
       fullscreen: document.fullscreenElement === this.shell,
+      zoomMode: this.zoomMode,
+      audioBoostPct: this.audioBoostPct,
+      subtitleOffsetSec: this.subtitleOffsetSec,
       canPip: typeof v.requestPictureInPicture === 'function' && !v.disablePictureInPicture,
       canFullscreen: typeof this.shell.requestFullscreen === 'function',
     };
@@ -928,6 +982,11 @@ export class ElfuraPlayer {
       if (this.mediaInfo) this.emit('media', this.mediaInfo);
       this.emit('config', redacted(cfg as unknown as Record<string, unknown>));
 
+      // Warm TV season/episode catalog in background for instant Episode Wheel + Next Episode
+      if ((cfg.mediaType || data.media?.type) === 'tv') {
+        void this.fetchSeasonEpisodes(cfg.season ?? data.media?.season ?? 1);
+      }
+
       const storedMatchesAny =
         storedLang &&
         this.sources.some(
@@ -1467,11 +1526,428 @@ export class ElfuraPlayer {
 
   async fullscreen(on = true): Promise<void> {
     try {
-      if (on && document.fullscreenElement !== this.shell) await this.shell.requestFullscreen();
-      else if (!on && document.fullscreenElement) await document.exitFullscreen();
+      if (on && document.fullscreenElement !== this.shell) {
+        await this.shell.requestFullscreen();
+        this.lockLandscapeOrientation();
+      } else if (!on && document.fullscreenElement) {
+        this.unlockLandscapeOrientation();
+        await document.exitFullscreen();
+      }
     } catch (err) {
       this.emit('error', { code: 'fullscreen-failed', message: String(err) });
     }
+  }
+
+  private lockLandscapeOrientation(): void {
+    try {
+      const ori = (
+        globalThis.screen as unknown as {
+          orientation?: { lock?: (mode: string) => Promise<void> };
+        }
+      )?.orientation;
+      ori?.lock?.('landscape')?.catch?.(() => {});
+    } catch {
+      /* ignore on desktop / unsupported browsers */
+    }
+  }
+
+  private unlockLandscapeOrientation(): void {
+    try {
+      const ori = (
+        globalThis.screen as unknown as {
+          orientation?: { unlock?: () => void };
+        }
+      )?.orientation;
+      ori?.unlock?.();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  getZoomMode(): 'fit' | 'cover' {
+    return this.zoomMode;
+  }
+
+  setZoomMode(mode: 'fit' | 'cover'): void {
+    const clean = mode === 'cover' ? 'cover' : 'fit';
+    if (this.zoomMode === clean && this.shell.dataset.zoom === clean) return;
+    this.zoomMode = clean;
+    this.shell.dataset.zoom = clean;
+    this.emit('zoomChange', { mode: clean });
+  }
+
+  getAudioBoost(): number {
+    return this.audioBoostPct;
+  }
+
+  setAudioBoost(pct: number): void {
+    const clamped = Math.round(Math.max(100, Math.min(200, Number(pct) || 100)));
+    this.audioBoostPct = clamped;
+
+    if (clamped <= 100 && !this.audioBoostCtx) {
+      this.emit('audioBoostChange', { pct: 100 });
+      return;
+    }
+
+    try {
+      if (!this.audioBoostCtx) {
+        const AudioCtx =
+          globalThis.AudioContext ??
+          (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          const srcNode = ctx.createMediaElementSource(this.video);
+          const shelf = ctx.createBiquadFilter();
+          shelf.type = 'highshelf';
+          shelf.frequency.value = 2200;
+          shelf.gain.value = 0;
+
+          const limiter = ctx.createDynamicsCompressor();
+          limiter.threshold.value = -2.5;
+          limiter.knee.value = 6;
+          limiter.ratio.value = 14;
+          limiter.attack.value = 0.003;
+          limiter.release.value = 0.14;
+
+          const gain = ctx.createGain();
+          gain.gain.value = 1;
+
+          srcNode.connect(shelf);
+          shelf.connect(limiter);
+          limiter.connect(gain);
+          gain.connect(ctx.destination);
+
+          this.audioBoostCtx = ctx;
+          this.audioBoostShelf = shelf;
+          this.audioBoostGain = gain;
+        }
+      }
+
+      if (this.audioBoostCtx && this.audioBoostCtx.state === 'suspended') {
+        void this.audioBoostCtx.resume().catch(() => {});
+      }
+      if (this.audioBoostGain) {
+        this.audioBoostGain.gain.value = clamped / 100;
+      }
+      if (this.audioBoostShelf) {
+        this.audioBoostShelf.gain.value = ((clamped - 100) / 100) * 3.5;
+      }
+    } catch {
+      /* ignore WebAudio limitation on restricted environments */
+    }
+
+    this.emit('audioBoostChange', { pct: clamped });
+  }
+
+  getSubtitleOffset(): number {
+    return this.subtitleOffsetSec;
+  }
+
+  setSubtitleOffset(sec: number): void {
+    const clean = Math.round(Math.max(-30, Math.min(30, Number(sec) || 0)) * 20) / 20;
+    this.subtitleOffsetSec = Object.is(clean, -0) ? 0 : clean;
+    this.emit('subtitleOffsetChange', { offsetSec: this.subtitleOffsetSec });
+  }
+
+  nudgeSubtitleOffset(deltaSec: number): number {
+    this.setSubtitleOffset(this.subtitleOffsetSec + deltaSec);
+    return this.subtitleOffsetSec;
+  }
+
+  getSeasonCatalog(season?: number): SeasonCatalogInfo | null {
+    const s = Math.max(1, Math.floor(season ?? this.input.config.season ?? 1));
+    return this.seasonCatalogCache.get(s) ?? null;
+  }
+
+  getNextEpisodeTarget(): NextEpisodeTarget | null {
+    return this.nextEpisodeTarget;
+  }
+
+  async fetchSeasonEpisodes(seasonInput?: number): Promise<SeasonCatalogInfo> {
+    const cfg = this.input.config;
+    const tmdbId = String(cfg.tmdb || this.mediaInfo?.tmdbId || '');
+    const season = Math.max(1, Math.floor(seasonInput ?? cfg.season ?? this.mediaInfo?.season ?? 1));
+
+    const cached = this.seasonCatalogCache.get(season);
+    if (cached) {
+      this.recomputeNextEpisodeTarget();
+      return cached;
+    }
+
+    const synthesizeFallback = (): SeasonCatalogInfo => {
+      const curEp = Math.max(1, Number(cfg.episode ?? this.mediaInfo?.episode ?? 1));
+      const knownSeasons = this.mediaInfo?.seasons?.length
+        ? this.mediaInfo.seasons
+        : [{ seasonNumber: season, name: `Season ${season}`, episodeCount: Math.max(12, curEp + 2) }];
+      const seasonMeta = knownSeasons.find((x) => x.seasonNumber === season);
+      const count = Math.max(seasonMeta?.episodeCount || 0, season === (cfg.season ?? 1) ? curEp + 2 : 12, 12);
+      const episodes: EpisodeItemInfo[] = [];
+      for (let i = 1; i <= count; i++) {
+        episodes.push({
+          episodeNumber: i,
+          seasonNumber: season,
+          name:
+            season === (cfg.season ?? 1) && i === curEp && this.mediaInfo?.episodeName
+              ? this.mediaInfo.episodeName
+              : `Episode ${i}`,
+          overview: '',
+          runtime: null,
+          rating: null,
+          airDate: '',
+          still: null,
+        });
+      }
+      return { tmdbId, season, seasons: knownSeasons, episodes };
+    };
+
+    if (!tmdbId) {
+      const syn = synthesizeFallback();
+      this.seasonCatalogCache.set(season, syn);
+      this.recomputeNextEpisodeTarget();
+      this.emit('episodesCatalog', syn);
+      return syn;
+    }
+
+    try {
+      const apiBase = cfg.api || '/api/v1/playback';
+      const epUrl = new URL('/api/v1/episodes', new URL(apiBase, window.location.href));
+      epUrl.searchParams.set('tmdb', tmdbId);
+      epUrl.searchParams.set('s', String(season));
+      if (cfg.nonce) epUrl.searchParams.set('nonce', String(cfg.nonce));
+
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+      const canOpenEnvelope =
+        Boolean(cfg.pltoken && cfg.nonce) &&
+        typeof globalThis.crypto?.subtle?.decrypt === 'function';
+      if (canOpenEnvelope) headers['X-Elfura-Envelope'] = '1';
+
+      const res = await fetch(epUrl.toString(), { headers });
+      if (res.ok) {
+        type EpEnvelope = Partial<SeasonCatalogInfo> & { ok?: boolean; s?: number; p?: string };
+        const raw = (await res.json()) as EpEnvelope;
+        const data: EpEnvelope =
+          raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+            ? await openSealedEnvelope<EpEnvelope>(raw.p, String(cfg.pltoken), String(cfg.nonce))
+            : raw;
+
+        if (data?.ok && Array.isArray(data.episodes) && data.episodes.length > 0) {
+          const cat: SeasonCatalogInfo = {
+            tmdbId,
+            season,
+            seasons:
+              Array.isArray(data.seasons) && data.seasons.length > 0
+                ? data.seasons
+                : [{ seasonNumber: season, name: `Season ${season}`, episodeCount: data.episodes.length }],
+            episodes: data.episodes,
+          };
+          this.seasonCatalogCache.set(season, cat);
+          this.recomputeNextEpisodeTarget();
+          this.emit('episodesCatalog', cat);
+          return cat;
+        }
+      }
+    } catch {
+      /* fall through to synthesized episode list */
+    }
+
+    const syn = synthesizeFallback();
+    this.seasonCatalogCache.set(season, syn);
+    this.recomputeNextEpisodeTarget();
+    this.emit('episodesCatalog', syn);
+    return syn;
+  }
+
+  private recomputeNextEpisodeTarget(): void {
+    const cfg = this.input.config;
+    const isTv = (cfg.mediaType || this.mediaInfo?.type) === 'tv';
+    if (!isTv) {
+      this.nextEpisodeTarget = null;
+      this.emit('nextEpisodeReady', null);
+      return;
+    }
+
+    const curS = Math.max(1, Number(cfg.season ?? this.mediaInfo?.season ?? 1));
+    const curE = Math.max(1, Number(cfg.episode ?? this.mediaInfo?.episode ?? 1));
+    const cat = this.seasonCatalogCache.get(curS);
+
+    let next: NextEpisodeTarget | null = null;
+    if (cat && cat.episodes.length > 0) {
+      const inSeason = cat.episodes.find((e) => e.episodeNumber === curE + 1);
+      if (inSeason) {
+        next = { season: curS, episode: inSeason.episodeNumber, name: inSeason.name };
+      } else {
+        const nextSeason = cat.seasons.find((s) => s.seasonNumber === curS + 1 && s.episodeCount > 0);
+        if (nextSeason) {
+          next = { season: nextSeason.seasonNumber, episode: 1, name: `${nextSeason.name} · E1` };
+        }
+      }
+    } else {
+      next = { season: curS, episode: curE + 1 };
+    }
+
+    this.nextEpisodeTarget = next;
+    this.emit('nextEpisodeReady', next);
+  }
+
+  private async prewarmNextEpisode(): Promise<void> {
+    const cfg = this.input.config;
+    if (!cfg.tmdb || this.destroyed) return;
+    const target = this.nextEpisodeTarget;
+    if (!target) return;
+
+    const key = `${cfg.tmdb}:${target.season}:${target.episode}`;
+    if (this.prewarmedKeyTriggered === key) return;
+    this.prewarmedKeyTriggered = key;
+
+    try {
+      const apiBase = cfg.api || '/api/v1/playback';
+      const apiUrl = new URL(apiBase, window.location.href);
+      apiUrl.searchParams.set('type', 'tv');
+      apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
+      apiUrl.searchParams.set('s', String(target.season));
+      apiUrl.searchParams.set('e', String(target.episode));
+      if (cfg.source) apiUrl.searchParams.set('source', String(cfg.source));
+      const prefLang =
+        this.desiredAudioLang ??
+        (cfg.lang ? String(cfg.lang) : null) ??
+        loadPreferredAudio();
+      if (prefLang && prefLang !== 'und') apiUrl.searchParams.set('lang', prefLang);
+      if (cfg.nonce) apiUrl.searchParams.set('nonce', String(cfg.nonce));
+
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+      const canOpenEnvelope =
+        Boolean(cfg.pltoken && cfg.nonce) &&
+        typeof globalThis.crypto?.subtle?.decrypt === 'function';
+      if (canOpenEnvelope) headers['X-Elfura-Envelope'] = '1';
+
+      const res = await fetch(apiUrl.toString(), { headers });
+      if (!res.ok || this.destroyed) return;
+
+      type PlaybackPayloadShape = {
+        ok?: boolean;
+        s?: number;
+        p?: string;
+        media?: TitleMediaInfo;
+        primary?: SourceOption;
+        sources?: SourceOption[];
+        segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
+      };
+      const rawJson = (await res.json()) as PlaybackPayloadShape;
+      const data: PlaybackPayloadShape =
+        rawJson?.s === 1 && typeof rawJson.p === 'string' && cfg.pltoken && cfg.nonce
+          ? await openSealedEnvelope<PlaybackPayloadShape>(
+              rawJson.p,
+              String(cfg.pltoken),
+              String(cfg.nonce),
+            )
+          : rawJson;
+
+      if (!data?.ok || !data.sources?.length || this.destroyed) return;
+
+      const topCandidate = data.primary ?? data.sources[0];
+      // Warm manifest ticket in RAM so hls.js starts playback in ~0.2s when clicked
+      if (this.canPreProbeViaFetch(topCandidate)) {
+        const ctrl = new AbortController();
+        void this.probeCandidateViaFetch(
+          topCandidate,
+          prefLang && prefLang !== 'und' ? canonLang(prefLang) : null,
+          ctrl.signal,
+        ).catch(() => {});
+      }
+
+      this.prewarmedNext = {
+        season: target.season,
+        episode: target.episode,
+        media: data.media,
+        sources: data.sources,
+        fastest: topCandidate,
+        segments: data.segments,
+      };
+    } catch {
+      /* non-fatal background pre-warm */
+    }
+  }
+
+  async loadEpisode(seasonInput: number, episodeInput: number): Promise<void> {
+    const cfg = this.input.config;
+    const season = Math.max(1, Math.floor(Number(seasonInput) || 1));
+    const episode = Math.max(1, Math.floor(Number(episodeInput) || 1));
+    cfg.mediaType = 'tv';
+    cfg.season = season;
+    cfg.episode = episode;
+    cfg.title = undefined;
+    cfg.intro = undefined;
+    cfg.outro = undefined;
+    this.prewarmedKeyTriggered = '';
+
+    // Update browser path seamlessly without dropping fullscreen if running on /embed/tv/:id/:s/:e
+    try {
+      const m = window.location.pathname.match(/^(\/embed\/tv\/[^/]+)\/\d+\/\d+(\/?)$/);
+      if (m) {
+        const nextUrl = `${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`;
+        window.history.replaceState(null, '', nextUrl);
+      }
+    } catch {
+      /* ignore sandboxed history restrictions */
+    }
+
+    this.emit('episodeChange', { season, episode });
+
+    const pre = this.prewarmedNext;
+    this.prewarmedNext = null;
+
+    if (pre && pre.season === season && pre.episode === episode && pre.sources.length > 0) {
+      if (pre.media) {
+        this.mediaInfo = pre.media;
+        if (pre.media.title) cfg.title = pre.media.title;
+        const posterCand = pre.media.backdrop || pre.media.poster;
+        if (posterCand) {
+          cfg.poster = posterCand;
+          this.video.poster = posterCand;
+        }
+      }
+      if (pre.segments) {
+        const segIntro = pre.segments.intro ?? pre.segments.recap;
+        if (segIntro) cfg.intro = [{ lang: String(segIntro[0]), url: String(segIntro[1]) }];
+        if (pre.segments.outro) cfg.outro = [{ lang: String(pre.segments.outro[0]), url: String(pre.segments.outro[1]) }];
+      }
+      this.emit('segments:invalidate', {});
+
+      this.sources = pre.sources;
+      this.failedSourceIds.clear();
+      this.failedFingerprints.clear();
+      this.initialAudioApplied = false;
+      if (this.mediaInfo) this.emit('media', this.mediaInfo);
+      void this.fetchSeasonEpisodes(season);
+
+      const keepLang =
+        this.desiredAudioLang ?? (cfg.lang ? canonLang(String(cfg.lang)) : null) ?? loadPreferredAudio();
+      this.reorderSourcesHierarchy(keepLang);
+
+      if (keepLang && keepLang !== 'und') {
+        this.initialAudioApplied = true;
+        await this.setAudio(keepLang);
+      } else {
+        await this.activateSourceOption(pre.fastest, false);
+      }
+      void this.play();
+      return;
+    }
+
+    await this.resolveFromBackend();
+    void this.play();
+  }
+
+  async nextEpisode(): Promise<boolean> {
+    if (!this.nextEpisodeTarget) {
+      this.recomputeNextEpisodeTarget();
+    }
+    const target = this.nextEpisodeTarget;
+    if (!target) return false;
+    await this.loadEpisode(target.season, target.episode);
+    return true;
   }
 
   destroy(): void {
@@ -1480,6 +1956,10 @@ export class ElfuraPlayer {
     this.teardownEngine();
     this.externalAudio.destroy();
     this.renderer?.destroy();
+    if (this.audioBoostCtx) {
+      void this.audioBoostCtx.close().catch(() => {});
+      this.audioBoostCtx = null;
+    }
     this.bus.clear();
     this.video.removeAttribute('src');
     this.video.load();
@@ -2167,11 +2647,29 @@ export class ElfuraPlayer {
       this.emit('durationchange', { duration: v.duration });
       this.emit('segments:invalidate', {});
     });
+    v.addEventListener('timeupdate', () => {
+      const d = Number.isFinite(v.duration) ? v.duration : 0;
+      const payload = { time: v.currentTime, duration: d };
+      this.bus.emit('timeupdate', payload);
+      this.bridge.postTime(payload);
+
+      if (
+        (this.input.config.mediaType === 'tv' || this.mediaInfo?.type === 'tv') &&
+        d > 20 &&
+        v.currentTime / d >= 0.78 &&
+        this.nextEpisodeTarget
+      ) {
+        void this.prewarmNextEpisode();
+      }
+    });
     v.addEventListener('volumechange', () => this.emit('volumechange', { volume: v.volume, muted: v.muted }));
     v.addEventListener('ratechange', () => this.emit('speedchange', { speed: v.playbackRate }));
-    document.addEventListener('fullscreenchange', () =>
-      this.emit('fullscreen', { on: document.fullscreenElement === this.shell }),
-    );
+    document.addEventListener('fullscreenchange', () => {
+      const isFs = document.fullscreenElement === this.shell;
+      if (isFs) this.lockLandscapeOrientation();
+      else this.unlockLandscapeOrientation();
+      this.emit('fullscreen', { on: isFs });
+    });
   }
 
   private setupBridge(): void {
@@ -2213,7 +2711,28 @@ export class ElfuraPlayer {
       this.emit('config', this.input.config);
       return this.input.config;
     });
-    cmd('next', () => this.emit('episode:next', {}));
+    cmd('setSubtitleOffset', (d) => {
+      this.setSubtitleOffset(Number(val(d)));
+      return this.getSubtitleOffset();
+    });
+    cmd('setAudioBoost', (d) => {
+      this.setAudioBoost(Number(val(d)));
+      return this.getAudioBoost();
+    });
+    cmd('setZoomMode', (d) => {
+      this.setZoomMode(String(val(d)) === 'cover' ? 'cover' : 'fit');
+      return this.getZoomMode();
+    });
+    cmd('loadEpisode', async (d) => {
+      const raw = d as { season?: number; episode?: number } | undefined;
+      await this.loadEpisode(Number(raw?.season || 1), Number(raw?.episode || 1));
+      return { season: this.input.config.season, episode: this.input.config.episode };
+    });
+    cmd('next', async () => {
+      const switched = await this.nextEpisode();
+      if (!switched) this.emit('episode:next', {});
+      return switched;
+    });
 
     this.emit('ready', {
       sessionId: this.sessionId,

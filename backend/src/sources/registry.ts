@@ -10,6 +10,7 @@
 import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { sealStreamTicket } from '../security.js';
+import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { verifyAndFilterCandidates } from './liveness.js';
@@ -121,6 +122,22 @@ export class SourceRegistry {
       season: params.season,
       episode: params.episode,
     });
+
+    // Warm OpenSubtitles fallback concurrently as soon as TMDB resolves `imdbId`
+    const earlyOpenSubsPromise = this.cfg.subtitles?.enabled
+      ? mediaPromise
+          .then((m) =>
+            m.imdbId
+              ? fetchOpenSubtitlesFallback(this.cfg.subtitles, {
+                  type: params.type,
+                  imdbId: m.imdbId,
+                  season: params.season,
+                  episode: params.episode,
+                })
+              : null,
+          )
+          .catch(() => null)
+      : Promise.resolve(null);
 
     const query: SourceQuery = {
       type: params.type,
@@ -265,6 +282,49 @@ export class SourceRegistry {
     }
 
     if (!uniformOptions.length) return null;
+
+    // Automatic OpenSubtitles fallback: seal & backfill missing subtitle languages
+    // whenever any stream option has sparse or zero native subtitles.
+    const needsSubFallback =
+      Boolean(media.imdbId) &&
+      Boolean(this.cfg.subtitles?.enabled) &&
+      uniformOptions.some((o) => o.subtitles.length < 3);
+
+    if (needsSubFallback && media.imdbId) {
+      const rawFallbackSubs =
+        (await earlyOpenSubsPromise) ??
+        (await fetchOpenSubtitlesFallback(this.cfg.subtitles, {
+          type: params.type,
+          imdbId: media.imdbId,
+          season: params.season,
+          episode: params.episode,
+        }));
+
+      if (rawFallbackSubs.length > 0) {
+        const sealedFallbackSubs = rawFallbackSubs.map((s) => ({
+          lang: s.lang,
+          label: s.label,
+          ...(s.format ? { format: s.format } : {}),
+          url: `${streamBase}?t=${encodeURIComponent(
+            sealStreamTicket(this.cfg.secret, {
+              u: s.url,
+              ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
+              k: 's',
+            }),
+          )}`,
+        }));
+
+        for (const opt of uniformOptions) {
+          const existingLangs = new Set(opt.subtitles.map((s) => s.lang.toLowerCase()));
+          for (const fb of sealedFallbackSubs) {
+            if (!existingLangs.has(fb.lang.toLowerCase())) {
+              opt.subtitles.push(fb);
+              existingLangs.add(fb.lang.toLowerCase());
+            }
+          }
+        }
+      }
+    }
 
     // When a preferred audio language is requested, promote matching streams
     // across ALL active adapters ordered dynamically by real server speed —

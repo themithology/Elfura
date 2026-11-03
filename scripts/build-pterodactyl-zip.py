@@ -67,6 +67,7 @@ REQUIRE_PLAYBACK_TOKEN=1
 BIND_TOKEN_IP=0
 RATE_LIMIT_PER_MIN=120
 RESOLVE_TIMEOUT_MS=9000
+RELAY_MODE=hybrid
 
 # Self-hosted TMDB API (used for title, poster, backdrop, episode info & IMDb ID)
 # Example: https://tmdb.yourdomain.com/3  or  https://tmdb.yourdomain.com/api
@@ -79,6 +80,11 @@ TMDB_TIMEOUT_MS=4500
 # Source adapter toggles (1 = enabled, 0 = disabled)
 SOURCE1_ENABLED=1
 SOURCE2_ENABLED=1
+
+# Zero-disk OpenSubtitles fallback (relayed via /api/v1/stream)
+OPENSUBTITLES_ENABLED=1
+OPENSUBTITLES_BASE=https://opensubtitles-v3.strem.io
+OPENSUBTITLES_TIMEOUT_MS=2800
 """
 
 NPMRC_CONTENT = """audit=false

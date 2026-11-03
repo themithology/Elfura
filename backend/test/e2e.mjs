@@ -222,10 +222,114 @@ const mockUpstream = http.createServer(async (req, res) => {
         poster_path: '/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg',
         backdrop_path: '/rkB4LyZHo1NHXFEDHl9vSD9r1lI.jpg',
         external_ids: { imdb_id: 'tt11126994' },
+        seasons: [
+          { season_number: 0, name: 'Specials', episode_count: 3 },
+          { season_number: 1, name: 'Season 1', episode_count: 9 },
+          { season_number: 2, name: 'Season 2', episode_count: 9 },
+        ],
         images: {
           logos: [{ iso_639_1: 'en', file_path: '/arcaneTitleLogo.png' }],
         },
       }),
+    );
+    return;
+  }
+  if (u.pathname === '/tmdb/tv/94605/season/1') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        season_number: 1,
+        episodes: [
+          {
+            episode_number: 1,
+            season_number: 1,
+            name: 'Welcome to the Playground',
+            overview: 'Orphaned sisters Vi and Powder bring trouble to Zaun.',
+            runtime: 43,
+            vote_average: 8.6,
+            air_date: '2021-11-06',
+          },
+          {
+            episode_number: 2,
+            season_number: 1,
+            name: 'Some Mysteries Are Better Left Unsolved',
+            overview: 'Idealistic inventor Jayce attempts to harness magic.',
+            runtime: 40,
+            vote_average: 8.5,
+            air_date: '2021-11-06',
+          },
+          {
+            episode_number: 3,
+            season_number: 1,
+            name: 'The Base Violence Necessary for Change',
+            overview: 'An epic showdown pits old rivals against each other.',
+            runtime: 44,
+            vote_average: 9.2,
+            air_date: '2021-11-06',
+          },
+        ],
+      }),
+    );
+    return;
+  }
+  if (u.pathname === '/opensubs/subtitles/series/tt11126994:1:1.json') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        subtitles: [
+          {
+            id: 'os-bad-sub',
+            url: `${origin}/opensubs/dl/arcane_frame.sub`,
+            SubEncoding: 'UTF-8',
+            lang: 'eng',
+            subtitleFileName: 'Arcane.S01E01.sub',
+          },
+          {
+            id: 'os-en-utf8',
+            url: `${origin}/opensubs/dl/arcane_en_utf8`,
+            SubEncoding: 'UTF-8',
+            lang: 'eng',
+            subtitleFileName: 'Arcane.S01E01.WEB.srt',
+          },
+          {
+            id: 'os-hi-utf8',
+            url: `${origin}/opensubs/dl/arcane_hi_utf8.srt`,
+            SubEncoding: 'UTF-8',
+            lang: 'hin',
+            subtitleFileName: 'Arcane.S01E01.Hindi.srt',
+          },
+          {
+            id: 'os-pob-utf8',
+            url: `${origin}/opensubs/dl/arcane_ptbr.srt`,
+            SubEncoding: 'UTF-8',
+            lang: 'pob',
+            subtitleFileName: 'Arcane.S01E01.PTBR.srt',
+          },
+          {
+            id: 'os-spl-utf8',
+            url: `${origin}/opensubs/dl/arcane_es419.srt`,
+            SubEncoding: 'UTF-8',
+            lang: 'spl',
+            subtitleFileName: 'Arcane.S01E01.LatAm.srt',
+          },
+        ],
+      }),
+    );
+    return;
+  }
+  if (u.pathname.startsWith('/opensubs/dl/')) {
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+    res.end(
+      [
+        '1',
+        '00:00:01,000 --> 00:00:03,000',
+        'Support us and become VIP member to remove all ads from www.OpenSubtitles.org',
+        '',
+        '2',
+        '00:00:04,500 --> 00:00:07,200',
+        'Welcome to Piltover.',
+        '',
+      ].join('\n'),
     );
     return;
   }
@@ -1159,6 +1263,11 @@ const { server: elfuraServer } = createBackendServer({
     enabled: true,
     embedOrigin: upBase,
     defaultServer: 'orion',
+  },
+  subtitles: {
+    enabled: true,
+    openSubtitlesBase: `${upBase}/opensubs`,
+    timeoutMs: 2500,
   },
 });
 
@@ -2203,7 +2312,170 @@ try {
     globalThis.fetch = origFetchForMultiRace;
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, TMDB, 30-server Source 2, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
+  // 16. Verify QoL Batch 3:
+  //     (a) Automatic OpenSubtitles Fallback (zero-disk RAM cache, .sub filtering, legacy tag canonicalization,
+  //         sealed `/api/v1/stream?t=...` tickets with zero external domain leak, and SRT spam-cue sanitization)
+  const arcaneSubLangs = pb.primary.subtitles.map((s) => s.lang);
+  assert(arcaneSubLangs.includes('en'), 'Expected OpenSubtitles English fallback track');
+  assert(arcaneSubLangs.includes('hi'), 'Expected OpenSubtitles Hindi fallback track');
+  assert(arcaneSubLangs.includes('pt-br'), 'Expected OpenSubtitles `pob` to canonicalize to `pt-br`');
+  assert(arcaneSubLangs.includes('es-419'), 'Expected OpenSubtitles `spl` to canonicalize to `es-419`');
+  for (const sub of pb.primary.subtitles) {
+    assert(
+      sub.url.startsWith('/api/v1/stream?t=') && !sub.url.includes('opensubs'),
+      `Subtitle URL must be sealed inside /api/v1/stream?t=...: ${sub.url}`,
+    );
+  }
+  const hiSubOpt = pb.primary.subtitles.find((s) => s.lang === 'hi');
+  const hiSubRes = await fetch(`${apiBase}${hiSubOpt.url}`, { headers: browserHeaders });
+  assert.equal(hiSubRes.status, 200);
+  assert(
+    (hiSubRes.headers.get('content-type') || '').includes('text/plain; charset=utf-8'),
+    'Extensionless/SRT OpenSubtitles track must relay with text/plain; charset=utf-8',
+  );
+  const hiSubBody = await hiSubRes.text();
+  assert(!hiSubBody.includes('OpenSubtitles.org'), 'Relay must strip OpenSubtitles VIP spam cues from SRT');
+  assert(hiSubBody.includes('Welcome to Piltover.'), 'Relay must preserve real dialogue cues in SRT');
+
+  //     (b) `GET /api/v1/episodes` TV Season & Episode Catalog (plain & AES-256-GCM Sealed Envelope)
+  const unauthEpRes = await fetch(`${apiBase}/api/v1/episodes?tmdb=94605&s=1`, {
+    headers: { Origin: 'https://watch.elfura.example' },
+  });
+  assert.equal(unauthEpRes.status, 401, '/api/v1/episodes must enforce X-Playback-Token when requireToken=true');
+
+  const sessEpRes = await fetch(`${apiBase}/api/v1/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://watch.elfura.example' },
+    body: JSON.stringify({ type: 'tv', tmdb: '94605' }),
+  });
+  const sessEp = await sessEpRes.json();
+
+  const epPlainRes = await fetch(
+    `${apiBase}/api/v1/episodes?tmdb=94605&s=1&nonce=${encodeURIComponent(sessEp.nonce)}`,
+    {
+      headers: {
+        Origin: 'https://watch.elfura.example',
+        'X-Playback-Token': sessEp.pltoken,
+      },
+    },
+  );
+  assert.equal(epPlainRes.status, 200);
+  const epPlain = await epPlainRes.json();
+  assert.equal(epPlain.ok, true);
+  assert.deepEqual(
+    epPlain.seasons.map((s) => s.seasonNumber),
+    [1, 2],
+    'Season 0 specials must be excluded while real seasons [1, 2] are preserved',
+  );
+  assert.equal(epPlain.episodes.length, 3);
+  assert.equal(epPlain.episodes[1].name, 'Some Mysteries Are Better Left Unsolved');
+
+  const epSealedRes = await fetch(
+    `${apiBase}/api/v1/episodes?tmdb=94605&s=1&nonce=${encodeURIComponent(sessEp.nonce)}`,
+    {
+      headers: {
+        Origin: 'https://watch.elfura.example',
+        'X-Playback-Token': sessEp.pltoken,
+        'X-Elfura-Envelope': '1',
+      },
+    },
+  );
+  const epSealedRaw = await epSealedRes.json();
+  assert.equal(epSealedRaw.s, 1, 'Expected sealed envelope when X-Elfura-Envelope: 1 is passed to /api/v1/episodes');
+  const epOpened = openPlaybackEnvelope(epSealedRaw, sessEp.pltoken, sessEp.nonce);
+  assert.equal(epOpened.episodes.length, 3);
+
+  //     (c) Part 1 Player Core & UI QoL Batch 3 checks (Zoom, Audio Boost 200%, Subtitle Sync,
+  //         TV Next-Episode target, Right-Hand Episode Wheel, Remaining Time, "Will End at xx:xx" 24h/12h)
+  const qolPlayer = new ElfuraPlayer({
+    postMessage: false,
+    mediaType: 'tv',
+    tmdb: '94605',
+    season: 1,
+    episode: 1,
+    pltoken: sessEp.pltoken,
+    nonce: sessEp.nonce,
+    api: `${apiBase}/api/v1/playback`,
+  });
+
+  // Pinch-to-Zoom state API
+  assert.equal(qolPlayer.getZoomMode(), 'fit');
+  qolPlayer.setZoomMode('cover');
+  assert.equal(qolPlayer.getZoomMode(), 'cover');
+  assert.equal(qolPlayer.shell.dataset.zoom, 'cover');
+  qolPlayer.setZoomMode('fit');
+  assert.equal(qolPlayer.getZoomMode(), 'fit');
+
+  // Phone Speaker Audio Boost (clamped 100%..200%)
+  assert.equal(qolPlayer.getAudioBoost(), 100);
+  qolPlayer.setAudioBoost(185);
+  assert.equal(qolPlayer.getAudioBoost(), 185);
+  qolPlayer.setAudioBoost(300);
+  assert.equal(qolPlayer.getAudioBoost(), 200);
+  qolPlayer.setAudioBoost(50);
+  assert.equal(qolPlayer.getAudioBoost(), 100);
+
+  // Subtitle Sync Fixer (-0.5s / +0.5s / Reset)
+  assert.equal(qolPlayer.getSubtitleOffset(), 0);
+  assert.equal(qolPlayer.nudgeSubtitleOffset(0.5), 0.5);
+  assert.equal(qolPlayer.nudgeSubtitleOffset(-1.5), -1);
+  qolPlayer.setSubtitleOffset(0);
+  assert.equal(qolPlayer.getSubtitleOffset(), 0);
+
+  // TV Season/Episode catalog + Next Episode target
+  globalThis.window.location = {
+    pathname: '/embed/tv/94605/1/1',
+    search: '',
+    href: `${apiBase}/embed/tv/94605/1/1`,
+  };
+  const origFetchForQol = globalThis.fetch;
+  globalThis.fetch = (input, init = {}) =>
+    origFetchForQol(input, {
+      ...init,
+      headers: {
+        Origin: 'https://watch.elfura.example',
+        Referer: globalThis.window.location.href,
+        ...(init.headers || {}),
+      },
+    });
+  try {
+    const cat = await qolPlayer.fetchSeasonEpisodes(1);
+    assert.equal(cat.episodes.length, 3);
+    assert.deepEqual(qolPlayer.getNextEpisodeTarget(), {
+      season: 1,
+      episode: 2,
+      name: 'Some Mysteries Are Better Left Unsolved',
+    });
+  } finally {
+    globalThis.fetch = origFetchForQol;
+  }
+  qolPlayer.destroy();
+
+  // Verify built CSS & JS include all requested QoL UI tokens and ZERO excluded features
+  for (const requiredToken of [
+    'Speaker Boost',
+    'Subtitle Sync',
+    'Will End at ',
+    'Zoomed to fill',
+    'Original fit',
+    'elf-ep-wheel-overlay',
+    'elf-ep-wheel-item',
+    'elf-skip-prog',
+  ]) {
+    assert(
+      libBundle.includes(requiredToken) || builtCss.includes(requiredToken),
+      `Expected QoL Batch 3 token "${requiredToken}" in built client bundle/CSS`,
+    );
+  }
+  // Ensure excluded features (Smart Auto-Resume localStorage / Vertical Edge Brightness Swipe) were NOT added
+  for (const excludedToken of ['Continue Watching', 'elfura:resume', 'Brightness']) {
+    assert(
+      !libBundle.includes(excludedToken),
+      `Excluded feature token "${excludedToken}" must NOT be present in client bundle`,
+    );
+  }
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, OpenSubtitles fallback, Episode Wheel, QoL Batch 3 & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

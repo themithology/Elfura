@@ -25,7 +25,7 @@
  * Strictly zero hardcoded audio tracks or static language lists.
  */
 
-import type { ElfuraPlayer, TitleMediaInfo } from '../core/player';
+import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import type { AudioTrack } from '../core/audio';
@@ -105,6 +105,12 @@ const I = {
     '<svg viewBox="0 0 24 24" fill="none"><path class="elf-c1" d="m6 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="elf-c2" d="m13 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   doubleChevLeft:
     '<svg viewBox="0 0 24 24" fill="none"><path class="elf-c2" d="m18 7-5 5 5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="elf-c1" d="m11 7-5 5 5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  episodesTray:
+    '<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4" width="17" height="16" rx="3.2" stroke="currentColor" stroke-width="2"/><path d="M3.8 14h4.7a1.5 1.5 0 0 1 1.3.8l.4.8a1.5 1.5 0 0 0 1.3.8h1a1.5 1.5 0 0 0 1.3-.8l.4-.8a1.5 1.5 0 0 1 1.3-.8h4.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  playingScreen:
+    '<svg viewBox="0 0 20 20" fill="none"><rect x="2.2" y="3.5" width="15.6" height="10.8" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.8 17.2h6.4M10 14.3v2.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 7v3.8l3.3-1.9L8.5 7z" fill="currentColor"/></svg>',
+  nextEp:
+    '<svg viewBox="0 0 20 20" fill="none"><path d="M4.5 4.6c0-.8.8-1.3 1.5-.8l7.5 5.4c.6.4.6 1.2 0 1.6L6 16.2c-.7.5-1.5 0-1.5-.8V4.6z" fill="currentColor"/><path d="M15.5 4.8v10.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>',
 };
 
 export function fmtTime(s: number): string {
@@ -154,10 +160,20 @@ export class PlayerUI {
 
   /* Top-right chrome (visible only when UI is on) */
   private topEl!: HTMLElement;
+  private episodesTopBtn!: HTMLButtonElement;
   private qualityTopBtn!: HTMLButtonElement;
   private qualitySubText!: HTMLElement;
   private audioSubsTopBtn!: HTMLButtonElement;
   private lockBtn!: HTMLButtonElement;
+
+  /* Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV only) */
+  private epWheelOverlay!: HTMLElement;
+  private epWheelSeasonsEl!: HTMLElement;
+  private epWheelList!: HTMLElement;
+  private epWheelOpen = false;
+  private epWheelSeason = 1;
+  private epWheelSeasons: SeasonSummaryInfo[] = [];
+  private epWheelEpisodes: EpisodeItemInfo[] = [];
 
   /* Cinema Paused Screen (Image 3 layout) */
   private pauseScreen!: HTMLElement;
@@ -185,6 +201,12 @@ export class PlayerUI {
   private dtapRightText!: HTMLElement;
   private toastEl!: HTMLElement;
   private skipBtn!: HTMLButtonElement;
+  private skipLabelEl!: HTMLElement;
+  private nextEpWrap!: HTMLElement;
+  private nextEpBtn!: HTMLButtonElement;
+  private nextEpLabelEl!: HTMLElement;
+  private nextEpDismissBtn!: HTMLButtonElement;
+  private nextEpDismissedKey = '';
 
   /* Bottom dock: Title Logo / Cartoony Title + Submeta (left) & Source Pill (right) */
   private dockIdentityEl!: HTMLElement;
@@ -218,6 +240,7 @@ export class PlayerUI {
   private fwd10!: HTMLButtonElement;
   private volBtn!: HTMLButtonElement;
   private volSlider!: HTMLInputElement;
+  private endsAtBtn!: HTMLButtonElement;
   private speedBtn!: HTMLButtonElement;
   private pipBtn!: HTMLButtonElement;
   private fsBtn!: HTMLButtonElement;
@@ -241,7 +264,7 @@ export class PlayerUI {
   private flashTimer = 0;
   private dragging = false;
 
-  /* Gesture state (double-tap 10s + hold for 2x) */
+  /* Gesture state (double-tap 10s + hold for 2x + two-finger pinch-to-zoom) */
   private tapCount = 0;
   private tapZone: 'left' | 'center' | 'right' | null = null;
   private singleTapTimer = 0;
@@ -253,7 +276,16 @@ export class PlayerUI {
   private holdActive = false;
   private holdSavedSpeed = 1;
   private pointerDownPos: { x: number; y: number; id: number; pointerType: string } | null = null;
+  private touchPoints = new Map<number, { x: number; y: number }>();
+  private pinchActive = false;
+  private pinchStartDist = 0;
   private suppressClickUntil = 0;
+
+  /* Timeline & End-time toggles */
+  private showRemainingTime = false;
+  private endsAt12h = false;
+  private lastEndsAtStr = '';
+  private lastSkipPct = '';
 
   /* Cached DOM writes for zero-jank rAF loop */
   private lastPct = -1;
@@ -325,10 +357,19 @@ export class PlayerUI {
     this.topBrandCluster.append(this.backPillBtn, this.brandPill, this.topEpisodeEl);
     shell.appendChild(this.topBrandCluster);
 
-    /* 1B. Top-Right Chrome Bar (`Quality` + `Audio & Subtitles` + `Screen Lock`) */
+    /* 1B. Top-Right Chrome Bar (`Episodes` [TV] + `Quality` + `Audio & Subtitles` + `Screen Lock`) */
     this.topEl = el('div', 'elf-top');
     const topSpacer = el('div', 'elf-top-spacer');
     const topRight = el('div', 'elf-top-actions');
+
+    this.episodesTopBtn = el('button', 'elf-top-btn elf-episodes-trigger') as HTMLButtonElement;
+    this.episodesTopBtn.title = 'Episodes';
+    this.episodesTopBtn.setAttribute('aria-label', 'Episodes');
+    this.episodesTopBtn.hidden = true;
+    this.episodesTopBtn.append(
+      el('span', 'elf-top-icon', I.episodesTray),
+      el('span', 'elf-top-label', 'Episodes'),
+    );
 
     this.qualityTopBtn = el('button', 'elf-top-btn elf-quality-trigger') as HTMLButtonElement;
     this.qualityTopBtn.setAttribute('aria-label', 'Quality');
@@ -349,7 +390,7 @@ export class PlayerUI {
     this.lockBtn.setAttribute('aria-label', 'Lock controls');
     this.lockBtn.appendChild(el('span', 'elf-top-icon', I.lockOpen));
 
-    topRight.append(this.qualityTopBtn, this.audioSubsTopBtn, this.lockBtn);
+    topRight.append(this.episodesTopBtn, this.qualityTopBtn, this.audioSubsTopBtn, this.lockBtn);
     this.topEl.append(topSpacer, topRight);
     shell.appendChild(this.topEl);
 
@@ -417,14 +458,30 @@ export class PlayerUI {
     center.append(this.flash, this.spinner, this.bigPlay);
     shell.appendChild(center);
 
-    /* 7. Toast & Intro/Outro skip pill */
+    /* 7. Toast, Progressing Intro/Outro Skip Pill & Instant Next-Episode Binge Pill */
     this.toastEl = el('div', 'elf-toast');
     this.toastEl.dataset.show = 'false';
     shell.appendChild(this.toastEl);
 
     this.skipBtn = el('button', 'elf-skip') as HTMLButtonElement;
     this.skipBtn.dataset.visible = 'false';
+    const skipProg = el('span', 'elf-skip-prog');
+    this.skipLabelEl = el('span', 'elf-skip-label', 'Skip Intro');
+    this.skipBtn.append(skipProg, this.skipLabelEl);
     shell.appendChild(this.skipBtn);
+
+    this.nextEpWrap = el('div', 'elf-next-ep-wrap');
+    this.nextEpWrap.dataset.visible = 'false';
+    this.nextEpBtn = el('button', 'elf-next-ep-btn') as HTMLButtonElement;
+    const nextProg = el('span', 'elf-next-ep-prog');
+    const nextIco = el('span', 'elf-next-ep-ico', I.nextEp);
+    this.nextEpLabelEl = el('span', 'elf-next-ep-label', 'Next Episode');
+    this.nextEpBtn.append(nextProg, nextIco, this.nextEpLabelEl);
+    this.nextEpDismissBtn = el('button', 'elf-next-ep-dismiss', I.close) as HTMLButtonElement;
+    this.nextEpDismissBtn.title = 'Dismiss';
+    this.nextEpDismissBtn.setAttribute('aria-label', 'Dismiss next episode');
+    this.nextEpWrap.append(this.nextEpBtn, this.nextEpDismissBtn);
+    shell.appendChild(this.nextEpWrap);
 
     /* 8. Hotstar-style bottom language selector pill bar (first 5 seconds) */
     this.hotstarBar = el('div', 'elf-hotstar-lang');
@@ -457,6 +514,9 @@ export class PlayerUI {
     this.timelineRow = el('div', 'elf-timeline-row');
     this.curTimeEl = el('span', 'elf-time-inline elf-time-cur', '0:00');
     this.durTimeEl = el('span', 'elf-time-inline elf-time-dur', '0:00');
+    this.durTimeEl.title = 'Tap to toggle remaining time';
+    this.durTimeEl.setAttribute('role', 'button');
+    this.durTimeEl.tabIndex = 0;
 
     this.scrub = el('div', 'elf-scrub');
     this.scrub.setAttribute('role', 'slider');
@@ -501,6 +561,11 @@ export class PlayerUI {
     this.volSlider.setAttribute('aria-label', 'Volume');
     volWrap.appendChild(this.volSlider);
 
+    this.endsAtBtn = el('button', 'elf-btn elf-ends-at-btn', 'Will End at --:--') as HTMLButtonElement;
+    this.endsAtBtn.title = 'Toggle 24h / 12h clock format';
+    this.endsAtBtn.setAttribute('aria-label', 'Toggle end time format');
+    this.endsAtBtn.hidden = true;
+
     this.speedBtn = el('button', 'elf-btn elf-speed-pill', '1×') as HTMLButtonElement;
     this.speedBtn.title = 'Playback speed (or hold video for 2×)';
     this.speedBtn.setAttribute('aria-label', 'Playback speed');
@@ -517,12 +582,23 @@ export class PlayerUI {
       this.volBtn,
       volWrap,
       el('div', 'elf-spacer'),
+      this.endsAtBtn,
       this.speedBtn,
       this.pipBtn,
       this.fsBtn,
     );
     bottomDock.appendChild(this.bar);
     shell.appendChild(bottomDock);
+
+    /* 9B. Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV only) */
+    this.epWheelOverlay = el('div', 'elf-ep-wheel-overlay');
+    this.epWheelOverlay.dataset.open = 'false';
+    const epWheelStage = el('div', 'elf-ep-wheel-stage');
+    this.epWheelSeasonsEl = el('div', 'elf-ep-wheel-seasons');
+    this.epWheelList = el('div', 'elf-ep-wheel-list');
+    epWheelStage.append(this.epWheelSeasonsEl, this.epWheelList);
+    this.epWheelOverlay.appendChild(epWheelStage);
+    shell.appendChild(this.epWheelOverlay);
 
     /* 10. Modal / Sheet Overlay for Audio & Subtitles, Quality, Speed, Sources, Style */
     this.panelBackdrop = el('div', 'elf-panel-backdrop');
@@ -633,7 +709,8 @@ export class PlayerUI {
     if (sig === this.lastMediaSig) return;
     this.lastMediaSig = sig;
 
-    /* A. Top bar TV Episode indicator (NO top title logo — only S# · E# — Episode Name!) */
+    /* A. Top bar TV Episode indicator + Top-right Episode Wheel trigger */
+    this.episodesTopBtn.hidden = dm.mediaType !== 'tv';
     if (dm.mediaType === 'tv' && dm.season && dm.episode) {
       const epCode = `S${dm.season} · E${dm.episode}`;
       this.topEpisodeEl.textContent = dm.episodeName ? `${epCode} — ${dm.episodeName}` : epCode;
@@ -641,6 +718,7 @@ export class PlayerUI {
     } else {
       this.topEpisodeEl.textContent = '';
       this.topEpisodeEl.hidden = true;
+      if (this.epWheelOpen) this.closeEpisodeWheel();
     }
 
     /* B. Bottom-dock Title Logo (or Cartoony Font fallback) + `Movie · Genre · Year` */
@@ -699,7 +777,7 @@ export class PlayerUI {
   }
 
   private enterPauseScreen(): void {
-    if (this.locked || this.panel.dataset.open === 'true') return;
+    if (this.locked || this.panel.dataset.open === 'true' || this.epWheelOpen) return;
     clearTimeout(this.hideTimer);
     clearTimeout(this.pauseIdleTimer);
     this.player.shell.dataset.pauseScreen = 'true';
@@ -710,11 +788,23 @@ export class PlayerUI {
 
   private schedulePauseScreen(ms = 3200): void {
     clearTimeout(this.pauseIdleTimer);
-    if (!this.player.video.paused || !this.hasStartedPlayback || this.locked || this.panel.dataset.open === 'true') {
+    if (
+      !this.player.video.paused ||
+      !this.hasStartedPlayback ||
+      this.locked ||
+      this.panel.dataset.open === 'true' ||
+      this.epWheelOpen
+    ) {
       return;
     }
     this.pauseIdleTimer = window.setTimeout(() => {
-      if (this.player.video.paused && this.hasStartedPlayback && this.panel.dataset.open !== 'true' && !this.locked) {
+      if (
+        this.player.video.paused &&
+        this.hasStartedPlayback &&
+        this.panel.dataset.open !== 'true' &&
+        !this.epWheelOpen &&
+        !this.locked
+      ) {
         this.enterPauseScreen();
       }
     }, ms);
@@ -766,9 +856,54 @@ export class PlayerUI {
     };
     this.volSlider.oninput = () => this.player.setVolume(Number(this.volSlider.value));
 
+    this.episodesTopBtn.onclick = () => this.toggleEpisodeWheel();
     this.qualityTopBtn.onclick = () => this.togglePanel('quality');
     this.audioSubsTopBtn.onclick = () => this.togglePanel('audiosubs');
     this.speedBtn.onclick = () => this.togglePanel('speed');
+
+    const toggleRemTime = (e: Event) => {
+      e.stopPropagation();
+      this.showRemainingTime = !this.showRemainingTime;
+      this.durTimeEl.dataset.remaining = String(this.showRemainingTime);
+      this.lastDurStr = '';
+      this.refreshTimeReadouts();
+    };
+    this.durTimeEl.onclick = toggleRemTime;
+    this.durTimeEl.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleRemTime(e);
+      }
+    };
+
+    this.endsAtBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.endsAt12h = !this.endsAt12h;
+      this.endsAtBtn.dataset.fmt = this.endsAt12h ? '12h' : '24h';
+      this.lastEndsAtStr = '';
+      this.triggerBtnPop(this.endsAtBtn);
+      this.refreshTimeReadouts();
+    };
+
+    this.nextEpBtn.onclick = (e) => {
+      e.stopPropagation();
+      this.nextEpWrap.dataset.visible = 'false';
+      void this.player.nextEpisode();
+    };
+    this.nextEpDismissBtn.onclick = (e) => {
+      e.stopPropagation();
+      const dm = this.resolveDisplayMedia();
+      this.nextEpDismissedKey = `${dm.season ?? 1}:${dm.episode ?? 1}`;
+      this.nextEpWrap.dataset.visible = 'false';
+    };
+
+    this.epWheelOverlay.onclick = (e) => {
+      if (!(e.target instanceof HTMLElement)) return;
+      if (!e.target.closest('.elf-ep-wheel-item, .elf-ep-season-pill')) {
+        this.closeEpisodeWheel();
+      }
+    };
+    this.epWheelList.addEventListener('scroll', () => this.syncWheelCurve(), { passive: true });
 
     // Hold on the `1x` speed pill ALSO triggers temporary 2x boost!
     let speedBtnHoldTimer = 0;
@@ -983,6 +1118,44 @@ export class PlayerUI {
         this.showToast('Stream currently unavailable', 4500, 'warn');
       }
     });
+    v.addEventListener('ended', () => {
+      const dm = this.resolveDisplayMedia();
+      const epKey = `${dm.season ?? 1}:${dm.episode ?? 1}`;
+      if (
+        dm.mediaType === 'tv' &&
+        this.player.config.autoplayNextEp !== false &&
+        this.nextEpDismissedKey !== epKey &&
+        this.player.getNextEpisodeTarget()
+      ) {
+        this.nextEpWrap.dataset.visible = 'false';
+        void this.player.nextEpisode();
+      }
+    });
+
+    bus.on('episodesCatalog', () => {
+      if (this.epWheelOpen) {
+        const cat = this.player.getSeasonCatalog(this.epWheelSeason);
+        if (cat) {
+          this.epWheelSeasons = cat.seasons;
+          this.epWheelEpisodes = cat.episodes;
+          this.renderEpisodeWheelDOM();
+        }
+      }
+    });
+    bus.on('episodeChange', (d) => {
+      const ev = d as { season?: number; episode?: number } | undefined;
+      this.nextEpDismissedKey = '';
+      this.nextEpWrap.dataset.visible = 'false';
+      this.lastMediaSig = '';
+      this.syncMediaMetadata();
+      if (ev?.season && ev?.episode) {
+        this.showToast(`Season ${ev.season} · Episode ${ev.episode}`);
+      }
+      if (this.epWheelOpen) {
+        this.epWheelSeason = ev?.season ?? this.epWheelSeason;
+        this.renderEpisodeWheelDOM();
+      }
+    });
     bus.on('episode:next', () => this.showToast('Loading next…'));
     bus.on('fullscreen', (d) => {
       const on = Boolean((d as { on?: boolean })?.on);
@@ -1003,7 +1176,7 @@ export class PlayerUI {
     if (!(target instanceof HTMLElement)) return false;
     return Boolean(
       target.closest(
-        '.elf-brand-cluster, .elf-top-actions, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-hotstar-lang, .elf-skip, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
+        '.elf-brand-cluster, .elf-top-actions, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-ep-wheel-overlay, .elf-hotstar-lang, .elf-skip, .elf-next-ep-wrap, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
       ),
     );
   }
@@ -1012,6 +1185,12 @@ export class PlayerUI {
     const shell = this.player.shell;
     const v = this.player.video;
 
+    const getTwoTouchDist = (): number => {
+      const pts = Array.from(this.touchPoints.values());
+      if (pts.length < 2) return 0;
+      return Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    };
+
     shell.addEventListener('pointerdown', (e) => {
       if (this.isInteractiveChrome(e.target)) return;
       if (e.button !== undefined && e.button !== 0) return;
@@ -1019,6 +1198,20 @@ export class PlayerUI {
       if (this.locked) {
         this.peekUnlockPill();
         return;
+      }
+
+      if (e.pointerType === 'touch') {
+        this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this.touchPoints.size >= 2) {
+          this.pinchActive = true;
+          this.pinchStartDist = Math.max(10, getTwoTouchDist());
+          this.pointerDownPos = null;
+          this.tapCount = 0;
+          clearTimeout(this.singleTapTimer);
+          clearTimeout(this.holdTimer);
+          if (this.holdActive) this.stopHold2x();
+          return;
+        }
       }
 
       this.pointerDownPos = {
@@ -1030,12 +1223,32 @@ export class PlayerUI {
 
       clearTimeout(this.holdTimer);
       this.holdTimer = window.setTimeout(() => {
-        if (!this.pointerDownPos || v.paused || this.dragging || this.locked) return;
+        if (!this.pointerDownPos || this.pinchActive || v.paused || this.dragging || this.locked) return;
         this.startHold2x();
       }, 380);
     });
 
     shell.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' && this.touchPoints.has(e.pointerId)) {
+        this.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (this.pinchActive && this.touchPoints.size >= 2 && !this.locked) {
+          const dist = getTwoTouchDist();
+          if (this.pinchStartDist > 0 && dist > 0) {
+            const ratio = dist / this.pinchStartDist;
+            if (ratio > 1.15 && this.player.getZoomMode() !== 'cover') {
+              this.player.setZoomMode('cover');
+              this.pinchStartDist = dist;
+              this.showToast('Zoomed to fill');
+            } else if (ratio < 0.86 && this.player.getZoomMode() !== 'fit') {
+              this.player.setZoomMode('fit');
+              this.pinchStartDist = dist;
+              this.showToast('Original fit');
+            }
+          }
+          return;
+        }
+      }
+
       if (!this.pointerDownPos || e.pointerId !== this.pointerDownPos.id) return;
       const dx = Math.abs(e.clientX - this.pointerDownPos.x);
       const dy = Math.abs(e.clientY - this.pointerDownPos.y);
@@ -1046,6 +1259,20 @@ export class PlayerUI {
     });
 
     const finishPointer = (e: PointerEvent, cancelled = false) => {
+      if (e.pointerType === 'touch') {
+        this.touchPoints.delete(e.pointerId);
+        if (this.pinchActive) {
+          if (this.touchPoints.size === 0) {
+            this.pinchActive = false;
+            this.pinchStartDist = 0;
+          }
+          this.suppressClickUntil = Date.now() + 280;
+          this.pointerDownPos = null;
+          clearTimeout(this.holdTimer);
+          return;
+        }
+      }
+
       clearTimeout(this.holdTimer);
       if (this.holdActive) {
         this.stopHold2x();
@@ -1188,7 +1415,9 @@ export class PlayerUI {
     if (on) {
       this.stopHold2x();
       this.closePanel();
+      this.closeEpisodeWheel();
       this.dismissHotstarBar(false);
+      this.nextEpWrap.dataset.visible = 'false';
       shell.dataset.pauseScreen = 'false';
       shell.dataset.ui = 'hidden';
       clearTimeout(this.hideTimer);
@@ -1286,15 +1515,14 @@ export class PlayerUI {
     const st = this.player.getState();
     const sources = this.player.getSources();
     const ql = this.player.getQualityLevels();
-    const audio = this.player.getAudioTracks();
-    const subs = this.player.getSubtitleTracks();
 
     this.pipBtn.hidden = !st.canPip;
     this.fsBtn.hidden = !st.canFullscreen;
     this.qualityTopBtn.hidden = ql.length === 0 && sources.length < 2;
-    this.audioSubsTopBtn.hidden = audio.length < 2 && subs.length === 0;
+    this.audioSubsTopBtn.hidden = false;
 
     const d = st.duration;
+    this.endsAtBtn.hidden = !(Number.isFinite(d) && d > 0);
     const step = Number(this.player.config.skipStep ?? 10);
     const hideSkip = Number.isFinite(d) && d > 0 && d <= step * 2;
     this.back10.hidden = hideSkip;
@@ -1393,6 +1621,52 @@ export class PlayerUI {
   /* Smooth 60fps rAF Timeline Loop                                      */
   /* ------------------------------------------------------------------ */
 
+  private formatClientFinishTime(remainingSec: number): string {
+    const endDate = new Date(Date.now() + Math.max(0, remainingSec) * 1000);
+    const mm = String(endDate.getMinutes()).padStart(2, '0');
+    if (this.endsAt12h) {
+      const rawH = endDate.getHours();
+      const ampm = rawH >= 12 ? 'PM' : 'AM';
+      const h12 = rawH % 12 || 12;
+      return `Will End at ${h12}:${mm} ${ampm}`;
+    }
+    const hh = String(endDate.getHours()).padStart(2, '0');
+    return `Will End at ${hh}:${mm}`;
+  }
+
+  private refreshTimeReadouts(): void {
+    const v = this.player.video;
+    const d = Number.isFinite(v.duration) ? v.duration : 0;
+    const cur = Number.isFinite(v.currentTime) ? v.currentTime : 0;
+
+    const curStr = fmtTime(cur);
+    if (curStr !== this.lastCurStr) {
+      this.lastCurStr = curStr;
+      this.curTimeEl.textContent = curStr;
+      this.scrub.setAttribute('aria-valuenow', String(Math.round(cur)));
+    }
+
+    const durStr =
+      this.showRemainingTime && d > 0 ? `-${fmtTime(Math.max(0, d - cur))}` : fmtTime(d);
+    if (durStr !== this.lastDurStr) {
+      this.lastDurStr = durStr;
+      this.durTimeEl.textContent = durStr;
+    }
+
+    if (d > 0) {
+      if (this.endsAtBtn.hidden) this.endsAtBtn.hidden = false;
+      const rate = Math.max(0.25, v.playbackRate || 1);
+      const wallRemSec = Math.max(0, d - cur) / rate;
+      const endsStr = this.formatClientFinishTime(wallRemSec);
+      if (endsStr !== this.lastEndsAtStr) {
+        this.lastEndsAtStr = endsStr;
+        this.endsAtBtn.textContent = endsStr;
+      }
+    } else if (!this.endsAtBtn.hidden) {
+      this.endsAtBtn.hidden = true;
+    }
+  }
+
   private startLoop(): void {
     const tick = () => {
       this.raf = requestAnimationFrame(tick);
@@ -1416,19 +1690,7 @@ export class PlayerUI {
         }
       }
 
-      const curStr = fmtTime(v.currentTime);
-      if (curStr !== this.lastCurStr) {
-        this.lastCurStr = curStr;
-        this.curTimeEl.textContent = curStr;
-        this.scrub.setAttribute('aria-valuenow', String(Math.round(v.currentTime)));
-      }
-
-      const durStr = fmtTime(d);
-      if (durStr !== this.lastDurStr) {
-        this.lastDurStr = durStr;
-        this.durTimeEl.textContent = durStr;
-      }
-
+      this.refreshTimeReadouts();
       this.updateSkip();
     };
     this.raf = requestAnimationFrame(tick);
@@ -1445,14 +1707,16 @@ export class PlayerUI {
       return Math.max(0, Math.min(1, (x - r.left) / (r.width || 1)));
     };
     const preview = (x: number) => {
-      const p = ratio(x) * 100;
+      const rVal = ratio(x);
+      const p = rVal * 100;
       const d = Number.isFinite(v.duration) ? v.duration : 0;
       if (this.dragging) {
         this.fill.style.width = `${p}%`;
         this.knob.style.left = `${p}%`;
       }
-      this.tip.style.left = `${p}%`;
-      this.tip.textContent = fmtTime(ratio(x) * d);
+      const clampedTipPct = Math.max(3.5, Math.min(96.5, p));
+      this.tip.style.left = `${clampedTipPct}%`;
+      this.tip.textContent = fmtTime(rVal * d);
     };
 
     this.scrub.addEventListener('pointerdown', (e) => {
@@ -1520,17 +1784,62 @@ export class PlayerUI {
   }
 
   private updateSkip(): void {
-    if (this.locked) {
+    if (this.locked || this.epWheelOpen) {
       if (this.skipBtn.dataset.visible !== 'false') this.skipBtn.dataset.visible = 'false';
+      if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
       return;
     }
-    const t = this.player.video.currentTime;
+    const v = this.player.video;
+    const t = v.currentTime;
+    const d = Number.isFinite(v.duration) ? v.duration : 0;
     const hit = this.skipRanges.find((r) => t >= r.start && t < r.end);
     const visible = !!hit;
-    if (this.skipBtn.dataset.visible !== String(visible)) this.skipBtn.dataset.visible = String(visible);
+    if (this.skipBtn.dataset.visible !== String(visible)) {
+      this.skipBtn.dataset.visible = String(visible);
+    }
+
+    const dm = this.resolveDisplayMedia();
+    const nextTarget = dm.mediaType === 'tv' ? this.player.getNextEpisodeTarget() : null;
+
     if (hit) {
-      if (this.skipBtn.textContent !== hit.label) this.skipBtn.textContent = hit.label;
-      this.skipBtn.onclick = () => this.player.seek(hit.end);
+      const span = Math.max(0.1, hit.end - hit.start);
+      const pct = Math.max(0, Math.min(100, ((t - hit.start) / span) * 100)).toFixed(1);
+      if (pct !== this.lastSkipPct) {
+        this.lastSkipPct = pct;
+        this.skipBtn.style.setProperty('--elf-skip-pct', `${pct}%`);
+      }
+
+      if (hit.kind === 'outro' && nextTarget) {
+        const nextTxt = `Next Episode · E${nextTarget.episode} »`;
+        if (this.skipLabelEl.textContent !== nextTxt) this.skipLabelEl.textContent = nextTxt;
+        this.skipBtn.onclick = () => void this.player.nextEpisode();
+      } else {
+        const skipTxt = `${hit.label} »`;
+        if (this.skipLabelEl.textContent !== skipTxt) this.skipLabelEl.textContent = skipTxt;
+        this.skipBtn.onclick = () => this.player.seek(hit.end);
+      }
+      if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
+      return;
+    }
+
+    // End-of-episode pre-warmed Next Episode prompt during final 15s (TV only)
+    const epKey = `${dm.season ?? 1}:${dm.episode ?? 1}`;
+    const rem = d - t;
+    if (
+      nextTarget &&
+      d > 45 &&
+      rem > 0 &&
+      rem <= 15 &&
+      this.nextEpDismissedKey !== epKey
+    ) {
+      const countdown = Math.max(1, Math.ceil(rem));
+      const nextPct = Math.max(0, Math.min(100, ((15 - rem) / 15) * 100)).toFixed(1);
+      this.nextEpBtn.style.setProperty('--elf-next-pct', `${nextPct}%`);
+      const lbl = `Next Episode · E${nextTarget.episode} (${countdown}s)`;
+      if (this.nextEpLabelEl.textContent !== lbl) this.nextEpLabelEl.textContent = lbl;
+      if (this.nextEpWrap.dataset.visible !== 'true') this.nextEpWrap.dataset.visible = 'true';
+    } else if (this.nextEpWrap.dataset.visible !== 'false') {
+      this.nextEpWrap.dataset.visible = 'false';
     }
   }
 
@@ -1592,6 +1901,11 @@ export class PlayerUI {
           this.togglePanel('audiosubs');
           break;
         case 'escape':
+          if (this.epWheelOpen) {
+            this.closeEpisodeWheel();
+            e.preventDefault();
+            return;
+          }
           if (this.panel.dataset.open === 'true') {
             this.closePanel();
             e.preventDefault();
@@ -1624,10 +1938,9 @@ export class PlayerUI {
   /* ------------------------------------------------------------------ */
 
   private availableModes(): { id: PanelMode; icon: string; label: string }[] {
-    const modes: { id: PanelMode; icon: string; label: string }[] = [];
-    if (this.player.getAudioTracks().length > 1 || this.player.getSubtitleTracks().length > 0) {
-      modes.push({ id: 'audiosubs', icon: I.audioSubsBox, label: 'Audio & Subtitles' });
-    }
+    const modes: { id: PanelMode; icon: string; label: string }[] = [
+      { id: 'audiosubs', icon: I.audioSubsBox, label: 'Audio & Subtitles' },
+    ];
     if (this.player.getQualityLevels().length > 0) {
       modes.push({ id: 'quality', icon: I.qualityTv, label: 'Quality' });
     }
@@ -1640,6 +1953,7 @@ export class PlayerUI {
 
   private togglePanel(mode: PanelMode): void {
     if (this.locked) return;
+    if (this.epWheelOpen) this.closeEpisodeWheel();
     if (this.panel.dataset.open === 'true' && this.panelMode === mode) {
       this.closePanel();
     } else {
@@ -1747,12 +2061,13 @@ export class PlayerUI {
     const subTracks = this.player.getSubtitleTracks();
 
     const grid = el('div', 'elf-as-grid');
-    grid.dataset.dual = String(audioTracks.length > 0 && subTracks.length >= 0);
+    grid.dataset.dual = 'true';
 
+    /* ---- Column 1: Dynamic Audio Tracks + Phone Speaker Boost (200%) ---- */
+    const colAudio = el('div', 'elf-as-col');
+    colAudio.appendChild(el('div', 'elf-col-heading', 'Audio'));
+    const listAudio = el('div', 'elf-col-list');
     if (audioTracks.length > 0) {
-      const colAudio = el('div', 'elf-as-col');
-      colAudio.appendChild(el('div', 'elf-col-heading', 'Audio'));
-      const listAudio = el('div', 'elf-col-list');
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
         listAudio.appendChild(
@@ -1763,10 +2078,57 @@ export class PlayerUI {
           }),
         );
       }
-      colAudio.appendChild(listAudio);
-      grid.appendChild(colAudio);
+    } else {
+      listAudio.appendChild(this.row('Original', '', true, () => {}));
+    }
+    colAudio.appendChild(listAudio);
+
+    const boostPct = this.player.getAudioBoost();
+    const boostCard = el('div', 'elf-qol-card');
+    const boostHead = el('div', 'elf-qol-head');
+    boostHead.appendChild(el('span', 'elf-qol-title', 'Speaker Boost'));
+    const boostVal = el('span', 'elf-qol-badge', `${boostPct}%`);
+    boostVal.dataset.active = String(boostPct > 100);
+    boostHead.appendChild(boostVal);
+
+    const boostSlider = el('input', 'elf-boost-range') as HTMLInputElement;
+    boostSlider.type = 'range';
+    boostSlider.min = '100';
+    boostSlider.max = '200';
+    boostSlider.step = '5';
+    boostSlider.value = String(boostPct);
+    boostSlider.setAttribute('aria-label', 'Speaker Boost');
+
+    const boostChips = el('div', 'elf-qol-chips');
+    const syncBoostUI = (nextPct: number) => {
+      this.player.setAudioBoost(nextPct);
+      const actual = this.player.getAudioBoost();
+      boostSlider.value = String(actual);
+      boostVal.textContent = `${actual}%`;
+      boostVal.dataset.active = String(actual > 100);
+      boostChips.querySelectorAll('button').forEach((b) => {
+        b.dataset.on = String(Number((b as HTMLButtonElement).dataset.pct) === actual);
+      });
+    };
+
+    boostSlider.oninput = () => syncBoostUI(Number(boostSlider.value));
+
+    for (const preset of [100, 150, 200]) {
+      const chip = el('button', 'elf-qol-chip', `${preset}%`) as HTMLButtonElement;
+      chip.dataset.pct = String(preset);
+      chip.dataset.on = String(boostPct === preset);
+      chip.onclick = () => {
+        syncBoostUI(preset);
+        this.showToast(preset > 100 ? `Speaker Boost · ${preset}%` : 'Speaker Boost · Normal');
+      };
+      boostChips.appendChild(chip);
     }
 
+    boostCard.append(boostHead, boostSlider, boostChips);
+    colAudio.appendChild(boostCard);
+    grid.appendChild(colAudio);
+
+    /* ---- Column 2: Dynamic Subtitles + Subtitle Sync Fixer (-0.5s / +0.5s) ---- */
     const colSubs = el('div', 'elf-as-col');
     colSubs.appendChild(el('div', 'elf-col-heading', 'Subtitles'));
     const listSubs = el('div', 'elf-col-list');
@@ -1796,8 +2158,43 @@ export class PlayerUI {
       listSubs.appendChild(styleBtn);
     }
     colSubs.appendChild(listSubs);
-    grid.appendChild(colSubs);
 
+    const fmtOffset = (sec: number) =>
+      sec === 0 ? '0.0s' : `${sec > 0 ? '+' : ''}${sec.toFixed(1)}s`;
+    const curOffset = this.player.getSubtitleOffset();
+    const syncCard = el('div', 'elf-qol-card');
+    const syncHead = el('div', 'elf-qol-head');
+    syncHead.appendChild(el('span', 'elf-qol-title', 'Subtitle Sync'));
+    const syncVal = el('span', 'elf-qol-badge', fmtOffset(curOffset));
+    syncVal.dataset.active = String(curOffset !== 0);
+    syncHead.appendChild(syncVal);
+
+    const syncChips = el('div', 'elf-qol-chips');
+    const updateSync = (nextSec: number) => {
+      this.player.setSubtitleOffset(nextSec);
+      const actual = this.player.getSubtitleOffset();
+      const txt = fmtOffset(actual);
+      syncVal.textContent = txt;
+      syncVal.dataset.active = String(actual !== 0);
+      resetChip.disabled = actual === 0;
+      this.showToast(`Subtitle sync · ${txt}`);
+    };
+
+    const minusChip = el('button', 'elf-qol-chip', '−0.5s') as HTMLButtonElement;
+    minusChip.onclick = () => updateSync(this.player.getSubtitleOffset() - 0.5);
+
+    const resetChip = el('button', 'elf-qol-chip', 'Reset') as HTMLButtonElement;
+    resetChip.disabled = curOffset === 0;
+    resetChip.onclick = () => updateSync(0);
+
+    const plusChip = el('button', 'elf-qol-chip', '+0.5s') as HTMLButtonElement;
+    plusChip.onclick = () => updateSync(this.player.getSubtitleOffset() + 0.5);
+
+    syncChips.append(minusChip, resetChip, plusChip);
+    syncCard.append(syncHead, syncChips);
+    colSubs.appendChild(syncCard);
+
+    grid.appendChild(colSubs);
     this.panelBody.appendChild(grid);
   }
 
@@ -2067,6 +2464,172 @@ export class PlayerUI {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV Only)    */
+  /* ------------------------------------------------------------------ */
+
+  private toggleEpisodeWheel(): void {
+    if (this.locked) return;
+    if (this.epWheelOpen) {
+      this.closeEpisodeWheel();
+    } else {
+      void this.openEpisodeWheel();
+    }
+  }
+
+  private async openEpisodeWheel(targetSeason?: number): Promise<void> {
+    const dm = this.resolveDisplayMedia();
+    if (dm.mediaType !== 'tv') return;
+
+    if (this.panel.dataset.open === 'true') this.closePanel();
+    this.dismissHotstarBar(false);
+    clearTimeout(this.hideTimer);
+    clearTimeout(this.pauseIdleTimer);
+
+    this.epWheelOpen = true;
+    this.epWheelSeason = Math.max(1, targetSeason ?? dm.season ?? this.player.config.season ?? 1);
+    this.epWheelOverlay.dataset.open = 'true';
+    this.episodesTopBtn.dataset.active = 'true';
+    this.player.shell.dataset.pauseScreen = 'false';
+    this.player.shell.dataset.epWheel = 'true';
+
+    const cached = this.player.getSeasonCatalog(this.epWheelSeason);
+    if (cached) {
+      this.epWheelSeasons = cached.seasons;
+      this.epWheelEpisodes = cached.episodes;
+      this.renderEpisodeWheelDOM();
+    } else {
+      this.epWheelList.innerHTML = '<div class="elf-ep-wheel-loading">Loading episodes…</div>';
+      const cat = await this.player.fetchSeasonEpisodes(this.epWheelSeason);
+      if (!this.epWheelOpen) return;
+      this.epWheelSeasons = cat.seasons;
+      this.epWheelEpisodes = cat.episodes;
+      this.renderEpisodeWheelDOM();
+    }
+  }
+
+  private closeEpisodeWheel(): void {
+    if (!this.epWheelOpen && this.epWheelOverlay.dataset.open !== 'true') return;
+    this.epWheelOpen = false;
+    this.epWheelOverlay.dataset.open = 'false';
+    this.episodesTopBtn.dataset.active = 'false';
+    this.player.shell.dataset.epWheel = 'false';
+    if (this.player.video.paused && this.hasStartedPlayback) {
+      this.schedulePauseScreen(2600);
+    } else {
+      this.scheduleHide();
+    }
+  }
+
+  private renderEpisodeWheelDOM(): void {
+    const dm = this.resolveDisplayMedia();
+    const activePlaySeason = dm.season ?? this.player.config.season ?? 1;
+    const activePlayEpisode = dm.episode ?? this.player.config.episode ?? 1;
+
+    this.epWheelSeasonsEl.replaceChildren();
+    if (this.epWheelSeasons.length > 1) {
+      for (const s of this.epWheelSeasons) {
+        const pill = el('button', 'elf-ep-season-pill', `S${s.seasonNumber}`) as HTMLButtonElement;
+        pill.dataset.on = String(s.seasonNumber === this.epWheelSeason);
+        pill.title = s.name;
+        pill.onclick = (e) => {
+          e.stopPropagation();
+          if (s.seasonNumber !== this.epWheelSeason) {
+            void this.openEpisodeWheel(s.seasonNumber);
+          }
+        };
+        this.epWheelSeasonsEl.appendChild(pill);
+      }
+      this.epWheelSeasonsEl.hidden = false;
+    } else {
+      this.epWheelSeasonsEl.hidden = true;
+    }
+
+    this.epWheelList.replaceChildren();
+    const topSpacer = el('div', 'elf-ep-wheel-pad');
+    const bottomSpacer = el('div', 'elf-ep-wheel-pad');
+    this.epWheelList.appendChild(topSpacer);
+
+    let activeItemEl: HTMLElement | null = null;
+
+    for (const ep of this.epWheelEpisodes) {
+      const isPlaying =
+        this.epWheelSeason === activePlaySeason && ep.episodeNumber === activePlayEpisode;
+
+      const item = el('button', 'elf-ep-wheel-item') as HTMLButtonElement;
+      item.dataset.playing = String(isPlaying);
+      item.dataset.ep = String(ep.episodeNumber);
+
+      const titleLine = el('div', 'elf-epw-title', `Episode ${ep.episodeNumber}`);
+      const cleanName =
+        ep.name && !/^episode\s+\d+$/i.test(ep.name.trim())
+          ? ep.name.trim()
+          : ep.runtime
+            ? `${ep.runtime} min`
+            : `Season ${this.epWheelSeason}`;
+      const subLine = el('div', 'elf-epw-sub', esc(cleanName));
+
+      const statusLine = el(
+        'div',
+        'elf-epw-status',
+        isPlaying
+          ? `<span class="elf-epw-live">Playing</span><span class="elf-epw-ico">${I.playingScreen}</span>`
+          : `<span class="elf-epw-queue">Queue</span><span class="elf-epw-dash">—</span>`,
+      );
+
+      item.append(titleLine, subLine, statusLine);
+      item.onclick = (e) => {
+        e.stopPropagation();
+        if (isPlaying) {
+          this.closeEpisodeWheel();
+          return;
+        }
+        const chosenS = this.epWheelSeason;
+        const chosenE = ep.episodeNumber;
+        this.closeEpisodeWheel();
+        void this.player.loadEpisode(chosenS, chosenE);
+      };
+
+      this.epWheelList.appendChild(item);
+      if (isPlaying || (!activeItemEl && ep.episodeNumber === 1)) {
+        activeItemEl = item;
+      }
+    }
+
+    this.epWheelList.appendChild(bottomSpacer);
+
+    requestAnimationFrame(() => {
+      if (activeItemEl) {
+        const listH = this.epWheelList.clientHeight;
+        const targetTop =
+          activeItemEl.offsetTop - listH / 2 + activeItemEl.offsetHeight / 2;
+        this.epWheelList.scrollTop = Math.max(0, targetTop);
+      }
+      this.syncWheelCurve();
+    });
+  }
+
+  private syncWheelCurve(): void {
+    if (!this.epWheelOpen) return;
+    const listRect = this.epWheelList.getBoundingClientRect();
+    if (!listRect.height) return;
+    const centerY = listRect.top + listRect.height * 0.5;
+    const halfSpan = Math.max(120, listRect.height * 0.48);
+
+    const items = this.epWheelList.querySelectorAll<HTMLElement>('.elf-ep-wheel-item');
+    items.forEach((item) => {
+      const r = item.getBoundingClientRect();
+      const itemCenter = r.top + r.height * 0.5;
+      const norm = Math.min(1, Math.abs(itemCenter - centerY) / halfSpan);
+      const scale = 1 - norm * 0.17;
+      const opacity = 1 - norm * 0.78;
+      const shiftX = norm * norm * 16;
+      item.style.opacity = opacity.toFixed(2);
+      item.style.transform = `translate3d(${shiftX.toFixed(1)}px, 0, 0) scale(${scale.toFixed(3)})`;
+      item.dataset.focus = String(norm < 0.24);
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Visibility & Toasts                                                 */
   /* ------------------------------------------------------------------ */
 
@@ -2083,9 +2646,23 @@ export class PlayerUI {
 
   private scheduleHide(): void {
     clearTimeout(this.hideTimer);
-    if (this.player.video.paused || this.panel.dataset.open === 'true' || this.locked) return;
+    if (
+      this.player.video.paused ||
+      this.panel.dataset.open === 'true' ||
+      this.epWheelOpen ||
+      this.locked
+    ) {
+      return;
+    }
     this.hideTimer = window.setTimeout(() => {
-      if (this.player.video.paused || this.panel.dataset.open === 'true' || this.locked) return;
+      if (
+        this.player.video.paused ||
+        this.panel.dataset.open === 'true' ||
+        this.epWheelOpen ||
+        this.locked
+      ) {
+        return;
+      }
       this.player.shell.dataset.ui = 'hidden';
     }, 3000);
   }

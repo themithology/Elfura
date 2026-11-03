@@ -63,6 +63,10 @@
   background: #000;
   display: block;
   pointer-events: none;
+  transition: transform 0.22s var(--elf-ease);
+}
+.elf-shell[data-zoom='cover'] .elf-video {
+  object-fit: cover;
 }
 
 /* Native text tracks stay hidden; SubtitleRenderer renders captions. */
@@ -1161,24 +1165,63 @@
 
 .elf-scrub-tip {
   position: absolute;
-  bottom: 24px;
-  transform: translateX(-50%);
-  background: rgba(12, 14, 20, 0.92);
-  border: 1px solid var(--elf-border);
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11.5px;
+  bottom: 28px;
+  transform: translate(-50%, 6px) scale(0.92);
+  background: rgba(12, 14, 22, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
   color: #fff;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s;
+  transition: opacity 0.14s ease, transform 0.2s var(--elf-spring);
   white-space: nowrap;
+  z-index: 6;
+}
+.elf-scrub-tip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: rgba(12, 14, 22, 0.96);
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.22);
+  transform: translateX(-50%) rotate(45deg);
 }
 .elf-scrub:hover .elf-scrub-tip,
 .elf-scrub[data-dragging='true'] .elf-scrub-tip {
   opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+.elf-scrub[data-dragging='true'] .elf-scrub-tip {
+  bottom: 32px;
+  padding: 6px 13px;
+  font-size: 13px;
+  border-color: rgba(255, 255, 255, 0.38);
+}
+
+.elf-time-dur {
+  cursor: pointer;
+  padding: 2px 6px;
+  margin-right: -6px;
+  border-radius: 6px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.elf-time-dur:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.elf-time-dur[data-remaining='true'] {
+  color: #fff;
 }
 
 .elf-segments {
@@ -1778,28 +1821,415 @@
   right: 22px;
   bottom: 132px;
   z-index: 7;
-  padding: 9px 18px;
+  padding: 10px 20px;
   border-radius: 999px;
   background: rgba(14, 16, 22, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.34);
   color: #fff;
   font: 700 13px/1 inherit;
   cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.22s var(--elf-spring), background 0.15s ease;
+  transition: opacity 0.2s ease, transform 0.22s var(--elf-spring), border-color 0.15s ease;
 }
 .elf-skip[data-visible='true'] {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
+.elf-skip-prog {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--elf-skip-pct, 0%);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.36));
+  z-index: -1;
+  pointer-events: none;
+  transition: width 0.12s linear;
+}
+.elf-skip-label {
+  position: relative;
+  z-index: 1;
+  letter-spacing: 0.01em;
+}
 .elf-skip:hover {
-  background: #fff;
-  color: #0b0d13;
+  border-color: rgba(255, 255, 255, 0.78);
+  transform: translateY(-1px) scale(1.02);
+}
+
+/* Pre-warmed 0.2s Instant Next-Episode Binge Pill */
+.elf-next-ep-wrap {
+  position: absolute;
+  right: 22px;
+  bottom: 132px;
+  z-index: 7;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.24s var(--elf-spring);
+}
+.elf-next-ep-wrap[data-visible='true'] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.elf-next-ep-btn {
+  appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(14, 16, 24, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  color: #fff;
+  font: 700 13px/1 inherit;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform 0.2s var(--elf-spring), border-color 0.16s ease;
+}
+.elf-next-ep-btn:hover {
+  transform: scale(1.03);
+  border-color: rgba(255, 255, 255, 0.78);
+}
+.elf-next-ep-prog {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--elf-next-pct, 0%);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.38));
+  z-index: -1;
+  pointer-events: none;
+  transition: width 0.2s linear;
+}
+.elf-next-ep-ico {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+}
+.elf-next-ep-ico svg {
+  width: 15px;
+  height: 15px;
+}
+.elf-next-ep-dismiss {
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(14, 16, 24, 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.8);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.elf-next-ep-dismiss svg {
+  width: 15px;
+  height: 15px;
+}
+.elf-next-ep-dismiss:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* "Will End at xx:xx" Client-Local-Time Pill Button */
+.elf-ends-at-btn {
+  width: auto;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(248, 250, 252, 0.88);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.elf-ends-at-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+/* Speaker Boost (200%) & Subtitle Sync (-0.5s / +0.5s) Cards */
+.elf-qol-card {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--elf-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.elf-qol-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.elf-qol-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--elf-fg-dim);
+  letter-spacing: 0.02em;
+}
+.elf-qol-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--elf-fg);
+}
+.elf-qol-badge[data-active='true'] {
+  background: color-mix(in srgb, var(--elf-accent) 24%, transparent);
+  color: #fff;
+  border: 1px solid color-mix(in srgb, var(--elf-accent) 60%, transparent);
+}
+.elf-boost-range {
+  width: 100%;
+  accent-color: var(--elf-accent);
+  cursor: pointer;
+  margin: 0;
+}
+.elf-qol-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.elf-qol-chip {
+  appearance: none;
+  height: 29px;
+  border-radius: 8px;
+  border: 1px solid var(--elf-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--elf-fg);
+  font: 600 12px/1 inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.16s var(--elf-spring);
+}
+.elf-qol-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+.elf-qol-chip:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.elf-qol-chip[data-on='true'] {
+  background: color-mix(in srgb, var(--elf-accent) 22%, rgba(255, 255, 255, 0.08));
+  border-color: color-mix(in srgb, var(--elf-accent) 68%, transparent);
+  color: #fff;
+}
+.elf-qol-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ==========================================================================
+   Right-Hand Curved / Fading Scroll-Wheel Episode Selector (TV Only)
+   Modeled after the frameless right-edge wheel in user's reference screenshots
+   ========================================================================== */
+.elf-ep-wheel-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  justify-content: flex-end;
+  background: linear-gradient(
+    270deg,
+    rgba(0, 0, 0, 0.94) 0%,
+    rgba(0, 0, 0, 0.78) 38%,
+    rgba(0, 0, 0, 0.25) 72%,
+    transparent 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s var(--elf-ease);
+}
+.elf-ep-wheel-overlay[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.elf-ep-wheel-stage {
+  position: relative;
+  width: min(380px, 68vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-top: 56px;
+  padding-bottom: 12px;
+  transform: translateX(22px);
+  transition: transform 0.28s var(--elf-ease);
+}
+.elf-ep-wheel-overlay[data-open='true'] .elf-ep-wheel-stage {
+  transform: translateX(0);
+}
+.elf-ep-wheel-seasons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px clamp(20px, 3.8vw, 38px) 8px 14px;
+  flex-shrink: 0;
+}
+.elf-ep-wheel-seasons::-webkit-scrollbar {
+  display: none;
+}
+.elf-ep-season-pill {
+  appearance: none;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(248, 250, 252, 0.72);
+  font: 700 11.5px/1 inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+.elf-ep-season-pill:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+.elf-ep-season-pill[data-on='true'] {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #fff;
+  color: #090b10;
+}
+.elf-ep-wheel-list {
+  flex: 1 1 auto;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  scroll-snap-type: y proximity;
+  padding: 0 clamp(20px, 3.8vw, 38px) 0 24px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.85) 20%,
+    #000 38%,
+    #000 62%,
+    rgba(0, 0, 0, 0.85) 80%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.85) 20%,
+    #000 38%,
+    #000 62%,
+    rgba(0, 0, 0, 0.85) 80%,
+    transparent 100%
+  );
+}
+.elf-ep-wheel-list::-webkit-scrollbar {
+  display: none;
+}
+.elf-ep-wheel-pad {
+  height: 36%;
+  pointer-events: none;
+}
+.elf-ep-wheel-loading {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: right;
+  color: rgba(248, 250, 252, 0.65);
+  font-size: 13px;
+  font-weight: 600;
+}
+.elf-ep-wheel-item {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-align: right;
+  cursor: pointer;
+  scroll-snap-align: center;
+  transform-origin: right center;
+  will-change: transform, opacity;
+  transition: color 0.16s ease;
+}
+.elf-epw-title {
+  font-size: clamp(20px, 2.5vw, 26px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.14;
+  color: #ffffff;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+}
+.elf-epw-sub {
+  margin-top: 3px;
+  max-width: 260px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.elf-epw-status {
+  margin-top: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.elf-epw-live {
+  color: #22c55e;
+}
+.elf-epw-ico {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  color: #22c55e;
+}
+.elf-epw-ico svg {
+  width: 15px;
+  height: 15px;
+}
+.elf-epw-queue {
+  color: rgba(148, 163, 184, 0.76);
+  font-weight: 600;
+}
+.elf-epw-dash {
+  color: rgba(148, 163, 184, 0.65);
+  font-weight: 700;
+}
+.elf-shell[data-ep-wheel='true'] .elf-bottom-dock {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .elf-toast {
@@ -1900,11 +2330,27 @@
   .elf-shell[data-ui='visible'] .elf-hotstar-lang {
     bottom: 122px;
   }
+  .elf-ends-at-btn {
+    height: 28px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+  .elf-ep-wheel-stage {
+    width: min(320px, 76vw);
+    padding-top: 50px;
+  }
+  .elf-epw-title {
+    font-size: 20px;
+  }
+  .elf-epw-sub {
+    max-width: 210px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 480px) {
   .elf-top-label { display: none; }
-  .elf-brand-cluster { right: 126px; }
+  .elf-brand-cluster { right: 158px; }
   .elf-as-grid[data-dual='true'] { grid-template-columns: 1fr; }
 }
 

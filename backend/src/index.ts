@@ -27,6 +27,7 @@ import {
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
+import { fetchTmdbSeasonEpisodes } from './tmdb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -270,6 +271,54 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
       // Playback JSON carries per-session encrypted tickets -> private no-store
       sendJson(res, 200, responseBody, allowOrigin, 'no-store');
+      return;
+    }
+
+    // 4b. TV Season & Episode Catalog Endpoint (for Episode Wheel & Instant Binge Pre-Warm)
+    if (method === 'GET' && pathname === '/api/v1/episodes') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+        return;
+      }
+      const clientIp = getClientIp(req);
+      if (!rateLimiter.allow(`ep:${clientIp}`)) {
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
+        return;
+      }
+
+      const tmdbId = (url.searchParams.get('tmdb') || url.searchParams.get('id') || '').trim();
+      if (!tmdbId || !/^[A-Za-z0-9_-]{1,24}$/.test(tmdbId)) {
+        sendJson(res, 400, { ok: false, error: 'valid tmdb parameter is required' }, allowOrigin);
+        return;
+      }
+      const season = Math.max(
+        1,
+        Number(url.searchParams.get('s') || url.searchParams.get('season') || 1) || 1,
+      );
+
+      const headerTok =
+        typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
+      const pltoken = headerTok || (url.searchParams.get('pltoken') || '').trim();
+      const nonce = (url.searchParams.get('nonce') || '').trim() || undefined;
+
+      if (cfg.requireToken) {
+        const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, {
+          mediaType: 'tv',
+          tmdbId,
+          bindIp: cfg.bindTokenIp,
+        });
+        if (!verified.ok) {
+          sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+          return;
+        }
+      }
+
+      const catalog = await fetchTmdbSeasonEpisodes(cfg.tmdb, { tmdbId, season });
+      const payload = { ok: true as const, ...catalog };
+      const wantEnvelope = req.headers['x-elfura-envelope'] === '1' && Boolean(pltoken && nonce);
+      const responseBody = wantEnvelope ? sealPlaybackEnvelope(payload, pltoken, nonce!) : payload;
+      sendJson(res, 200, responseBody, allowOrigin, wantEnvelope ? 'no-store' : 'manifest');
       return;
     }
 

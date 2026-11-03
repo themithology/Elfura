@@ -8,6 +8,30 @@
 
 import type { BackendConfig } from './config.js';
 
+export interface SeasonSummary {
+  seasonNumber: number;
+  name: string;
+  episodeCount: number;
+}
+
+export interface EpisodeItem {
+  episodeNumber: number;
+  seasonNumber: number;
+  name: string;
+  overview: string;
+  runtime: number | null;
+  rating: number | null;
+  airDate: string;
+  still: string | null;
+}
+
+export interface SeriesSeasonCatalog {
+  tmdbId: string;
+  season: number;
+  seasons: SeasonSummary[];
+  episodes: EpisodeItem[];
+}
+
 export interface MediaMetadata {
   type: 'movie' | 'tv';
   tmdbId: string;
@@ -15,6 +39,7 @@ export interface MediaMetadata {
   season?: number;
   episode?: number;
   episodeName?: string;
+  seasons?: SeasonSummary[];
   title: string;
   /** Clean movie or series title without episode suffix, for upstream search queries. */
   rawTitle?: string;
@@ -41,7 +66,11 @@ const tmdbRamCache = new Map<string, { expiresAt: number; value: MediaMetadata }
 const tmdbInFlight = new Map<string, Promise<MediaMetadata>>();
 
 function cloneMeta(meta: MediaMetadata): MediaMetadata {
-  return { ...meta };
+  return {
+    ...meta,
+    ...(meta.genres ? { genres: [...meta.genres] } : {}),
+    ...(meta.seasons ? { seasons: meta.seasons.map((s) => ({ ...s })) } : {}),
+  };
 }
 
 function getCachedMeta(key: string): MediaMetadata | null {
@@ -252,12 +281,28 @@ export async function fetchTmdbMetadata(
           ? data.original_language.trim().toLowerCase()
           : undefined;
 
+      const parsedSeasons: SeasonSummary[] =
+        params.type === 'tv' && Array.isArray(data.seasons)
+          ? (data.seasons as Record<string, unknown>[])
+              .map((s) => ({
+                seasonNumber: Number(s?.season_number),
+                name:
+                  typeof s?.name === 'string' && s.name.trim()
+                    ? s.name.trim()
+                    : `Season ${Number(s?.season_number)}`,
+                episodeCount: Math.max(0, Number(s?.episode_count) || 0),
+              }))
+              .filter((s) => Number.isFinite(s.seasonNumber) && s.seasonNumber >= 1)
+              .sort((a, b) => a.seasonNumber - b.seasonNumber)
+          : [];
+
       const resolved: MediaMetadata = {
         type: params.type,
         tmdbId: params.tmdbId,
         imdbId,
         ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
         ...(episodeName ? { episodeName } : {}),
+        ...(parsedSeasons.length ? { seasons: parsedSeasons } : {}),
         title: baseTitle,
         ...(cleanSeriesOrMovieTitle ? { rawTitle: cleanSeriesOrMovieTitle } : {}),
         year,
@@ -284,5 +329,157 @@ export async function fetchTmdbMetadata(
     return cloneMeta(await task);
   } finally {
     tmdbInFlight.delete(cacheKey);
+  }
+}
+
+const MAX_SEASON_RAM_ENTRIES = 256;
+const seasonRamCache = new Map<string, { expiresAt: number; value: SeriesSeasonCatalog }>();
+const seasonInFlight = new Map<string, Promise<SeriesSeasonCatalog>>();
+
+export async function fetchTmdbSeasonEpisodes(
+  cfg: BackendConfig['tmdb'],
+  params: { tmdbId: string; season: number },
+): Promise<SeriesSeasonCatalog> {
+  const safeSeason = Math.max(1, Math.floor(params.season || 1));
+  const fallback: SeriesSeasonCatalog = {
+    tmdbId: params.tmdbId,
+    season: safeSeason,
+    seasons: [{ seasonNumber: safeSeason, name: `Season ${safeSeason}`, episodeCount: 0 }],
+    episodes: [],
+  };
+
+  if (!cfg.apiBase) return fallback;
+
+  const cacheKey = `tv:${params.tmdbId}:s:${safeSeason}`;
+  const cached = seasonRamCache.get(cacheKey);
+  if (cached) {
+    if (Date.now() <= cached.expiresAt) {
+      seasonRamCache.delete(cacheKey);
+      seasonRamCache.set(cacheKey, cached);
+      return cached.value;
+    }
+    seasonRamCache.delete(cacheKey);
+  }
+
+  const existing = seasonInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const task = (async (): Promise<SeriesSeasonCatalog> => {
+    try {
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.bearerToken) {
+        headers.Authorization = cfg.bearerToken.startsWith('Bearer ')
+          ? cfg.bearerToken
+          : `Bearer ${cfg.bearerToken}`;
+      }
+      const buildUrl = (pathSuffix: string): string => {
+        const u = new URL(`${cfg.apiBase}${pathSuffix}`);
+        if (cfg.apiKey && !u.searchParams.has('api_key')) {
+          u.searchParams.set('api_key', cfg.apiKey);
+        }
+        return u.toString();
+      };
+
+      const [showRes, seasonRes] = await Promise.all([
+        fetch(buildUrl(`/tv/${encodeURIComponent(params.tmdbId)}`), {
+          headers,
+          signal: AbortSignal.timeout(cfg.timeoutMs),
+        }).catch(() => null),
+        fetch(buildUrl(`/tv/${encodeURIComponent(params.tmdbId)}/season/${safeSeason}`), {
+          headers,
+          signal: AbortSignal.timeout(cfg.timeoutMs),
+        }).catch(() => null),
+      ]);
+
+      const [rawShow, rawSeason] = await Promise.all([
+        showRes && showRes.ok ? showRes.json().catch(() => null) : Promise.resolve(null),
+        seasonRes && seasonRes.ok ? seasonRes.json().catch(() => null) : Promise.resolve(null),
+      ]);
+
+      const showData = unwrapPayload(rawShow);
+      const seasonData = unwrapPayload(rawSeason);
+
+      const seasons: SeasonSummary[] =
+        showData && Array.isArray(showData.seasons)
+          ? (showData.seasons as Record<string, unknown>[])
+              .map((s) => ({
+                seasonNumber: Number(s?.season_number),
+                name:
+                  typeof s?.name === 'string' && s.name.trim()
+                    ? s.name.trim()
+                    : `Season ${Number(s?.season_number)}`,
+                episodeCount: Math.max(0, Number(s?.episode_count) || 0),
+              }))
+              .filter((s) => Number.isFinite(s.seasonNumber) && s.seasonNumber >= 1)
+              .sort((a, b) => a.seasonNumber - b.seasonNumber)
+          : [];
+
+      const episodes: EpisodeItem[] =
+        seasonData && Array.isArray(seasonData.episodes)
+          ? (seasonData.episodes as Record<string, unknown>[])
+              .map((ep) => {
+                const epNum = Number(ep?.episode_number);
+                const rawVote = Number(ep?.vote_average);
+                const rawRuntime = Number(ep?.runtime);
+                return {
+                  episodeNumber: epNum,
+                  seasonNumber: Number(ep?.season_number) || safeSeason,
+                  name:
+                    typeof ep?.name === 'string' && ep.name.trim()
+                      ? ep.name.trim()
+                      : `Episode ${epNum}`,
+                  overview: typeof ep?.overview === 'string' ? ep.overview.trim() : '',
+                  runtime:
+                    Number.isFinite(rawRuntime) && rawRuntime > 0 ? Math.round(rawRuntime) : null,
+                  rating:
+                    Number.isFinite(rawVote) && rawVote > 0
+                      ? Math.round(rawVote * 10) / 10
+                      : null,
+                  airDate: typeof ep?.air_date === 'string' ? ep.air_date.trim() : '',
+                  still: fullImageUrl(cfg.imageBase, ep?.still_path, 'w500'),
+                };
+              })
+              .filter((ep) => Number.isFinite(ep.episodeNumber) && ep.episodeNumber >= 1)
+              .sort((a, b) => a.episodeNumber - b.episodeNumber)
+          : [];
+
+      if (!seasons.length) {
+        seasons.push({
+          seasonNumber: safeSeason,
+          name: `Season ${safeSeason}`,
+          episodeCount: episodes.length,
+        });
+      }
+
+      const resolved: SeriesSeasonCatalog = {
+        tmdbId: params.tmdbId,
+        season: safeSeason,
+        seasons,
+        episodes,
+      };
+
+      if (episodes.length > 0 || seasons.length > 1) {
+        if (seasonRamCache.has(cacheKey)) seasonRamCache.delete(cacheKey);
+        while (seasonRamCache.size >= MAX_SEASON_RAM_ENTRIES) {
+          const oldest = seasonRamCache.keys().next().value;
+          if (oldest === undefined) break;
+          seasonRamCache.delete(oldest);
+        }
+        seasonRamCache.set(cacheKey, {
+          expiresAt: Date.now() + TMDB_RAM_TTL_MS,
+          value: resolved,
+        });
+      }
+      return resolved;
+    } catch {
+      return fallback;
+    }
+  })();
+
+  seasonInFlight.set(cacheKey, task);
+  try {
+    return await task;
+  } finally {
+    seasonInFlight.delete(cacheKey);
   }
 }

@@ -227,6 +227,30 @@ export function sanitizeWebVtt(vttText: string): string {
   return `${kept.join('\n\n')}\n`;
 }
 
+export function sanitizeSubRip(srtText: string): string {
+  const withoutBom = srtText.replace(/^\uFEFF/, '');
+  if (!withoutBom.includes('-->')) return srtText;
+
+  const blocks = withoutBom.split(/\r?\n\r?\n+/);
+  const kept: string[] = [];
+
+  for (const block of blocks) {
+    const lines = block.split(/\r?\n/);
+    const timingIdx = lines.findIndex((l) => l.includes('-->'));
+    if (timingIdx === -1) {
+      if (block.trim()) kept.push(block);
+      continue;
+    }
+    const cuePayload = lines.slice(timingIdx + 1).join(' ');
+    if (WEBVTT_SPAM_CUE_RE.test(cuePayload)) {
+      continue;
+    }
+    kept.push(block);
+  }
+
+  return `${kept.join('\n\n')}\n`;
+}
+
 function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlaylist: boolean): 'm' | 's' | 'a' | 'k' {
   if (expectVariantPlaylist) return 'm';
   if (/^#EXT-X-KEY:/i.test(tagLine)) return 'k';
@@ -909,15 +933,20 @@ export async function handleStreamRelay(
 
     if (looksLikeWebVtt) {
       const subText = await readBoundedText(upstreamRes, MAX_MANIFEST_BYTES);
-      const isVtt = /^WEBVTT\b/i.test(subText.replace(/^\uFEFF/, '').trimStart());
-      const cleaned = isVtt ? sanitizeWebVtt(subText) : subText;
+      const trimmedSub = subText.replace(/^\uFEFF/, '').trimStart();
+      if (/^<!doctype\s+html\b|^<html\b/i.test(trimmedSub) || !trimmedSub) {
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of subtitle track' }));
+        return;
+      }
+      const isVtt = /^WEBVTT\b/i.test(trimmedSub);
+      const cleaned = isVtt ? sanitizeWebVtt(subText) : sanitizeSubRip(subText);
       const buf = Buffer.from(cleaned, 'utf8');
       const subCt =
         isVtt || /\.vtt(?:[?#]|$)/i.test(finalUrl)
           ? 'text/vtt; charset=utf-8'
-          : /\.(?:srt|ass|ssa)(?:[?#]|$)/i.test(finalUrl)
-            ? 'text/plain; charset=utf-8'
-            : upstreamRes.headers.get('content-type') || 'text/plain; charset=utf-8';
+          : 'text/plain; charset=utf-8';
       setCloudflareCache(res, 'subtitle');
       res.writeHead(200, {
         'Content-Type': subCt,

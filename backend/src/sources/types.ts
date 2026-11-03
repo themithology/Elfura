@@ -40,6 +40,8 @@ export interface RawTrackRef {
   lang: string;
   label: string;
   url: string;
+  format?: 'vtt' | 'srt' | 'ass';
+  default?: boolean;
   headers?: Record<string, string>;
 }
 
@@ -120,7 +122,7 @@ export interface UniformStreamOption {
   availableAudioLangs?: string[];
   multiAudio?: boolean;
   audioTracks: { lang: string; label: string; url: string }[];
-  subtitles: { lang: string; label: string; url: string }[];
+  subtitles: { lang: string; label: string; url: string; format?: 'vtt' | 'srt' | 'ass' }[];
 }
 
 export interface UniformPlaybackResponse {
