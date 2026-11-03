@@ -525,6 +525,7 @@ async function fetchFromRiftBoot(
     const payload = (await res.json()) as {
       meta?: {
         evionUrl?: string;
+        playbackToken?: string;
         orionStreams?: {
           url?: string;
           type?: string;
@@ -536,6 +537,7 @@ async function fetchFromRiftBoot(
     };
     const meta = payload?.meta;
     if (!meta) return [];
+    const riftPlaybackToken = typeof meta.playbackToken === 'string' ? meta.playbackToken.trim() : '';
 
     const orion = (meta.orionStreams ?? []).filter(
       (s) => typeof s?.url === 'string' && s.url.includes('/api/orion/'),
@@ -583,6 +585,8 @@ async function fetchFromRiftBoot(
 
       let finalUrl: string;
       let headers: Record<string, string> = { 'User-Agent': BROWSER_UA };
+      let standbyUrl: string | undefined;
+      let standbyHeaders: Record<string, string> | undefined;
 
       if (streamType === 'mp4' && /^https?:\/\//i.test(s.url)) {
         // Direct progressive MP4 dub (e.g. mb.vidrift.net/.../video.mp4)
@@ -593,6 +597,15 @@ async function fetchFromRiftBoot(
           ? s.url
           : `${cfg.riftOrigin}/api/orion/${hash}/master.m3u8`;
         finalUrl = wrapRelay(absTarget, streamType === 'hls');
+        if (absTarget !== finalUrl && isSafeUpstreamUrl(absTarget)) {
+          standbyUrl = absTarget;
+          standbyHeaders = {
+            Referer: `${cfg.riftOrigin}/`,
+            Origin: cfg.riftOrigin,
+            'User-Agent': BROWSER_UA,
+            ...(riftPlaybackToken ? { 'X-Playback-Token': riftPlaybackToken } : {}),
+          };
+        }
       }
 
       if (!isSafeUpstreamUrl(finalUrl)) continue;
@@ -607,6 +620,7 @@ async function fetchFromRiftBoot(
         audioLabel: norm.label,
         multiAudio: false,
         subtitles: sharedSubs,
+        ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
         rank: (streamType === 'hls' ? 15 : 35) + i,
       });
     }

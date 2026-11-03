@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { isSafeUpstreamUrl, sealStreamTicket, openStreamTicket } from '../../dist/backend/security.js';
+import {
+  isSafeUpstreamUrl,
+  sealStreamTicket,
+  openStreamTicket,
+  openPlaybackEnvelope,
+} from '../../dist/backend/security.js';
 import {
   normalizeLang,
   unscramblePayload,
   serializeSerovalEnvelope,
   deserializeSerovalNode,
 } from '../../dist/backend/sources/source1.js';
-import { rewriteHlsManifest, sanitizeWebVtt } from '../../dist/backend/relay.js';
+import {
+  rewriteHlsManifest,
+  sanitizeWebVtt,
+  isAnonymousSegmentUrl,
+} from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
@@ -1019,6 +1028,100 @@ const mockUpstream = http.createServer(async (req, res) => {
     return;
   }
 
+  // Hybrid offload test fixtures:
+  //  - /edge-cors/* : anonymous, Referer-free, returns Access-Control-Allow-Origin: *
+  //  - /edge-nocors/* : anonymous, but omits Access-Control-Allow-Origin (must stay relayed!)
+  //  - /edge-reflock/* : sends CORS *, but 403s without Referer (must stay relayed!)
+  if (u.pathname === '/edge-cors/master.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000,RESOLUTION=1920x1080\n/edge-cors/variant.m3u8\n');
+    return;
+  }
+  if (u.pathname === '/edge-cors/variant.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        '#EXT-X-TARGETDURATION:6',
+        `#EXT-X-KEY:METHOD=AES-128,URI="${origin}/edge-cors/enc.key"`,
+        `#EXT-X-MAP:URI="${origin}/edge-cors/init.m4s"`,
+        '#EXTINF:6.0,',
+        `${origin}/edge-cors/chunk-0001.m4s?Policy=abc&Signature=sig1&Key-Pair-Id=K1`,
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/edge-cors/enc.key') {
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+    res.end(Buffer.alloc(16, 0x42));
+    return;
+  }
+  if (u.pathname === '/edge-cors/init.m4s' || u.pathname === '/edge-cors/chunk-0001.m4s') {
+    // Reject if a foreign Referer leaked — verifies headerless CORS probe!
+    if (req.headers.referer) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Unexpected Referer leaked');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'video/iso.segment',
+      'Access-Control-Allow-Origin': '*',
+      'Content-Length': String(SEGMENT_BYTES.length),
+    });
+    res.end(SEGMENT_BYTES);
+    return;
+  }
+  if (u.pathname === '/edge-nocors/variant.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-TARGETDURATION:6',
+        '#EXTINF:6.0,',
+        `${origin}/edge-nocors/chunk-0001.m4s`,
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/edge-nocors/chunk-0001.m4s') {
+    res.writeHead(200, {
+      'Content-Type': 'video/iso.segment',
+      'Content-Length': String(SEGMENT_BYTES.length),
+    });
+    res.end(SEGMENT_BYTES);
+    return;
+  }
+  if (u.pathname === '/edge-reflock/variant.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-TARGETDURATION:6',
+        '#EXTINF:6.0,',
+        `${origin}/edge-reflock/chunk-0001.m4s`,
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/edge-reflock/chunk-0001.m4s') {
+    if (req.headers.referer !== 'https://vidbolt.xyz/') {
+      res.writeHead(403, { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'text/plain' });
+      res.end('Missing Referer');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'video/iso.segment',
+      'Access-Control-Allow-Origin': '*',
+      'Content-Length': String(SEGMENT_BYTES.length),
+    });
+    res.end(SEGMENT_BYTES);
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
@@ -1787,7 +1890,193 @@ try {
     assert(builtCss.includes(requiredCss), `Expected built CSS to include "${requiredCss}"`);
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, TMDB, 30-server Source 2, cold-miss recovery, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
+  // 14. Verify Smart Hybrid Segment Offload + Source Anonymity + Anti-Scraper Armour:
+  //   (a) Strict source-anonymity filter allows generic HTTPS storage CDNs while blocking every source/bridge leak
+  assert.equal(
+    isAnonymousSegmentUrl(
+      'https://sacdn.hakunaymatata.com/dash/30254/chunk-stream0-00001.m4s?Policy=eyJ123&Signature=abc&Key-Pair-Id=KM1',
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    isAnonymousSegmentUrl('https://img.hscow.com/hls/a30eaa/720/s_0.jpg?t=1777016941', true),
+    true,
+  );
+  assert.equal(
+    isAnonymousSegmentUrl('https://d111111abcdef8.cloudfront.net/media/seg-001.ts', true),
+    true,
+  );
+  for (const leakyUrl of [
+    'http://sacdn.hakunaymatata.com/dash/30254/chunk-stream0-00001.m4s', // Mixed-content HTTP blocked in prod!
+    'https://tgvidapi.lovable.app/api/kai/abc?s=seg1.ts',
+    'https://tgvid-rift-relay.vercel.app/api/relay?u=abc',
+    'https://embed.vidrift.in/api/orion/abc/seg0.ts',
+    'https://mb.vidrift.net/api/orion/abc/video.mp4',
+    'https://vidsync.pro/api/core/proxy?data=123',
+    'https://img.rousav.tech/media/84ba/seg0.ts?api_key=secret123',
+    'https://proxy.vidbolt.xyz/m/tok123',
+    'https://embed.aethoflix.world/api/proxy-segment?url=https%3A%2F%2Fcdn.example.com%2Fa.ts',
+    'https://dash-hls-bridge.johndoesdmc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fa.m4s',
+    'https://vidstuck.cc/backend/database/andromeda?url=abc',
+  ]) {
+    assert.equal(isAnonymousSegmentUrl(leakyUrl, true), false, `Must block leaky/unsafe offload URL: ${leakyUrl}`);
+  }
+
+  //   (b) Embed response carries `Referrer-Policy: same-origin` + `<meta name="referrer" content="same-origin">`
+  assert.equal(embedRes.headers.get('referrer-policy'), 'same-origin');
+  assert(embedHtml.includes('name="referrer" content="same-origin"'));
+
+  //   (c) CLI scrapers / downloaders (`yt-dlp`, `ffmpeg`/`Lavf`, `curl`) are blocked with 403 on `/api/v1/playback` & `/api/v1/stream`
+  for (const botUa of ['yt-dlp/2026.10.01', 'Lavf/61.1.100', 'curl/8.7.1']) {
+    const botStreamRes = await fetch(`${apiBase}${pb.primary.url}`, {
+      headers: { Origin: 'https://watch.elfura.example', 'User-Agent': botUa },
+    });
+    assert.equal(botStreamRes.status, 403, `Expected 403 for scraper UA "${botUa}" on /api/v1/stream`);
+  }
+
+  //   (d) Sealed Playback Envelope (`X-Elfura-Envelope: 1`) returns pure AES-256-GCM ciphertext (zero plaintext leakage)
+  const envRes = await fetch(
+    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&nonce=${encodeURIComponent(boot.nonce)}`,
+    {
+      headers: {
+        ...browserHeaders,
+        'X-Playback-Token': boot.pltoken,
+        'X-Elfura-Envelope': '1',
+      },
+    },
+  );
+  assert.equal(envRes.status, 200);
+  const envRawText = await envRes.text();
+  assert(!envRawText.includes('Arcane'), 'Sealed envelope must not contain plaintext media title');
+  assert(!envRawText.includes('/api/v1/stream'), 'Sealed envelope must not contain plaintext stream URLs');
+  const envJson = JSON.parse(envRawText);
+  assert.equal(envJson.ok, true);
+  assert.equal(envJson.s, 1);
+  assert(typeof envJson.p === 'string' && envJson.p.length > 60);
+  const openedEnv = openPlaybackEnvelope(envJson, boot.pltoken, boot.nonce);
+  assert.equal(openedEnv.media.title, 'Arcane · S1E1 — Welcome to the Playground');
+  assert.equal(openedEnv.sources.length, pb.sources.length);
+
+  // Verify real ElfuraPlayer sends `X-Elfura-Envelope: 1` and decrypts via WebCrypto `crypto.subtle`
+  globalThis.window.location = {
+    pathname: '/embed/tv/94605/1/1',
+    search: '',
+    href: `${apiBase}/embed/tv/94605/1/1`,
+  };
+  let sawEnvelopeHeader = false;
+  const origFetchForEnv = globalThis.fetch;
+  globalThis.fetch = (input, init = {}) => {
+    const hdrs = { ...browserHeaders, ...(init.headers || {}) };
+    if (hdrs['X-Elfura-Envelope'] === '1') sawEnvelopeHeader = true;
+    const urlStr = typeof input === 'string' && input.startsWith('/') ? `${apiBase}${input}` : input;
+    return origFetchForEnv(urlStr, { ...init, headers: hdrs });
+  };
+  try {
+    const envPlayer = new ElfuraPlayer({
+      postMessage: false,
+      apiBase,
+      tmdb: '94605',
+      mediaType: 'tv',
+      season: 1,
+      episode: 1,
+      pltoken: boot.pltoken,
+      nonce: boot.nonce,
+    });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timed out waiting for ElfuraPlayer sealed envelope boot')), 4000);
+      envPlayer.bus.on('sources', (srcs) => {
+        clearTimeout(t);
+        resolve(srcs);
+      });
+    });
+    assert.equal(sawEnvelopeHeader, true, 'ElfuraPlayer must send X-Elfura-Envelope: 1 on /api/v1/playback');
+    assert.equal(envPlayer.getMediaInfo()?.episodeName, 'Welcome to the Playground');
+    assert(envPlayer.getSources().length >= 5, 'ElfuraPlayer must decrypt sealed playback envelope via WebCrypto');
+    envPlayer.destroy();
+  } finally {
+    globalThis.fetch = origFetchForEnv;
+  }
+
+  //   (e) Live Hybrid Relay verification:
+  //       - CORS + Referer-free anonymous bucket offloads media segments (`#EXT-X-MAP` + `.m4s`) directly
+  //         while keeping master manifest AND `#EXT-X-KEY` encrypted behind `/api/v1/stream?t=...`!
+  //       - Non-CORS bucket and Referer-locked bucket stay 100% relayed behind `/api/v1/stream?t=...`!
+  //       - Forced proxy fallback (`&p=1`) tunnels all child manifests & segments 100% through `/api/v1/stream?t=...`!
+  process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST = '1';
+  try {
+    const corsMasterTicket = sealStreamTicket(secret, { u: `${upBase}/edge-cors/master.m3u8`, k: 'm' });
+    const corsMasterRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(corsMasterTicket)}`, {
+      headers: browserHeaders,
+    });
+    assert.equal(corsMasterRes.status, 200);
+    const corsMasterText = await corsMasterRes.text();
+    const corsVariantRel = corsMasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
+    assert(corsVariantRel, 'Master playlist must always keep child variant playlists relayed via /api/v1/stream');
+
+    const corsVariantRes = await fetch(`${apiBase}${corsVariantRel}`, { headers: browserHeaders });
+    assert.equal(corsVariantRes.status, 200);
+    const corsVariantText = await corsVariantRes.text();
+    assert(
+      corsVariantText.includes(`#EXT-X-KEY:METHOD=AES-128,URI="/api/v1/stream?t=`),
+      'AES-128 #EXT-X-KEY URI must stay encrypted behind /api/v1/stream even when segments offload',
+    );
+    assert(
+      corsVariantText.includes(`#EXT-X-MAP:URI="${upBase}/edge-cors/init.m4s"`),
+      'Verified CORS-safe anonymous fMP4 init segment must offload directly',
+    );
+    assert(
+      corsVariantText.includes(`${upBase}/edge-cors/chunk-0001.m4s?Policy=abc&Signature=sig1&Key-Pair-Id=K1`),
+      'Verified CORS-safe anonymous media segment must offload directly',
+    );
+
+    // Forced proxy fallback (`&p=1` when viewer ISP blocks direct CDN) tunnels everything via `/api/v1/stream?t=`
+    const forcedMasterRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(corsMasterTicket)}&p=1`, {
+      headers: browserHeaders,
+    });
+    const forcedMasterText = await forcedMasterRes.text();
+    const forcedVariantRel = forcedMasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
+    const forcedVariantRes = await fetch(`${apiBase}${forcedVariantRel}`, { headers: browserHeaders });
+    const forcedVariantText = await forcedVariantRes.text();
+    assert(
+      !forcedVariantText.includes(`${upBase}/edge-cors/chunk-0001.m4s`),
+      'Forced proxy (&p=1) must propagate fp=1 to child manifests and tunnel all segments via /api/v1/stream',
+    );
+    assert(
+      forcedVariantText.split('\n').some((l) => l.startsWith('/api/v1/stream?t=')),
+      'Forced proxy (&p=1) variant playlist must emit /api/v1/stream?t= segment tickets',
+    );
+
+    // Non-CORS CDN (`/edge-nocors/*`) must NEVER offload (would fail browser CORS!)
+    const noCorsTicket = sealStreamTicket(secret, { u: `${upBase}/edge-nocors/variant.m3u8`, k: 'm' });
+    const noCorsRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(noCorsTicket)}`, {
+      headers: browserHeaders,
+    });
+    const noCorsText = await noCorsRes.text();
+    assert(
+      !noCorsText.includes('/edge-nocors/chunk-0001.m4s'),
+      'Segments lacking Access-Control-Allow-Origin must stay relayed through /api/v1/stream',
+    );
+
+    // Referer-locked CDN (`/edge-reflock/*`) must NEVER offload (would 403 in browser!)
+    const refLockTicket = sealStreamTicket(secret, {
+      u: `${upBase}/edge-reflock/variant.m3u8`,
+      h: { Referer: 'https://vidbolt.xyz/' },
+      k: 'm',
+    });
+    const refLockRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(refLockTicket)}`, {
+      headers: browserHeaders,
+    });
+    const refLockText = await refLockRes.text();
+    assert(
+      !refLockText.includes('/edge-reflock/chunk-0001.m4s'),
+      'Referer-locked segments must stay relayed through /api/v1/stream',
+    );
+  } finally {
+    delete process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST;
+  }
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, TMDB, 30-server Source 2, multi-audio discovery, deep dead-stream pruning & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

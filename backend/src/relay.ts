@@ -40,6 +40,164 @@ const HEVC_HINT_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
 const WEBVTT_SPAM_CUE_RE =
   /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|tgflix|tgvid|moviehub|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
 
+/* ------------------------------------------------------------------ */
+/* Hybrid Segment Offload — Anonymity & Browser-CORS Verifier          */
+/* ------------------------------------------------------------------ */
+
+const SOURCE_HOST_DENY_RE =
+  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidsync|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|\bproxy\b|\brelay\b|\bbridge\b)/i;
+
+const SOURCE_PATH_DENY_RE =
+  /(?:^\/(?:api|backend|_serverFn)\b|\/(?:orion|tgkai|vidbolt|rousav|aetho|vidsync|vidrift|proxy|relay)\b)/i;
+
+const SOURCE_QUERY_DENY_RE =
+  /(?:^|[?&])(?:api_?key|access_?token|auth_?token|secret|pltoken)=/i;
+
+const IP_BOUND_TOKEN_RE = /:\d{1,3}(?:\.\d{1,3}){3}:/;
+
+const CORS_PROBE_ORIGIN = 'https://player.elfura.invalid';
+const MAX_CORS_CACHE_ENTRIES = 512;
+const CORS_PASS_TTL_MS = 30 * 60_000;
+const CORS_FAIL_TTL_MS = 10 * 60_000;
+
+const segmentCorsCache = new Map<string, { allow: boolean; expiresAt: number }>();
+const segmentCorsInFlight = new Map<string, Promise<boolean>>();
+
+/**
+ * Returns true ONLY if `rawUrl` points to a generic, provider-anonymous edge CDN
+ * with zero aggregator/source/worker names, zero API keys, and safe protocol.
+ */
+export function isAnonymousSegmentUrl(rawUrl: string, requireHttps = true): boolean {
+  if (!isSafeUpstreamUrl(rawUrl)) return false;
+  if (IP_BOUND_TOKEN_RE.test(rawUrl)) return false;
+
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+
+  const allowTestHttp =
+    process.env.NODE_ENV === 'test' && process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST === '1';
+  if (requireHttps && !allowTestHttp && u.protocol !== 'https:') {
+    return false;
+  }
+  if (u.username || u.password) return false;
+  if (SOURCE_HOST_DENY_RE.test(u.hostname)) return false;
+  if (SOURCE_PATH_DENY_RE.test(u.pathname)) return false;
+  if (SOURCE_QUERY_DENY_RE.test(u.search)) return false;
+
+  let decodedSearch = '';
+  try {
+    decodedSearch = decodeURIComponent(u.search);
+  } catch {
+    decodedSearch = u.search;
+  }
+  if (SOURCE_HOST_DENY_RE.test(decodedSearch)) return false;
+
+  return true;
+}
+
+function hasSessionBoundAuthHeaders(headers?: Record<string, string>): boolean {
+  if (!headers) return false;
+  for (const k of Object.keys(headers)) {
+    const lower = k.toLowerCase();
+    if (lower === 'cookie' || lower === 'authorization' || lower === 'x-playback-token') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function segmentOriginBucketKey(rawUrl: string): string {
+  try {
+    const u = new URL(rawUrl);
+    const firstSeg = u.pathname.split('/').filter(Boolean)[0] || '';
+    return `${u.origin.toLowerCase()}/${firstSeg}`;
+  } catch {
+    return rawUrl;
+  }
+}
+
+/**
+ * Simulates a real browser MSE simple-GET (with `Origin`, zero `Referer`, zero
+ * custom headers) once per CDN bucket and caches the verdict in bounded RAM.
+ */
+export async function verifyDirectSegmentOffload(
+  sampleUrl: string,
+  requireHttps = true,
+): Promise<boolean> {
+  if (!isAnonymousSegmentUrl(sampleUrl, requireHttps)) return false;
+
+  const key = `${requireHttps ? 's' : 'i'}:${segmentOriginBucketKey(sampleUrl)}`;
+  const cached = segmentCorsCache.get(key);
+  if (cached) {
+    if (Date.now() <= cached.expiresAt) {
+      segmentCorsCache.delete(key);
+      segmentCorsCache.set(key, cached);
+      return cached.allow;
+    }
+    segmentCorsCache.delete(key);
+  }
+
+  const inflight = segmentCorsInFlight.get(key);
+  if (inflight) return inflight;
+
+  const probePromise = (async (): Promise<boolean> => {
+    try {
+      const res = await fetch(sampleUrl, {
+        method: 'GET',
+        headers: {
+          Origin: CORS_PROBE_ORIGIN,
+          'User-Agent': DEFAULT_RELAY_UA,
+          Accept: '*/*',
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(1500),
+      });
+      const finalUrl = res.url || sampleUrl;
+      const acao = (res.headers.get('access-control-allow-origin') || '').trim();
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      try {
+        await res.body?.cancel();
+      } catch {
+        /* ignore */
+      }
+
+      const statusOk = res.status === 200 || res.status === 206;
+      const corsOk = acao === '*' || acao === CORS_PROBE_ORIGIN;
+      const bodyOk =
+        !ct.includes('text/html') &&
+        !ct.includes('application/xhtml') &&
+        !ct.includes('application/json');
+      const anonOk = isAnonymousSegmentUrl(finalUrl, requireHttps);
+
+      const allow = statusOk && corsOk && bodyOk && anonOk;
+      if (segmentCorsCache.has(key)) segmentCorsCache.delete(key);
+      while (segmentCorsCache.size >= MAX_CORS_CACHE_ENTRIES) {
+        const oldest = segmentCorsCache.keys().next().value;
+        if (oldest === undefined) break;
+        segmentCorsCache.delete(oldest);
+      }
+      segmentCorsCache.set(key, {
+        allow,
+        expiresAt: Date.now() + (allow ? CORS_PASS_TTL_MS : CORS_FAIL_TTL_MS),
+      });
+      return allow;
+    } catch {
+      return false;
+    }
+  })();
+
+  segmentCorsInFlight.set(key, probePromise);
+  try {
+    return await probePromise;
+  } finally {
+    segmentCorsInFlight.delete(key);
+  }
+}
+
 export function sanitizeWebVtt(vttText: string): string {
   const withoutBom = vttText.replace(/^\uFEFF/, '');
   if (!/^WEBVTT\b/i.test(withoutBom.trimStart())) return vttText;
@@ -69,8 +227,9 @@ export function sanitizeWebVtt(vttText: string): string {
   return `${kept.join('\n\n')}\n`;
 }
 
-function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlaylist: boolean): 'm' | 's' | 'a' {
+function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlaylist: boolean): 'm' | 's' | 'a' | 'k' {
   if (expectVariantPlaylist) return 'm';
+  if (/^#EXT-X-KEY:/i.test(tagLine)) return 'k';
   if (/^#EXT-X-I-FRAME-STREAM-INF/i.test(tagLine)) return 'm';
   if (/^#EXT-X-MEDIA:/i.test(tagLine)) {
     if (/TYPE=SUBTITLES/i.test(tagLine) && /\.(?:vtt|srt|ass|ssa)(?:[?#]|$)/i.test(resolvedUrl)) return 's';
@@ -200,6 +359,13 @@ function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string
   });
 }
 
+export interface RewriteManifestOptions {
+  /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
+  forceProxy?: boolean;
+  /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
+  canOffloadSegment?: (absUrl: string) => boolean;
+}
+
 export function rewriteHlsManifest(
   manifestText: string,
   baseUrl: string,
@@ -207,6 +373,7 @@ export function rewriteHlsManifest(
   secret: Buffer,
   streamPath = '/api/v1/stream',
   hintAudioLang?: string,
+  options?: RewriteManifestOptions,
 ): string {
   const isBaseHevc = (() => {
     if (HEVC_HINT_RE.test(baseUrl)) return true;
@@ -218,7 +385,7 @@ export function rewriteHlsManifest(
     }
   })();
 
-  const wrapUrl = (rawRef: string, kind: 'm' | 's' | 'a'): string => {
+  const wrapUrl = (rawRef: string, kind: 'm' | 's' | 'a' | 'k'): string => {
     const trimmed = rawRef.trim();
     if (!trimmed || trimmed.startsWith('data:')) return rawRef;
     let abs: string;
@@ -228,10 +395,14 @@ export function rewriteHlsManifest(
       return rawRef;
     }
     if (!isSafeUpstreamUrl(abs)) return '';
+    if (kind === 'a' && !options?.forceProxy && options?.canOffloadSegment?.(abs)) {
+      return abs;
+    }
     const ticket = sealStreamTicket(secret, {
       u: abs,
       ...(headers && Object.keys(headers).length ? { h: headers } : {}),
       k: kind,
+      ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
   };
@@ -311,6 +482,7 @@ function rewriteDashManifest(
   headers: Record<string, string> | undefined,
   secret: Buffer,
   streamPath = '/api/v1/stream',
+  options?: RewriteManifestOptions,
 ): string {
   return mpdText.replace(/<BaseURL>([^<]+)<\/BaseURL>/gi, (full, inner: string) => {
     const raw = inner.trim();
@@ -322,6 +494,9 @@ function rewriteDashManifest(
       return full;
     }
     if (!isSafeUpstreamUrl(abs)) return full;
+    if (!options?.forceProxy && options?.canOffloadSegment?.(abs)) {
+      return `<BaseURL>${abs}</BaseURL>`;
+    }
     const ticket = sealStreamTicket(secret, {
       u: abs,
       ...(headers && Object.keys(headers).length ? { h: headers } : {}),
@@ -329,6 +504,65 @@ function rewriteDashManifest(
     });
     return `<BaseURL>${streamPath}?t=${encodeURIComponent(ticket)}</BaseURL>`;
   });
+}
+
+function collectSampleSegmentUrls(kind: 'hls' | 'dash', bodyText: string, baseUrl: string): Map<string, string> {
+  const samplesByBucket = new Map<string, string>();
+  const consider = (rawRef: string) => {
+    const trimmed = rawRef.trim();
+    if (!trimmed || trimmed.startsWith('data:')) return;
+    let abs: string;
+    try {
+      abs = new URL(trimmed, baseUrl).toString();
+    } catch {
+      return;
+    }
+    const bucket = segmentOriginBucketKey(abs);
+    if (!samplesByBucket.has(bucket)) {
+      samplesByBucket.set(bucket, abs);
+    }
+  };
+
+  if (kind === 'dash') {
+    const re = /<BaseURL>([^<]+)<\/BaseURL>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(bodyText)) !== null) {
+      consider(m[1]);
+      if (samplesByBucket.size >= 4) break;
+    }
+    return samplesByBucket;
+  }
+
+  const lines = bodyText.split(/\r?\n/);
+  let expectVariant = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    if (t.startsWith('#')) {
+      if (/^#EXT-X-STREAM-INF\b/i.test(t)) {
+        expectVariant = true;
+        continue;
+      }
+      if (/^#EXT-X-MAP:/i.test(t) && t.includes('URI="')) {
+        const uriMatch = t.match(/URI="([^"]+)"/i)?.[1];
+        if (uriMatch) consider(uriMatch);
+      }
+      continue;
+    }
+    let abs = t;
+    try {
+      abs = new URL(t, baseUrl).toString();
+    } catch {
+      /* ignore */
+    }
+    const childKind = inferChildKind('', abs, expectVariant);
+    expectVariant = false;
+    if (childKind === 'a') {
+      consider(t);
+      if (samplesByBucket.size >= 4) break;
+    }
+  }
+  return samplesByBucket;
 }
 
 async function readBoundedText(res: Response, maxBytes: number): Promise<string> {
@@ -400,7 +634,7 @@ export function seedManifestRamCache(
   setCachedManifest(buildManifestCacheKey(url, headers), entry);
 }
 
-function sendRewrittenManifest(
+async function sendRewrittenManifest(
   res: ServerResponse,
   kind: 'hls' | 'dash',
   bodyText: string,
@@ -408,12 +642,53 @@ function sendRewrittenManifest(
   ticketHeaders: Record<string, string> | undefined,
   secret: Buffer,
   streamPath: string,
-  hintAudioLang?: string,
-): void {
+  hintAudioLang: string | undefined,
+  relayOpts: {
+    relayMode: 'hybrid' | 'full';
+    forceProxy: boolean;
+    requireHttpsOffload: boolean;
+  },
+): Promise<void> {
+  const allowedBuckets = new Set<string>();
+  if (
+    relayOpts.relayMode === 'hybrid' &&
+    !relayOpts.forceProxy &&
+    !hasSessionBoundAuthHeaders(ticketHeaders)
+  ) {
+    const samples = collectSampleSegmentUrls(kind, bodyText, finalUrl);
+    if (samples.size > 0) {
+      await Promise.all(
+        [...samples.entries()].map(async ([bucket, sampleUrl]) => {
+          const ok = await verifyDirectSegmentOffload(sampleUrl, relayOpts.requireHttpsOffload);
+          if (ok) allowedBuckets.add(bucket);
+        }),
+      );
+    }
+  }
+
+  const rewriteOptions: RewriteManifestOptions = {
+    forceProxy: relayOpts.forceProxy,
+    ...(allowedBuckets.size > 0
+      ? {
+          canOffloadSegment: (absUrl: string) =>
+            allowedBuckets.has(segmentOriginBucketKey(absUrl)) &&
+            isAnonymousSegmentUrl(absUrl, relayOpts.requireHttpsOffload),
+        }
+      : {}),
+  };
+
   const rewritten =
     kind === 'hls'
-      ? rewriteHlsManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath, hintAudioLang)
-      : rewriteDashManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath);
+      ? rewriteHlsManifest(
+          bodyText,
+          finalUrl,
+          ticketHeaders,
+          secret,
+          streamPath,
+          hintAudioLang,
+          rewriteOptions,
+        )
+      : rewriteDashManifest(bodyText, finalUrl, ticketHeaders, secret, streamPath, rewriteOptions);
   const buf = Buffer.from(rewritten, 'utf8');
   setCloudflareCache(res, 'manifest');
   res.writeHead(200, {
@@ -435,6 +710,9 @@ export async function handleStreamRelay(
     allowOrigin: string;
     ticketParam: string;
     streamPath?: string;
+    relayMode?: 'hybrid' | 'full';
+    forceProxy?: boolean;
+    requireHttpsOffload?: boolean;
   },
 ): Promise<void> {
   applyCorsHeaders(res, opts.allowOrigin);
@@ -455,6 +733,11 @@ export async function handleStreamRelay(
   }
 
   const streamPath = opts.streamPath || '/api/v1/stream';
+  const relayMode = opts.relayMode ?? 'hybrid';
+  const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1;
+  const requireHttpsOffload = opts.requireHttpsOffload ?? true;
+  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload };
+
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
       ? buildManifestCacheKey(ticket.u, ticket.h)
@@ -463,7 +746,7 @@ export async function handleStreamRelay(
   if (manifestCacheKey) {
     const cached = getCachedManifest(manifestCacheKey);
     if (cached) {
-      sendRewrittenManifest(
+      await sendRewrittenManifest(
         res,
         cached.kind,
         cached.bodyText,
@@ -472,6 +755,7 @@ export async function handleStreamRelay(
         opts.secret,
         streamPath,
         ticket.l,
+        manifestRelayOpts,
       );
       return;
     }
@@ -546,7 +830,17 @@ export async function handleStreamRelay(
             bodyText,
           });
         }
-        sendRewrittenManifest(res, 'hls', bodyText, finalUrl, ticket.h, opts.secret, streamPath, ticket.l);
+        await sendRewrittenManifest(
+          res,
+          'hls',
+          bodyText,
+          finalUrl,
+          ticket.h,
+          opts.secret,
+          streamPath,
+          ticket.l,
+          manifestRelayOpts,
+        );
         return;
       }
 
@@ -558,7 +852,17 @@ export async function handleStreamRelay(
             bodyText,
           });
         }
-        sendRewrittenManifest(res, 'dash', bodyText, finalUrl, ticket.h, opts.secret, streamPath, ticket.l);
+        await sendRewrittenManifest(
+          res,
+          'dash',
+          bodyText,
+          finalUrl,
+          ticket.h,
+          opts.secret,
+          streamPath,
+          ticket.l,
+          manifestRelayOpts,
+        );
         return;
       }
 
@@ -580,8 +884,8 @@ export async function handleStreamRelay(
       return;
     }
 
-    // Never pipe HTML error/redirect pages as binary media segments or MP4 byte ranges
-    if (ticket.k === 'a' && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+    // Never pipe HTML error/redirect pages as binary media segments, encryption keys, or MP4 byte ranges
+    if ((ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
       try {
         await upstreamRes.body?.cancel();
       } catch {

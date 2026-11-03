@@ -333,6 +333,32 @@ export class ElfuraPlayer {
     }
   }
 
+  private isBackendOwnedUrl(rawUrl: string): boolean {
+    try {
+      const base = new URL(window.location.href);
+      const target = new URL(rawUrl, base);
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') return false;
+      if (target.origin === base.origin) return true;
+      const apiOrigin = this.input.config.api
+        ? new URL(this.input.config.api, base).origin
+        : base.origin;
+      return target.origin === apiOrigin;
+    } catch {
+      return false;
+    }
+  }
+
+  private withForcedProxyParam(rawUrl: string): string {
+    try {
+      const base = new URL(window.location.href);
+      const u = new URL(rawUrl, base);
+      u.searchParams.set('p', '1');
+      return u.origin === base.origin ? `${u.pathname}${u.search}${u.hash}` : u.toString();
+    } catch {
+      return rawUrl.includes('?') ? `${rawUrl}&p=1` : `${rawUrl}?p=1`;
+    }
+  }
+
   private supportsHevc(): boolean {
     if (this.hevcSupportedCache !== null) return this.hevcSupportedCache;
     try {
@@ -695,6 +721,12 @@ export class ElfuraPlayer {
 
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+      const canOpenEnvelope =
+        Boolean(cfg.pltoken && cfg.nonce) &&
+        typeof globalThis.crypto?.subtle?.decrypt === 'function';
+      if (canOpenEnvelope) {
+        headers['X-Elfura-Envelope'] = '1';
+      }
 
       const res = await fetch(apiUrl.toString(), { headers });
       if (this.destroyed) return;
@@ -708,13 +740,26 @@ export class ElfuraPlayer {
         return;
       }
 
-      const data = (await res.json()) as {
+      type PlaybackPayloadShape = {
         ok?: boolean;
+        s?: number;
+        p?: string;
         media?: TitleMediaInfo;
         primary?: SourceOption;
         sources?: SourceOption[];
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
+      const rawJson = (await res.json()) as PlaybackPayloadShape;
+      if (this.destroyed) return;
+
+      const data: PlaybackPayloadShape =
+        rawJson?.s === 1 && typeof rawJson.p === 'string' && cfg.pltoken && cfg.nonce
+          ? await openSealedEnvelope<PlaybackPayloadShape>(
+              rawJson.p,
+              String(cfg.pltoken),
+              String(cfg.nonce),
+            )
+          : rawJson;
       if (this.destroyed) return;
 
       if (!data?.ok || !data.sources?.length) {
@@ -1365,8 +1410,12 @@ export class ElfuraPlayer {
       manifestLoadingTimeOut: 8000,
       levelLoadingTimeOut: 8000,
       fragLoadingTimeOut: 10000,
-      xhrSetup: (xhr) => {
-        if (cfg.pltoken) xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
+      xhrSetup: (xhr, reqUrl) => {
+        // Only send X-Playback-Token to Elfura's own backend — never trigger CORS preflight
+        // or expose session tokens to offloaded external anonymous segment CDNs.
+        if (cfg.pltoken && this.isBackendOwnedUrl(reqUrl)) {
+          xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
+        }
       },
     });
     this.hls = hls;
@@ -1471,6 +1520,28 @@ export class ElfuraPlayer {
         this.handleFatal(data.type, url, true);
         return;
       }
+
+      // If an offloaded external segment fails (e.g. mobile ISP DNS-blocks a raw CDN),
+      // transparently switch this stream to `&p=1` (100% backend relay) before abandoning it.
+      const errExtra = data as unknown as { frag?: { url?: string }; url?: string };
+      const failedTargetUrl = String(errExtra.frag?.url || errExtra.url || '');
+      if (
+        !this.activeProbe &&
+        /^(?:fragLoadError|fragLoadTimeOut)$/i.test(details) &&
+        failedTargetUrl &&
+        !this.isBackendOwnedUrl(failedTargetUrl) &&
+        this.isBackendOwnedUrl(url) &&
+        !url.includes('p=1')
+      ) {
+        const proxiedUrl = this.withForcedProxyParam(url);
+        cfg.src = proxiedUrl;
+        if (this.currentSource && this.currentSource.url === url) {
+          this.currentSource = { ...this.currentSource, url: proxiedUrl };
+        }
+        void this.load(proxiedUrl, 'hls');
+        return;
+      }
+
       if (
         !data.fatal &&
         this.video.readyState === 0 &&
@@ -1502,8 +1573,10 @@ export class ElfuraPlayer {
       extras.extend(
         'RequestModifier',
         () => ({
-          modifyRequestHeader: (xhr: XMLHttpRequest) => {
-            xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
+          modifyRequestHeader: (xhr: XMLHttpRequest, info?: { url?: string }) => {
+            if (!info?.url || this.isBackendOwnedUrl(info.url)) {
+              xhr.setRequestHeader('X-Playback-Token', String(cfg.pltoken));
+            }
             return xhr;
           },
           modifyRequestURL: (u: string) => u,
@@ -1608,7 +1681,7 @@ export class ElfuraPlayer {
 
   private decorate(url: string): string {
     const cfg = this.input.config;
-    if (!cfg.pltoken || !cfg.nonce) return url;
+    if (!cfg.pltoken || !cfg.nonce || !this.isBackendOwnedUrl(url)) return url;
     try {
       const u = new URL(url, window.location.href);
       u.searchParams.set('nonce', String(cfg.nonce));
@@ -2002,3 +2075,31 @@ function redacted(cfg: Record<string, unknown>): Record<string, unknown> {
   }
   return out;
 }
+
+/**
+ * Decrypts AES-256-GCM playback envelopes (`{ ok: true, s: 1, p }`) minted by
+ * `/api/v1/playback` using WebCrypto so DevTools Network Preview never exposes
+ * plaintext source metadata or stream tickets.
+ */
+async function openSealedEnvelope<T>(
+  b64UrlPayload: string,
+  pltoken: string,
+  nonce: string,
+): Promise<T> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('WebCrypto unavailable');
+  const padded = b64UrlPayload.replace(/-/g, '+').replace(/_/g, '/');
+  const padLen = (4 - (padded.length % 4)) % 4;
+  const binStr = atob(padded + '='.repeat(padLen));
+  const wire = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) wire[i] = binStr.charCodeAt(i);
+  if (wire.byteLength < 29) throw new Error('truncated envelope');
+  const iv = wire.slice(0, 12);
+  const ctAndTag = wire.slice(12);
+  const keySeed = new TextEncoder().encode(`${pltoken}:${nonce}:elfura-pb-v1`);
+  const rawKey = await subtle.digest('SHA-256', keySeed);
+  const cryptoKey = await subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plainBuf = await subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, cryptoKey, ctAndTag);
+  return JSON.parse(new TextDecoder().decode(plainBuf)) as T;
+}
+

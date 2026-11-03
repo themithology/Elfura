@@ -33,13 +33,18 @@ Elfura is split into two isolated parts in this repository so upstream scraper c
 1. **One Uniform Client API (`GET/POST /api/v1/playback`):**
    - Part 1 requests playback metadata from **one uniform backend endpoint** (`/api/v1/playback`, keyed by `type=movie|tv`, `tmdb`, `s`, `e`, optional `source`, and `lang`).
    - Regardless of how `Source 1`, `Source 2`, or future sources work internally, `backend/src/sources/registry.ts` molds every source into `UniformPlaybackResponse` (`media`, `primary`, `sources[]`, `segments`).
-2. **Uniform Stream Ingress / Egress Relay (`GET /api/v1/stream?t=<ticket>`):**
-   - Raw upstream stream URLs, provider domains, cookies, signed query strings, and required `Referer`/`Origin`/`User-Agent` headers **must never be exposed to the browser**.
-   - Every stream URL, audio dub URL, and subtitle URL is sealed into a stateless AES-256-GCM encrypted ticket (`backend/src/security.ts` -> `sealStreamTicket`).
-   - `backend/src/relay.ts` decrypts tickets server-side, enforces SSRF checks (`isSafeUpstreamUrl`), rewrites every child URI inside HLS (`.m3u8`) and DASH (`.mpd`) manifests into fresh `/api/v1/stream?t=...` tickets, and pipes binary media segments directly with zero disk writes.
-3. **Anti-Scraper Gates (`POST /api/v1/session` & SSR `__ELFURA_BOOT__`):**
-   - Embed HTML routes (`/embed/movie/:tmdbId`, `/embed/tv/:tmdbId/:s/:e`) and `POST /api/v1/session` mint short-lived HMAC-SHA256 `pltoken` + `nonce` credentials.
-   - `/api/v1/playback` enforces `Origin`/`Referer` validation, bot UA rejection, bounded in-memory `CF-Connecting-IP` rate limiting, and `X-Playback-Token` verification.
+2. **Smart Hybrid Stream Ingress / Egress Relay (`GET /api/v1/stream?t=<ticket>`, `RELAY_MODE=hybrid|full`):**
+   - Upstream provider domains, aggregator APIs, worker bridges, cookies, API keys, and required `Referer`/`Origin`/`User-Agent` headers **must never be exposed to the browser**.
+   - Every master/child manifest URL, encryption key URL (`#EXT-X-KEY`), external audio dub URL, and subtitle URL is sealed into a stateless AES-256-GCM encrypted ticket (`backend/src/security.ts` -> `sealStreamTicket`).
+   - In **`RELAY_MODE=hybrid` (default, Cloudflare Proxy & Pterodactyl VPS safe)**:
+     - `backend/src/relay.ts` decrypts tickets server-side, enforces SSRF checks (`isSafeUpstreamUrl`), and **always** relays all manifests (`.m3u8` / `.mpd`), subtitles (`.vtt` / `.srt` / `.ass`), encryption keys (`#EXT-X-KEY`), and any header-locked or source-identifying streams through `/api/v1/stream?t=...` with zero disk writes.
+     - Heavy binary media segments (`kind='a'`, `.ts`/`.m4s`/disguised chunk URLs) inside leaf playlists are offloaded directly to generic, provider-anonymous HTTPS edge CDNs **only when** they pass **both** `isAnonymousSegmentUrl()` (strict zero-source-leakage denylist) **and** a live cached browser-CORS + headerless `GET` preflight (`verifyDirectSegmentOffload()`).
+     - If an offloaded external segment ever fails on a viewer's network (e.g. mobile ISP DNS block), `ElfuraPlayer` automatically switches that stream to `?p=1` (`fp: 1`), forcing 100% backend segment relay seamlessly without dropping playback.
+   - Setting **`RELAY_MODE=full`** pipes 100% of manifests and binary media segments through `/api/v1/stream?t=...`.
+3. **Anti-Scraper Gates (`POST /api/v1/session`, SSR `__ELFURA_BOOT__`, Sealed Playback Envelope & `Referrer-Policy`):**
+   - Embed HTML routes (`/embed/movie/:tmdbId`, `/embed/tv/:tmdbId/:s/:e`) emit `Referrer-Policy: same-origin` (keeping full same-origin `Referer` for Elfura's API while sending **zero `Referer`** to cross-origin segment CDNs) and `POST /api/v1/session` mints short-lived HMAC-SHA256 `pltoken` + `nonce` credentials.
+   - `/api/v1/playback` and `/api/v1/stream` enforce `Origin`/`Referer` validation, automated CLI/downloader UA rejection (`curl`, `yt-dlp`, `ffmpeg`, `python-requests`, etc.), bounded in-memory `CF-Connecting-IP` rate limiting, and `X-Playback-Token` verification.
+   - When `ElfuraPlayer` sends `X-Elfura-Envelope: 1`, `/api/v1/playback` encrypts the JSON payload into an **AES-256-GCM Sealed Playback Envelope** (`{ ok: true, s: 1, p: "<base64url>" }`) keyed per-session from `pltoken + nonce`, so DevTools Network Preview and copied cURL requests only ever see opaque ciphertext.
 
 ---
 

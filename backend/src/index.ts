@@ -20,6 +20,7 @@ import {
   isLikelyAutomatedScraper,
   mintPlaybackToken,
   resolveAllowedOrigin,
+  sealPlaybackEnvelope,
   setCloudflareCache,
   SlidingWindowLimiter,
   verifyPlaybackToken,
@@ -230,10 +231,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const sourceId = pick(['source']) || undefined;
       const preferredLang = pick(['lang']) || undefined;
 
+      const headerTok = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
+      const pltoken = headerTok || pick(['pltoken']);
+      const nonce = pick(['nonce']) || undefined;
+
       if (cfg.requireToken) {
-        const headerTok = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
-        const pltoken = headerTok || pick(['pltoken']);
-        const nonce = pick(['nonce']) || undefined;
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, {
           mediaType,
           tmdbId,
@@ -259,13 +261,24 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
 
-      // Playback JSON carries per-session encrypted tickets -> private short cache
-      sendJson(res, 200, resolved, allowOrigin, 'no-store');
+      // When requested by ElfuraPlayer (`X-Elfura-Envelope: 1`), AES-256-GCM seal the response
+      // so DevTools Network Preview & copied cURL commands only see opaque ciphertext.
+      const wantEnvelope = req.headers['x-elfura-envelope'] === '1' && Boolean(pltoken && nonce);
+      const responseBody = wantEnvelope
+        ? sealPlaybackEnvelope(resolved, pltoken, nonce!)
+        : resolved;
+
+      // Playback JSON carries per-session encrypted tickets -> private no-store
+      sendJson(res, 200, responseBody, allowOrigin, 'no-store');
       return;
     }
 
     // 5. Uniform Stream Ingress / Egress Relay
     if ((method === 'GET' || method === 'HEAD') && pathname === '/api/v1/stream') {
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'automated scraper blocked' });
+        return;
+      }
       const hasExplicitOriginOrRef = !!(req.headers.origin || req.headers.referer);
       const allowOrigin =
         resolveAllowedOrigin(req, cfg.allowedOrigins) ??
@@ -275,11 +288,15 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const ticketParam = url.searchParams.get('t') || '';
+      const forceProxy = url.searchParams.get('p') === '1';
       await handleStreamRelay(req, res, {
         secret: cfg.secret,
         allowOrigin,
         ticketParam,
         streamPath: '/api/v1/stream',
+        relayMode: cfg.relayMode,
+        forceProxy,
+        requireHttpsOffload: cfg.isProd,
       });
       return;
     }
@@ -329,6 +346,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Length': String(buf.byteLength),
           'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'same-origin',
         });
         res.end(method === 'HEAD' ? undefined : buf);
         return;

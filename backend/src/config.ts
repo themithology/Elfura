@@ -30,6 +30,14 @@ export interface BackendConfig {
   rateLimitPerMin: number;
   /** Max time to wait for source adapters before returning available streams. */
   resolveTimeoutMs: number;
+  /**
+   * Stream segment delivery mode:
+   *  - 'hybrid' (default): manifests/subtitles/keys + header-locked or source-identifying
+   *    streams relay via `/api/v1/stream`, while verified anonymous CORS-safe HTTPS
+   *    segments offload directly to upstream edge CDNs (Cloudflare & VPS safe).
+   *  - 'full': pipe 100% of manifests and binary segments through `/api/v1/stream`.
+   */
+  relayMode: 'hybrid' | 'full';
   /** Self-hosted TMDB API configuration. */
   tmdb: {
     apiBase: string;
@@ -124,6 +132,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     bindTokenIp: env.BIND_TOKEN_IP === '1',
     rateLimitPerMin: Math.max(10, Number(env.RATE_LIMIT_PER_MIN || 120)),
     resolveTimeoutMs: Math.max(2000, Number(env.RESOLVE_TIMEOUT_MS || 9000)),
+    relayMode: (env.RELAY_MODE || 'hybrid').trim().toLowerCase() === 'full' ? 'full' : 'hybrid',
     tmdb: {
       apiBase: (env.TMDB_API_BASE || env.TMDB_API_BASE_URL || '').trim().replace(/\/+$/, ''),
       apiKey: (env.TMDB_API_KEY || '').trim(),

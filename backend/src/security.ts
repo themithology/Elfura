@@ -31,7 +31,8 @@ function uaFingerprint(req: IncomingMessage): string {
   return crypto.createHash('sha256').update(ua).digest('base64url').slice(0, 12);
 }
 
-const BOT_UA_RE = /\b(curl|wget|python-requests|python-urllib|aiohttp|httpx|scrapy|go-http-client|libwww-perl)\b/i;
+const BOT_UA_RE =
+  /\b(curl|wget|python-requests|python-urllib|aiohttp|httpx|scrapy|go-http-client|libwww-perl|yt-dlp|youtube-dl|ffmpeg|lavf|libavformat|aria2)\b/i;
 
 export function isLikelyAutomatedScraper(req: IncomingMessage, isProd: boolean): boolean {
   if (!isProd) return false;
@@ -205,10 +206,12 @@ export interface StreamTicketPayload {
   u: string;
   /** Upstream request headers to attach server-side (Referer, Origin, UA, Cookie). */
   h?: Record<string, string>;
-  /** Hint: 'm' = manifest, 's' = subtitle, 'a' = asset/segment */
-  k?: 'm' | 's' | 'a';
+  /** Hint: 'm' = manifest, 's' = subtitle, 'a' = asset/segment, 'k' = encryption key */
+  k?: 'm' | 's' | 'a' | 'k';
   /** Optional canonical BCP-47 language hint for single-dub manifests lacking LANGUAGE tags. */
   l?: string;
+  /** Force 100% backend segment relay (bypasses hybrid CDN offload, e.g. on ISP block fallback). */
+  fp?: 1;
   /** Unix seconds expiration. */
   exp: number;
 }
@@ -253,6 +256,64 @@ export function openStreamTicket(secret: Buffer, ticket: string): StreamTicketPa
     if (!parsed || typeof parsed.u !== 'string' || typeof parsed.exp !== 'number') return null;
     if (Math.floor(Date.now() / 1000) > parsed.exp) return null;
     return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* AES-256-GCM Sealed Playback Envelope (`X-Elfura-Envelope: 1`)       */
+/* ------------------------------------------------------------------ */
+
+export interface SealedPlaybackEnvelope {
+  ok: true;
+  /** Envelope schema version */
+  s: 1;
+  /** Base64url(12-byte IV || AES-256-GCM ciphertext || 16-byte authTag) */
+  p: string;
+}
+
+export function sealPlaybackEnvelope(
+  payload: unknown,
+  pltoken: string,
+  nonce: string,
+): SealedPlaybackEnvelope {
+  const key = crypto
+    .createHash('sha256')
+    .update(`${pltoken}:${nonce}:elfura-pb-v1`, 'utf8')
+    .digest();
+  const iv = crypto.randomBytes(12);
+  const plain = Buffer.from(JSON.stringify(payload), 'utf8');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    ok: true,
+    s: 1,
+    p: Buffer.concat([iv, ct, tag]).toString('base64url'),
+  };
+}
+
+export function openPlaybackEnvelope<T = unknown>(
+  envelope: SealedPlaybackEnvelope,
+  pltoken: string,
+  nonce: string,
+): T | null {
+  if (!envelope || envelope.s !== 1 || typeof envelope.p !== 'string') return null;
+  try {
+    const wire = Buffer.from(envelope.p, 'base64url');
+    if (wire.length < 29) return null;
+    const iv = wire.subarray(0, 12);
+    const tag = wire.subarray(wire.length - 16);
+    const ct = wire.subarray(12, wire.length - 16);
+    const key = crypto
+      .createHash('sha256')
+      .update(`${pltoken}:${nonce}:elfura-pb-v1`, 'utf8')
+      .digest();
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(tag);
+    const plain = Buffer.concat([decipher.update(ct), decipher.final()]);
+    return JSON.parse(plain.toString('utf8')) as T;
   } catch {
     return null;
   }
@@ -312,7 +373,7 @@ export function applyCorsHeaders(res: ServerResponse, allowOrigin: string): void
   res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   if (allowOrigin !== '*') res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Playback-Token, Range');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Playback-Token, X-Elfura-Envelope, Range');
   res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
 }
 

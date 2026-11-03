@@ -78,8 +78,8 @@ function lookupTagByEnglishName(lowerName: string): string | undefined {
   return reverseDisplayMap.get(lowerName);
 }
 
-const GENERIC_OR_WATERMARK_NAME_RE =
-  /^(?:moviehub\w*|tg\s*(?:flix|vid|hub|kai|out)\w*|orion|vidrift|vidsync|castle|vidzee|audio|track\s*\d*|sound|stream|default|und|unknown)$/i;
+const GENERIC_PLACEHOLDER_NAME_RE =
+  /^(?:audio\s*\d*|track\s*\d*|sound\s*\d*|stream\s*\d*|stereo|mono|aac|ac-?3|eac-?3|main|default|und|unknown)$/i;
 
 export function canonLang(raw?: string | null): string {
   const trimmed = String(raw ?? '').trim();
@@ -116,7 +116,12 @@ export function canonLang(raw?: string | null): string {
 
 export function languageLabel(lang: string, explicit?: string): string {
   const cleanExplicit = explicit?.trim();
-  const canon = canonLang(lang || cleanExplicit);
+  const strippedExplicit = cleanExplicit?.replace(/\s*[\(\[\-–—].*$/, '').trim();
+  const canon = canonLang(lang) !== 'und'
+    ? canonLang(lang)
+    : canonLang(cleanExplicit) !== 'und'
+      ? canonLang(cleanExplicit)
+      : canonLang(strippedExplicit);
 
   if (canon === 'mul') return 'Multi-Audio';
 
@@ -137,7 +142,9 @@ export function languageLabel(lang: string, explicit?: string): string {
     }
   }
 
-  if (cleanExplicit && !GENERIC_OR_WATERMARK_NAME_RE.test(cleanExplicit)) {
+  // Never render arbitrary encoder/provider watermarks when `canon === 'und'`;
+  // only fall back to `cleanExplicit` if `canon` resolved to a known language code.
+  if (canon !== 'und' && cleanExplicit && !GENERIC_PLACEHOLDER_NAME_RE.test(cleanExplicit)) {
     return cleanExplicit;
   }
 
