@@ -366,7 +366,8 @@ async function runSingleProbe(
       setCachedLiveness(key, ok);
       return ok;
     } catch {
-      // Timeout or transient abort: do not mark confirmedDead so slow origins remain last-resort fallbacks
+      // Timeout or transient abort is not proof of death. The filter below retains
+      // it only when no other candidate verifies healthy.
       return { alive: false, confirmedDead: false };
     }
   })();
@@ -476,35 +477,57 @@ export async function verifyAndFilterCandidates(
     return updated;
   };
 
+  const outcomeFor = (cand: RawStreamCandidate) => ({
+    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers)),
+    standby: cand.standbyUrl && cand.standbyUrl !== cand.url
+      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
+      : undefined,
+  });
+  const hasVerifiedAlive = candidates.some((cand) => {
+    const outcome = outcomeFor(cand);
+    return !!outcome.primary?.alive || !!outcome.standby?.alive;
+  });
+
   const kept: RawStreamCandidate[] = [];
 
   for (const cand of candidates) {
-    const primaryOutcome = outcomes.get(cacheKeyFor(cand.url, cand.headers));
+    const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
     const standbyHeaders = cand.standbyHeaders ?? cand.headers;
-    const standbyOutcome =
-      cand.standbyUrl && cand.standbyUrl !== cand.url
-        ? outcomes.get(cacheKeyFor(cand.standbyUrl, standbyHeaders))
-        : undefined;
+    const hasStandby = !!(cand.standbyUrl && cand.standbyUrl !== cand.url);
+    const promoteStandby = (): RawStreamCandidate => ({
+      ...cand,
+      url: cand.standbyUrl!,
+      headers: standbyHeaders,
+      standbyUrl: undefined,
+      standbyHeaders: undefined,
+    });
 
+    // Always prefer a verified healthy lane, including a standby whose primary
+    // timed out. Once any healthy option exists, never advertise unprobed lanes.
+    if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
+      kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      continue;
+    }
+    if (primaryOutcome?.alive) {
+      const cleanedStandby = standbyOutcome?.confirmedDead
+        ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
+        : cand;
+      kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+      continue;
+    }
+    if (hasVerifiedAlive) continue;
+
+    // Last-resort mode only: no candidate verified healthy, so an unconfirmed
+    // slow origin is preferable to returning no playback option at all.
     if (primaryOutcome?.confirmedDead) {
-      // Primary is confirmed dead — promote healthy/unconfirmed standby if available, else drop completely!
-      if (cand.standbyUrl && cand.standbyUrl !== cand.url && !standbyOutcome?.confirmedDead) {
-        const promoted: RawStreamCandidate = {
-          ...cand,
-          url: cand.standbyUrl,
-          headers: standbyHeaders,
-          standbyUrl: undefined,
-          standbyHeaders: undefined,
-        };
-        kept.push(applyOutcomeToCandidate(promoted, standbyOutcome));
+      if (hasStandby && !standbyOutcome?.confirmedDead) {
+        kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       }
       continue;
     }
-
-    let cleanedStandby = cand;
-    if (standbyOutcome?.confirmedDead) {
-      cleanedStandby = { ...cand, standbyUrl: undefined, standbyHeaders: undefined };
-    }
+    const cleanedStandby = standbyOutcome?.confirmedDead
+      ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
+      : cand;
     kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 

@@ -21,6 +21,7 @@ import {
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
+import { verifyAndFilterCandidates } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
 // 1. SSRF guard (production mode: loopback/RFC1918/metadata strictly rejected)
@@ -278,6 +279,46 @@ assert(cleanVtt.includes('Welcome back to Arrakis.'));
 // 6. Full E2E server + mock upstreams
 process.env.NODE_ENV = 'test';
 process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
+
+// A healthy candidate must not be listed alongside slow/unverified lanes. Those
+// lanes remain available only in last-resort mode when nothing verifies alive.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.includes('/healthy.m3u8')) {
+      return new Response('#EXTM3U\n#EXTINF:4,\nseg0.ts\n#EXT-X-ENDLIST\n', {
+        status: 200,
+        headers: { 'Content-Type': 'application/vnd.apple.mpegurl' },
+      });
+    }
+    return new Promise((_resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('probe timeout')), 5000);
+      init.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    });
+  };
+  try {
+    const candidates = [
+      {
+        key: 'healthy', fingerprint: 'healthy', type: 'hls', url: 'https://cdn.example.com/healthy.m3u8',
+        quality: '1080p', multiAudio: true, subtitles: [], rank: 0, latencyMs: 0,
+      },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        key: `slow-${i}`, fingerprint: `slow-${i}`, type: 'hls',
+        url: `https://cdn.example.com/slow-${i}.m3u8`, quality: 'auto', multiAudio: false,
+        subtitles: [], rank: i + 1, latencyMs: 500,
+      })),
+    ];
+    const filtered = await verifyAndFilterCandidates(candidates);
+    assert.deepEqual(filtered.map((c) => c.key), ['healthy'],
+      'Unverified slow lanes must be hidden when a healthy candidate exists');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 
