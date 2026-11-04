@@ -8,8 +8,15 @@ on:
 
 jobs:
   audit:
+    name: audit (${{ matrix.relay-mode }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        relay-mode:
+          - hybrid
+          - full
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +30,6 @@ jobs:
         env:
           NODE_ENV: production
           ELFURA_SECRET: live-audit-only-not-a-production-secret
-          RELAY_MODE: full
+          RELAY_MODE: ${{ matrix.relay-mode }}
           RESOLVE_TIMEOUT_MS: 20000
           TMDB_TIMEOUT_MS: 8000
