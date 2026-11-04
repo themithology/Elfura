@@ -38,6 +38,12 @@ export interface ElfuraConfig {
   /* source */
   src?: string;
   type?: 'auto' | 'hls' | 'dash' | 'mp4';
+  tmdb?: string;
+  mediaType?: 'movie' | 'tv';
+  season?: number;
+  episode?: number;
+  source?: string;
+  api?: string;
   poster?: string;
   title?: string;
   servers?: { lang: string; label?: string; url: string }[];
@@ -91,7 +97,7 @@ export interface ElfuraConfig {
 }
 
 export interface ResolvedInput {
-  config: Required<Pick<ElfuraConfig, 'type' | 'autoplay' | 'muted' | 'loop' | 'speed' | 'volume' | 'quality' | 'audioSwapMode' | 'persistAudio' | 'subtitles' | 'persistSubs' | 'color' | 'controls' | 'keyboard' | 'back' | 'episodeSelector' | 'autoplayNextEp' | 'skin' | 'postMessage' | 'debug'>> & ElfuraConfig;
+  config: Required<Pick<ElfuraConfig, 'type' | 'mediaType' | 'season' | 'episode' | 'api' | 'autoplay' | 'muted' | 'loop' | 'speed' | 'volume' | 'quality' | 'audioSwapMode' | 'persistAudio' | 'subtitles' | 'persistSubs' | 'color' | 'controls' | 'keyboard' | 'back' | 'episodeSelector' | 'autoplayNextEp' | 'skin' | 'postMessage' | 'debug'>> & ElfuraConfig;
   /** Fully resolved subtitle style, after defaults -> stored -> ?substyle. */
   subtitleStyle: SubtitleStyle;
   /** Everything that was rejected/clamped, for ?debug and the demo panel. */
@@ -108,7 +114,29 @@ const SCHEMA_DEFAULTS = (() => {
   return d;
 })();
 
-export function resolveInput(js: ElfuraConfig = {}, search = window.location.search): ResolvedInput {
+function parsePathnameMedia(pathname: string): Partial<ElfuraConfig> {
+  const clean = pathname.replace(/\/+$/, '');
+  const movieMatch = clean.match(/^(?:\/embed)?\/movie\/([A-Za-z0-9_-]+)$/);
+  if (movieMatch) {
+    return { mediaType: 'movie', tmdb: movieMatch[1] };
+  }
+  const tvMatch = clean.match(/^(?:\/embed)?\/tv\/([A-Za-z0-9_-]+)\/(\d+)\/(\d+)$/);
+  if (tvMatch) {
+    return {
+      mediaType: 'tv',
+      tmdb: tvMatch[1],
+      season: Math.max(1, Number(tvMatch[2]) || 1),
+      episode: Math.max(1, Number(tvMatch[3]) || 1),
+    };
+  }
+  return {};
+}
+
+export function resolveInput(
+  js: ElfuraConfig = {},
+  search = window.location.search,
+  pathname = window.location.pathname,
+): ResolvedInput {
   const issues: ParseIssue[] = [];
   const provenance: Record<string, 'default' | 'stored' | 'js' | 'url' | 'redacted'> = {};
 
@@ -122,6 +150,19 @@ export function resolveInput(js: ElfuraConfig = {}, search = window.location.sea
   }
   const storedStyle = loadStoredStyle();
 
+  // 2.5 SSR / Backend boot payload (`window.__ELFURA_BOOT__`)
+  const boot =
+    typeof window !== 'undefined'
+      ? (window as unknown as { __ELFURA_BOOT__?: Partial<ElfuraConfig> }).__ELFURA_BOOT__
+      : undefined;
+  if (boot && typeof boot === 'object') {
+    for (const [k, v] of Object.entries(boot)) {
+      if (v === undefined) continue;
+      merged[k] = v;
+      provenance[k] = 'js';
+    }
+  }
+
   // 3. JS config
   for (const [k, v] of Object.entries(js)) {
     if (v === undefined) continue;
@@ -129,14 +170,40 @@ export function resolveInput(js: ElfuraConfig = {}, search = window.location.sea
     provenance[k] = 'js';
   }
 
-  // 4. URL params (win)
+  // 4. URL pathname + query params (win unless ignoreUrlParams: true)
   const urlSearch = merged.ignoreUrlParams ? '' : search;
+  if (!merged.ignoreUrlParams) {
+    const pathConfig = parsePathnameMedia(pathname);
+    for (const [k, v] of Object.entries(pathConfig)) {
+      if (v === undefined) continue;
+      merged[k] = v;
+      provenance[k] = 'url';
+    }
+  }
   const parsed = parseParams(new URLSearchParams(urlSearch));
   issues.push(...parsed.issues);
   for (const [k, v] of Object.entries(parsed.config)) {
     if (!parsed.seen.has(k)) continue; // defaults only — do not clobber JS config
     merged[k] = v;
     provenance[k] = 'url';
+  }
+
+  // Normalize `?type=movie|tv` into `mediaType` while keeping container `type` valid
+  if (merged.type === 'movie' || merged.type === 'tv') {
+    if (!parsed.seen.has('mediaType')) merged.mediaType = merged.type;
+    merged.type = 'auto';
+  } else if (
+    !parsed.seen.has('mediaType') &&
+    (parsed.seen.has('season') || parsed.seen.has('episode')) &&
+    merged.tmdb
+  ) {
+    merged.mediaType = 'tv';
+  }
+
+  // Backward compatibility: `?source=https://...` treated as `src`
+  if (typeof merged.source === 'string' && !merged.src && /^(?:https?:\/\/|blob:|\/)/i.test(merged.source)) {
+    merged.src = merged.source;
+    delete merged.source;
   }
 
   // Security params must never leak into logs or the debug panel.

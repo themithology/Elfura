@@ -1,76 +1,166 @@
 /**
- * Elfura Player — Audio track layer
- * =================================
+ * Elfura Player — Dynamic Audio Track Layer
+ * =========================================
+ * Zero hardcoded audio tracks, zero hardcoded language dictionaries.
  *
- * Two kinds of track exist and they behave differently. Conflating them is the
- * usual source of "why does switching language stutter?" bugs.
+ * Audio tracks are discovered strictly at runtime from:
+ *  A) NATIVE tracks — parsed from the active HLS/DASH manifest (`#EXT-X-MEDIA`
+ *     or `<AdaptationSet contentType="audio">`). Switching is instant in-band.
+ *  B) EXTERNAL tracks — sidecar audio files attached to the active stream.
+ *  C) SOURCE tracks — additional audio languages dynamically reported across
+ *     the resolved raw stream candidates for this specific title. Selecting
+ *     one searches all raw sources carrying that language in rank order.
  *
- *  A) NATIVE tracks — muxed into the manifest.
- *       HLS : EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=...,LANGUAGE="hi",DEFAULT=YES
- *       DASH: <AdaptationSet contentType="audio" lang="hi">
- *     Switching is a clean in-band operation: hls.js/dash.js detach the old
- *     SourceBuffer and append the new language without touching the clock.
- *     No video interruption, no re-buffer of what you already have.
- *
- *  B) EXTERNAL tracks — a separate audio file per language (?audioTracks=).
- *     Common when dubs are produced/hosted apart from the video. There is no
- *     way to switch these in-band without remuxing, so the player keeps the
- *     video element running (muted) and drives a second <audio> element locked
- *     to the video clock. Drift is corrected continuously.
- *
- * Everything above the two adapters sees one unified AudioTrack list.
+ * Language canonicalization (ISO 639-1, ISO 639-2 3-letter codes like `hin`,
+ * `jpn`, `kan`, `tam`, `tel`, and BCP-47 tags like `es-419`, `pt-BR`) uses the
+ * platform's built-in `Intl.Locale` and `Intl.DisplayNames` APIs.
  */
 
-export type TrackKind = 'native' | 'external';
+export type TrackKind = 'native' | 'external' | 'source';
 
 export interface AudioTrack {
-  /** Stable id for the API. Native tracks are prefixed so ids never collide. */
+  /** Stable id for the API. Prefixed by kind so ids never collide. */
   id: string;
   kind: TrackKind;
-  /** BCP-47 as declared by the manifest / caller. */
+  /** Canonical BCP-47 tag (e.g. 'hi', 'en', 'ja', 'es-419', 'und'). */
   lang: string;
-  /** Human label; falls back to a language-name lookup. */
+  /** Human label derived dynamically from Intl.DisplayNames or manifest metadata. */
   label: string;
-  /** Native: index into hls.audioTracks. External: the media URL. */
+  /** Native: index into hls.audioTracks. External: media URL. Source: canonical lang tag. */
   ref: number | string;
   default?: boolean;
-  /** Codec hint when known (mp4a.40.2, ec-3, ...). */
   codec?: string;
   channels?: number;
 }
 
 /* ------------------------------------------------------------------ */
-/* Language matching                                                   */
+/* Runtime BCP-47 / ISO 639-1 / ISO 639-2 canonicalization via Intl    */
 /* ------------------------------------------------------------------ */
 
-const LANG_NAMES: Record<string, string> = {
-  en: 'English', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', kn: 'Kannada',
-  ml: 'Malayalam', bn: 'Bengali', mr: 'Marathi', gu: 'Gujarati', pa: 'Punjabi',
-  ur: 'Urdu', ar: 'Arabic', es: 'Spanish', fr: 'French', de: 'German',
-  it: 'Italian', pt: 'Portuguese', ru: 'Russian', ja: 'Japanese', ko: 'Korean',
-  zh: 'Chinese', tr: 'Turkish', id: 'Indonesian', th: 'Thai', vi: 'Vietnamese',
-  und: 'Unknown', mul: 'Multiple',
-};
+const displayDialect =
+  typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
+    ? new Intl.DisplayNames(['en'], { type: 'language' })
+    : null;
+
+const displayStandard =
+  typeof Intl !== 'undefined' && typeof Intl.DisplayNames === 'function'
+    ? new Intl.DisplayNames(['en'], { type: 'language', languageDisplay: 'standard' })
+    : null;
+
+let reverseDisplayMap: Map<string, string> | null = null;
+function lookupTagByEnglishName(lowerName: string): string | undefined {
+  if (!displayDialect) return undefined;
+  if (!reverseDisplayMap) {
+    reverseDisplayMap = new Map<string, string>();
+    const register = (tag: string) => {
+      try {
+        const loc = new Intl.Locale(tag);
+        const canonical = loc.baseName.toLowerCase();
+        for (const dn of [displayDialect, displayStandard]) {
+          const rendered = dn?.of(loc.baseName);
+          if (rendered && rendered.toLowerCase() !== canonical) {
+            reverseDisplayMap!.set(rendered.toLowerCase(), canonical);
+          }
+        }
+      } catch {
+        /* ignore unassigned 2-letter combinations */
+      }
+    };
+    for (let a = 97; a <= 122; a++) {
+      for (let b = 97; b <= 122; b++) {
+        register(String.fromCharCode(a, b));
+      }
+    }
+    for (const regional of ['es-419', 'pt-BR', 'zh-Hans', 'zh-Hant', 'fil']) {
+      register(regional);
+    }
+  }
+  return reverseDisplayMap.get(lowerName);
+}
+
+const GENERIC_PLACEHOLDER_NAME_RE =
+  /^(?:audio\s*\d*|track\s*\d*|sound\s*\d*|stream\s*\d*|stereo|mono|aac|ac-?3|eac-?3|main|default|und|unknown)$/i;
+
+export function canonLang(raw?: string | null): string {
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return 'und';
+  const lower = trimmed.toLowerCase();
+  if (lower === 'original' || lower === 'default' || lower === 'und' || lower === 'unknown') {
+    return 'und';
+  }
+  if (lower === 'mul' || lower === 'multi' || lower === 'multi-audio') {
+    return 'mul';
+  }
+
+  const byEnglishName = lookupTagByEnglishName(lower);
+  if (byEnglishName) return byEnglishName;
+
+  const candidateTag = trimmed.replace(/_/g, '-');
+  if (typeof Intl !== 'undefined' && typeof Intl.Locale === 'function' && /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(candidateTag)) {
+    try {
+      const loc = new Intl.Locale(candidateTag);
+      const base = loc.baseName.toLowerCase();
+      if (!base || base === 'und') return 'und';
+      // Guard against invalid 2-letter tags that Intl.DisplayNames cannot resolve
+      if (displayDialect && loc.language.length === 2) {
+        const check = displayDialect.of(loc.language);
+        if (!check || check.toLowerCase() === loc.language) return 'und';
+      }
+      return base;
+    } catch {
+      /* fall through */
+    }
+  }
+  return 'und';
+}
 
 export function languageLabel(lang: string, explicit?: string): string {
-  if (explicit) return explicit;
-  const primary = lang.split('-')[0].toLowerCase();
-  const base = LANG_NAMES[primary];
-  if (!base) return lang.toUpperCase();
-  const region = lang.split('-')[1];
-  return region ? `${base} (${region.toUpperCase()})` : base;
+  const cleanExplicit = explicit?.trim();
+  const strippedExplicit = cleanExplicit?.replace(/\s*[\(\[\-–—].*$/, '').trim();
+  const canon = canonLang(lang) !== 'und'
+    ? canonLang(lang)
+    : canonLang(cleanExplicit) !== 'und'
+      ? canonLang(cleanExplicit)
+      : canonLang(strippedExplicit);
+
+  if (canon === 'mul') return 'Multi-Audio';
+
+  if (canon !== 'und' && displayDialect) {
+    try {
+      const loc = new Intl.Locale(canon);
+      const intlName = displayDialect.of(loc.baseName);
+      if (intlName && intlName.toLowerCase() !== canon) {
+        // Preserve helpful qualifiers like "(Forced)" or "(SDH)" from manifest NAME
+        if (cleanExplicit && /\((?:forced|sdh|cc|commentary)\)/i.test(cleanExplicit)) {
+          const qual = cleanExplicit.match(/\((?:forced|sdh|cc|commentary)\)/i)?.[0] ?? '';
+          return `${intlName} ${qual}`.trim();
+        }
+        return intlName;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  // Never render arbitrary encoder/provider watermarks when `canon === 'und'`;
+  // only fall back to `cleanExplicit` if `canon` resolved to a known language code.
+  if (canon !== 'und' && cleanExplicit && !GENERIC_PLACEHOLDER_NAME_RE.test(cleanExplicit)) {
+    return cleanExplicit;
+  }
+
+  return canon !== 'und' ? canon.toUpperCase() : 'Original';
 }
 
 /**
  * Rank how well `candidate` satisfies `wanted`. Lower is better. -1 = no match.
- *   0 exact tag      hi-IN == hi-IN
- *   1 primary subtag hi    == hi-IN
- *   2 case/alias     en-GB == en-gb
+ *   0 exact canonical tag  hi-in == hi-in  or  hi == hin
+ *   1 primary subtag       hi    == hi-in
  */
 export function matchScore(wanted: string, candidate: string): number {
-  const w = wanted.trim().toLowerCase();
-  const c = candidate.trim().toLowerCase();
-  if (!w || !c || c === 'und') return -1;
+  const w = canonLang(wanted);
+  const c = canonLang(candidate);
+  if (!w || !c) return -1;
+  if (w === 'und' || c === 'und') return w === 'und' && c === 'und' ? 0 : -1;
   if (w === c) return 0;
   if (w.split('-')[0] === c.split('-')[0]) return 1;
   return -1;
@@ -102,10 +192,9 @@ export function pickTrack(
 /* External-audio sync engine                                          */
 /* ------------------------------------------------------------------ */
 
-/** Above this drift we hard-seek the audio element; below it we nudge rate. */
 const HARD_SEEK_THRESHOLD = 0.35;
 const SOFT_DRIFT_THRESHOLD = 0.06;
-const NUDGE = 0.04; // +/- playbackRate applied to audio to converge
+const NUDGE = 0.04;
 
 export class ExternalAudioSync {
   private audio = new Audio();
@@ -118,7 +207,6 @@ export class ExternalAudioSync {
     this.audio.crossOrigin = 'anonymous';
   }
 
-  /** The video element whose clock we follow. */
   bind(video: HTMLVideoElement): void {
     this.video = video;
     const sync = () => this.syncOnce();
@@ -138,10 +226,6 @@ export class ExternalAudioSync {
     this.audio.playbackRate = video.playbackRate;
   }
 
-  /**
-   * Activate an external track. The video element is muted while an external
-   * track owns the audio path so the two never fight.
-   */
   async activate(track: AudioTrack): Promise<{ ok: boolean; error?: string }> {
     const url = String(track.ref);
     if (this.attached?.id === track.id) return { ok: true };
@@ -166,7 +250,6 @@ export class ExternalAudioSync {
     }
   }
 
-  /** Return audio duties to the video element. */
   deactivate(): void {
     this.stopWatchdog();
     this.audio.pause();
@@ -181,7 +264,6 @@ export class ExternalAudioSync {
 
   private startWatchdog(): void {
     this.stopWatchdog();
-    // 250ms is enough to catch drift without burning CPU or thrashing rate.
     this.timer = window.setInterval(() => this.syncOnce(), 250);
   }
 
@@ -204,7 +286,6 @@ export class ExternalAudioSync {
       this.audio.currentTime = v.currentTime;
       this.audio.playbackRate = v.playbackRate;
     } else if (Math.abs(drift) > SOFT_DRIFT_THRESHOLD) {
-      // Converge smoothly instead of jumping: slightly faster/slower audio.
       const dir = drift > 0 ? -1 : 1;
       this.audio.playbackRate = Math.min(2, Math.max(0.5, v.playbackRate * (1 + dir * NUDGE)));
     } else if (this.audio.playbackRate !== v.playbackRate) {
@@ -241,25 +322,38 @@ export function savePreferredAudio(lang: string): void {
 }
 
 /* ------------------------------------------------------------------ */
-/* Registry                                                            */
+/* Dynamic Track Registry                                              */
 /* ------------------------------------------------------------------ */
 
 /**
- * Merges native and external tracks into one de-duplicated, stably-sorted list.
- * Native tracks win on ties because they switch more cleanly.
+ * Dynamically merges:
+ *  - native manifest tracks,
+ *  - external sidecar tracks, and
+ *  - additional languages dynamically discovered across resolved raw sources
+ *    for this title (never hardcoded).
  */
 export function buildTrackList(input: {
   native?: { lang: string; label?: string; id: number; default?: boolean; codec?: string; channels?: number }[];
   external?: { lang: string; label?: string; url: string }[];
+  discoveredSourceLangs?: { lang: string; label?: string; active?: boolean }[];
 }): AudioTrack[] {
   const out: AudioTrack[] = [];
+  const labelCounts = new Map<string, number>();
+
+  const uniqueLabel = (base: string): string => {
+    const k = base.toLowerCase();
+    const count = (labelCounts.get(k) ?? 0) + 1;
+    labelCounts.set(k, count);
+    return count > 1 ? `${base} #${count}` : base;
+  };
 
   for (const n of input.native ?? []) {
+    const cLang = canonLang(n.lang || n.label);
     out.push({
       id: `native:${n.id}`,
       kind: 'native',
-      lang: (n.lang || 'und').toLowerCase(),
-      label: languageLabel(n.lang || 'und', n.label),
+      lang: cLang,
+      label: uniqueLabel(languageLabel(cLang, n.label)),
       ref: n.id,
       default: n.default,
       codec: n.codec,
@@ -268,17 +362,63 @@ export function buildTrackList(input: {
   }
 
   for (const [i, x] of (input.external ?? []).entries()) {
-    // Skip an external track if the manifest already carries that language natively.
-    if (out.some((t) => t.kind === 'native' && matchScore(x.lang, t.lang) === 0)) continue;
+    const cLang = canonLang(x.lang || x.label);
+    if (out.some((t) => t.kind === 'native' && matchScore(cLang, t.lang) === 0)) continue;
     out.push({
-      id: `external:${x.lang}:${i}`,
+      id: `external:${cLang}:${i}`,
       kind: 'external',
-      lang: (x.lang || 'und').toLowerCase(),
-      label: languageLabel(x.lang, x.label),
+      lang: cLang,
+      label: uniqueLabel(languageLabel(cLang, x.label)),
       ref: x.url,
     });
   }
 
-  // Defaults first, then alphabetical by label for a stable menu.
-  return out.sort((a, b) => Number(!!b.default) - Number(!!a.default) || a.label.localeCompare(b.label));
+  const discovered = input.discoveredSourceLangs ?? [];
+  if (discovered.length > 0) {
+    // If active stream is a single-audio dub whose single native track reported 'und'
+    // ("Audio"), upgrade its lang/label to the active source's known dub language.
+    const activeSourceEntry = discovered.find((d) => d.active);
+    if (out.length === 1 && out[0].lang === 'und' && activeSourceEntry) {
+      const activeLang = canonLang(activeSourceEntry.lang || activeSourceEntry.label);
+      if (activeLang !== 'und') {
+        out[0].lang = activeLang;
+        out[0].label = languageLabel(activeLang, activeSourceEntry.label);
+      }
+      out[0].default = true;
+    } else if (out.length === 0 && activeSourceEntry) {
+      const activeLang = canonLang(activeSourceEntry.lang || activeSourceEntry.label);
+      out.push({
+        id: `source:${activeLang}`,
+        kind: 'source',
+        lang: activeLang,
+        label: uniqueLabel(languageLabel(activeLang, activeSourceEntry.label)),
+        ref: activeLang,
+        default: true,
+      });
+    }
+
+    for (const d of discovered) {
+      const cLang = canonLang(d.lang || d.label);
+      const alreadyCovered = out.some((t) =>
+        cLang === 'und' ? t.lang === 'und' : matchScore(cLang, t.lang) === 0,
+      );
+      if (alreadyCovered) continue;
+      out.push({
+        id: `source:${cLang}`,
+        kind: 'source',
+        lang: cLang,
+        label: uniqueLabel(languageLabel(cLang, d.label)),
+        ref: cLang,
+        default: !!d.active,
+      });
+    }
+  }
+
+  const kindRank = (k: TrackKind) => (k === 'native' ? 0 : k === 'external' ? 1 : 2);
+  return out.sort(
+    (a, b) =>
+      Number(!!b.default) - Number(!!a.default) ||
+      kindRank(a.kind) - kindRank(b.kind) ||
+      a.label.localeCompare(b.label),
+  );
 }

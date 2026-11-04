@@ -8,8 +8,10 @@ completely customisable subtitle renderer underneath.
 chunks loaded on demand — an HLS title never downloads the DASH engine.
 
 ```
-npm run dev        # vite dev server on 0.0.0.0:5173
-npm run build      # typecheck + embed page + library bundle
+npm run dev        # vite dev server on 0.0.0.0:5173 (proxies /api -> backend)
+npm run build      # typecheck (Part 1 + Part 2) + embed + lib + backend
+npm start          # zero-dep Node production server on 0.0.0.0:${SERVER_PORT||PORT||8787}
+npm test           # end-to-end security, TMDB, Source 1 & HLS/Range relay test suite
 ```
 
 ---
@@ -42,7 +44,11 @@ Key parameters (full list: `Elfura.schemaDocs()`):
 
 | Param | Type | Example | Purpose |
 |---|---|---|---|
-| `src` | url | `…/master.m3u8` | media URL; HLS/DASH/mp4 sniffed from extension |
+| `tmdb` | id | `94605` | TMDB ID resolved via uniform `/api/v1/playback` |
+| `mediaType` | enum | `tv` | `movie` or `tv` (also accepts `?type=movie\|tv` or `/embed/tv/:id/:s/:e`) |
+| `season` / `episode` | int | `s=1&e=1` | 1-based season & episode for `tv` playback |
+| `source` | id | `source-1` | pin a preferred uniform source adapter |
+| `src` | url | `…/master.m3u8` | direct media URL when bypassing TMDB resolution |
 | `type` | enum | `hls` | force a protocol instead of sniffing |
 | `servers` | pairlist | `a:URL,b:URL` | ordered fallback servers; silent failover on fatal error |
 | `t` | time | `1:30:00` | start position; accepts `90`, `1:30`, `01:02:03`, `1h2m3s` |
@@ -161,18 +167,36 @@ Versioned envelope, origin-locked in both directions:
 Commands are acked, so a host can `await` them: `createHostClient(iframe).send('seek', { value: 90 })`.
 `pltoken` / `nonce` are redacted from every outbound message and log.
 
-## 6. Layout
+## 6. Uniform Backend & Pterodactyl Deployment (`backend/`)
+
+Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`backend/`)** (see [`RULES.md`](./RULES.md)):
+
+- **Clean TMDB Embed URLs:**
+  - Movie: `/embed/movie/:tmdbId` or `/embed?tmdb=:tmdbId&type=movie`
+  - TV Episode: `/embed/tv/:tmdbId/:season/:episode` or `/embed?tmdb=:tmdbId&type=tv&s=1&e=1`
+- **Single Uniform Endpoint (`GET/POST /api/v1/playback`):** Resolves TMDB metadata (from your self-hosted `TMDB_API_BASE`) + modular `SourceAdapter` streams into one uniform schema with zero upstream provider names or raw CDN URLs exposed, wrapped in an **AES-256-GCM Sealed Playback Envelope** (`X-Elfura-Envelope: 1`) so DevTools Network Preview and copied cURL commands only see ciphertext.
+- **Smart Hybrid Stream Relay (`GET /api/v1/stream?t=<ticket>`, `RELAY_MODE=hybrid`):** Encrypts upstream URLs and required `Referer`/`Origin` headers inside AES-256-GCM tickets, always relays manifests/subtitles/keys and header-locked or source-identifying streams in memory with zero disk writes, and offloads verified anonymous CORS-safe HTTPS video segments directly to edge CDNs (keeping Cloudflare Proxy & 2 GB RAM Pterodactyl containers safe at scale, with automatic `&p=1` backend-tunnel failover if a viewer's ISP blocks an external CDN).
+- **Pterodactyl Ready (`elfura-pterodactyl.zip`):** Upload `elfura-pterodactyl.zip` to `/home/container` in Pterodactyl's **Files** tab and click **Unarchive** (flat-root archive — extracts directly into `/home/container` with pre-built `dist/` and zero heavy `node_modules`). Edit `.env` (or Startup variables) with `ELFURA_SECRET`, `TMDB_API_BASE`, and `ALLOWED_ORIGINS`, keep `MAIN_FILE=index.js` (also supports `index.ts`, `server.js`, `app.js`, `main.js`, `bot.js`, `start.js`, and ParkerCP's `ts-node --esm` Node 24 Egg), and click **Start**.
+
+## 7. Layout
 
 ```
-src/core/params.ts    input schema (single source of truth)
-src/core/config.ts    precedence + provenance + redaction
-src/core/events.ts    event bus + origin-locked postMessage bridge
-src/core/audio.ts     native/external tracks, language matching, sync engine
-src/core/player.ts    engine adapters (lazy), failover, track wiring
-src/subs/parser.ts    VTT / SRT / ASS -> Cue[]
-src/subs/renderer.ts  DOM overlay renderer, drag-to-position
-src/subs/style.ts     SubtitleStyle model, clamping, persistence
-src/ui/controls.ts    chrome, icon-tab panel, rAF loop
-src/ui/styles.css     one accent property, derived shades
-embed.html            iframe surface (URL params only)
+RULES.md                  strict Part 1 / Part 2 architecture & zero-disk rules
+src/core/params.ts        input schema (single source of truth)
+src/core/config.ts        precedence + path/SSR boot + provenance + redaction
+src/core/events.ts        event bus + origin-locked postMessage bridge
+src/core/audio.ts         native/external tracks, language matching, sync engine
+src/core/player.ts        engine adapters (lazy), uniform API client, source failover
+src/subs/parser.ts        VTT / SRT / ASS -> Cue[]
+src/subs/renderer.ts      DOM overlay renderer, drag-to-position
+src/subs/style.ts         SubtitleStyle model, clamping, persistence
+src/ui/controls.ts        chrome, Sources/Quality/CC/Speed/Audio panel, rAF loop
+src/ui/styles.css         one accent property, derived shades
+embed.html                iframe surface
+backend/src/index.ts      zero-dep HTTP server + SSR token bootstrap
+backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
+backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
+backend/src/tmdb.ts       self-hosted TMDB metadata client
+backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
+backend/src/sources/      isolated SourceAdapter registry + Source 1 & Source 2 adapters
 ```

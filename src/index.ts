@@ -39,7 +39,15 @@ export const Elfura = {
 };
 
 export { ElfuraPlayer } from './core/player';
-export type { ElfuraPlayerOptions, PlayerState, SubtitleTrack, QualityLevel } from './core/player';
+export type {
+  ElfuraPlayerOptions,
+  PlayerState,
+  SubtitleTrack,
+  QualityLevel,
+  SourceOption,
+  TitleMediaInfo,
+} from './core/player';
+export { canonLang, languageLabel, matchScore, buildTrackList } from './core/audio';
 export type { AudioTrack } from './core/audio';
 export type { SubtitleStyle } from './subs/style';
 export type { ElfuraConfig } from './core/config';
