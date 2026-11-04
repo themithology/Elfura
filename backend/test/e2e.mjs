@@ -15,6 +15,8 @@ import {
 } from '../../dist/backend/sources/source1.js';
 import {
   rewriteHlsManifest,
+  rewriteDashManifest,
+  materializeDashTicket,
   sanitizeWebVtt,
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
@@ -175,6 +177,54 @@ assert.equal(
   'https://img.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
   'Re:Zero segment ticket must normalize hls\\_mps to the real hls_mps CDN key',
 );
+
+// DASH SegmentTemplate URLs must remain substitutable by dash.js without exposing
+// the upstream template. The relay materializes $Number$/$RepresentationID$ only
+// after opening the authenticated ticket.
+const dashTemplateMpd = `<?xml version="1.0"?>
+<MPD><BaseURL>https://cdn.example.com/root/?sig=a&amp;b=c</BaseURL><Period><AdaptationSet>
+<Representation id="v1" bandwidth="1200000"><SegmentTemplate startNumber="7"
+ media="video/$RepresentationID$/$Number%05d$.m4s?x=1&amp;y=2"
+ initialization="video/$RepresentationID$/init.mp4" /></Representation>
+</AdaptationSet></Period></MPD>`;
+const rewrittenDashTemplate = rewriteDashManifest(
+  dashTemplateMpd,
+  'https://origin.example.com/manifest.mpd',
+  { Referer: 'https://player.example.com/' },
+  secret,
+);
+assert(!rewrittenDashTemplate.includes('cdn.example.com'), 'DASH templates must not leak their upstream origin');
+const dashMediaRef = rewrittenDashTemplate.match(/\smedia="([^"]+)"/)?.[1]?.replaceAll('&amp;', '&');
+assert(dashMediaRef?.startsWith('/api/v1/stream?t='), 'DASH media template must be relayed');
+assert(dashMediaRef.includes('_dr=$RepresentationID$'), 'RepresentationID must remain visible to dash.js');
+assert(dashMediaRef.includes('_dn=$Number%05d$'), 'Number formatting must remain visible to dash.js');
+const dashMediaUrl = new URL(dashMediaRef, 'https://elfura.example');
+const dashTemplateTicket = openStreamTicket(secret, dashMediaUrl.searchParams.get('t'));
+assert.equal(
+  dashTemplateTicket.u,
+  'https://cdn.example.com/root/video/$RepresentationID$/$Number%05d$.m4s?x=1&y=2',
+);
+const materializedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
+assert.equal(materializedDashTicket, null, 'Unsubstituted test template must be rejected rather than fetched literally');
+dashMediaUrl.searchParams.set('_dr', 'v1');
+dashMediaUrl.searchParams.set('_dn', '00042');
+const resolvedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
+assert.equal(
+  resolvedDashTicket.u,
+  'https://cdn.example.com/root/video/v1/00042.m4s?x=1&y=2',
+  'Relay must substitute the actual DASH representation and padded segment number',
+);
+
+const dashListMpd = `<MPD><BaseURL>https://cdn.example.com/list/</BaseURL><Period><Representation id="a">
+<SegmentList><Initialization source="init.mp4"/><SegmentURL media="seg1.m4s"/></SegmentList>
+</Representation></Period></MPD>`;
+const rewrittenDashList = rewriteDashManifest(dashListMpd, 'https://origin.example.com/list.mpd', undefined, secret);
+const dashInitRef = rewrittenDashList.match(/\ssource="([^"]+)"/)?.[1];
+const dashSegmentRef = rewrittenDashList.match(/\smedia="([^"]+)"/)?.[1];
+assert.equal(openStreamTicket(secret, new URL(dashInitRef, 'https://elfura.example').searchParams.get('t')).u,
+  'https://cdn.example.com/list/init.mp4');
+assert.equal(openStreamTicket(secret, new URL(dashSegmentRef, 'https://elfura.example').searchParams.get('t')).u,
+  'https://cdn.example.com/list/seg1.m4s');
 
 // Source 2 rousav + dash-hls-bridge manifest sanitization & WebVTT spam cue stripping
 const rousavManifest = [

@@ -164,6 +164,7 @@ function firstDashRepresentationId(mpd) {
 
 function expandDashTemplate(template, mpd) {
   const representationId = firstDashRepresentationId(mpd);
+  const bandwidth = mpd.match(/<Representation\b[^>]*\bbandwidth="(\d+)"/i)?.[1] || '0';
   const startNumber = Number(
     mpd.match(/<SegmentTemplate\b[^>]*\bstartNumber="(\d+)"/i)?.[1] || 1,
   );
@@ -174,6 +175,7 @@ function expandDashTemplate(template, mpd) {
       width ? String(startNumber).padStart(Number(width), '0') : String(startNumber),
     )
     .replace(/\$Time\$/g, '0')
+    .replace(/\$Bandwidth\$/g, bandwidth)
     .replace(/\u0000/g, '$');
 }
 
@@ -181,10 +183,12 @@ async function auditDash(url, checks) {
   const mpd = await fetchManifest(url);
   if (!mpd.trimStart().includes('<MPD')) throw new Error('invalid DASH manifest');
 
-  const baseUrl = mpd.match(/<BaseURL>([^<]+)<\/BaseURL>/i)?.[1];
-  if (baseUrl?.trim()) {
-    await fetchMediaBytes(new URL(xmlUnescape(baseUrl.trim()), url).toString());
-    checks.push('dash-base-url');
+  const template = mpd.match(/<SegmentTemplate\b[^>]*\bmedia="([^"]+)"/i)?.[1];
+  if (template) {
+    const expanded = expandDashTemplate(template, mpd);
+    if (expanded.includes('$')) throw new Error('unsupported DASH template placeholder');
+    await fetchMediaBytes(new URL(expanded, url).toString());
+    checks.push('dash-template-segment');
     return;
   }
 
@@ -195,12 +199,12 @@ async function auditDash(url, checks) {
     return;
   }
 
-  const template = mpd.match(/<SegmentTemplate\b[^>]*\bmedia="([^"]+)"/i)?.[1];
-  if (template) {
-    const expanded = expandDashTemplate(template, mpd);
-    if (expanded.includes('$')) throw new Error('unsupported DASH template placeholder');
-    await fetchMediaBytes(new URL(expanded, url).toString());
-    checks.push('dash-template-segment');
+  // A BaseURL is only a base directory when templates/lists are present. Fetch it
+  // directly only for single-file DASH representations.
+  const baseUrl = mpd.match(/<BaseURL>([^<]+)<\/BaseURL>/i)?.[1];
+  if (baseUrl?.trim()) {
+    await fetchMediaBytes(new URL(xmlUnescape(baseUrl.trim()), url).toString());
+    checks.push('dash-base-url');
     return;
   }
 
