@@ -119,6 +119,77 @@ function unwrapPayload(raw: unknown): Record<string, unknown> | null {
   return obj;
 }
 
+const DEFAULT_TMDB_FALLBACK_KEY = '47a1a7df542d3d483227f758a7317dff';
+
+interface TmdbEndpoint {
+  base: string;
+  apiKey: string;
+  bearerToken: string;
+}
+
+function isLoopbackBase(rawBase: string): boolean {
+  try {
+    const h = new URL(rawBase).hostname.toLowerCase();
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function resolveTmdbEndpoints(cfg: BackendConfig['tmdb']): TmdbEndpoint[] {
+  const endpoints: TmdbEndpoint[] = [];
+  if (cfg.apiBase) {
+    endpoints.push({
+      base: cfg.apiBase.replace(/\/+$/, ''),
+      apiKey: cfg.apiKey,
+      bearerToken: cfg.bearerToken,
+    });
+    if (isLoopbackBase(cfg.apiBase) || process.env.TMDB_DISABLE_FALLBACK === '1') {
+      return endpoints;
+    }
+  } else if (cfg.apiKey || cfg.bearerToken) {
+    endpoints.push({
+      base: 'https://api.themoviedb.org/3',
+      apiKey: cfg.apiKey,
+      bearerToken: cfg.bearerToken,
+    });
+    endpoints.push({
+      base: 'https://api.tmdb.org/3',
+      apiKey: cfg.apiKey,
+      bearerToken: cfg.bearerToken,
+    });
+    return endpoints;
+  }
+
+  if (process.env.TMDB_DISABLE_FALLBACK !== '1') {
+    const fallbackKey = cfg.apiKey || DEFAULT_TMDB_FALLBACK_KEY;
+    endpoints.push({ base: 'https://api.themoviedb.org/3', apiKey: fallbackKey, bearerToken: '' });
+    endpoints.push({ base: 'https://api.tmdb.org/3', apiKey: fallbackKey, bearerToken: '' });
+  }
+  return endpoints;
+}
+
+function buildEndpointUrl(
+  ep: TmdbEndpoint,
+  subpath: string,
+  extraQuery: Record<string, string> = {},
+): string {
+  const u = new URL(`${ep.base}${subpath.startsWith('/') ? subpath : `/${subpath}`}`);
+  if (ep.apiKey && !u.searchParams.has('api_key')) u.searchParams.set('api_key', ep.apiKey);
+  for (const [k, v] of Object.entries(extraQuery)) u.searchParams.set(k, v);
+  return u.toString();
+}
+
+function buildEndpointHeaders(ep: TmdbEndpoint): Record<string, string> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (ep.bearerToken) {
+    headers.Authorization = ep.bearerToken.startsWith('Bearer ')
+      ? ep.bearerToken
+      : `Bearer ${ep.bearerToken}`;
+  }
+  return headers;
+}
+
 export async function fetchTmdbMetadata(
   cfg: BackendConfig['tmdb'],
   params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
@@ -136,10 +207,10 @@ export async function fetchTmdbMetadata(
     logo: null,
   };
 
-  const base = cfg.apiBase || (cfg.apiKey || cfg.bearerToken ? 'https://api.themoviedb.org/3' : '');
-  if (!base) return fallback;
+  const endpoints = resolveTmdbEndpoints(cfg);
+  if (!endpoints.length) return fallback;
 
-  const cacheKey = `${base}|${params.type}|${params.tmdbId}|${params.season ?? 0}|${params.episode ?? 0}`;
+  const cacheKey = `${endpoints[0].base}|${params.type}|${params.tmdbId}|${params.season ?? 0}|${params.episode ?? 0}`;
   const cached = getCachedMeta(cacheKey);
   if (cached) return cached;
 
@@ -147,42 +218,53 @@ export async function fetchTmdbMetadata(
   if (inflight) return inflight.then(cloneMeta);
 
   const task = (async (): Promise<MediaMetadata> => {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (cfg.bearerToken) headers.Authorization = `Bearer ${cfg.bearerToken}`;
-
-    const buildUrl = (subpath: string, extraQuery: Record<string, string> = {}): string => {
-      const u = new URL(`${base}${subpath.startsWith('/') ? subpath : `/${subpath}`}`);
-      if (cfg.apiKey && !u.searchParams.has('api_key')) u.searchParams.set('api_key', cfg.apiKey);
-      for (const [k, v] of Object.entries(extraQuery)) u.searchParams.set(k, v);
-      return u.toString();
-    };
-
     try {
-      const mainUrl = buildUrl(`/${params.type}/${encodeURIComponent(params.tmdbId)}`, {
-        append_to_response: 'external_ids,images',
-        include_image_language: 'en,null',
-      });
+      let data: Record<string, unknown> | null = null;
+      let rawEpJson: unknown = null;
+      let matchedEp: TmdbEndpoint = endpoints[0];
 
-      const epPromise =
-        params.type === 'tv' && params.season && params.episode
-          ? fetch(
-              buildUrl(`/tv/${encodeURIComponent(params.tmdbId)}/season/${params.season}/episode/${params.episode}`),
-              {
-                headers,
-                signal: AbortSignal.timeout(Math.min(2500, cfg.timeoutMs)),
-              },
-            )
-              .then((r) => (r.ok ? r.json() : null))
-              .catch(() => null)
-          : Promise.resolve(null);
+      for (const ep of endpoints) {
+        try {
+          const headers = buildEndpointHeaders(ep);
+          const mainUrl = buildEndpointUrl(ep, `/${params.type}/${encodeURIComponent(params.tmdbId)}`, {
+            append_to_response: 'external_ids,images',
+            include_image_language: 'en,null',
+          });
 
-      const [mainRes, rawEpJson] = await Promise.all([
-        fetch(mainUrl, { headers, signal: AbortSignal.timeout(cfg.timeoutMs) }),
-        epPromise,
-      ]);
+          const epPromise =
+            params.type === 'tv' && params.season && params.episode
+              ? fetch(
+                  buildEndpointUrl(
+                    ep,
+                    `/tv/${encodeURIComponent(params.tmdbId)}/season/${params.season}/episode/${params.episode}`,
+                  ),
+                  {
+                    headers,
+                    signal: AbortSignal.timeout(Math.min(2500, cfg.timeoutMs)),
+                  },
+                )
+                  .then((r) => (r.ok ? r.json() : null))
+                  .catch(() => null)
+              : Promise.resolve(null);
 
-      if (!mainRes.ok) return fallback;
-      const data = unwrapPayload(await mainRes.json());
+          const [mainRes, epResJson] = await Promise.all([
+            fetch(mainUrl, { headers, signal: AbortSignal.timeout(cfg.timeoutMs) }),
+            epPromise,
+          ]);
+
+          if (!mainRes.ok) continue;
+          const unwrapped = unwrapPayload(await mainRes.json());
+          if (unwrapped) {
+            data = unwrapped;
+            rawEpJson = epResJson;
+            matchedEp = ep;
+            break;
+          }
+        } catch {
+          /* try next endpoint */
+        }
+      }
+
       if (!data) return fallback;
 
       const extIds =
@@ -234,10 +316,13 @@ export async function fetchTmdbMetadata(
       if (!images?.logos) {
         try {
           const imgRes = await fetch(
-            buildUrl(`/${params.type}/${encodeURIComponent(params.tmdbId)}/images`, {
+            buildEndpointUrl(matchedEp, `/${params.type}/${encodeURIComponent(params.tmdbId)}/images`, {
               include_image_language: 'en,null',
             }),
-            { headers, signal: AbortSignal.timeout(Math.min(2000, cfg.timeoutMs)) },
+            {
+              headers: buildEndpointHeaders(matchedEp),
+              signal: AbortSignal.timeout(Math.min(2000, cfg.timeoutMs)),
+            },
           );
           if (imgRes.ok) {
             const imgData = unwrapPayload(await imgRes.json());
@@ -348,9 +433,10 @@ export async function fetchTmdbSeasonEpisodes(
     episodes: [],
   };
 
-  if (!cfg.apiBase) return fallback;
+  const endpoints = resolveTmdbEndpoints(cfg);
+  if (!endpoints.length) return fallback;
 
-  const cacheKey = `tv:${params.tmdbId}:s:${safeSeason}`;
+  const cacheKey = `${endpoints[0].base}|tv:${params.tmdbId}:s:${safeSeason}`;
   const cached = seasonRamCache.get(cacheKey);
   if (cached) {
     if (Date.now() <= cached.expiresAt) {
@@ -366,38 +452,38 @@ export async function fetchTmdbSeasonEpisodes(
 
   const task = (async (): Promise<SeriesSeasonCatalog> => {
     try {
-      const headers: Record<string, string> = { Accept: 'application/json' };
-      if (cfg.bearerToken) {
-        headers.Authorization = cfg.bearerToken.startsWith('Bearer ')
-          ? cfg.bearerToken
-          : `Bearer ${cfg.bearerToken}`;
-      }
-      const buildUrl = (pathSuffix: string): string => {
-        const u = new URL(`${cfg.apiBase}${pathSuffix}`);
-        if (cfg.apiKey && !u.searchParams.has('api_key')) {
-          u.searchParams.set('api_key', cfg.apiKey);
+      let showData: Record<string, unknown> | null = null;
+      let seasonData: Record<string, unknown> | null = null;
+
+      for (const ep of endpoints) {
+        try {
+          const headers = buildEndpointHeaders(ep);
+          const [showRes, seasonRes] = await Promise.all([
+            fetch(buildEndpointUrl(ep, `/tv/${encodeURIComponent(params.tmdbId)}`), {
+              headers,
+              signal: AbortSignal.timeout(cfg.timeoutMs),
+            }).catch(() => null),
+            fetch(buildEndpointUrl(ep, `/tv/${encodeURIComponent(params.tmdbId)}/season/${safeSeason}`), {
+              headers,
+              signal: AbortSignal.timeout(cfg.timeoutMs),
+            }).catch(() => null),
+          ]);
+
+          const [rawShow, rawSeason] = await Promise.all([
+            showRes && showRes.ok ? showRes.json().catch(() => null) : Promise.resolve(null),
+            seasonRes && seasonRes.ok ? seasonRes.json().catch(() => null) : Promise.resolve(null),
+          ]);
+
+          const unwrappedSeason = unwrapPayload(rawSeason);
+          if (unwrappedSeason && Array.isArray(unwrappedSeason.episodes)) {
+            showData = unwrapPayload(rawShow);
+            seasonData = unwrappedSeason;
+            break;
+          }
+        } catch {
+          /* try next endpoint */
         }
-        return u.toString();
-      };
-
-      const [showRes, seasonRes] = await Promise.all([
-        fetch(buildUrl(`/tv/${encodeURIComponent(params.tmdbId)}`), {
-          headers,
-          signal: AbortSignal.timeout(cfg.timeoutMs),
-        }).catch(() => null),
-        fetch(buildUrl(`/tv/${encodeURIComponent(params.tmdbId)}/season/${safeSeason}`), {
-          headers,
-          signal: AbortSignal.timeout(cfg.timeoutMs),
-        }).catch(() => null),
-      ]);
-
-      const [rawShow, rawSeason] = await Promise.all([
-        showRes && showRes.ok ? showRes.json().catch(() => null) : Promise.resolve(null),
-        seasonRes && seasonRes.ok ? seasonRes.json().catch(() => null) : Promise.resolve(null),
-      ]);
-
-      const showData = unwrapPayload(rawShow);
-      const seasonData = unwrapPayload(rawSeason);
+      }
 
       const seasons: SeasonSummary[] =
         showData && Array.isArray(showData.seasons)

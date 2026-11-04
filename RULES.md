@@ -64,6 +64,7 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
    - All environment secrets (self-hosted TMDB base URL/key, signing secret, allowed origins) must come from environment variables, never hardcoded.
 4. **Pterodactyl `.zip` Packaging (`npm run build:pterodactyl` -> `elfura-pterodactyl.zip`):**
    - Archives must ALWAYS be **flat-root** (files extract directly into `/home/container/`, never inside a wrapper folder).
+   - **Never bundle a root `.env` inside `elfura-pterodactyl.zip`** (ship `.env.example` only) so unarchiving on Pterodactyl never overwrites an operator's configured `/home/container/.env`; if `ELFURA_SECRET` is unset or still holds a template placeholder (`replace-with-...`), generate a fresh cryptographic ephemeral secret per boot.
    - Ship pre-built `dist/` with **zero `devDependencies`** in the archive's `package.json` so ParkerCP's startup `npm install` downloads 0 MB from npm.
    - Include entrypoint shims calling `startBackendServer()` across common Pterodactyl `MAIN_FILE` defaults (`index.js`/`index.ts`, `server.js`/`server.ts`, `app.js`/`app.ts`, `main.js`/`main.ts`, `bot.js`/`bot.ts`, `start.js`, `src/index.js`/`src/index.ts`) plus the lightweight local `vendor/ts-shim` compiler shim so ParkerCP's `/usr/local/bin/ts-node --esm` Egg boots cleanly on Node 22/24 even when global `typescript@7+` (TSGo) is installed.
 
@@ -71,10 +72,10 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
 
 ## 4. TMDB & Modular Source Adapter Contract
 
-1. **Self-Hosted TMDB Primary Identity:**
-   - Titles are addressed by TMDB ID (`movie` or `tv` with `season` & `episode`), resolved through our self-hosted TMDB API configured via env vars.
-2. **Plug-and-Play Source Isolation:**
-   - Each source lives in its own isolated module (e.g., `backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface.
+1. **Self-Hosted TMDB Primary Identity & Zero-Outage Fallback:**
+   - Titles are addressed by TMDB ID (`movie` or `tv` with `season` & `episode`), resolved first through our self-hosted TMDB API (`TMDB_API_BASE`) and automatically falling back across `api.themoviedb.org/3` / `api.tmdb.org/3` in both `fetchTmdbMetadata` and `fetchTmdbSeasonEpisodes` if `TMDB_API_BASE` is unset or unreachable.
+2. **Plug-and-Play Multi-Cluster Source Isolation & Circuit Breakers:**
+   - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
    - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
    - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
 

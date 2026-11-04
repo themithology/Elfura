@@ -48,45 +48,6 @@ SRC_ENTRYPOINTS = [
     "src/index.ts",
 ]
 
-DOTENV_CONTENT = """# ============================================================================
-# Elfura Backend — Pterodactyl Runtime Configuration (.env)
-# ============================================================================
-# Leave SERVER_PORT commented out so Pterodactyl's allocated port wins automatically.
-# SERVER_PORT=8787
-HOST=0.0.0.0
-NODE_ENV=production
-
-# Strong random secret for HMAC playback tokens + AES-256-GCM stream tickets.
-ELFURA_SECRET=replace-with-a-64-char-random-hex-secret
-
-# Comma-separated allowed parent/embed origins ('*' allows all origins).
-ALLOWED_ORIGINS=*
-
-# Anti-scraper session enforcement (1 = require signed pltoken, 0 = disable)
-REQUIRE_PLAYBACK_TOKEN=1
-BIND_TOKEN_IP=0
-RATE_LIMIT_PER_MIN=120
-RESOLVE_TIMEOUT_MS=9000
-RELAY_MODE=hybrid
-
-# Self-hosted TMDB API (used for title, poster, backdrop, episode info & IMDb ID)
-# Example: https://tmdb.yourdomain.com/3  or  https://tmdb.yourdomain.com/api
-TMDB_API_BASE=
-TMDB_API_KEY=
-TMDB_BEARER_TOKEN=
-TMDB_IMAGE_BASE=https://image.tmdb.org/t/p
-TMDB_TIMEOUT_MS=4500
-
-# Source adapter toggles (1 = enabled, 0 = disabled)
-SOURCE1_ENABLED=1
-SOURCE2_ENABLED=1
-
-# Zero-disk OpenSubtitles fallback (relayed via /api/v1/stream)
-OPENSUBTITLES_ENABLED=1
-OPENSUBTITLES_BASE=https://opensubtitles-v3.strem.io
-OPENSUBTITLES_TIMEOUT_MS=2800
-"""
-
 NPMRC_CONTENT = """audit=false
 fund=false
 package-lock=false
@@ -275,7 +236,8 @@ def write_entry(zf: zipfile.ZipFile, arcname: str, data: bytes) -> None:
 def main() -> None:
     tmp_zip = OUT_ZIP.with_suffix(".zip.tmp")
     with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        write_entry(zf, ".env", DOTENV_CONTENT.encode("utf-8"))
+        # Ship `.env.example` ONLY — never write `.env` at the archive root so
+        # unarchiving on Pterodactyl preserves any existing `/home/container/.env`.
         write_entry(zf, ".env.example", (ROOT / ".env.example").read_bytes())
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))

@@ -11,6 +11,7 @@
  *   - Pipeline E: Intro / Recap / Outro skip timestamp RPC
  */
 
+import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
@@ -31,6 +32,41 @@ const BROWSER_UA =
 const SECURE_SOURCES_FN_ID = 'ff183e1ad6d02c4c08e8e73151c60e5dcc23f8f4c9db53eac9d271b87a56e121';
 const SKIP_SEGMENTS_FN_ID = '6b4f5d109b0ac5ecf27e114e441f6d776f5dc04af5eae9828d98adf707782e7c';
 const SCRAMBLE_KEY = 'tGfL1x#9vQ';
+const VROCK_KEY = Buffer.from(
+  '7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f',
+  'hex',
+);
+
+const SUB_ORIGIN_COOLDOWN_MS = 5 * 60_000;
+const deadSubOriginUntil = new Map<string, number>();
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const h = new URL(origin).hostname.toLowerCase();
+    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function isSubOriginCoolingDown(origin?: string): boolean {
+  if (!origin) return true;
+  if (isLoopbackOrigin(origin)) return false;
+  const until = deadSubOriginUntil.get(origin);
+  if (!until) return false;
+  if (Date.now() < until) return true;
+  deadSubOriginUntil.delete(origin);
+  return false;
+}
+
+function tripSubOriginCooldown(origin?: string): void {
+  if (!origin || isLoopbackOrigin(origin)) return;
+  if (deadSubOriginUntil.size >= 64) {
+    const oldest = deadSubOriginUntil.keys().next().value;
+    if (oldest !== undefined) deadSubOriginUntil.delete(oldest);
+  }
+  deadSubOriginUntil.set(origin, Date.now() + SUB_ORIGIN_COOLDOWN_MS);
+}
 
 function pickBestQualityLabel(primary?: string, list?: string[]): string {
   const candidates = [primary, ...(Array.isArray(list) ? list : [])].filter(
@@ -450,6 +486,7 @@ async function fetchFromSecureFn(
   refererPath: string,
   signal?: AbortSignal,
 ): Promise<UpstreamApiPayload | null> {
+  if (isSubOriginCoolingDown(cfg.appOrigin)) return null;
   try {
     const res = await callServerFn<{ p?: string }>({
       appOrigin: cfg.appOrigin,
@@ -457,13 +494,17 @@ async function fetchFromSecureFn(
       method: 'POST',
       data: { path: apiPath },
       refererPath,
-      timeoutMs: 6500,
+      timeoutMs: 3800,
       signal,
     });
-    if (!res?.p || typeof res.p !== 'string') return null;
+    if (!res?.p || typeof res.p !== 'string') {
+      if (!res) tripSubOriginCooldown(cfg.appOrigin);
+      return null;
+    }
     const jsonText = unscramblePayload(res.p);
     return JSON.parse(jsonText) as UpstreamApiPayload;
   } catch {
+    tripSubOriginCooldown(cfg.appOrigin);
     return null;
   }
 }
@@ -473,21 +514,29 @@ async function fetchFromPublicApi(
   apiPath: string,
   signal?: AbortSignal,
 ): Promise<UpstreamApiPayload | null> {
+  if (isSubOriginCoolingDown(cfg.apiOrigin)) return null;
   try {
-    const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(5500)]) : AbortSignal.timeout(5500);
+    const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
     const res = await fetch(`${cfg.apiOrigin}${apiPath}`, {
       headers: {
         Accept: 'application/json',
-        Origin: cfg.appOrigin,
-        Referer: `${cfg.appOrigin}/`,
+        Origin: cfg.appOrigin || cfg.apiOrigin,
+        Referer: `${cfg.appOrigin || cfg.apiOrigin}/`,
         'User-Agent': BROWSER_UA,
       },
       signal: sig,
     });
-    if (!res.ok) return null;
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!res.ok || !ct.includes('application/json')) {
+      if (res.status >= 500 || res.url.includes('/blocked') || ct.includes('text/html')) {
+        tripSubOriginCooldown(cfg.apiOrigin);
+      }
+      return null;
+    }
     const data = (await res.json()) as UpstreamApiPayload;
     return data?.ok ? data : null;
   } catch {
+    tripSubOriginCooldown(cfg.apiOrigin);
     return null;
   }
 }
@@ -496,16 +545,19 @@ async function fetchFromRiftBoot(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
 ): Promise<RawStreamCandidate[]> {
+  if (isSubOriginCoolingDown(cfg.riftOrigin)) return [];
   const bootPath =
     query.type === 'movie'
       ? `/api/boot/movie/${encodeURIComponent(query.tmdbId)}`
       : `/api/boot/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
   const bootUrl = `${cfg.riftOrigin}${bootPath}`;
   const wrapRelay = (target: string, manifest = false) =>
-    `${cfg.riftRelay}/api/relay?u=${Buffer.from(target, 'utf8').toString('base64url')}${manifest ? '&m=1' : ''}`;
+    cfg.riftRelay
+      ? `${cfg.riftRelay}/api/relay?u=${Buffer.from(target, 'utf8').toString('base64url')}${manifest ? '&m=1' : ''}`
+      : target;
 
   try {
-    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(5500)]) : AbortSignal.timeout(5500);
+    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
     let res = await fetch(bootUrl, {
       headers: {
         Accept: 'application/json',
@@ -514,13 +566,17 @@ async function fetchFromRiftBoot(
       },
       signal: sig,
     });
-    if (!res.ok && cfg.riftRelay) {
+    if (!res.ok && cfg.riftRelay && !isSubOriginCoolingDown(cfg.riftRelay)) {
       res = await fetch(wrapRelay(bootUrl, false), {
         headers: { 'User-Agent': BROWSER_UA },
-        signal: AbortSignal.timeout(5500),
+        signal: AbortSignal.timeout(3500),
       });
+      if (!res.ok) tripSubOriginCooldown(cfg.riftRelay);
     }
-    if (!res.ok) return [];
+    if (!res.ok) {
+      if (res.status === 404 || res.status >= 500) tripSubOriginCooldown(cfg.riftOrigin);
+      return [];
+    }
 
     const payload = (await res.json()) as {
       meta?: {
@@ -681,12 +737,13 @@ async function fetchFromRiftBoot(
   }
 }
 
-const IP_LOCKED_RE = /:\d{1,3}(?:\.\d{1,3}){3}:/;
+const IP_LOCKED_RE = /(?::\d{1,3}(?:\.\d{1,3}){3}:|[?&]KeyName=Signature\b)/i;
 
 async function fetchFromVidSync(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
 ): Promise<RawStreamCandidate[]> {
+  if (isSubOriginCoolingDown(cfg.syncOrigin)) return [];
   const qs =
     query.type === 'movie'
       ? `type=movie&id=${encodeURIComponent(query.tmdbId)}&season=1&episode=1`
@@ -780,20 +837,17 @@ async function fetchFromVidSync(
     const providerKey = (row.provider?.id || 'sync').toLowerCase();
 
     // Collapse Castle's 5 quality clones (`1080p`, `720p`, `480p`, `360p`, `Auto`) per language
-    const groupKey = `${providerKey}:${norm.code}:${directCandidate.split('?')[0]}`;
+    const groupKey = `${providerKey}:${norm.code}:${(directCandidate || proxyCandidate).split('?')[0]}`;
     if (seenGroup.has(groupKey)) continue;
     seenGroup.add(groupKey);
 
     const sharedDirectAcrossLangs =
       directCandidate && (langsByDirectUrl.get(directCandidate)?.size ?? 0) > 1 && norm.code !== 'en';
     const isIpBound = IP_LOCKED_RE.test(directCandidate);
-    const hasCustomDirectHeaders = !!(row.headers && Object.keys(row.headers).length > 0);
 
-    // Prefer vidsync's `/api/core/proxy` whenever provided (activates upstream standby failover
-    // and avoids 403/IP-bound direct CDN rejections on VidZee `fastcloud.live` & multi-dub Castle).
-    const preferProxy =
-      !!proxyCandidate &&
-      (providerKey !== 'castle' || sharedDirectAcrossLangs || isIpBound || !hasCustomDirectHeaders);
+    // Always prefer vidsync's `/api/core/proxy` whenever provided (prevents 403 rejections
+    // on IP-signed `hscow.com` / `fcxmb.com` / `fastcloud.live` URLs and preserves multi-dub routing).
+    const preferProxy = !!proxyCandidate;
     const primaryUrl = preferProxy ? proxyCandidate : directCandidate || proxyCandidate;
     if (!primaryUrl || !isSafeUpstreamUrl(primaryUrl) || seenPrimaryUrl.has(primaryUrl)) continue;
     seenPrimaryUrl.add(primaryUrl);
@@ -804,10 +858,15 @@ async function fetchFromVidSync(
 
     let standbyUrl: string | undefined;
     let standbyHeaders: Record<string, string> | undefined;
-    if (!preferProxy && row.standbyUrl && isSafeUpstreamUrl(row.standbyUrl) && !IP_LOCKED_RE.test(row.standbyUrl)) {
+    if (preferProxy) {
+      if (directCandidate && !isIpBound && !sharedDirectAcrossLangs && isSafeUpstreamUrl(directCandidate)) {
+        standbyUrl = directCandidate;
+        standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
+      }
+    } else if (row.standbyUrl && isSafeUpstreamUrl(row.standbyUrl) && !IP_LOCKED_RE.test(row.standbyUrl)) {
       standbyUrl = row.standbyUrl;
       standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.standbyHeaders ?? row.headers ?? {}) };
-    } else if (!preferProxy && proxyCandidate && isSafeUpstreamUrl(proxyCandidate)) {
+    } else if (proxyCandidate && isSafeUpstreamUrl(proxyCandidate)) {
       standbyUrl = proxyCandidate;
       standbyHeaders = { Referer: `${cfg.syncOrigin}/`, 'User-Agent': BROWSER_UA };
     }
@@ -834,11 +893,256 @@ async function fetchFromVidSync(
       multiAudio: Array.isArray(row.audioTracks) && row.audioTracks.length > 1,
       subtitles: mapSubtitles([...(row.subtitles ?? []), ...topLevelSubs]),
       ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
-      rank: 25 + i,
+      rank: 2 + i,
     });
   }
 
   return out;
+}
+
+const GENERIC_VROCK_SERVER_RE =
+  /^(?:nova|atlas|orion|astra|luna|lyra|vega|hydra|alpha|beta|delta|omega|server\s*\d*|auto|main|backup|vip\s*\d*)$/i;
+
+function decryptVidRockToken(token: string): string | null {
+  try {
+    const clean = token.trim();
+    if (!clean || clean.length < 40) return null;
+    const raw = Buffer.from(clean, 'base64url');
+    if (raw.length <= 28) return null;
+    const iv = raw.subarray(0, 12);
+    const tag = raw.subarray(raw.length - 16);
+    const ct = raw.subarray(12, raw.length - 16);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', VROCK_KEY, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFromVidRock(
+  cfg: BackendConfig['source1'],
+  query: SourceQuery,
+): Promise<RawStreamCandidate[]> {
+  const origin = cfg.vidrockOrigin;
+  if (!origin || isSubOriginCoolingDown(origin)) return [];
+
+  const apiPath =
+    query.type === 'movie'
+      ? `/api/movie/${encodeURIComponent(query.tmdbId)}`
+      : `/api/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
+
+  try {
+    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
+    const res = await fetch(`${origin}${apiPath}`, {
+      headers: {
+        Accept: 'application/json',
+        Referer: `${origin}/`,
+        Origin: origin,
+        'User-Agent': BROWSER_UA,
+      },
+      signal: sig,
+    });
+    if (!res.ok) {
+      if (res.status >= 500) tripSubOriginCooldown(origin);
+      return [];
+    }
+    const body = (await res.json()) as Record<string, unknown>;
+    if (!body || typeof body !== 'object') return [];
+
+    const mediaHeaders: Record<string, string> = {
+      Referer: `${origin}/`,
+      Origin: origin,
+      'User-Agent': BROWSER_UA,
+    };
+
+    const out: RawStreamCandidate[] = [];
+    const seen = new Set<string>();
+    let idx = 0;
+
+    for (const [srvName, rawVal] of Object.entries(body)) {
+      let streamUrl = '';
+      let subs: RawTrackRef[] = [];
+
+      if (typeof rawVal === 'string') {
+        const dec = /^https?:\/\//i.test(rawVal) ? rawVal : decryptVidRockToken(rawVal);
+        if (!dec) continue;
+        if (dec.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(dec) as {
+              url?: string;
+              file?: string;
+              subtitles?: { label?: string; lang?: string; url?: string }[];
+            };
+            streamUrl = String(parsed.url || parsed.file || '').trim();
+            subs = mapSubtitles(parsed.subtitles, mediaHeaders);
+          } catch {
+            continue;
+          }
+        } else {
+          streamUrl = dec;
+        }
+      } else if (rawVal && typeof rawVal === 'object') {
+        const obj = rawVal as {
+          url?: string;
+          token?: string;
+          hash?: string;
+          subtitles?: { label?: string; lang?: string; url?: string }[];
+        };
+        const candidateStr = String(obj.url || obj.token || obj.hash || '').trim();
+        const dec = /^https?:\/\//i.test(candidateStr) ? candidateStr : decryptVidRockToken(candidateStr);
+        if (dec) streamUrl = dec;
+        subs = mapSubtitles(obj.subtitles, mediaHeaders);
+      }
+
+      if (!streamUrl || !isSafeUpstreamUrl(streamUrl) || seen.has(streamUrl)) continue;
+      seen.add(streamUrl);
+
+      let audioLang: string | undefined;
+      let audioLabel: string | undefined;
+      if (!GENERIC_VROCK_SERVER_RE.test(srvName.trim())) {
+        const norm = normalizeLang(srvName, srvName);
+        if (norm.code && norm.code !== 'und') {
+          audioLang = norm.code;
+          audioLabel = norm.label;
+        }
+      }
+
+      out.push({
+        key: `vrock:${srvName}:${streamUrl}`,
+        type: inferStreamType('hls', streamUrl),
+        url: streamUrl,
+        headers: mediaHeaders,
+        quality: 'auto',
+        ...(audioLang ? { audioLang, audioLabel } : {}),
+        multiAudio: false,
+        subtitles: subs,
+        rank: 8 + idx++,
+      });
+    }
+
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchFromVidLink(
+  cfg: BackendConfig['source1'],
+  query: SourceQuery,
+): Promise<RawStreamCandidate[]> {
+  const linkOrigin = cfg.vidlinkOrigin;
+  const encOrigin = cfg.encDecOrigin;
+  if (!linkOrigin || !encOrigin || isSubOriginCoolingDown(linkOrigin) || isSubOriginCoolingDown(encOrigin)) {
+    return [];
+  }
+
+  try {
+    const encSig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
+    const encRes = await fetch(
+      `${encOrigin}/api/enc-vidlink?text=${encodeURIComponent(query.tmdbId)}`,
+      {
+        headers: { Accept: 'application/json', 'User-Agent': BROWSER_UA },
+        signal: encSig,
+      },
+    );
+    if (!encRes.ok) {
+      if (encRes.status >= 500) tripSubOriginCooldown(encOrigin);
+      return [];
+    }
+    const encJson = (await encRes.json()) as { result?: string };
+    const encId = typeof encJson?.result === 'string' ? encJson.result.trim() : '';
+    if (!encId) return [];
+
+    const apiPath =
+      query.type === 'movie'
+        ? `/api/b/movie/${encodeURIComponent(encId)}?multiLang=0`
+        : `/api/b/tv/${encodeURIComponent(encId)}/${query.season ?? 1}/${query.episode ?? 1}?multiLang=0`;
+
+    const apiSig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
+    const res = await fetch(`${linkOrigin}${apiPath}`, {
+      headers: {
+        Accept: 'application/json',
+        Referer: `${linkOrigin}/`,
+        Origin: linkOrigin,
+        'User-Agent': BROWSER_UA,
+      },
+      signal: apiSig,
+    });
+    if (!res.ok) {
+      if (res.status >= 500) tripSubOriginCooldown(linkOrigin);
+      return [];
+    }
+
+    const data = (await res.json()) as {
+      stream?: {
+        playlist?: string;
+        qualities?: Record<string, { type?: string; url?: string }>;
+        captions?: { url?: string; language?: string; label?: string }[];
+      };
+    };
+    const stream = data?.stream;
+    if (!stream) return [];
+
+    const mediaHeaders: Record<string, string> = {
+      Referer: `${linkOrigin}/`,
+      Origin: linkOrigin,
+      'User-Agent': BROWSER_UA,
+    };
+
+    const subs = mapSubtitles(
+      (stream.captions ?? []).map((c) => ({
+        url: c.url,
+        lang: c.language || c.label,
+        label: c.label || c.language,
+      })),
+    );
+
+    const out: RawStreamCandidate[] = [];
+    if (typeof stream.playlist === 'string' && isSafeUpstreamUrl(stream.playlist)) {
+      out.push({
+        key: `vlink:hls:${stream.playlist}`,
+        type: 'hls',
+        url: stream.playlist,
+        headers: mediaHeaders,
+        quality: 'auto',
+        multiAudio: false,
+        subtitles: subs,
+        rank: 12,
+      });
+    }
+
+    if (stream.qualities && typeof stream.qualities === 'object') {
+      const rungs = Object.entries(stream.qualities)
+        .map(([qKey, qObj]) => ({
+          height: parseInt(qKey.replace(/\D+/g, ''), 10) || 0,
+          url: String(qObj?.url ?? '').trim(),
+          type: qObj?.type,
+        }))
+        .filter((r) => r.url && isSafeUpstreamUrl(r.url))
+        .sort((a, b) => b.height - a.height);
+
+      if (rungs.length > 0) {
+        const best = rungs[0];
+        const fallbackRung = rungs[1];
+        out.push({
+          key: `vlink:mp4:${best.url}`,
+          type: inferStreamType(best.type || 'mp4', best.url),
+          url: best.url,
+          headers: mediaHeaders,
+          quality: best.height ? `${best.height}p` : 'auto',
+          multiAudio: false,
+          subtitles: subs,
+          ...(fallbackRung ? { standbyUrl: fallbackRung.url, standbyHeaders: mediaHeaders } : {}),
+          rank: 18,
+        });
+      }
+    }
+
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 async function fetchSkipSegments(
@@ -846,6 +1150,7 @@ async function fetchSkipSegments(
   query: SourceQuery,
   refererPath: string,
 ): Promise<SkipSegments | undefined> {
+  if (isSubOriginCoolingDown(cfg.appOrigin)) return undefined;
   try {
     const res = await callServerFn<{
       intro?: { start?: number; end?: number } | null;
@@ -916,60 +1221,75 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         public: { val: Awaited<ReturnType<typeof fetchFromPublicApi>>; ms: number } | null;
         rift: { val: RawStreamCandidate[]; ms: number } | null;
         sync: { val: RawStreamCandidate[]; ms: number } | null;
+        rock: { val: RawStreamCandidate[]; ms: number } | null;
+        link: { val: RawStreamCandidate[]; ms: number } | null;
       } = {
         secure: null,
         public: null,
         rift: null,
         sync: null,
+        rock: null,
+        link: null,
       };
 
+      const totalPipelines = 6;
       let settledCount = 0;
-      let hasCandidates = false;
+      let liveSourcePipelines = 0;
       let releaseEarly: (() => void) | null = null;
       let graceTimer: ReturnType<typeof setTimeout> | null = null;
 
       const checkFastSettle = () => {
-        if (settledCount >= 4) {
+        if (settledCount >= totalPipelines) {
           releaseEarly?.();
           return;
         }
-        // Once the main multi-audio pipeline (`secure`) + at least one companion pipeline
-        // (`sync` or `rift`) have settled with candidates, only allow a brief 320ms window
-        // for blocked/slow endpoints (`public`) instead of stalling startup for 1.4s+.
-        if (hasCandidates && settledCount >= 2 && !graceTimer) {
-          const fastWindowMs = slots.secure && (slots.sync || slots.rift) ? 260 : 420;
-          graceTimer = setTimeout(() => releaseEarly?.(), fastWindowMs);
+        // Wait until VidSync (24-dub multi-language engine) + at least one companion
+        // live pipeline have produced candidates before starting the fast grace window.
+        if (liveSourcePipelines >= 2 && slots.sync && !graceTimer) {
+          graceTimer = setTimeout(() => releaseEarly?.(), 360);
         }
       };
 
       const pSecure = timed(fetchFromSecureFn(cfg, apiPath, refererPath, query.signal)).then((r) => {
         slots.secure = r;
         settledCount++;
-        if (r.val?.links?.length) hasCandidates = true;
+        if (r.val?.links?.length) liveSourcePipelines++;
         checkFastSettle();
       });
       const pPublic = timed(fetchFromPublicApi(cfg, apiPath, query.signal)).then((r) => {
         slots.public = r;
         settledCount++;
-        if (r.val?.links?.length) hasCandidates = true;
+        if (r.val?.links?.length) liveSourcePipelines++;
         checkFastSettle();
       });
       const pRift = timed(fetchFromRiftBoot(cfg, query)).then((r) => {
         slots.rift = r;
         settledCount++;
-        if (r.val.length) hasCandidates = true;
+        if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
       const pSync = timed(fetchFromVidSync(cfg, query)).then((r) => {
         slots.sync = r;
         settledCount++;
-        if (r.val.length) hasCandidates = true;
+        if (r.val.length) liveSourcePipelines++;
+        checkFastSettle();
+      });
+      const pRock = timed(fetchFromVidRock(cfg, query)).then((r) => {
+        slots.rock = r;
+        settledCount++;
+        if (r.val.length) liveSourcePipelines++;
+        checkFastSettle();
+      });
+      const pLink = timed(fetchFromVidLink(cfg, query)).then((r) => {
+        slots.link = r;
+        settledCount++;
+        if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
       const pSegments = fetchSkipSegments(cfg, query, refererPath);
 
       await Promise.race([
-        Promise.allSettled([pSecure, pPublic, pRift, pSync]),
+        Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]),
         new Promise<void>((r) => {
           releaseEarly = r;
         }),
@@ -1000,9 +1320,18 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         : [];
       const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms) : [];
       const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms) : [];
+      const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms) : [];
+      const linkCandidates = slots.link ? withTiming(slots.link.val, slots.link.ms) : [];
 
       const byUrl = new Map<string, RawStreamCandidate>();
-      for (const c of [...secureCandidates, ...riftCandidates, ...syncCandidates, ...publicCandidates]) {
+      for (const c of [
+        ...secureCandidates,
+        ...syncCandidates,
+        ...rockCandidates,
+        ...linkCandidates,
+        ...riftCandidates,
+        ...publicCandidates,
+      ]) {
         const existing = byUrl.get(c.key);
         if (!existing) {
           byUrl.set(c.key, c);
@@ -1020,10 +1349,22 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         }
       }
 
-      const fallbackSubs = [...byUrl.values()].find((c) => (c.subtitles?.length ?? 0) > 0)?.subtitles ?? [];
-      if (fallbackSubs.length) {
+      const pooledSubs: RawTrackRef[] = [];
+      const seenSubKey = new Set<string>();
+      for (const c of byUrl.values()) {
+        for (const sub of c.subtitles ?? []) {
+          const sk = `${sub.lang}:${sub.url}`;
+          if (!seenSubKey.has(sk)) {
+            seenSubKey.add(sk);
+            pooledSubs.push(sub);
+          }
+        }
+      }
+      if (pooledSubs.length) {
         for (const c of byUrl.values()) {
-          if (!c.subtitles || c.subtitles.length === 0) c.subtitles = fallbackSubs;
+          if (!c.subtitles || c.subtitles.length === 0) {
+            c.subtitles = pooledSubs;
+          }
         }
       }
 

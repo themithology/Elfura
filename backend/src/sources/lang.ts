@@ -78,8 +78,20 @@ function tryResolveLocaleTag(raw: string): { code: string; label: string } | nul
   const cleaned = cleanLanguageToken(raw);
   if (!cleaned) return null;
   const lower = cleaned.toLowerCase();
-  if (lower === 'original' || lower === 'default' || lower === 'und' || lower === 'unknown') {
+  if (
+    lower === 'original' ||
+    lower === 'original audio' ||
+    lower === 'default' ||
+    lower === 'und' ||
+    lower === 'unknown'
+  ) {
     return { code: 'und', label: 'Original' };
+  }
+  if (lower === 'esla') {
+    return tryResolveLocaleTag('es-419');
+  }
+  if (lower === 'ptbr') {
+    return tryResolveLocaleTag('pt-BR');
   }
 
   // 1) Direct full-name lookup via runtime Intl.DisplayNames reverse index

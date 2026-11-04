@@ -2475,7 +2475,398 @@ try {
     );
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, OpenSubtitles fallback, Episode Wheel, QoL Batch 3 & OTT Player UI tests passed.');
+  // 17. Verify Production Recovery Multi-Cluster Adapters (VidSync Proxy Fix + VidRock GCM +
+  //     VidLink + NXStream 30-Server Salted__ AES-CBC + VidStuck Raider + Anonymity + Safe Config):
+  {
+    const { createSource1Adapter } = await import('../../dist/backend/sources/source1.js');
+    const {
+      createSource2Adapter: createS2Recovery,
+      openSslEncryptBase64Url,
+      openSslDecrypt,
+    } = await import('../../dist/backend/sources/source2.js');
+    const { loadBackendConfig } = await import('../../dist/backend/config.js');
+    const { rewriteHlsManifest } = await import('../../dist/backend/relay.js');
+
+    // (a) Placeholder ELFURA_SECRET must never derive a deterministic static key
+    const pCfgA = loadBackendConfig({
+      NODE_ENV: 'production',
+      ELFURA_SECRET: 'replace-with-a-64-char-random-hex-secret',
+    });
+    const pCfgB = loadBackendConfig({
+      NODE_ENV: 'production',
+      ELFURA_SECRET: 'replace-with-a-64-char-random-hex-secret',
+    });
+    assert.notEqual(
+      pCfgA.secret.toString('hex'),
+      pCfgB.secret.toString('hex'),
+      'Placeholder ELFURA_SECRET must generate fresh ephemeral secrets instead of hashing static text',
+    );
+    assert.equal(pCfgA.source1.apiOrigin, '', 'Dead tgvidapi default must be cleared when unset');
+    assert.equal(pCfgA.source2.embedOrigin, '', 'Dead aethoflix default must be cleared when unset');
+    assert.equal(pCfgA.source2.nxshaOrigin, 'https://nxsha.space');
+    assert.equal(pCfgA.source2.vidstuckOrigin, 'https://vidstuck.cc');
+
+    // (b) Anonymity guard blocks every newly added upstream/worker domain from direct segment offload
+    for (const newLeakyUrl of [
+      'https://nxsha.space/api/sources?q=abc',
+      'https://wts.itsnitrox.tech/pitro/seg0.ts',
+      'https://vercetti.org/movie/abc/seg0.ts',
+      'https://vidrock.net/api/movie/533535',
+      'https://vidlink.pro/api/b/movie/abc',
+      'https://enc-dec.app/api/enc-vidlink?text=533535',
+      'https://autumn-art-7466.nxstreamhub.workers.dev/?url=https%3A%2F%2Fsbcdnw.hakunaymatata.com%2Fa.m4s',
+    ]) {
+      assert.equal(
+        isAnonymousSegmentUrl(newLeakyUrl, true),
+        false,
+        `Must deny direct offload for upstream-identifying URL: ${newLeakyUrl}`,
+      );
+    }
+
+    // Verify client bundles contain zero mentions of any upstream domain or codename
+    for (const forbidden of [
+      'nxsha',
+      'itsnitrox',
+      'vidrock',
+      'vidlink',
+      'vidstuck',
+      'vercetti',
+      'enc-dec',
+      'nxstreamhub',
+      'vidsync',
+    ]) {
+      assert(
+        !libBundle.toLowerCase().includes(forbidden) && !embedHtml.toLowerCase().includes(forbidden),
+        `Client bundle must never mention upstream identifier "${forbidden}"`,
+      );
+    }
+
+    // Verify `#EXT-X-MEDIA` release-group watermarks (`hguider`, `SPLY`) are stripped to clean language labels
+    const rewrittenNitroManifest = rewriteHlsManifest(
+      [
+        '#EXTM3U',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="hguider",DEFAULT=YES,AUTOSELECT=YES,LANGUAGE="hin",URI="a_hi.m3u8"',
+        '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="SPLY",DEFAULT=NO,AUTOSELECT=YES,LANGUAGE="tam",URI="a_ta.m3u8"',
+        '#EXT-X-STREAM-INF:BANDWIDTH=4500000,RESOLUTION=1920x1080,AUDIO="audio"',
+        'v1080.m3u8',
+      ].join('\n'),
+      'https://wts.itsnitrox.tech/pitro/master.m3u8',
+      { Referer: 'https://nxsha.space/' },
+      pCfgA.secret,
+    );
+    assert(
+      !rewrittenNitroManifest.toLowerCase().includes('hguider') &&
+        !rewrittenNitroManifest.toLowerCase().includes('sply'),
+      'Expected hguider/SPLY release watermarks to be stripped from #EXT-X-MEDIA',
+    );
+    assert(
+      rewrittenNitroManifest.includes('LANGUAGE="hi"') && rewrittenNitroManifest.includes('NAME="Hindi"'),
+      'Expected hin -> hi Hindi normalization on rewritten nitro manifest',
+    );
+
+    // (c) End-to-end mock cluster test for Source 1 (VidSync Castle Proxy + VidRock GCM + VidLink)
+    //     and Source 2 (NXStream Salted__ AES-256-CBC + VidStuck Raider Salted__ AES-256-CBC)
+    const NX_PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
+    const VS_PASS = '7f4c9e2a81d63b05c4f7a9e8126d3b50e1a8c7f23d9465ab0c6e9f1d4a7b832c';
+    const VROCK_KEY = Buffer.from(
+      '7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f',
+      'hex',
+    );
+    const encryptVidRock = (plain) => {
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', VROCK_KEY, iv);
+      const ct = Buffer.concat([cipher.update(Buffer.from(plain, 'utf8')), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      return Buffer.concat([iv, ct, tag]).toString('base64url');
+    };
+
+    let vidapiReceivedReferer = '';
+    const clusterMock = http.createServer((req, res) => {
+      const cu = new URL(req.url, `http://${req.headers.host}`);
+      const cOrigin = `http://${req.headers.host}`;
+
+      // VidSync: single-language Castle row with IP-signed directUrl (403) + working `/api/core/proxy`
+      if (cu.pathname === '/api/stream' || cu.pathname === '/api/core/streams') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            sources:
+              cu.pathname === '/api/stream'
+                ? [
+                    {
+                      provider: { id: 'castle', name: 'Castle' },
+                      url: '/api/core/proxy?data=castle_en_1080&quality=1080p',
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      type: 'hls',
+                      quality: '1080p',
+                      audioLanguage: 'en',
+                      headers: { Referer: 'https://api.hlowb.com/' },
+                    },
+                    {
+                      provider: { id: 'castle', name: 'Castle' },
+                      url: '/api/core/proxy?data=castle_en_720&quality=720p',
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      type: 'hls',
+                      quality: '720p',
+                      audioLanguage: 'en',
+                      headers: { Referer: 'https://api.hlowb.com/' },
+                    },
+                  ]
+                : [],
+          }),
+        );
+        return;
+      }
+      if (cu.pathname === '/ip-locked/index_287.m3u8') {
+        res.writeHead(403);
+        res.end('Forbidden IP mismatch');
+        return;
+      }
+      if (cu.pathname === '/api/core/proxy') {
+        res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+        res.end('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:5.0,\nseg0.ts\n#EXT-X-ENDLIST\n');
+        return;
+      }
+
+      // VidRock AES-256-GCM
+      if (cu.pathname === '/api/movie/533535') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            Nova: encryptVidRock(`${cOrigin}/vrock/nova.m3u8`),
+            Hindi: encryptVidRock(`${cOrigin}/vrock/hindi.m3u8`),
+          }),
+        );
+        return;
+      }
+
+      // VidLink enc-dec + /api/b/movie
+      if (cu.pathname === '/api/enc-vidlink') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 200, result: 'ENC_533535_OK' }));
+        return;
+      }
+      if (cu.pathname === '/api/b/movie/ENC_533535_OK') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            stream: {
+              qualities: {
+                1080: { type: 'mp4', url: `${cOrigin}/vlink/1080.mp4` },
+                480: { type: 'mp4', url: `${cOrigin}/vlink/480.mp4` },
+              },
+              captions: [
+                { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
+                { url: `${cOrigin}/vlink/hi.srt`, language: 'Hindi' },
+              ],
+            },
+          }),
+        );
+        return;
+      }
+
+      // NXStream (`/api/servers` + `/api/sources`)
+      if (cu.pathname === '/api/servers') {
+        const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
+        assert.equal(dec.tmdbId, '533535');
+        assert.equal(dec.ex_lang, true);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            _hash: openSslEncryptBase64Url(
+              JSON.stringify({
+                servers: [
+                  { id: 'nitro', status: 'online' },
+                  { id: 'vidapi', status: 'online' },
+                  { id: 'mhbox', status: 'online' },
+                ],
+              }),
+              NX_PASS,
+            ),
+          }),
+        );
+        return;
+      }
+      if (cu.pathname === '/api/sources') {
+        const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
+        const byProv = {
+          nitro: [
+            {
+              provider: 'nitro',
+              url: `${cOrigin}/nitro/master.m3u8`,
+              label: 'hguider | 1080P | Hindi | Tamil | Telugu',
+              quality: '1080P',
+              type: 'm3u8',
+            },
+          ],
+          vidapi: [
+            {
+              provider: 'vidapi',
+              url: `${cOrigin}/Ygu4uHrIF/pl/H4sIAAAAAAAA/master.m3u8`,
+              label: 'SPLY-1',
+              quality: 'Auto',
+              type: 'm3u8',
+            },
+          ],
+          mhbox: [
+            {
+              provider: 'mhbox',
+              url: `${cOrigin}/mhbox/esla.mpd`,
+              label: 'esla dub : 1080,720,480',
+              quality: '1080',
+              type: 'mpd',
+            },
+            {
+              provider: 'mhbox',
+              url: `${cOrigin}/mhbox/orig.mpd`,
+              label: 'Original Audio dub : 1080,720,480',
+              quality: '1080',
+              type: 'mpd',
+            },
+          ],
+        };
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            _hash: openSslEncryptBase64Url(
+              JSON.stringify({ sources: byProv[dec.provider] || [] }),
+              NX_PASS,
+            ),
+          }),
+        );
+        return;
+      }
+      if (cu.pathname.includes('/pl/H4sI')) {
+        vidapiReceivedReferer = String(req.headers.referer || '');
+        res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+        res.end('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:5.0,\nseg0.ts\n#EXT-X-ENDLIST\n');
+        return;
+      }
+
+      // VidStuck (`/backend/raider`, `/backend/servers/*`, `/backend/subtitle`)
+      if (cu.pathname === '/backend/raider' && req.method === 'POST') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ token: 'vs_tok_ok', ts: 1793800000 }));
+        return;
+      }
+      if (cu.pathname === '/backend/servers/orion') {
+        const isHiDub = cu.searchParams.get('dubCode') === 'hi';
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            success: true,
+            data: {
+              links: [
+                {
+                  link: openSslEncryptBase64Url(
+                    `${cOrigin}/vs/${isHiDub ? 'orion_hi.mpd' : 'orion_en.mpd'}`,
+                    VS_PASS,
+                  ),
+                  type: 'dash',
+                  resolution: 1080,
+                },
+              ],
+              dubs: isHiDub ? [] : [{ lanCode: 'hi', lanName: 'Hindi', dubType: 0 }],
+            },
+          }),
+        );
+        return;
+      }
+      if (cu.pathname.startsWith('/backend/servers/')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, data: { links: [] } }));
+        return;
+      }
+      if (cu.pathname === '/backend/subtitle') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify([{ url: `${cOrigin}/vs/sub_en.vtt`, lang: 'en', label: 'English' }]),
+        );
+        return;
+      }
+
+      res.writeHead(404);
+      res.end('Not Found');
+    });
+
+    await new Promise((r) => clusterMock.listen(0, '127.0.0.1', r));
+    const cmPort = clusterMock.address().port;
+    const cmOrigin = `http://127.0.0.1:${cmPort}`;
+
+    try {
+      const s1Rec = createSource1Adapter({
+        enabled: true,
+        appOrigin: '',
+        apiOrigin: '',
+        riftOrigin: '',
+        riftRelay: '',
+        syncOrigin: cmOrigin,
+        vidrockOrigin: cmOrigin,
+        vidlinkOrigin: cmOrigin,
+        encDecOrigin: cmOrigin,
+      });
+      const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+
+      // Castle must use `/api/core/proxy` (NOT `/ip-locked/...`), collapse quality clones to 1, and drop IP-bound standby!
+      const castleCands = s1Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
+      assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
+      assert.equal(castleCands[0].standbyUrl, undefined, 'IP-signed directUrl must not be placed in standbyUrl');
+
+      // VidRock Hindi must be decrypted and prioritized first for `preferredLang: 'hi'`
+      assert(
+        s1Out.candidates[0].url === `${cmOrigin}/vrock/hindi.m3u8` && s1Out.candidates[0].audioLang === 'hi',
+        'Expected VidRock AES-256-GCM Hindi candidate to be decrypted & ranked #1 for preferredLang=hi',
+      );
+      // Pooled VidLink captions (`en`, `hi`) must be shared onto VidSync & VidRock candidates!
+      assert(
+        castleCands[0].subtitles.length >= 2 && s1Out.candidates[0].subtitles.length >= 2,
+        'Expected VidLink captions to be pooled across all Source 1 candidates',
+      );
+
+      const s2Rec = createS2Recovery({
+        enabled: true,
+        embedOrigin: '',
+        defaultServer: 'orion',
+        nxshaOrigin: cmOrigin,
+        vidstuckOrigin: cmOrigin,
+      });
+      const s2Out = await s2Rec.resolve({
+        type: 'movie',
+        tmdbId: '533535',
+        title: 'Deadpool & Wolverine',
+        year: '2024',
+        imdbId: 'tt6263850',
+        preferredLang: 'hi',
+      });
+
+      const nitroCand = s2Out.candidates.find((c) => c.url.includes('/nitro/master.m3u8'));
+      assert(nitroCand, 'Expected NXStream nitro candidate');
+      assert.equal(nitroCand.multiAudio, true);
+      assert.deepEqual(nitroCand.availableAudioLangs, ['hi', 'ta', 'te']);
+      assert.equal(nitroCand.quality, '1080p');
+      assert(nitroCand.subtitles.length >= 1, 'Expected VidStuck subtitles to pool onto NXStream candidates');
+
+      const vidapiCand = s2Out.candidates.find((c) => c.url.includes('/pl/H4sI'));
+      assert(vidapiCand, 'Expected NXStream vidapi candidate');
+      assert.equal(vidapiCand.headers.Referer, undefined, 'vidapi /pl/H4sI must omit upstream Referer');
+      const vidapiProbe = await fetch(vidapiCand.url, { headers: vidapiCand.headers });
+      assert.equal(vidapiProbe.status, 200);
+      assert.equal(vidapiReceivedReferer, '');
+
+      const eslaCand = s2Out.candidates.find((c) => c.url.includes('/mhbox/esla.mpd'));
+      assert(eslaCand && eslaCand.audioLang === 'es-419', 'Expected esla dub to canonicalize to es-419');
+
+      const origMpdCand = s2Out.candidates.find((c) => c.url.includes('/mhbox/orig.mpd'));
+      assert(origMpdCand && origMpdCand.audioLang === undefined, 'Original Audio dub must not invent a bogus language code');
+
+      const vsHindiCand = s2Out.candidates.find((c) => c.url === `${cmOrigin}/vs/orion_hi.mpd`);
+      assert(vsHindiCand && vsHindiCand.audioLang === 'hi', 'Expected VidStuck Orion Hindi dub to decrypt cleanly');
+    } finally {
+      clusterMock.close();
+    }
+  }
+
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, OpenSubtitles fallback, Episode Wheel, QoL Batch 3, Production Recovery Multi-Cluster & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

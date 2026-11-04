@@ -54,12 +54,17 @@ export interface BackendConfig {
     riftOrigin: string;
     riftRelay: string;
     syncOrigin: string;
+    vidlinkOrigin?: string;
+    encDecOrigin?: string;
+    vidrockOrigin?: string;
   };
   /** Source 2 configurable endpoints (kept purely server-side). */
   source2: {
     enabled: boolean;
     embedOrigin: string;
     defaultServer: string;
+    nxshaOrigin?: string;
+    vidstuckOrigin?: string;
   };
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -77,8 +82,17 @@ function parseOrigins(raw?: string): string[] {
     .filter(Boolean);
 }
 
+const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
+
+function isConfiguredSecret(raw?: string): boolean {
+  const trimmed = raw?.trim() || '';
+  return trimmed.length > 0 && !PLACEHOLDER_SECRET_RE.test(trimmed);
+}
+
 function deriveSecret(raw?: string): Buffer {
-  const seed = raw?.trim() || 'elfura-dev-ephemeral-' + crypto.randomBytes(16).toString('hex');
+  const seed = isConfiguredSecret(raw)
+    ? raw!.trim()
+    : 'elfura-ephemeral-' + crypto.randomBytes(24).toString('hex');
   return crypto.createHash('sha256').update(seed).digest();
 }
 
@@ -121,8 +135,8 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     ...process.env,
   };
   const isProd = env.NODE_ENV === 'production';
-  if (isProd && !env.ELFURA_SECRET) {
-    console.warn('[elfura-backend] ELFURA_SECRET is not set; generated an ephemeral per-boot key.');
+  if (isProd && !isConfiguredSecret(env.ELFURA_SECRET)) {
+    console.warn('[elfura-backend] ELFURA_SECRET is not set (or uses placeholder); generated an ephemeral per-boot key.');
   }
 
   const portRaw = Number(env.SERVER_PORT || env.PORT || 8787);
@@ -149,15 +163,20 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source1: {
       enabled: env.SOURCE1_ENABLED !== '0',
       appOrigin: (env.SOURCE1_APP_ORIGIN || 'https://tgvid.lovable.app').replace(/\/+$/, ''),
-      apiOrigin: (env.SOURCE1_API_ORIGIN || 'https://tgvidapi.lovable.app').replace(/\/+$/, ''),
-      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
-      riftRelay: (env.SOURCE1_RIFT_RELAY || 'https://tgvid-rift-relay.vercel.app').replace(/\/+$/, ''),
+      apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
+      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || '').replace(/\/+$/, ''),
+      riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
       syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
+      vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),
+      encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
+      vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
     source2: {
       enabled: env.SOURCE2_ENABLED !== '0',
-      embedOrigin: (env.SOURCE2_EMBED_ORIGIN || 'https://embed.aethoflix.world').replace(/\/+$/, ''),
+      embedOrigin: (env.SOURCE2_EMBED_ORIGIN || '').replace(/\/+$/, ''),
       defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
+      nxshaOrigin: (env.SOURCE2_NXSHA_ORIGIN || 'https://nxsha.space').replace(/\/+$/, ''),
+      vidstuckOrigin: (env.SOURCE2_VIDSTUCK_ORIGIN || 'https://vidstuck.cc').replace(/\/+$/, ''),
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
