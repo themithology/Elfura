@@ -720,14 +720,27 @@ async function fetchFromNxsha(
   };
 
   const srvResp = await callNx<{
-    servers?: { id?: string; provider?: string; status?: string }[];
+    servers?: {
+      id?: string;
+      provider?: string;
+      scraper?: string;
+      status?: string;
+      web_support?: boolean;
+      high_priority?: number;
+      position?: number;
+    }[];
   }>('/api/servers', baseReq, 3600);
 
   let activeIds: string[] = [];
   if (Array.isArray(srvResp?.servers) && srvResp.servers.length > 0) {
     activeIds = srvResp.servers
-      .filter((s) => s && s.status !== 'error' && s.status !== 'offline')
-      .map((s) => String(s.id || s.provider || '').trim())
+      .filter((s) => s && s.web_support !== false && s.status !== 'error' && s.status !== 'offline')
+      .sort((a, b) => {
+        const ap = Number(a.high_priority ?? a.position ?? 999);
+        const bp = Number(b.high_priority ?? b.position ?? 999);
+        return ap - bp;
+      })
+      .map((s) => String(s.scraper || s.id || s.provider || '').trim())
       .filter(Boolean);
   }
   if (!activeIds.length) {
@@ -867,12 +880,22 @@ async function fetchFromVidStuck(
     'User-Agent': BROWSER_UA,
   };
 
-  const mintRaider = async (): Promise<{ token: string; ts: number | string } | null> => {
+  const mintRaider = async (serverId: string): Promise<{ token: string; ts: number | string } | null> => {
     try {
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3200)]) : AbortSignal.timeout(3200);
+      const body: Record<string, string | number> = {
+        [VS_FIELDS.id]: Number(query.tmdbId),
+        [VS_FIELDS.type]: query.type,
+        [VS_FIELDS.path]: serverId,
+      };
+      if (query.type === 'tv') {
+        body[VS_FIELDS.s] = Number(query.season ?? 1);
+        body[VS_FIELDS.e] = Number(query.episode ?? 1);
+      }
       const res = await fetch(`${vsOrigin}/backend/raider`, {
         method: 'POST',
-        headers: apiHeaders,
+        headers: { ...apiHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
         signal: sig,
       });
       if (res.status === 429 || res.status >= 500) {
@@ -887,11 +910,15 @@ async function fetchFromVidStuck(
     }
   };
 
-  const buildVsParams = (tok: { token: string; ts: number | string }, extra: Record<string, string> = {}): URLSearchParams => {
+  const buildVsParams = (
+    tok: { token: string; ts: number | string },
+    serverId: string,
+    extra: Record<string, string> = {},
+  ): URLSearchParams => {
     const p = new URLSearchParams();
     p.set(VS_FIELDS.id, String(query.tmdbId));
     p.set(VS_FIELDS.type, query.type);
-    p.set(VS_FIELDS.path, embedPath);
+    p.set(VS_FIELDS.path, serverId);
     if (query.type === 'tv') {
       p.set(VS_FIELDS.s, String(query.season ?? 1));
       p.set(VS_FIELDS.e, String(query.episode ?? 1));
@@ -909,23 +936,34 @@ async function fetchFromVidStuck(
     return p;
   };
 
+  interface VsLinkItem {
+    link?: string;
+    type?: string;
+    resolution?: string | number;
+    quality?: string;
+  }
+  interface VsDubItem {
+    lanCode?: string;
+    lanName?: string;
+    dubType?: string | number;
+  }
   interface VsServerPayload {
     success?: boolean;
+    links?: VsLinkItem[];
+    dubs?: VsDubItem[];
+    subtitles?: ExtractSubtitleItem[];
     data?: {
-      links?: { link?: string; type?: string; resolution?: string | number; quality?: string }[];
-      dubs?: { lanCode?: string; lanName?: string; dubType?: string | number }[];
+      links?: VsLinkItem[];
+      dubs?: VsDubItem[];
       subtitles?: ExtractSubtitleItem[];
     };
   }
 
-  const firstTok = await mintRaider();
-  if (!firstTok) return [];
-
-  const fetchServer = async (srv: string, extra: Record<string, string> = {}, tokOverride?: { token: string; ts: number | string }): Promise<VsServerPayload | null> => {
-    const tok = tokOverride ?? (await mintRaider());
+  const fetchServer = async (srv: string, extra: Record<string, string> = {}): Promise<VsServerPayload | null> => {
+    const tok = await mintRaider(srv);
     if (!tok) return null;
     try {
-      const qs = buildVsParams(tok, extra).toString();
+      const qs = buildVsParams(tok, srv, extra).toString();
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
       const res = await fetch(`${vsOrigin}/backend/servers/${srv}?${qs}`, {
         headers: apiHeaders,
@@ -943,37 +981,36 @@ async function fetchFromVidStuck(
 
   const fetchVsSubs = async (): Promise<RawTrackRef[]> => {
     try {
-      const p = new URLSearchParams();
-      p.set(VS_FIELDS.id, String(query.tmdbId));
-      p.set(VS_FIELDS.type, query.type);
-      if (query.type === 'tv') {
-        p.set(VS_FIELDS.s, String(query.season ?? 1));
-        p.set(VS_FIELDS.e, String(query.episode ?? 1));
-      }
-      if (metaHint.imdbId) p.set(VS_FIELDS.imdb, metaHint.imdbId);
+      const tok = await mintRaider('subtitle');
+      if (!tok) return [];
+      const p = buildVsParams(tok, 'subtitle');
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
       const res = await fetch(`${vsOrigin}/backend/subtitle?${p.toString()}`, {
         headers: apiHeaders,
         signal: sig,
       });
       if (!res.ok) return [];
-      const raw = (await res.json()) as ExtractSubtitleItem[] | { subtitles?: ExtractSubtitleItem[]; data?: ExtractSubtitleItem[] };
-      const arr = Array.isArray(raw) ? raw : raw?.subtitles ?? raw?.data ?? [];
+      const raw = (await res.json()) as
+        | ExtractSubtitleItem[]
+        | { captions?: ExtractSubtitleItem[]; subtitles?: ExtractSubtitleItem[]; data?: ExtractSubtitleItem[] };
+      const arr = Array.isArray(raw) ? raw : raw?.captions ?? raw?.subtitles ?? raw?.data ?? [];
       return mapSubtitles(arr, vsOrigin);
     } catch {
       return [];
     }
   };
 
-  const [orionRes, atlasRes, daedalusRes, vsSubs] = await Promise.all([
-    fetchServer('orion', {}, firstTok),
+  const [orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes, vsSubs] = await Promise.all([
+    fetchServer('orion'),
+    fetchServer('andromeda'),
     fetchServer('atlas'),
     fetchServer('daedalus'),
+    fetchServer('ursa'),
     fetchVsSubs(),
   ]);
 
-  // Unlock Orion regional dubs (Hindi + preferredLang) dynamically if advertised in `orion.data.dubs`
-  const advertisedDubs = Array.isArray(orionRes?.data?.dubs) ? orionRes!.data!.dubs! : [];
+  // Unlock Orion regional dubs (Hindi + preferredLang) dynamically when advertised.
+  const advertisedDubs = orionRes?.dubs ?? orionRes?.data?.dubs ?? [];
   const wantedDubItems: { rawCode: string; normCode: string; normLabel: string; dubType: string }[] = [];
   for (const d of advertisedDubs) {
     const rawCode = String(d?.lanCode ?? '').trim();
@@ -1016,13 +1053,21 @@ async function fetchFromVidStuck(
     rankBase: number,
     explicitLang?: { code: string; label: string },
   ) => {
-    const links = payload?.data?.links;
+    const links = payload?.links ?? payload?.data?.links;
     if (!Array.isArray(links)) return;
     for (let i = 0; i < links.length; i++) {
       const item = links[i];
       const rawLink = String(item?.link ?? '').trim();
       if (!rawLink) continue;
-      const url = /^https?:\/\//i.test(rawLink) ? rawLink : openSslDecrypt(rawLink, VS_PASS)?.trim() || '';
+      const decrypted = /^https?:\/\//i.test(rawLink) ? rawLink : openSslDecrypt(rawLink, VS_PASS)?.trim() || '';
+      let url = decrypted;
+      if (decrypted && !/^https?:\/\//i.test(decrypted)) {
+        try {
+          url = new URL(decrypted, `${vsOrigin}/`).toString();
+        } catch {
+          url = '';
+        }
+      }
       if (!url || !isSafeUpstreamUrl(url) || seen.has(url)) continue;
       seen.add(url);
 
@@ -1046,8 +1091,10 @@ async function fetchFromVidStuck(
   for (const { dub, resp } of dubPayloads) {
     collectLinks('orion-dub', resp, 8, { code: dub.normCode, label: dub.normLabel });
   }
+  collectLinks('andromeda', andromedaRes, 9);
   collectLinks('atlas', atlasRes, 11);
   collectLinks('daedalus', daedalusRes, 13);
+  collectLinks('ursa', ursaRes, 15);
 
   if (out.length > 0) {
     if (vidstuckCache.size >= MAX_VS_CACHE) {

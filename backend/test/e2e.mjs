@@ -2739,7 +2739,7 @@ try {
 
     let vidapiReceivedReferer = '';
     let vidlinkReceivedPlaybackEnv = '';
-    const clusterMock = http.createServer((req, res) => {
+    const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
 
@@ -2907,42 +2907,51 @@ try {
 
       // VidStuck (`/backend/raider`, `/backend/servers/*`, `/backend/subtitle`)
       if (cu.pathname === '/backend/raider' && req.method === 'POST') {
+        let rawBody = '';
+        for await (const chunk of req) rawBody += chunk;
+        const body = JSON.parse(rawBody || '{}');
+        assert.equal(body.a7f39c821d604e5b91e57b, 533535, 'VidStuck raider requires numeric TMDB id');
+        assert.equal(body.c81306d28147a35632e816b, 'movie');
+        assert(body['6b491e258392e7561a9384c'], 'VidStuck raider requires target server id');
+        assert.equal(req.headers['content-type'], 'application/json');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ token: 'vs_tok_ok', ts: 1793800000 }));
+        res.end(JSON.stringify({ token: `vs_tok_${body['6b491e258392e7561a9384c']}`, ts: 1793800000 }));
         return;
       }
       if (cu.pathname === '/backend/servers/orion') {
         const isHiDub = cu.searchParams.get('dubCode') === 'hi';
+        assert.equal(cu.searchParams.get('6b491e258392e7561a9384c'), 'orion');
+        assert.equal(cu.searchParams.get('c492f7a183d01e36c538a716d'), 'vs_tok_orion');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
             success: true,
-            data: {
-              links: [
-                {
-                  link: openSslEncryptBase64Url(
-                    `${cOrigin}/vs/${isHiDub ? 'orion_hi.mpd' : 'orion_en.mpd'}`,
-                    VS_PASS,
-                  ),
-                  type: 'dash',
-                  resolution: 1080,
-                },
-              ],
-              dubs: isHiDub ? [] : [{ lanCode: 'hi', lanName: 'Hindi', dubType: 0 }],
-            },
+            links: [
+              {
+                link: openSslEncryptBase64Url(
+                  `/vs/${isHiDub ? 'orion_hi.mpd' : 'orion_en.mpd'}`,
+                  VS_PASS,
+                ),
+                type: 'dash',
+                resolution: 1080,
+              },
+            ],
+            dubs: isHiDub ? [] : [{ lanCode: 'hi', lanName: 'Hindi', dubType: 0 }],
           }),
         );
         return;
       }
       if (cu.pathname.startsWith('/backend/servers/')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, data: { links: [] } }));
+        res.end(JSON.stringify({ success: true, links: [] }));
         return;
       }
       if (cu.pathname === '/backend/subtitle') {
+        assert.equal(cu.searchParams.get('6b491e258392e7561a9384c'), 'subtitle');
+        assert.equal(cu.searchParams.get('c492f7a183d01e36c538a716d'), 'vs_tok_subtitle');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
-          JSON.stringify([{ url: `${cOrigin}/vs/sub_en.vtt`, lang: 'en', label: 'English' }]),
+          JSON.stringify({ captions: [{ file: `${cOrigin}/vs/sub_en.vtt`, language: 'en', display: 'English' }] }),
         );
         return;
       }
