@@ -166,7 +166,10 @@ export async function verifyDirectSegmentOffload(
       }
 
       const statusOk = res.status === 200 || res.status === 206;
-      const corsOk = acao === '*' || acao === CORS_PROBE_ORIGIN;
+      // A CDN that merely echoes CORS_PROBE_ORIGIN has only authorized our fake
+      // probe, not the viewer's real embed origin. Offload exclusively on a
+      // wildcard; reflected/specific origins must remain on the backend relay.
+      const corsOk = acao === '*';
       const bodyOk =
         !ct.includes('text/html') &&
         !ct.includes('application/xhtml') &&

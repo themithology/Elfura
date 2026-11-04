@@ -471,12 +471,28 @@ export class ElfuraPlayer {
     if (opt.fingerprint) this.failedFingerprints.add(opt.fingerprint);
   }
 
+  /**
+   * Playback responses intentionally use root-relative `/api/v1/stream` tickets.
+   * When an SDK consumer resolves through an absolute cross-origin `api` URL,
+   * those tickets belong to that API origin, not to the site hosting the player.
+   */
+  private resolveBackendMediaUrl(rawUrl: string): string {
+    if (!/^\/(?!\/)/.test(rawUrl.trim())) return rawUrl;
+    try {
+      const apiUrl = new URL(this.input.config.api || '/api/v1/playback', window.location.href);
+      return new URL(rawUrl, apiUrl).toString();
+    } catch {
+      return rawUrl;
+    }
+  }
+
   private canPreProbeViaFetch(opt: SourceOption): boolean {
     if (typeof fetch !== 'function') return false;
     try {
       const base = new URL(window.location.href);
       const target = new URL(opt.url, base);
-      return (target.protocol === 'http:' || target.protocol === 'https:') && target.origin === base.origin;
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') return false;
+      return target.origin === base.origin || this.isBackendOwnedUrl(target.toString());
     } catch {
       return false;
     }
@@ -974,7 +990,20 @@ export class ElfuraPlayer {
         this.emit('segments:invalidate', {});
       }
 
-      this.sources = data.sources;
+      const resolveSource = (opt: SourceOption): SourceOption => ({
+        ...opt,
+        url: this.resolveBackendMediaUrl(opt.url),
+        audioTracks: opt.audioTracks?.map((track) => ({
+          ...track,
+          url: this.resolveBackendMediaUrl(track.url),
+        })),
+        subtitles: opt.subtitles?.map((track) => ({
+          ...track,
+          url: this.resolveBackendMediaUrl(track.url),
+        })),
+      });
+      if (data.primary) data.primary = resolveSource(data.primary);
+      this.sources = data.sources.map(resolveSource);
       this.failedSourceIds.clear();
       this.failedFingerprints.clear();
       this.measuredRttByFp.clear();

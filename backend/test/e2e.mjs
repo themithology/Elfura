@@ -1134,8 +1134,32 @@ const mockUpstream = http.createServer(async (req, res) => {
 
   // Hybrid offload test fixtures:
   //  - /edge-cors/* : anonymous, Referer-free, returns Access-Control-Allow-Origin: *
+  //  - /edge-echo-cors/* : echoes only the probe Origin (must stay relayed!)
   //  - /edge-nocors/* : anonymous, but omits Access-Control-Allow-Origin (must stay relayed!)
   //  - /edge-reflock/* : sends CORS *, but 403s without Referer (must stay relayed!)
+  if (u.pathname === '/edge-echo-cors/variant.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-TARGETDURATION:6',
+        '#EXTINF:6.0,',
+        `${origin}/edge-echo-cors/chunk-0001.m4s`,
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/edge-echo-cors/chunk-0001.m4s') {
+    res.writeHead(200, {
+      'Content-Type': 'video/iso.segment',
+      'Access-Control-Allow-Origin': String(req.headers.origin || ''),
+      Vary: 'Origin',
+      'Content-Length': String(SEGMENT_BYTES.length),
+    });
+    res.end(SEGMENT_BYTES);
+    return;
+  }
   if (u.pathname === '/edge-cors/master.m3u8') {
     res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
     res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000,RESOLUTION=1920x1080\n/edge-cors/variant.m3u8\n');
@@ -2103,6 +2127,46 @@ try {
     assert.equal(envPlayer.getMediaInfo()?.episodeName, 'Welcome to the Playground');
     assert(envPlayer.getSources().length >= 5, 'ElfuraPlayer must decrypt sealed playback envelope via WebCrypto');
     envPlayer.destroy();
+
+    // A player embedded on a different origin with an absolute `api` endpoint must send the
+    // returned root-relative media tickets to that API origin, not to the embed host.
+    globalThis.window.location = {
+      pathname: '/embed/tv/94605/1/1',
+      search: '',
+      href: 'https://watch.elfura.example/embed/tv/94605/1/1',
+    };
+    const crossOriginPlayer = new ElfuraPlayer({
+      postMessage: false,
+      api: `${apiBase}/api/v1/playback`,
+      tmdb: '94605',
+      mediaType: 'tv',
+      season: 1,
+      episode: 1,
+      pltoken: boot.pltoken,
+      nonce: boot.nonce,
+    });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timed out waiting for cross-origin backend sources')), 4000);
+      crossOriginPlayer.bus.on('sources', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    const crossSources = crossOriginPlayer.getSources();
+    assert(crossSources.length >= 5);
+    for (const source of crossSources) {
+      assert(
+        source.url.startsWith(`${apiBase}/api/v1/stream?t=`),
+        `Cross-origin backend ticket was resolved against the wrong origin: ${source.url}`,
+      );
+      for (const track of [...(source.audioTracks ?? []), ...(source.subtitles ?? [])]) {
+        assert(
+          track.url.startsWith(`${apiBase}/api/v1/stream?t=`),
+          `Cross-origin track ticket was resolved against the wrong origin: ${track.url}`,
+        );
+      }
+    }
+    crossOriginPlayer.destroy();
   } finally {
     globalThis.fetch = origFetchForEnv;
   }
@@ -2165,6 +2229,22 @@ try {
     assert(
       !noCorsText.includes('/edge-nocors/chunk-0001.m4s'),
       'Segments lacking Access-Control-Allow-Origin must stay relayed through /api/v1/stream',
+    );
+
+    // Origin-reflecting CDN authorized only our fake probe origin. It must stay relayed because
+    // a viewer's real Origin would receive a different ACAO value and fail browser CORS.
+    const echoCorsTicket = sealStreamTicket(secret, { u: `${upBase}/edge-echo-cors/variant.m3u8`, k: 'm' });
+    const echoCorsRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(echoCorsTicket)}`, {
+      headers: browserHeaders,
+    });
+    const echoCorsText = await echoCorsRes.text();
+    assert(
+      !echoCorsText.includes(`${upBase}/edge-echo-cors/chunk-0001.m4s`),
+      'Origin-reflecting CDN segments must stay relayed instead of failing the viewer real Origin',
+    );
+    assert(
+      echoCorsText.split('\n').some((l) => l.startsWith('/api/v1/stream?t=')),
+      'Origin-reflecting CDN segments must be rewritten to backend stream tickets',
     );
 
     // Referer-locked CDN (`/edge-reflock/*`) must NEVER offload (would 403 in browser!)
