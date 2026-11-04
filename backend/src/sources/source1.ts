@@ -514,7 +514,11 @@ async function fetchFromPublicApi(
   apiPath: string,
   signal?: AbortSignal,
 ): Promise<UpstreamApiPayload | null> {
-  if (isSubOriginCoolingDown(cfg.apiOrigin)) return null;
+  // The public JSON hub was retired upstream (every `/api/m/*` & `/api/tv/*`
+  // route answers 404). Only run it when an operator explicitly opts in with
+  // SOURCE1_API_ORIGIN, otherwise it is a guaranteed-dead slot that burns a
+  // socket on every single resolve.
+  if (!cfg.apiOrigin || isSubOriginCoolingDown(cfg.apiOrigin)) return null;
   try {
     const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
     const res = await fetch(`${cfg.apiOrigin}${apiPath}`, {
@@ -545,7 +549,8 @@ async function fetchFromRiftBoot(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
 ): Promise<RawStreamCandidate[]> {
-  if (isSubOriginCoolingDown(cfg.riftOrigin)) return [];
+  // Rift/Orion boot is opt-in only (SOURCE1_RIFT_ORIGIN). Unset => skipped.
+  if (!cfg.riftOrigin || isSubOriginCoolingDown(cfg.riftOrigin)) return [];
   const bootPath =
     query.type === 'movie'
       ? `/api/boot/movie/${encodeURIComponent(query.tmdbId)}`
@@ -1232,6 +1237,11 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         link: null,
       };
 
+      // All six slots always settle (a skipped pipeline resolves immediately to
+      // null/[]), so this stays 6 even when the public hub / Rift origins are
+      // unset. Do NOT trim it to the "active" count: that makes `releaseEarly`
+      // fire before the slower live pipelines have filled their slots, silently
+      // dropping vidrock / vidlink candidates from the result.
       const totalPipelines = 6;
       let settledCount = 0;
       let liveSourcePipelines = 0;
@@ -1243,8 +1253,8 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
           releaseEarly?.();
           return;
         }
-        // Wait until VidSync (24-dub multi-language engine) + at least one companion
-        // live pipeline have produced candidates before starting the fast grace window.
+        // Wait until VidSync (multi-dub engine) + at least one companion live
+        // pipeline have produced candidates before starting the fast grace window.
         if (liveSourcePipelines >= 2 && slots.sync && !graceTimer) {
           graceTimer = setTimeout(() => releaseEarly?.(), 360);
         }

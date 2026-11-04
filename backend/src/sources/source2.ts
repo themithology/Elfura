@@ -355,7 +355,12 @@ async function fetchExtractPayload(
   serverId: string,
   metaHint?: ExtractMetaHint,
   timeoutMs = 6000,
-): Promise<{ payload: ExtractApiResponse; requestLatencyMs: number } | null> {
+): Promise<{
+  payload: ExtractApiResponse;
+  requestLatencyMs: number;
+  /** 404/410 => the route moved; the origin itself is healthy. Never trip the breaker. */
+  routeGone?: boolean;
+} | null> {
   const params = buildSearchParams(query, serverId, metaHint);
   const embedPath =
     query.type === 'movie'
@@ -377,7 +382,14 @@ async function fetchExtractPayload(
       },
       signal: sig,
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // A retired/renamed route is NOT an origin outage. Report it so the caller
+      // can disable just this pipeline instead of poisoning the whole cluster.
+      if (res.status === 404 || res.status === 410) {
+        return { payload: { success: false, sources: [] }, requestLatencyMs: 0, routeGone: true };
+      }
+      return null;
+    }
     const ct = (res.headers.get('content-type') || '').toLowerCase();
     if (!ct.includes('application/json')) return null;
     const payload = (await res.json()) as ExtractApiResponse;
@@ -516,6 +528,18 @@ const NON_LANG_NOISE_RE =
   /^(?:hguider|sply(?:-\d+)?|pitro|litro|nitro|vidapi|mhbox|castle|bdxs|awsind|dub|dubbed|sub|subbed|subs|hd|sd|fhd|uhd|qhd|hdr|hdr10|sdr|dv|hevc|h264|h265|x264|x265|aac|eac3|ddp|atmos|auto|raw|org|ori|original|original\s+audio|audio|main|backup|vip|server\s*\d*|stream\s*\d*|\d{2,4}[pk]?|\d+(?:\.\d+)?\s*(?:gb|mb|kbps|mbps))$/i;
 
 const S2_ORIGIN_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * `/api/extract` route retirement breaker.
+ *
+ * Distinct from the origin circuit breaker on purpose: when a provider renames a
+ * route every request answers 404 while the *host* is perfectly healthy. Tripping
+ * the shared origin breaker in that case also disables `nxsha` and `vidstuck` for
+ * five minutes, which is how a healthy cluster gets reported as "both sources dead".
+ * Retried on a shorter fuse so a re-published route is picked back up quickly.
+ */
+const EXTRACT_ROUTE_RETRY_MS = 90_000;
+let deadExtractRouteUntil = 0;
 const deadS2OriginUntil = new Map<string, number>();
 
 function isLoopbackHost(origin: string): boolean {
@@ -1067,6 +1091,8 @@ async function resolveViaExtractApi(
   hasParallelCluster: boolean,
 ): Promise<RawStreamCandidate[]> {
   if (!cfg.embedOrigin || isS2OriginCoolingDown(cfg.embedOrigin)) return [];
+  // Route known-retired: skip without touching the cluster health.
+  if (!isLoopbackHost(cfg.embedOrigin) && Date.now() < deadExtractRouteUntil) return [];
   const isLoopbackMock = isLoopbackHost(cfg.embedOrigin);
   let metaHint = { ...initialMetaHint };
 
@@ -1078,7 +1104,16 @@ async function resolveViaExtractApi(
     hasParallelCluster && !isLoopbackMock ? 3400 : 6000,
   );
 
+  if (fetched?.routeGone) {
+    // `vidbolt`'s /api/extract no longer exists. Stop paying a socket + a 3.4s
+    // timeout on every resolve, but leave the origin's health alone so the
+    // cooldown never bleeds into the `nxsha` / `vidstuck` clusters.
+    deadExtractRouteUntil = Date.now() + EXTRACT_ROUTE_RETRY_MS;
+    return [];
+  }
+
   if (!fetched && !isLoopbackMock) {
+    // True transport/5xx failure => the origin really is unhealthy.
     tripS2OriginCooldown(cfg.embedOrigin);
     return [];
   }
