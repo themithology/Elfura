@@ -140,8 +140,14 @@ async function auditHls(url, checks, depth = 0) {
     const childRefs = [...new Set([variant, ...audioRefs].filter(Boolean))];
     for (const ref of childRefs) {
       const childUrl = new URL(ref, url).toString();
-      await auditHls(childUrl, checks, depth + 1);
-      checks.push(depth === 0 && audioRefs.includes(ref) ? 'audio-playlist+segment' : 'variant+segment');
+      const isAudio = depth === 0 && audioRefs.includes(ref);
+      try {
+        await auditHls(childUrl, checks, depth + 1);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`${isAudio ? 'audio playlist' : 'variant playlist'}: ${message}`);
+      }
+      checks.push(isAudio ? 'audio-playlist+segment' : 'variant+segment');
     }
     return;
   }
