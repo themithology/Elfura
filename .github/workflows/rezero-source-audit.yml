@@ -1,0 +1,28 @@
+name: ReZero live source audit
+
+on:
+  push:
+    branches:
+      - arena/dcf86284-elfura
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Test every ReZero S1E1 source through real media bytes
+        run: node backend/test/live-sources.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: live-audit-only-not-a-production-secret
+          RELAY_MODE: full
+          RESOLVE_TIMEOUT_MS: 20000
+          TMDB_TIMEOUT_MS: 8000

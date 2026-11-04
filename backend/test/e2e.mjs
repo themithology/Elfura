@@ -149,6 +149,33 @@ assert.equal(rewrittenKai.match(/^#EXTM3U$/gm)?.length, 1);
 assert(rewrittenKai.includes('LANGUAGE="ja",NAME="Japanese",DEFAULT=YES'));
 assert(rewrittenKai.includes('LANGUAGE="kn",NAME="Kannada",DEFAULT=NO'));
 
+// Live Re:Zero S1E1 VidSync playlists escape underscores (`hls\_mps`). Preserve the
+// actual CDN key instead of letting WHATWG URL parsing turn it into `hls/_mps`.
+const escapedReZeroManifest = [
+  '#EXTM3U',
+  '#EXT-X-TARGETDURATION:10',
+  '#EXTINF:2.919578,',
+  'https://img.hscow.com/hls\\_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
+  '#EXT-X-ENDLIST',
+].join('\n');
+const rewrittenReZero = rewriteHlsManifest(
+  escapedReZeroManifest,
+  'https://img1.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/index_287.m3u8',
+  { Referer: 'https://api.hlowb.com/', 'User-Agent': 'okhttp/4.9.3' },
+  secret,
+);
+const reZeroSegmentRef = rewrittenReZero.split('\n').find((line) => line.startsWith('/api/v1/stream?t='));
+assert(reZeroSegmentRef, 'Escaped Re:Zero media segment must remain relayed');
+const reZeroSegmentTicket = openStreamTicket(
+  secret,
+  new URL(reZeroSegmentRef, 'https://elfura.example').searchParams.get('t'),
+);
+assert.equal(
+  reZeroSegmentTicket.u,
+  'https://img.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
+  'Re:Zero segment ticket must normalize hls\\_mps to the real hls_mps CDN key',
+);
+
 // Source 2 rousav + dash-hls-bridge manifest sanitization & WebVTT spam cue stripping
 const rousavManifest = [
   '#EXTM3U',
@@ -2661,6 +2688,7 @@ try {
     };
 
     let vidapiReceivedReferer = '';
+    let vidlinkReceivedPlaybackEnv = '';
     const clusterMock = http.createServer((req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
@@ -2715,6 +2743,7 @@ try {
           JSON.stringify({
             Nova: encryptVidRock(`${cOrigin}/vrock/nova.m3u8`),
             Hindi: encryptVidRock(`${cOrigin}/vrock/hindi.m3u8`),
+            Luna: encryptVidRock('https://belfast.armadilloscp.workers.dev/browser-gated'),
           }),
         );
         return;
@@ -2727,13 +2756,16 @@ try {
         return;
       }
       if (cu.pathname === '/api/b/movie/ENC_533535_OK') {
+        vidlinkReceivedPlaybackEnv = String(req.headers['x-playback-environment'] || '');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
             stream: {
+              type: 'dash',
+              playlist: `${cOrigin}/vlink/master.mpd`,
+              playlistHeaders: { Cookie: 'CloudFront-Policy=test-policy' },
               qualities: {
-                1080: { type: 'mp4', url: `${cOrigin}/vlink/1080.mp4` },
-                480: { type: 'mp4', url: `${cOrigin}/vlink/480.mp4` },
+                1080: { type: 'mp4', url: `${cOrigin}/vlink/1080.mp4`, requiresProxy: true },
               },
               captions: [
                 { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
@@ -2887,16 +2919,39 @@ try {
       });
       const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
 
-      // Castle must use `/api/core/proxy` (NOT `/ip-locked/...`), collapse quality clones to 1, and drop IP-bound standby!
+      // Castle must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
+      // signed CDN lane as a secondary candidate for registry-level liveness filtering.
       const castleCands = s1Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
-      assert.equal(castleCands[0].standbyUrl, undefined, 'IP-signed directUrl must not be placed in standbyUrl');
+      assert(
+        castleCands[0].standbyUrl?.includes('/ip-locked/index_287.m3u8'),
+        'Direct signed CDN URL must remain available as a verified failover',
+      );
+      const deadDirectProbe = await fetch(castleCands[0].standbyUrl);
+      assert.equal(deadDirectProbe.status, 403, 'Fixture must prove dead direct lanes are prunable by liveness');
 
       // VidRock Hindi must be decrypted and prioritized first for `preferredLang: 'hi'`
       assert(
         s1Out.candidates[0].url === `${cmOrigin}/vrock/hindi.m3u8` && s1Out.candidates[0].audioLang === 'hi',
         'Expected VidRock AES-256-GCM Hindi candidate to be decrypted & ranked #1 for preferredLang=hi',
       );
+      assert.equal(s1Out.candidates[0].headers['User-Agent'], ' ', 'VidRock media requires single-space UA');
+      assert.equal(s1Out.candidates[0].headers.Referer, undefined, 'VidRock media must omit Referer');
+      assert.equal(s1Out.candidates[0].headers.Origin, undefined, 'VidRock media must omit Origin');
+      assert(
+        !s1Out.candidates.some((c) => c.url.includes('workers.dev')),
+        'Browser/TLS-gated VidRock Workers lanes must not be advertised as playable',
+      );
+
+      assert.equal(vidlinkReceivedPlaybackEnv, 'webkit', 'VidLink API must request browser DASH delivery');
+      const vidlinkDash = s1Out.candidates.find((c) => c.url === `${cmOrigin}/vlink/master.mpd`);
+      assert(vidlinkDash && vidlinkDash.type === 'dash', 'VidLink .mpd playlist must remain DASH, not HLS');
+      assert.equal(vidlinkDash.headers.Cookie, 'CloudFront-Policy=test-policy');
+      assert(
+        !s1Out.candidates.some((c) => c.url.includes('/vlink/1080.mp4')),
+        'VidLink requiresProxy MP4 lanes must not be advertised to the non-browser relay',
+      );
+
       // Pooled VidLink captions (`en`, `hi`) must be shared onto VidSync & VidRock candidates!
       assert(
         castleCands[0].subtitles.length >= 2 && s1Out.candidates[0].subtitles.length >= 2,

@@ -843,7 +843,6 @@ async function fetchFromVidSync(
 
     const sharedDirectAcrossLangs =
       directCandidate && (langsByDirectUrl.get(directCandidate)?.size ?? 0) > 1 && norm.code !== 'en';
-    const isIpBound = IP_LOCKED_RE.test(directCandidate);
 
     // Always prefer vidsync's `/api/core/proxy` whenever provided (prevents 403 rejections
     // on IP-signed `hscow.com` / `fcxmb.com` / `fastcloud.live` URLs and preserves multi-dub routing).
@@ -859,7 +858,11 @@ async function fetchFromVidSync(
     let standbyUrl: string | undefined;
     let standbyHeaders: Record<string, string> | undefined;
     if (preferProxy) {
-      if (directCandidate && !isIpBound && !sharedDirectAcrossLangs && isSafeUpstreamUrl(directCandidate)) {
+      // Keep the direct CDN lane as a real failover even when its signature
+      // looks IP-bound. Server liveness will prune it if this host cannot use
+      // it; dropping it here strands working titles when the proxy rewrites
+      // malformed child URIs or starts rejecting segment requests.
+      if (directCandidate && !sharedDirectAcrossLangs && isSafeUpstreamUrl(directCandidate)) {
         standbyUrl = directCandidate;
         standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
       }
@@ -950,11 +953,11 @@ async function fetchFromVidRock(
     const body = (await res.json()) as Record<string, unknown>;
     if (!body || typeof body !== 'object') return [];
 
-    const mediaHeaders: Record<string, string> = {
-      Referer: `${origin}/`,
-      Origin: origin,
-      'User-Agent': BROWSER_UA,
-    };
+    // VidRock's ngcorp media hosts reject real browser user agents and any
+    // vidrock.net Referer. Their accepted stream contract is a single-space
+    // UA with no Origin/Referer; the API request above intentionally uses
+    // different headers from the media requests.
+    const mediaHeaders: Record<string, string> = { 'User-Agent': ' ' };
 
     const out: RawStreamCandidate[] = [];
     const seen = new Set<string>();
@@ -996,6 +999,14 @@ async function fetchFromVidRock(
       }
 
       if (!streamUrl || !isSafeUpstreamUrl(streamUrl) || seen.has(streamUrl)) continue;
+      try {
+        const mediaHost = new URL(streamUrl).hostname.toLowerCase();
+        // Workers lanes are TLS/browser-gated and return a placeholder rather
+        // than an HLS manifest to the backend. Never advertise them as playable.
+        if (mediaHost === 'workers.dev' || mediaHost.endsWith('.workers.dev')) continue;
+      } catch {
+        continue;
+      }
       seen.add(streamUrl);
 
       let audioLang: string | undefined;
@@ -1061,13 +1072,16 @@ async function fetchFromVidLink(
 
     const apiSig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
     const res = await fetch(`${linkOrigin}${apiPath}`, {
-      headers: {
-        Accept: 'application/json',
-        Referer: `${linkOrigin}/`,
-        Origin: linkOrigin,
-        'User-Agent': BROWSER_UA,
-      },
-      signal: apiSig,
+        headers: {
+          Accept: 'application/json',
+          Referer: `${linkOrigin}/`,
+          Origin: linkOrigin,
+          'User-Agent': BROWSER_UA,
+          // Request the browser DASH delivery lane. Without this, VidLink
+          // returns requiresProxy MP4s that rate-limit non-browser relays.
+          'X-Playback-Environment': 'webkit',
+        },
+        signal: apiSig,
     });
     if (!res.ok) {
       if (res.status >= 500) tripSubOriginCooldown(linkOrigin);
@@ -1076,8 +1090,11 @@ async function fetchFromVidLink(
 
     const data = (await res.json()) as {
       stream?: {
+        type?: 'hls' | 'file' | 'dash';
         playlist?: string;
-        qualities?: Record<string, { type?: string; url?: string }>;
+        playlistHeaders?: Record<string, string>;
+        headers?: Record<string, string>;
+        qualities?: Record<string, { type?: string; url?: string; requiresProxy?: boolean }>;
         captions?: { url?: string; language?: string; label?: string }[];
       };
     };
@@ -1088,6 +1105,10 @@ async function fetchFromVidLink(
       Referer: `${linkOrigin}/`,
       Origin: linkOrigin,
       'User-Agent': BROWSER_UA,
+      // DASH delivery uses CloudFront signed cookies. Preserve them on the
+      // manifest and every rewritten child segment, exactly as provided.
+      ...(stream.playlistHeaders ?? {}),
+      ...(stream.headers ?? {}),
     };
 
     const subs = mapSubtitles(
@@ -1096,13 +1117,15 @@ async function fetchFromVidLink(
         lang: c.language || c.label,
         label: c.label || c.language,
       })),
+      mediaHeaders,
     );
 
     const out: RawStreamCandidate[] = [];
     if (typeof stream.playlist === 'string' && isSafeUpstreamUrl(stream.playlist)) {
+      const playlistType = inferStreamType(stream.type, stream.playlist);
       out.push({
-        key: `vlink:hls:${stream.playlist}`,
-        type: 'hls',
+        key: `vlink:${playlistType}:${stream.playlist}`,
+        type: playlistType,
         url: stream.playlist,
         headers: mediaHeaders,
         quality: 'auto',
@@ -1118,8 +1141,9 @@ async function fetchFromVidLink(
           height: parseInt(qKey.replace(/\D+/g, ''), 10) || 0,
           url: String(qObj?.url ?? '').trim(),
           type: qObj?.type,
+          requiresProxy: qObj?.requiresProxy === true,
         }))
-        .filter((r) => r.url && isSafeUpstreamUrl(r.url))
+        .filter((r) => r.url && !r.requiresProxy && isSafeUpstreamUrl(r.url))
         .sort((a, b) => b.height - a.height);
 
       if (rungs.length > 0) {

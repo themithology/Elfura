@@ -11,7 +11,11 @@
  *      (zero local disk writes, strictly adhering to `RULES.md`).
  */
 
-import { extractManifestAudioLangs, seedManifestRamCache } from '../relay.js';
+import {
+  extractManifestAudioLangs,
+  normalizeManifestUriReference,
+  seedManifestRamCache,
+} from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import type { RawStreamCandidate } from './types.js';
@@ -136,7 +140,7 @@ function pickHlsChildCheckTargets(masterText: string, baseUrl: string): string[]
   for (const raw of [variantUri, defaultAudioUri || firstAudioUri]) {
     if (!raw) continue;
     try {
-      const abs = new URL(raw, baseUrl).toString();
+      const abs = new URL(normalizeManifestUriReference(raw), baseUrl).toString();
       if (isSafeUpstreamUrl(abs) && !targets.includes(abs)) {
         targets.push(abs);
       }

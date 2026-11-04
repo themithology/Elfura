@@ -254,6 +254,16 @@ export function sanitizeSubRip(srtText: string): string {
   return `${kept.join('\n\n')}\n`;
 }
 
+/**
+ * Some live HLS producers escape underscores and slashes in playlist URIs
+ * (for example `hls\_mps`). WHATWG URL parsing treats a backslash in an HTTP
+ * path as a slash, producing a different, nonexistent CDN key. Normalize the
+ * producer's escapes before resolving or sealing every child reference.
+ */
+export function normalizeManifestUriReference(rawRef: string): string {
+  return rawRef.trim().replace(/\\([/_])/g, '$1');
+}
+
 function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlaylist: boolean): 'm' | 's' | 'a' | 'k' {
   if (expectVariantPlaylist) return 'm';
   if (/^#EXT-X-KEY:/i.test(tagLine)) return 'k';
@@ -413,7 +423,7 @@ export function rewriteHlsManifest(
   })();
 
   const wrapUrl = (rawRef: string, kind: 'm' | 's' | 'a' | 'k'): string => {
-    const trimmed = rawRef.trim();
+    const trimmed = normalizeManifestUriReference(rawRef);
     if (!trimmed || trimmed.startsWith('data:')) return rawRef;
     let abs: string;
     try {
@@ -536,7 +546,7 @@ function rewriteDashManifest(
 function collectSampleSegmentUrls(kind: 'hls' | 'dash', bodyText: string, baseUrl: string): Map<string, string> {
   const samplesByBucket = new Map<string, string>();
   const consider = (rawRef: string) => {
-    const trimmed = rawRef.trim();
+    const trimmed = normalizeManifestUriReference(rawRef);
     if (!trimmed || trimmed.startsWith('data:')) return;
     let abs: string;
     try {
