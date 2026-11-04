@@ -1,0 +1,24 @@
+name: Vidbolt live source probe
+
+on:
+  push:
+    branches:
+      - arena/dcf86284-elfura
+    paths:
+      - backend/test/live-vidbolt-probe.mjs
+      - .github/workflows/vidbolt-live-probe.yml
+      - backend/src/sources/source2.ts
+      - backend/src/config.ts
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve Vidbolt ReZero S1E1 and test real media bytes
+        run: node backend/test/live-vidbolt-probe.mjs
