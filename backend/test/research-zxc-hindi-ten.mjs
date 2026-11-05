@@ -130,10 +130,10 @@ async function test(item,server) {
       } catch { /* opaque URL */ }
       return { type:String(c.type||'unknown').replace(/[^a-z0-9_-]/gi,'').slice(0,16), shape: /^https?:/i.test(c.url) ? (blocked(c.url) ? 'excluded-host' : 'absolute') : c.url.startsWith('/') ? 'relative' : c.url ? 'opaque' : 'empty', hostClass, hostName, pathClass, wrapped, ext: /\.mpd(?:[?#]|$)/i.test(c.url) ? 'mpd' : /\.m3u8(?:[?#]|$)/i.test(c.url) ? 'm3u8' : 'other' };
     });
-    return `${item.id}/${server} sources=200 links=${candidates.length} shapes=${JSON.stringify(summary)} result=${typeof result==='object'?JSON.stringify(result):result} ms=${Date.now()-time}`;
+    return `${item.id}/${server} sources=200 links=${candidates.length} hosts=${summary.map(x=>x.hostName+":"+x.type).join("|")} result=${typeof result==='object'?JSON.stringify(result):result} ms=${Date.now()-time}`;
   } catch(e) { return `${item.id}/${server} error=${e.name} ms=${Date.now()-time}`; }
 }
 for (let i=0;i<cases.length;i+=2) {
   const results=await Promise.all(cases.slice(i,i+2).flatMap(item=>servers.map(server=>test(item,server))));
-  for (const result of results) console.log(`::notice title=ZxcHindiTen::${String(result).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
+  console.log(`::notice title=ZxcHindiTen::${JSON.stringify(results).replace(/%/g,'%25')}`);
 }
