@@ -28,7 +28,7 @@
 import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
-import { languageLabel, type AudioTrack } from '../core/audio';
+import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
 
 /* ---------------------------------------------------------------------- */
@@ -136,11 +136,32 @@ const esc = (s: string) =>
 type PanelMode = 'audiosubs' | 'quality' | 'sources' | 'speed' | 'style';
 
 const FALLBACK_LOADING_QUOTES: { quote: string; author: string }[] = [
-  { quote: 'Every great story begins with a single scene.', author: 'Elfura' },
-  { quote: 'The best seat in the house is wherever you are.', author: 'Elfura' },
-  { quote: 'A little escape, one episode at a time.', author: 'Elfura' },
-  { quote: 'Stories stay with us long after the screen goes dark.', author: 'Elfura' },
+  { quote: 'Every great story begins with a single scene.', author: '' },
+  { quote: 'The best seat in the house is wherever you are.', author: '' },
+  { quote: 'A little escape, one episode at a time.', author: '' },
+  { quote: 'Stories stay with us long after the screen goes dark.', author: '' },
+  { quote: 'Another world is only a play button away.', author: '' },
+  { quote: 'Some stories deserve just one more episode.', author: '' },
+  { quote: 'Every frame opens a door to somewhere new.', author: '' },
+  { quote: 'A quiet moment can hold an extraordinary adventure.', author: '' },
+  { quote: 'The next chapter is already waiting for you.', author: '' },
+  { quote: 'Great characters make even unfamiliar worlds feel like home.', author: '' },
+  { quote: 'Let the rest of the day wait while the story unfolds.', author: '' },
+  { quote: 'There is always more beyond the opening scene.', author: '' },
+  { quote: 'A good story turns spare minutes into memorable journeys.', author: '' },
+  { quote: 'New voices, new worlds, and a fresh perspective await.', author: '' },
+  { quote: 'The screen is small, but the adventure does not have to be.', author: '' },
+  { quote: 'Settle in. Something remarkable is about to begin.', author: '' },
 ];
+
+/** Presentation only: available tracks still come exclusively from runtime sources. */
+const audioBadgeLabel = (lang?: string | null): string => {
+  const canon = canonLang(lang);
+  if (canon === 'und' || canon === 'mul') return 'A';
+  const base = canon.split('-')[0];
+  if (base === 'hi') return 'हिं';
+  return base.toUpperCase();
+};
 
 interface DisplayMedia {
   mediaType: 'movie' | 'tv';
@@ -175,6 +196,7 @@ export class PlayerUI {
   private qualitySubText!: HTMLElement;
   private audioSubsBtn!: HTMLButtonElement;
   private audioCurrentLabel!: HTMLElement;
+  private audioCurrentBadge!: HTMLElement;
   private lockBtn!: HTMLButtonElement;
 
   /* Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV only) */
@@ -235,6 +257,8 @@ export class PlayerUI {
   private loadingQuoteTimer = 0;
   private loadingQuoteIndex = 0;
   private loadingQuoteAbort: AbortController | null = null;
+  private loadingQuoteSession = 0;
+  private loadingQuoteHistory = new Set<string>();
   private loadingActive = false;
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
@@ -404,8 +428,9 @@ export class PlayerUI {
     this.audioSubsBtn.title = 'Audio & subtitles';
     this.audioSubsBtn.setAttribute('aria-label', 'Change audio and subtitles');
     this.audioSubsBtn.setAttribute('aria-haspopup', 'dialog');
-    this.audioSubsBtn.innerHTML = `${I.audioSubsBox}<span class="elf-audio-current">Audio</span>`;
+    this.audioSubsBtn.innerHTML = `<span class="elf-audio-badge" aria-hidden="true">A</span><span class="elf-audio-current">Audio</span>`;
     this.audioCurrentLabel = this.audioSubsBtn.querySelector('.elf-audio-current') as HTMLElement;
+    this.audioCurrentBadge = this.audioSubsBtn.querySelector('.elf-audio-badge') as HTMLElement;
     this.audioSubsBtn.onclick = () => this.togglePanel('audiosubs');
 
     this.lockBtn = el('button', 'elf-top-btn elf-lock-trigger') as HTMLButtonElement;
@@ -757,28 +782,46 @@ export class PlayerUI {
 
   private showInitialLoading(): void {
     this.loadingActive = true;
+    const session = ++this.loadingQuoteSession;
+    if (this.loadingQuoteHistory.size > 64) this.loadingQuoteHistory.clear();
     this.player.shell.dataset.initialLoading = 'true';
     this.player.shell.dataset.unavailable = 'false';
     this.loadingScreen.dataset.visible = 'true';
     this.unavailableScreen.dataset.visible = 'false';
     this.loadingStatus.textContent = 'Finding the best available source…';
     this.syncStateArtwork(this.resolveDisplayMedia());
-    this.setLoadingQuote(FALLBACK_LOADING_QUOTES[this.loadingQuoteIndex % FALLBACK_LOADING_QUOTES.length]);
-    clearTimeout(this.loadingQuoteTimer);
+    this.showNextFallbackQuote();
+    clearInterval(this.loadingQuoteTimer);
+    void this.fetchLoadingQuote(session);
     this.loadingQuoteTimer = window.setInterval(() => {
-      if (!this.loadingActive) return;
-      this.loadingQuoteIndex = (this.loadingQuoteIndex + 1) % FALLBACK_LOADING_QUOTES.length;
-      this.setLoadingQuote(FALLBACK_LOADING_QUOTES[this.loadingQuoteIndex]);
+      if (!this.loadingActive || session !== this.loadingQuoteSession) return;
+      // Keep something fresh on screen immediately, then replace it with a new
+      // live quote as soon as the request resolves. No repeated four-quote loop.
+      this.showNextFallbackQuote();
+      void this.fetchLoadingQuote(session);
     }, 6500);
-    void this.fetchLoadingQuote();
+  }
+
+  private showNextFallbackQuote(): void {
+    let item = FALLBACK_LOADING_QUOTES[this.loadingQuoteIndex % FALLBACK_LOADING_QUOTES.length];
+    for (let i = 0; i < FALLBACK_LOADING_QUOTES.length; i++) {
+      const candidate = FALLBACK_LOADING_QUOTES[(this.loadingQuoteIndex + i) % FALLBACK_LOADING_QUOTES.length];
+      if (!this.loadingQuoteHistory.has(candidate.quote)) {
+        item = candidate;
+        this.loadingQuoteIndex = (this.loadingQuoteIndex + i + 1) % FALLBACK_LOADING_QUOTES.length;
+        break;
+      }
+    }
+    this.setLoadingQuote(item);
   }
 
   private setLoadingQuote(item: { quote: string; author: string }): void {
+    this.loadingQuoteHistory.add(item.quote);
     this.loadingQuote.textContent = `“${item.quote}”`;
     this.loadingQuoteAuthor.textContent = item.author ? `— ${item.author}` : '';
   }
 
-  private async fetchLoadingQuote(): Promise<void> {
+  private async fetchLoadingQuote(session: number, allowDuplicateRetry = true): Promise<void> {
     this.loadingQuoteAbort?.abort();
     const controller = new AbortController();
     this.loadingQuoteAbort = controller;
@@ -793,11 +836,14 @@ export class PlayerUI {
       const data = (await res.json()) as { q?: unknown; a?: unknown }[] | null;
       const quote = String(data?.[0]?.q ?? '').trim();
       const author = String(data?.[0]?.a ?? '').trim();
-      if (this.loadingActive && quote && quote.length <= 280) {
-        this.setLoadingQuote({ quote, author: author.slice(0, 90) });
+      if (!this.loadingActive || session !== this.loadingQuoteSession || !quote || quote.length > 280) return;
+      if (this.loadingQuoteHistory.has(quote)) {
+        if (allowDuplicateRetry) void this.fetchLoadingQuote(session, false);
+        return;
       }
+      this.setLoadingQuote({ quote, author: author.slice(0, 90) });
     } catch {
-      /* Offline/CORS failures retain the immediate local quote. */
+      /* Offline/CORS failures retain the larger, non-repeating local fallback set. */
     } finally {
       clearTimeout(timeout);
       if (this.loadingQuoteAbort === controller) this.loadingQuoteAbort = null;
@@ -806,7 +852,8 @@ export class PlayerUI {
 
   private hideInitialLoading(): void {
     this.loadingActive = false;
-    clearTimeout(this.loadingQuoteTimer);
+    this.loadingQuoteSession++;
+    clearInterval(this.loadingQuoteTimer);
     this.loadingQuoteTimer = 0;
     this.loadingQuoteAbort?.abort();
     this.loadingQuoteAbort = null;
@@ -1603,7 +1650,7 @@ export class PlayerUI {
     const lang = selected?.lang ?? st.audioLang ?? source?.audioLang ?? null;
     const label = selected?.label ?? (lang && lang !== 'und' ? languageLabel(lang) : 'Audio');
     this.audioCurrentLabel.textContent = label;
-    this.audioSubsBtn.dataset.hasLanguage = String(Boolean(lang && lang !== 'und'));
+    this.audioCurrentBadge.textContent = audioBadgeLabel(lang);
     this.audioSubsBtn.setAttribute(
       'aria-label',
       lang && lang !== 'und' ? `Audio: ${label}. Change audio and subtitles` : 'Change audio and subtitles',
@@ -2174,13 +2221,13 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        listAudio.appendChild(
-          this.row(t.label, selected ? 'Selected' : '', selected, () => {
-            this.hasRenderedAudioSelection = true;
-            void this.player.setAudio(t.id);
-            this.renderPanelBody();
-          }),
-        );
+        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
+          this.hasRenderedAudioSelection = true;
+          void this.player.setAudio(t.id);
+          this.renderPanelBody();
+        }, audioBadgeLabel(t.lang));
+        row.classList.add('elf-audio-option');
+        listAudio.appendChild(row);
       }
     } else {
       listAudio.appendChild(this.row('Original', '', true, () => {}));
@@ -2345,11 +2392,11 @@ export class PlayerUI {
     }
   }
 
-  private row(label: string, sub: string, selected: boolean, onClick: () => void) {
+  private row(label: string, sub: string, selected: boolean, onClick: () => void, badge?: string) {
     const b = el('button', 'elf-menu-item') as HTMLButtonElement;
     b.dataset.selected = String(selected);
     b.setAttribute('aria-pressed', String(selected));
-    b.innerHTML = `<span class="elf-mi-check">${I.check}</span><span class="elf-mi-label">${esc(label)}${
+    b.innerHTML = `${badge ? `<span class="elf-mi-lang" aria-hidden="true">${esc(badge)}</span>` : ''}<span class="elf-mi-check">${I.check}</span><span class="elf-mi-label">${esc(label)}${
       sub ? `<span class="elf-mi-sub"> · ${esc(sub)}</span>` : ''
     }</span>`;
     b.onclick = onClick;

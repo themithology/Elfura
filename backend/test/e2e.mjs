@@ -1719,6 +1719,79 @@ try {
 
   player.destroy();
 
+  // 7b. An early probe win aborts the rest of its wave. Aborted candidates were
+  // previously mislabeled as language-rejected and skipped by the engine fallback.
+  // Prove that a later multi-audio source is tried, and that no-winner races also
+  // exhaust every candidate before reporting a language unavailable.
+  const searchPlayer = new ElfuraPlayer({ postMessage: false });
+  const searchSources = [
+    {
+      id: 'initial-en', sourceId: 'source-1', label: 'Source 1', type: 'mp4',
+      url: 'https://cdn.example.com/initial-en.mp4', quality: '720p', audioLang: 'en',
+      audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'multi-bad', sourceId: 'source-1', label: 'Source 1', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=multi-bad', quality: '1080p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-bad-fp',
+      latencyHintMs: 1, audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'multi-good', sourceId: 'source-2', label: 'Source 2', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=multi-good', quality: '720p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-good-fp',
+      latencyHintMs: 500, audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'direct-hi', sourceId: 'source-2', label: 'Source 2', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=direct-hi', quality: '1080p',
+      audioLang: 'hi', fingerprint: 'direct-hi-fp', latencyHintMs: 1,
+      audioTracks: [], subtitles: [],
+    },
+  ];
+  searchPlayer.sources = searchSources;
+  searchPlayer.currentSource = searchSources[0];
+  let languageAttempts = [];
+  let racedOrder = [];
+  searchPlayer.raceCandidatesBatch = async (wave) => {
+    racedOrder = wave.map((s) => s.id);
+    // Only multi-bad answered; every other candidate was aborted/unknown.
+    return { winner: wave[0], winners: [wave[0]], failed: [], rejected: [] };
+  };
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: opt.id === 'multi-good' };
+  };
+  const recoveredHindi = await searchPlayer.searchRawSourcesForLanguage('hi', 'Hindi');
+  assert.equal(recoveredHindi, true, 'Later multi-audio source must recover after the first winner rejects Hindi');
+  assert.deepEqual(racedOrder, ['multi-bad', 'multi-good', 'direct-hi'], 'Multi-audio must precede direct Hindi regardless of latency');
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good'], 'Aborted multi-good probe must receive a real engine attempt');
+  assert.equal(searchPlayer.getState().audioLang, 'hi');
+
+  // Even when a direct Hindi stream is already healthy, explicit selection must
+  // not bypass the higher-priority multi-audio tier.
+  languageAttempts = [];
+  searchPlayer.currentSource = searchSources[3];
+  searchPlayer.video.readyState = 2;
+  const prioritizedHindi = await searchPlayer.setAudio('hi');
+  assert.equal(prioritizedHindi, true);
+  assert.equal(searchPlayer.getState().source, 'multi-good');
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good']);
+
+  languageAttempts = [];
+  searchPlayer.currentSource = searchSources[0];
+  searchPlayer.raceCandidatesBatch = async () => ({ winner: null, winners: [], failed: [], rejected: [] });
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: false };
+  };
+  const exhaustiveMiss = await searchPlayer.searchRawSourcesForLanguage('hi', 'Hindi');
+  assert.equal(exhaustiveMiss, false);
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good', 'direct-hi'], 'Unavailable requires an actual attempt for every compatible source');
+  searchPlayer.destroy();
+
   // 8. Verify full 30-server Source 2 harvesting + latency ordering + Ukr->uk canonicalization on movie/533535
   const sess533535Res = await fetch(`${apiBase}/api/v1/session`, {
     method: 'POST',
@@ -2118,6 +2191,8 @@ try {
     'elf-title-cartoon',
     'elf-audio-quick',
     'elf-audio-current',
+    'elf-audio-badge',
+    'elf-mi-lang',
     'elf-episodes-btn',
     'elf-epw-thumb',
     'elf-loading-screen',
@@ -2143,6 +2218,8 @@ try {
     '.elf-pause-screen',
     '.elf-title-cartoon',
     '.elf-audio-quick',
+    '.elf-audio-option',
+    '.elf-audio-badge',
     '.elf-episodes-btn',
     '.elf-epw-thumb',
     '.elf-loading-screen',

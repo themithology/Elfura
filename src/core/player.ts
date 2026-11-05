@@ -431,9 +431,9 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Dynamically re-ranks `this.sources` so whichever server is fastest for the
-   * currently selected language (explicitly including Multi-Audio servers alongside
-   * direct language servers) sits at #1 on top of the hierarchy.
+   * Dynamically re-ranks sources for the selected language. Compatible
+   * multi-audio sources are a strict tier above direct single-language sources;
+   * measured speed and quality rank candidates within each tier.
    */
   reorderSourcesHierarchy(preferredLang?: string | null): void {
     if (this.sources.length <= 1) return;
@@ -444,6 +444,7 @@ export class ElfuraPlayer {
     const tierFor = (s: SourceOption): number => {
       if (this.isCandidateFailed(s)) return 9;
       if (lang && lang !== 'und') {
+        if (this.currentSource?.id === s.id && this.desiredAudioLang === lang) return -1;
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
@@ -451,7 +452,7 @@ export class ElfuraPlayer {
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         // Keep Multi-Audio streams whose internal tracks haven't been ruled out right in Tier 0
         // so fast Multi-Audio servers rank by true speed alongside direct language servers!
-        if (hasConfirmedMatch || (s.multiAudio && !s.availableAudioLangs?.length)) return 0;
+        if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
       if (s.multiAudio) return 0;
@@ -463,6 +464,8 @@ export class ElfuraPlayer {
     this.sources.sort((a, b) => {
       const tDiff = tierFor(a) - tierFor(b);
       if (tDiff !== 0) return tDiff;
+      const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
+      if (multiDiff !== 0) return multiDiff;
       const sDiff = this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b);
       if (Math.abs(sDiff) > 4) return sDiff;
       return this.qualityRank(b) - this.qualityRank(a);
@@ -586,7 +589,7 @@ export class ElfuraPlayer {
     targetLang: string | null,
     signal: AbortSignal,
     timeoutMs = 3200,
-  ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number }> {
+  ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number; languageRejected?: boolean }> {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
 
@@ -622,7 +625,7 @@ export class ElfuraPlayer {
             matchScore(targetLang, opt.audioLang ?? 'und') >= 0 ||
             (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0) ||
             !!opt.multiAudio;
-          if (!matches) return { ok: false, loadFailed: false, rttMs: rtt };
+          if (!matches) return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
         }
         return { ok: true, loadFailed: false, rttMs: rtt };
       }
@@ -699,10 +702,10 @@ export class ElfuraPlayer {
               }
             }
             if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
-              return { ok: false, loadFailed: false, rttMs: rtt };
+              return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
           } else if (opt.multiAudio && !opt.availableAudioLangs?.length && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
-            return { ok: false, loadFailed: false, rttMs: rtt };
+            return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
           }
         }
       }
@@ -757,19 +760,20 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Concurrently races a batch of candidate servers (both Multi-Audio and Direct!)
-   * and settles immediately when a fast HD / Multi-Audio server answers (with only
-   * a 25ms tie-breaker if an SD stream finishes just ahead of an HD stream).
+   * Concurrently races candidates. Multi-audio responses win their class first;
+   * direct streams cannot abort an unanswered multi-audio probe merely by being
+   * faster. Quality receives only a short 25ms tie-break inside each class.
    */
   private async raceCandidatesBatch(
     batch: SourceOption[],
     targetLang: string | null,
     probeTimeoutMs = 3200,
-  ): Promise<{ winner: SourceOption | null; winners: SourceOption[]; failed: SourceOption[] }> {
-    if (batch.length === 0) return { winner: null, winners: [], failed: [] };
+  ): Promise<{ winner: SourceOption | null; winners: SourceOption[]; failed: SourceOption[]; rejected: SourceOption[] }> {
+    if (batch.length === 0) return { winner: null, winners: [], failed: [], rejected: [] };
 
     const controllers = batch.map(() => new AbortController());
     const failed: SourceOption[] = [];
+    const rejected: SourceOption[] = [];
     const successes: { opt: SourceOption; rttMs: number; rank: number }[] = [];
     let pending = batch.length;
     let settled = false;
@@ -779,7 +783,9 @@ export class ElfuraPlayer {
       const rankSuccesses = (): SourceOption[] => {
         if (!successes.length) return [];
         successes.sort((a, b) => {
-          // Whichever server responded genuinely faster wins; break near-ties (<=30ms) by quality/Multi-Audio
+          // Multi-audio is a strict product priority; speed ranks candidates within each class.
+          const multiDiff = Number(Boolean(b.opt.multiAudio)) - Number(Boolean(a.opt.multiAudio));
+          if (multiDiff !== 0) return multiDiff;
           const rttGap = a.rttMs - b.rttMs;
           if (Math.abs(rttGap) > 30) return rttGap;
           return b.rank - a.rank || rttGap;
@@ -799,7 +805,7 @@ export class ElfuraPlayer {
           }
         }
         const winners = rankSuccesses();
-        resolve({ winner: winners[0] ?? null, winners, failed });
+        resolve({ winner: winners[0] ?? null, winners, failed, rejected });
       };
 
       batch.forEach((opt, idx) => {
@@ -813,6 +819,17 @@ export class ElfuraPlayer {
             // If this winner is already >= 960 rank (1080p / Auto / Multi-Audio), settle in 0ms!
             // Only wait 25ms if a low-res (<720p) stream beat a still-in-flight HD/Multi-Audio stream.
             const isFastHdOrMulti = optRank >= 960;
+            const hasMultiInFlight =
+              !opt.multiAudio &&
+              batch.some(
+                (other, j) =>
+                  j !== idx &&
+                  other.multiAudio &&
+                  !controllers[j].signal.aborted &&
+                  !failed.includes(other) &&
+                  !rejected.includes(other) &&
+                  !successes.some((s) => s.opt.id === other.id),
+              );
             const hasHigherInFlight =
               !isFastHdOrMulti &&
               batch.some(
@@ -823,15 +840,18 @@ export class ElfuraPlayer {
                   !failed.includes(other) &&
                   !successes.some((s) => s.opt.id === other.id),
               );
-            if (!hasHigherInFlight || pending === 0) {
+            // Never let a single-language result abort a compatible multi-audio
+            // probe merely because the single-language manifest answered first.
+            if (pending === 0 || (!hasMultiInFlight && !hasHigherInFlight)) {
               finish();
               return;
             }
-            if (!graceTimer) {
+            if (!hasMultiInFlight && !graceTimer) {
               graceTimer = setTimeout(() => finish(), 25);
             }
           } else {
             if (res.loadFailed) failed.push(opt);
+            else if (res.languageRejected) rejected.push(opt);
             if (pending === 0) {
               finish();
             }
@@ -845,6 +865,13 @@ export class ElfuraPlayer {
     allSources: SourceOption[],
     fallbackPrimary: SourceOption,
   ): Promise<SourceOption> {
+    const multiPool = allSources
+      .filter((s) => s.multiAudio && !this.isCandidateFailed(s))
+      .sort((a, b) => this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b));
+    if (multiPool.length > 0 && !multiPool.some((s) => this.canPreProbeViaFetch(s))) {
+      return multiPool[0];
+    }
+
     const preferredPool = allSources.filter((s) => {
       if (this.isCandidateFailed(s) || !this.canPreProbeViaFetch(s)) return false;
       if (s.multiAudio) return true;
@@ -861,6 +888,7 @@ export class ElfuraPlayer {
 
     const sortedPool = [...pool].sort(
       (a, b) =>
+        Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
         this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
         this.qualityRank(b) - this.qualityRank(a),
     );
@@ -1177,9 +1205,14 @@ export class ElfuraPlayer {
     this.desiredAudioLang = targetLang;
 
     const currentHealthy = !!this.currentSource && !this.isCandidateFailed(this.currentSource);
+    const mustPrioritizeMulti =
+      targetLang !== 'und' &&
+      !this.currentSource?.multiAudio &&
+      this.sources.some((s) => s.multiAudio && !this.isCandidateFailed(s));
 
-    // 1) Try instant in-band native track on the currently active healthy stream
-    if (currentHealthy || (!this.sources.length && this.audioTracks.length > 0)) {
+    // A direct stream must not short-circuit the search when multi-audio is available.
+    // Otherwise selecting the same direct language would permanently pin the lower-priority source.
+    if (!mustPrioritizeMulti && (currentHealthy || (!this.sources.length && this.audioTracks.length > 0))) {
       const nativeMatch =
         exactTrack?.kind === 'native'
           ? exactTrack
@@ -1290,17 +1323,18 @@ export class ElfuraPlayer {
       if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
       if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
       if ((s.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0)) return true;
-      // Include Multi-Audio streams whose internal tracks haven't been inspected yet RIGHT IN
-      // the primary speed race (never bury fast Multi-Audio Hindi behind slow direct Hindi dubs!).
-      if (s.multiAudio && !s.availableAudioLangs?.length) return true;
+      // Provider language summaries can be incomplete. Every multi-audio source
+      // remains eligible until its real manifest/engine rejects the target language.
+      if (s.multiAudio) return true;
       return false;
     };
 
-    // Unify Multi-Audio Hindi + Untagged Multi-Audio + Direct Hindi into ONE dynamic speed-ranked pool!
+    // Multi-audio candidates always precede direct single-language streams.
     const candidates = this.sources
       .filter((s) => !this.isCandidateFailed(s) && !excludeIds.has(s.id) && matchesOrCanCarryLang(s))
       .sort(
         (a, b) =>
+          Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
           this.qualityRank(b) - this.qualityRank(a),
       );
@@ -1384,10 +1418,14 @@ export class ElfuraPlayer {
       }
       if (!wave.length) continue;
 
-      const { winners, failed } = await this.raceCandidatesBatch(wave, targetLang);
+      const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
       if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
       for (const f of failed) this.markCandidateFailed(f);
+      for (const r of rejected) {
+        triedEngineIds.add(r.id);
+        if (r.fingerprint) rejectedFingerprints.add(r.fingerprint);
+      }
 
       if (winners.length > 0) {
         for (const w of winners) {
@@ -1405,18 +1443,9 @@ export class ElfuraPlayer {
           if (attachRes.loadFailed) this.markCandidateFailed(w);
           if (fp) rejectedFingerprints.add(fp);
         }
-        // Mark any remaining wave entries that answered negatively as language-rejected
-        for (const w of wave) {
-          if (!winners.some((okW) => okW.id === w.id)) {
-            if (w.fingerprint) rejectedFingerprints.add(w.fingerprint);
-            triedEngineIds.add(w.id);
-          }
-        }
-      } else {
-        for (const w of wave) {
-          if (w.fingerprint) rejectedFingerprints.add(w.fingerprint);
-          triedEngineIds.add(w.id);
-        }
+        // Do NOT reject the other wave entries here. raceCandidatesBatch may
+        // have aborted them before their manifests answered. Phase B below must
+        // still give every untried candidate a real engine-level opportunity.
       }
     }
 
