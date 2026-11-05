@@ -3452,8 +3452,8 @@ try {
 
       assert.deepEqual(
         [...requestedNxProviders].sort(),
-        ['awsind', 'bdxs', 'mhbox', 'nitro', 'showbox-online', 'stvv', 'vidapi', 'watchout'].sort(),
-        'Current multi-language providers must fit the bounded probe set; disabled/app-only servers must be skipped',
+        ['awsind', 'bdxs', 'mhbox', 'nitro', 'showbox-online', 'streamflix', 'vidapi', 'watchout'].sort(),
+        'Measured multi-language providers must fit the bounded probe set; disabled/app-only servers must be skipped',
       );
       const awsCand = s2Out.candidates.find((c) => c.url.includes('/awsind/multi.m3u8'));
       assert(awsCand, 'Expected current AwsPly provider candidate');

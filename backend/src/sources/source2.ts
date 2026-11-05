@@ -500,20 +500,28 @@ const VS_FIELDS = {
 // `/api/servers` remains authoritative; this order only chooses which healthy
 // providers fit inside the bounded probe set and provides a fallback if discovery fails.
 const NX_PRIORITY_SERVERS = [
+  // Order grounded in the measured NX_TV_SERVERS list from the open-source
+  // TJ-Plugins/Nuvio clients (servers that actually returned links on real
+  // titles), multi-language scrapers first.
+  'mhbox',
   'awsind', // AwsPly
+  'rive-citadel', // Citadel
   'nitro', // Nitro
+  'em-8',
+  'xdownloader', // XDrop
+  'castle', // CastVid
+  'k4khdhub',
+  'streamflix', // StremFx
+  'vidapi',
+  'hdhub4u-direct',
+  'rive-flowcast',
+  'vixolity', // Vixo
+  'k4khdhub-direct',
   'watchout', // Multi-bill
   'bdxs', // Multi-blue
   'showbox-online', // Xuhd
   'stvv', // Stvvid
-  'vidapi',
-  'mhbox',
-  'rive-citadel', // Citadel
-  'castle', // CastVid
-  'streamflix', // StremFx
-  'xdownloader', // XDrop
   'purstream', // PureWave
-  'vixolity', // Vixo
   'rive-primevids', // Prvibd
   'ophim', // Ophm
   'rive-hindicast', // VidHindi
@@ -571,14 +579,24 @@ function isS2OriginCoolingDown(origin?: string): boolean {
   return false;
 }
 
-function tripS2OriginCooldown(origin?: string): void {
+function tripS2OriginCooldown(origin?: string, durationMs = S2_ORIGIN_COOLDOWN_MS): void {
   if (!origin || isLoopbackHost(origin)) return;
   if (deadS2OriginUntil.size >= 64) {
     const oldest = deadS2OriginUntil.keys().next().value;
     if (oldest !== undefined) deadS2OriginUntil.delete(oldest);
   }
-  deadS2OriginUntil.set(origin, Date.now() + S2_ORIGIN_COOLDOWN_MS);
+  deadS2OriginUntil.set(origin, Date.now() + durationMs);
 }
+
+/**
+ * VidStuck rate-limits its token endpoint aggressively (HTTP 429 for ~10s
+ * when traffic bursts). Working clients therefore mint ONE token per
+ * server+title and reuse it for server, dub, and retry calls. We cache
+ * tokens briefly instead of minting per request.
+ */
+const vsTokenCache = new Map<string, { token: string; ts: number | string; expiresAt: number }>();
+const VS_TOKEN_TTL_MS = 45_000;
+const VS_RATE_LIMIT_COOLDOWN_MS = 20_000;
 
 function evpBytesToKey(pass: string, salt: Buffer): { key: Buffer; iv: Buffer } {
   const passBuf = Buffer.from(pass, 'utf8');
@@ -1005,7 +1023,20 @@ async function fetchFromVidStuck(
   };
 
   const vsDiag = { mintOk: 0, mintTotal: 0, statuses: [] as string[] };
-  const mintRaider = async (serverId: string): Promise<{ token: string; ts: number | string } | null> => {
+  const vsTokenKey = (serverId: string) =>
+    `${vsOrigin}|${serverId}|${query.type}|${query.tmdbId}|${query.season ?? 0}|${query.episode ?? 0}`;
+  const mintRaider = async (
+    serverId: string,
+    forceFresh = false,
+  ): Promise<{ token: string; ts: number | string } | null> => {
+    const cacheKey = vsTokenKey(serverId);
+    if (!forceFresh) {
+      const hit = vsTokenCache.get(cacheKey);
+      if (hit && Date.now() <= hit.expiresAt) {
+        vsDiag.mintOk++;
+        return { token: hit.token, ts: hit.ts };
+      }
+    }
     vsDiag.mintTotal++;
     try {
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3200)]) : AbortSignal.timeout(3200);
@@ -1026,7 +1057,9 @@ async function fetchFromVidStuck(
       });
       if (res.status === 429 || res.status >= 500) {
         vsDiag.statuses.push(`mint:${res.status}`);
-        tripS2OriginCooldown(vsOrigin);
+        // VidStuck's limit window is ~10s; a 5-minute self-ban turns a
+        // transient limit into a long Source 2 outage.
+        tripS2OriginCooldown(vsOrigin, res.status === 429 ? VS_RATE_LIMIT_COOLDOWN_MS : S2_ORIGIN_COOLDOWN_MS);
         return null;
       }
       if (!res.ok) {
@@ -1036,6 +1069,7 @@ async function fetchFromVidStuck(
       const j = (await res.json()) as { token?: string; ts?: number | string };
       if (j?.token && j?.ts !== undefined) {
         vsDiag.mintOk++;
+        vsTokenCache.set(cacheKey, { token: j.token, ts: j.ts, expiresAt: Date.now() + VS_TOKEN_TTL_MS });
         return { token: j.token, ts: j.ts };
       }
       vsDiag.statuses.push('mint:no-token');
@@ -1105,26 +1139,34 @@ async function fetchFromVidStuck(
   }
 
   const fetchServer = async (srv: string, extra: Record<string, string> = {}): Promise<VsServerPayload | null> => {
-    const tok = await mintRaider(srv);
-    if (!tok) return null;
-    try {
-      const qs = buildVsParams(tok, srv, extra).toString();
-      const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
-      const res = await fetch(`${vsOrigin}/backend/servers/${srv}?${qs}`, {
-        headers: apiHeaders,
-        signal: sig,
-      });
-      if (res.status === 429) {
-        vsDiag.statuses.push(`${srv}:429`);
-        tripS2OriginCooldown(vsOrigin);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const tok = await mintRaider(srv, attempt > 0);
+      if (!tok) return null;
+      try {
+        const qs = buildVsParams(tok, srv, extra).toString();
+        const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
+        const res = await fetch(`${vsOrigin}/backend/servers/${srv}?${qs}`, {
+          headers: apiHeaders,
+          signal: sig,
+        });
+        if (res.status === 401 && attempt === 0) {
+          // Token rejected/expired: drop it and retry once with a fresh mint.
+          vsTokenCache.delete(vsTokenKey(srv));
+          continue;
+        }
+        if (res.status === 429) {
+          vsDiag.statuses.push(`${srv}:429`);
+          tripS2OriginCooldown(vsOrigin, VS_RATE_LIMIT_COOLDOWN_MS);
+          return null;
+        }
+        if (!res.ok) vsDiag.statuses.push(`${srv}:${res.status}`);
+        return res.ok ? ((await res.json()) as VsServerPayload) : null;
+      } catch (err) {
+        vsDiag.statuses.push(`${srv}:${err instanceof Error ? err.name : 'error'}`);
         return null;
       }
-      if (!res.ok) vsDiag.statuses.push(`${srv}:${res.status}`);
-      return res.ok ? ((await res.json()) as VsServerPayload) : null;
-    } catch (err) {
-      vsDiag.statuses.push(`${srv}:${err instanceof Error ? err.name : 'error'}`);
-      return null;
     }
+    return null;
   };
 
   const fetchVsSubs = async (): Promise<RawTrackRef[]> => {
@@ -1148,14 +1190,27 @@ async function fetchFromVidStuck(
     }
   };
 
-  const [orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes, vsSubs] = await Promise.all([
-    fetchServer('orion'),
-    fetchServer('andromeda'),
-    fetchServer('atlas'),
-    fetchServer('daedalus'),
-    fetchServer('ursa'),
+  // Staged fan-out (researched client behavior): VidStuck's token endpoint
+  // rate-limits bursts, so ask the three distinct-file servers first and
+  // only spend tokens on the mirrors when those come back empty.
+  const hasLinks = (p: VsServerPayload | null) =>
+    Array.isArray(p?.links ?? p?.data?.links) && ((p?.links ?? p?.data?.links)?.length ?? 0) > 0;
+  const [firstWave, vsSubs] = await Promise.all([
+    Promise.all([fetchServer('orion'), fetchServer('atlas'), fetchServer('daedalus')]),
     fetchVsSubs(),
   ]);
+  let [orionRes, atlasRes, daedalusRes] = firstWave;
+  let andromedaRes: VsServerPayload | null = null;
+  let ursaRes: VsServerPayload | null = null;
+  if (!hasLinks(orionRes) && !query.signal?.aborted) {
+    // Orion occasionally answers empty on the first hit; one retry with the
+    // same cached token recovers it in the reference clients.
+    await new Promise((r) => setTimeout(r, 1200));
+    orionRes = (await fetchServer('orion')) ?? orionRes;
+  }
+  if (!hasLinks(orionRes) && !hasLinks(atlasRes) && !hasLinks(daedalusRes)) {
+    [andromedaRes, ursaRes] = await Promise.all([fetchServer('andromeda'), fetchServer('ursa')]);
+  }
 
   // Unlock Orion regional dubs (Hindi + preferredLang) dynamically when advertised.
   const advertisedDubs = orionRes?.dubs ?? orionRes?.data?.dubs ?? [];
