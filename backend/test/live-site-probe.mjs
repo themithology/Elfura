@@ -109,6 +109,30 @@ if (primaryUrl) {
       `primary manifest: HTTP ${res.status} in ${Math.round(performance.now() - t0)}ms kind=${kind} bytes=${text.length}`,
     );
     if (!res.ok || kind === 'other') failures++;
+    // Time the first real media segment referenced by the (rewritten) manifest.
+    if (res.ok && kind === 'HLS') {
+      const segRef = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
+      if (segRef) {
+        try {
+          const segUrl = new URL(segRef, abs).toString();
+          const s0 = performance.now();
+          const segRes = await fetch(segUrl, {
+            headers: { 'User-Agent': UA, Origin: SITE, Referer: `${SITE}/`, Range: 'bytes=0-1023', ...(token ? { 'X-Playback-Token': token } : {}) },
+            signal: AbortSignal.timeout(20_000),
+          });
+          const buf = segRes.body ? Buffer.from(await segRes.arrayBuffer()) : Buffer.alloc(0);
+          annotate(
+            segRes.ok || segRes.status === 206 ? 'notice' : 'error',
+            'SiteSegment',
+            `first segment: HTTP ${segRes.status} in ${Math.round(performance.now() - s0)}ms bytes=${buf.byteLength}`,
+          );
+          if (!(segRes.ok || segRes.status === 206) || !buf.byteLength) failures++;
+        } catch (e) {
+          failures++;
+          annotate('error', 'SiteSegment', `first segment failed: ${e.message}`);
+        }
+      }
+    }
   } catch (e) {
     failures++;
     annotate('error', 'SiteStream', `primary manifest failed: ${e.message}`);

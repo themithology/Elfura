@@ -744,9 +744,9 @@ async function readBoundedText(res: Response, maxBytes: number): Promise<string>
   return Buffer.concat(chunks).toString('utf8');
 }
 
-const MAX_MANIFEST_RAM_ENTRIES = 128;
+const MAX_MANIFEST_RAM_ENTRIES = 256;
 const MAX_CACHEABLE_MANIFEST_BYTES = 262_144;
-const MANIFEST_RAM_TTL_MS = 45_000;
+const MANIFEST_RAM_TTL_MS = 180_000;
 
 interface CachedUpstreamManifest {
   expiresAt: number;
@@ -954,7 +954,13 @@ export async function handleStreamRelay(
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
       redirect: 'follow',
-      signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(25_000)]),
+      signal: AbortSignal.any([
+        abortController.signal,
+        // Manifests must fail fast so the player can fail over to the next
+        // source instead of spinning on a slow upstream; media segments get
+        // a longer window because they are larger and range-driven.
+        AbortSignal.timeout(ticket.k === 'm' ? 12_000 : 25_000),
+      ]),
     });
 
     const finalUrl = upstreamRes.url || ticket.u;
