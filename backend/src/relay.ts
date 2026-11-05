@@ -1069,8 +1069,31 @@ export async function handleStreamRelay(
       return;
     }
 
+    // VixSrc serves AES-encrypted transport streams with a text/html MIME type.
+    // Peek before forwarding, and still reject actual HTML challenge/error pages.
+    let sniffedStream: Readable | undefined;
+    const vixMedia = ticket.k === 'a' && /^https?:\/\/(?:[a-z0-9-]+\.)*vixsrc\.to(?::\d+)?(?:\/|$)/i.test(ticket.h?.Referer || ticket.h?.referer || '');
+    if (vixMedia && ct.includes('text/html') && req.method !== 'HEAD' && upstreamRes.body) {
+      const reader = upstreamRes.body.getReader();
+      const first = await reader.read();
+      const lead = Buffer.from(first.value || []).toString('utf8').trimStart();
+      if (first.done || /^<!doctype\s+html\b|^<html\b/i.test(lead)) {
+        await reader.cancel().catch(() => {});
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
+        return;
+      }
+      sniffedStream = Readable.from((async function* () {
+        try {
+          if (first.value) yield first.value;
+          for (;;) { const part = await reader.read(); if (part.done) break; yield part.value; }
+        } finally { await reader.cancel().catch(() => {}); }
+      })());
+    }
+
     // Never pipe HTML error/redirect pages as binary media segments, encryption keys, or MP4 byte ranges
-    if ((ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+    if (!sniffedStream && (ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
       try {
         await upstreamRes.body?.cancel();
       } catch {
@@ -1113,7 +1136,7 @@ export async function handleStreamRelay(
       return;
     }
 
-    let outContentType = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+    let outContentType = sniffedStream ? 'application/octet-stream' : upstreamRes.headers.get('content-type') || 'application/octet-stream';
     if (ticket.k === 's') {
       if (/\.vtt(?:[?#]|$)/i.test(finalUrl)) outContentType = 'text/vtt; charset=utf-8';
       else if (/\.(?:srt|ass|ssa)(?:[?#]|$)/i.test(finalUrl)) outContentType = 'text/plain; charset=utf-8';
@@ -1137,7 +1160,7 @@ export async function handleStreamRelay(
       return;
     }
 
-    const nodeStream = Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
+    const nodeStream = sniffedStream || Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
     await pipeline(nodeStream, res);
   } catch (err) {
     if (!res.headersSent) {

@@ -40,6 +40,7 @@ import {
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
+import { fetchFromVixSrc } from '../../dist/backend/sources/source3.js';
 import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
@@ -81,6 +82,28 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
     assert.equal(sources[0].multiAudio, undefined); // manifest verification establishes this
     assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
+  } finally { globalThis.fetch = originalFetch; }
+}
+
+// The broad catalog lane never trusts a foreign API subpage or playlist URL,
+// and does not fabricate audio tracks or quality labels.
+{
+  const originalFetch = globalThis.fetch;
+  try {
+    const expires = String(Math.floor(Date.now() / 1000) + 3600);
+    globalThis.fetch = async url => {
+      const u = new URL(url);
+      if (u.pathname === '/api/tv/93405/2/3') return Response.json({ src: '/playlist/test' });
+      if (u.pathname === '/playlist/test') return new Response(`url: "https://vixsrc.to/master", "token": "fixture", "expires": "${expires}"`);
+      throw new Error('unexpected fetch');
+    };
+    const result = await fetchFromVixSrc('https://vixsrc.to', { type:'tv',tmdbId:'93405',season:2,episode:3 });
+    assert.equal(result.length, 1);
+    assert.equal(new URL(result[0].url).searchParams.get('h'), '1');
+    assert.equal(result[0].multiAudio, undefined);
+    assert.equal(result[0].quality, 'auto');
+    globalThis.fetch = async () => Response.json({src:'https://evil.example/playlist'});
+    assert.deepEqual(await fetchFromVixSrc('https://vixsrc.to', {type:'movie',tmdbId:'693134'}), []);
   } finally { globalThis.fetch = originalFetch; }
 }
 

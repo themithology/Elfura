@@ -71,6 +71,7 @@ export interface BackendConfig {
   source3: {
     enabled: boolean;
     origin: string;
+    vixOrigin?: string;
   };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
@@ -204,6 +205,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         env.SOURCE1_SYNC_ORIGIN ||
         'https://vidsync.pro'
       ).replace(/\/+$/, ''),
+      vixOrigin: (env.SOURCE3_VIX_ORIGIN || 'https://vixsrc.to').replace(/\/+$/, ''),
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
