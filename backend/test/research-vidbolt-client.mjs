@@ -10,6 +10,8 @@ const summary={page:!!page,pageScripts:[...page.matchAll(/<script\b[^>]*\bsrc=["
 console.log(`::notice title=VidboltClient::${JSON.stringify(summary).replace(/%/g,'%25')}`);
 const imports=[...new Set([...index.matchAll(/["'`]((?:\.\/|\/player\/)?[a-zA-Z0-9_.-]+\.js)["'`]/g)].map(m=>m[1]))];
 console.log(`::notice title=VidboltClient::${JSON.stringify({imports:imports.slice(0,80),mainMarkers:Object.fromEntries(['api.movy.lol','animecurx','api_key','rousav','orion','Orion'].map(s=>[s,index.includes(s)])),pageMarkers:Object.fromEntries(['api.movy.lol','animecurx','api_key','rousav','m3u8','source','player'].map(s=>[s,page.includes(s)]))}).replace(/%/g,'%25')}`);
+const serverContexts=[...page.matchAll(/(?:servers|serverList|providers|__vbBoot)/gi)].slice(0,8).map(m=>page.slice(Math.max(0,m.index-160),m.index+900).replace(/[a-f0-9]{32,}/gi,'[redacted]').replace(/https?:[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]'));
+console.log(`::notice title=VidboltClient::${JSON.stringify({serverContexts}).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
 const pageMatches=[...page.matchAll(/(?:source|video|iframe|src=)/gi)].slice(0,8).map(m=>page.slice(Math.max(0,m.index-90),m.index+180).replace(/https?:[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]'));
 const yeAt=Math.max(index.indexOf('function Ye('),index.indexOf('Ye=e=>'),index.indexOf('Ye=') );
 const queryBuilder=yeAt>=0?index.slice(yeAt,yeAt+700):'not-found';
