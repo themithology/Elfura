@@ -19,6 +19,7 @@ const files=await Promise.all(scripts.map(async u=>{
  try {const r=await fetch(u,{signal:AbortSignal.timeout(12000)});const text=await limited(r);return {status:r.status,text};}catch{return {status:0,text:''};}
 }));
 const all=html+'\n'+files.map(f=>f.text).join('\n');
+await import('node:fs/promises').then(fs=>fs.writeFile('/tmp/aethoflix-public-client.txt',all));
 const hostnames=[...new Set([...all.matchAll(/https?:\\?\/\\?\/([a-z0-9.-]+\.[a-z]{2,})(?:[\/:"'\\]|$)/gi)].map(m=>m[1].toLowerCase()))];
 const relevant=hostnames.filter(h=>/aetho|rousav|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|zxcstream|workers|hscow|telegram|tgflix|tghub/i.test(h)).sort();
 const markers=['/api/extract','/api/scan','/embed/movie/','/embed/tv/','/api/proxy-m3u8','rousav','vidbolt','nxsha','vidstuck'];

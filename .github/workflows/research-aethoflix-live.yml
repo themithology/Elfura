@@ -16,3 +16,8 @@ jobs:
         with:
           node-version: '22'
       - run: node backend/test/research-aethoflix-live.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-client-research
+          path: /tmp/aethoflix-public-client.txt
+          retention-days: 1
