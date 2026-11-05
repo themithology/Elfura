@@ -36,6 +36,9 @@ jobs:
           - name: frieren-tv
             type: tv
             tmdb: "209867"
+          - name: resident-evil-movie
+            type: movie
+            tmdb: "1423191"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
