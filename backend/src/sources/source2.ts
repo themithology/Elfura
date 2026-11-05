@@ -804,10 +804,12 @@ async function fetchFromNxsha(
           s &&
           s.web_support !== false &&
           s.isDisable !== true &&
-          (!Array.isArray(s.types) || s.types.length === 0 || s.types.includes('web')) &&
           s.status !== 'error' &&
           s.status !== 'offline' &&
           s.status !== 'disabled',
+        // NOTE: `types` on Nxsha server entries describes media support
+        // (movie/tv), not client platform — filtering on it discarded
+        // nearly every provider (32 listed -> 1 tried in production).
       )
       .sort((a, b) => {
         const ap = Number(a.high_priority ?? a.position ?? 999);
@@ -817,8 +819,13 @@ async function fetchFromNxsha(
       .map((s) => String(s.scraper || s.id || s.provider || '').trim())
       .filter(Boolean);
   }
-  if (!activeIds.length) {
-    activeIds = NX_PRIORITY_SERVERS.slice(0, 8);
+  if (activeIds.length < NX_MAX_PROVIDER_PROBES) {
+    // Top up with the known multi-language scrapers so a metadata-shape
+    // change in /api/servers can never shrink probing to a single provider.
+    for (const id of NX_PRIORITY_SERVERS) {
+      if (activeIds.length >= NX_MAX_PROVIDER_PROBES) break;
+      if (!activeIds.includes(id)) activeIds.push(id);
+    }
   }
 
   // Keep fan-out bounded: current multi-language scrapers sort ahead of legacy
@@ -990,7 +997,9 @@ async function fetchFromVidStuck(
     'User-Agent': BROWSER_UA,
   };
 
+  const vsDiag = { mintOk: 0, mintTotal: 0, statuses: [] as string[] };
   const mintRaider = async (serverId: string): Promise<{ token: string; ts: number | string } | null> => {
+    vsDiag.mintTotal++;
     try {
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3200)]) : AbortSignal.timeout(3200);
       const body: Record<string, string | number> = {
@@ -1009,13 +1018,23 @@ async function fetchFromVidStuck(
         signal: sig,
       });
       if (res.status === 429 || res.status >= 500) {
+        vsDiag.statuses.push(`mint:${res.status}`);
         tripS2OriginCooldown(vsOrigin);
         return null;
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        vsDiag.statuses.push(`mint:${res.status}`);
+        return null;
+      }
       const j = (await res.json()) as { token?: string; ts?: number | string };
-      return j?.token && j?.ts !== undefined ? { token: j.token, ts: j.ts } : null;
-    } catch {
+      if (j?.token && j?.ts !== undefined) {
+        vsDiag.mintOk++;
+        return { token: j.token, ts: j.ts };
+      }
+      vsDiag.statuses.push('mint:no-token');
+      return null;
+    } catch (err) {
+      vsDiag.statuses.push(`mint:${err instanceof Error ? err.name : 'error'}`);
       return null;
     }
   };
@@ -1089,11 +1108,14 @@ async function fetchFromVidStuck(
         signal: sig,
       });
       if (res.status === 429) {
+        vsDiag.statuses.push(`${srv}:429`);
         tripS2OriginCooldown(vsOrigin);
         return null;
       }
+      if (!res.ok) vsDiag.statuses.push(`${srv}:${res.status}`);
       return res.ok ? ((await res.json()) as VsServerPayload) : null;
-    } catch {
+    } catch (err) {
+      vsDiag.statuses.push(`${srv}:${err instanceof Error ? err.name : 'error'}`);
       return null;
     }
   };
@@ -1244,7 +1266,7 @@ async function fetchFromVidStuck(
     lane: 'vs',
     ok: out.length > 0,
     ms: 0,
-    detail: `serversResponded=${[orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes].filter(Boolean).length}/5 candidates=${out.length}`,
+    detail: `serversResponded=${[orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes].filter(Boolean).length}/5 mintOk=${vsDiag.mintOk}/${vsDiag.mintTotal} statuses=[${vsDiag.statuses.slice(0, 8).join(',')}] candidates=${out.length}`,
   });
   return out;
 }
