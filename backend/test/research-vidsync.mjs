@@ -68,54 +68,9 @@ async function tryRaider(label, url, body) {
   }
 }
 
-await tryRaider('plain-fields', `${BASE}/backend/raider`, {
-  id: Number(TMDB),
-  type: 'movie',
-  server: 'orion',
-});
+void tryRaider;
 
-// 5) Call-shape archaeology: redacted code context around key endpoints.
-// GitHub surfaces only a limited number of annotations per run, so all
-// contexts are combined into ONE annotation.
-const redact = (s) =>
-  String(s)
-    .replace(/[a-f0-9]{24,}/gi, '<hex>')
-    .replace(/[A-Za-z0-9+/=_-]{40,}/g, '<long>')
-    .replace(/\s+/g, ' ')
-    .slice(0, 300);
-if (bundle) {
-  const parts = [];
-  for (const needle of ['/api/stream/session/init', '/api/stream?', '/api/stream"', '/api/security/check', '/api/castle/']) {
-    const at = bundle.indexOf(needle);
-    parts.push(`${needle} :: ${at < 0 ? 'not found' : redact(bundle.slice(Math.max(0, at - 160), at + 220))}`);
-  }
-  annotate('notice', 'VsCallShapes', parts.join(' || ').slice(0, 950));
-}
-
-// 6) Session/security handshake attempts (statuses + key names only)
-async function attempt(label, method, pathName, body) {
-  try {
-    const r = await fetch(`${BASE}${pathName}`, {
-      method,
-      headers: { ...H, ...(body ? { 'Content-Type': 'application/json' } : {}), Origin: BASE },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(15_000),
-    });
-    const text = await r.text();
-    let keys = '';
-    try {
-      const j = JSON.parse(text);
-      keys = Array.isArray(j) ? `array(${j.length})` : Object.keys(j).join(',');
-    } catch { /* not json */ }
-    annotate(r.ok ? 'notice' : 'warning', 'VsHandshake', `${label}: HTTP ${r.status} bytes=${text.length} keys=[${short(keys, 180)}]`);
-    return { status: r.status, text };
-  } catch (e) {
-    annotate('warning', 'VsHandshake', `${label}: failed ${e.name}`);
-    return null;
-  }
-}
-
-await attempt('security-check-empty', 'POST', '/api/security/check', {});
+void bundle;
 
 // Real handshake: session init takes NO body and returns { token }.
 let sessionToken = '';
@@ -136,48 +91,69 @@ try {
   annotate('warning', 'VsSession', `init failed ${e.name}`);
 }
 
-const streamAttempts = [
-  ['shape-naked', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary`, null, {}],
-  ['shape-bearer', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary`, null, { Authorization: `Bearer ${sessionToken}` }],
-  ['shape-audio-hindi', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary&audio=hindi&dubLang=hindi`, null, { Authorization: `Bearer ${sessionToken}` }],
-];
-for (const [label, method, pathName, body, extraHeaders] of streamAttempts) {
+// 7) Deep structure: stages, per-source aggregates, and real media bytes.
+import crypto from 'node:crypto';
+const hostHash = (u) => {
   try {
-    const r = await fetch(`${BASE}${pathName}`, {
-      method,
-      headers: { ...H, Origin: BASE, ...extraHeaders, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(20_000),
-    });
-    const text = await r.text();
-    let info = `bytes=${text.length}`;
-    try {
-      const j = JSON.parse(text);
-      const srcs = Array.isArray(j?.sources) ? j.sources : null;
-      info += ` error=${short(String(j?.error ?? ''), 90)} sources=${srcs ? srcs.length : 'n/a'}`;
-      if (srcs?.length) {
-        const first = srcs[0] ?? {};
-        info += ` firstKeys=[${Object.keys(first).join(',')}] servers=[${[...new Set(srcs.map((s) => String(s.server ?? s.name ?? s.provider ?? '?')))].slice(0, 10).join(',')}]`;
-        const kinds = { hls: 0, dash: 0, mp4: 0, embed: 0, other: 0 };
-        const langSet = new Set();
-        let multiCount = 0;
-        for (const s of srcs) {
-          const u = String(s.url ?? s.link ?? s.file ?? '');
-          if (/\.m3u8(\?|$)/i.test(u)) kinds.hls++;
-          else if (/\.mpd(\?|$)/i.test(u)) kinds.dash++;
-          else if (/\.mp4(\?|$)/i.test(u)) kinds.mp4++;
-          else if (/embed|player|watch/i.test(u)) kinds.embed++;
-          else kinds.other++;
-          const langs = s.audioTracks ?? s.multiLangs ?? s.langs ?? (s.lang ? [s.lang] : []);
-          if (Array.isArray(langs)) langs.forEach((l) => langSet.add(String(l?.lang ?? l?.code ?? l)));
-          if (s.multiAudio || (Array.isArray(langs) && langs.length > 1)) multiCount++;
-        }
-        info += ` kinds=${JSON.stringify(kinds)} multi=${multiCount} langs=[${[...langSet].slice(0, 14).join(',')}]`;
-      }
-    } catch { /* not json */ }
-    annotate(r.ok ? 'notice' : 'warning', 'VsStreamTry', `${label}: HTTP ${r.status} ${info}`);
+    return crypto.createHash('sha256').update(new URL(u).host).digest('hex').slice(0, 10);
+  } catch {
+    return 'invalid';
+  }
+};
+async function getStream(label, qs) {
+  try {
+    const r = await fetch(`${BASE}/api/stream?${qs}`, { headers: { ...H, Origin: BASE }, signal: AbortSignal.timeout(25_000) });
+    const j = await r.json().catch(() => null);
+    const srcs = Array.isArray(j?.sources) ? j.sources : [];
+    const servers = [...new Set(srcs.map((s) => `${s.provider ?? '?'}/${s.server ?? '?'}#${s.layer ?? '?'}`))];
+    const langs = new Set();
+    const quals = new Set();
+    let subs = 0;
+    for (const s of srcs) {
+      for (const t of s.audioTracks ?? []) langs.add(String(t.lang ?? t.code ?? t.name ?? t.label ?? '?'));
+      if (s.audioLanguage) langs.add(String(s.audioLanguage));
+      for (const q of s.availableQualities ?? []) quals.add(String(q?.quality ?? q?.label ?? q));
+      if (s.quality) quals.add(String(s.quality));
+      subs += Array.isArray(s.subtitles) ? s.subtitles.length : 0;
+    }
+    annotate(
+      r.ok ? 'notice' : 'warning',
+      'VsDeep',
+      `${label}: HTTP ${r.status} sources=${srcs.length} servers=[${servers.slice(0, 8).join(',')}] langs=[${[...langs].slice(0, 16).join(',')}] quals=[${[...quals].slice(0, 10).join(',')}] subs=${subs} err=${short(String(j?.error ?? ''), 60)}`,
+    );
+    return srcs;
   } catch (e) {
-    annotate('warning', 'VsStreamTry', `${label}: failed ${e.name}`);
+    annotate('warning', 'VsDeep', `${label}: failed ${e.name}`);
+    return [];
+  }
+}
+
+const primary = await getStream('primary-movie', `type=movie&id=${TMDB}&season=1&episode=1&stage=primary`);
+await getStream('secondary-movie', `type=movie&id=${TMDB}&season=1&episode=1&stage=secondary`);
+await getStream('fallback-movie', `type=movie&id=${TMDB}&season=1&episode=1&stage=fallback`);
+await getStream('primary-tv-rezero', 'type=tv&id=65942&season=1&episode=1&stage=primary');
+
+// Real bytes from the first primary source (manifest + first segment).
+const first = primary[0];
+if (first) {
+  const murl = String(first.url ?? '');
+  annotate('notice', 'VsFirst', `urlHost=${hostHash(murl)} viaProxy=${murl.startsWith(BASE)} permanent=${!!first.permanent_m3u8_url} headerKeys=[${Object.keys(first.headers ?? {}).join(',')}] audioTracks=${(first.audioTracks ?? []).length}`);
+  try {
+    const mr = await fetch(murl, { headers: { ...H, ...(first.headers ?? {}) }, signal: AbortSignal.timeout(20_000) });
+    const mtext = await mr.text();
+    const isHls = mtext.trimStart().startsWith('#EXTM3U');
+    const audioLines = (mtext.match(/#EXT-X-MEDIA:TYPE=AUDIO/g) || []).length;
+    const variants = (mtext.match(/#EXT-X-STREAM-INF/g) || []).length;
+    annotate(mr.ok && isHls ? 'notice' : 'error', 'VsManifest', `HTTP ${mr.status} hls=${isHls} bytes=${mtext.length} audioRenditions=${audioLines} variants=${variants}`);
+    const segRef = mtext.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
+    if (segRef) {
+      const segUrl = new URL(segRef, murl).toString();
+      const sr = await fetch(segUrl, { headers: { ...H, ...(first.headers ?? {}), Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(20_000) });
+      const buf = sr.body ? Buffer.from(await sr.arrayBuffer()) : Buffer.alloc(0);
+      annotate(sr.ok || sr.status === 206 ? 'notice' : 'error', 'VsSegment', `HTTP ${sr.status} bytes=${buf.byteLength} tsMagic=${buf[0] === 0x47}`);
+    }
+  } catch (e) {
+    annotate('error', 'VsManifest', `manifest fetch failed: ${e.name}`);
   }
 }
 
