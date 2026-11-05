@@ -704,9 +704,10 @@ export class ElfuraPlayer {
             if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
               return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
-          } else if (opt.multiAudio && !opt.availableAudioLangs?.length && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
-            return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
           }
+          // No EXT-X-MEDIA language/name is inconclusive, not an explicit
+          // rejection. Keep this candidate eligible for the real HLS/DASH
+          // engine probe, which can discover tracks after parsing the manifest.
         }
       }
 
@@ -2090,6 +2091,44 @@ export class ElfuraPlayer {
     this.effectiveHeight = 0;
   }
 
+  /**
+   * Select from the incoming manifest, never from `this.audioTracks` (which may
+   * still belong to the previously playing source during a language probe).
+   * Returns true only when the requested language is confirmed by the manifest
+   * or by explicit source metadata; an empty manifest alone is not treated as
+   * proof that a language is absent during the earlier fetch-probe phase.
+   */
+  private applyHlsProbeAudioSelection(
+    probe: { targetLang: string; opt: SourceOption },
+    manifestAudioTracks: { id: number; lang?: string; name?: string }[],
+    hls: { audioTrack: number },
+  ): boolean {
+    const hit = manifestAudioTracks.find((track) => {
+      const langCode = canonLang(track.lang);
+      const nameCode = canonLang(track.name);
+      return (
+        (langCode !== 'und' && matchScore(probe.targetLang, langCode) >= 0) ||
+        (nameCode !== 'und' && matchScore(probe.targetLang, nameCode) >= 0)
+      );
+    });
+    if (hit) {
+      hls.audioTrack = hit.id;
+      return true;
+    }
+
+    const sourceMetadataMatch =
+      matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 ||
+      (probe.opt.availableAudioLangs ?? []).some(
+        (lang) => matchScore(probe.targetLang, lang) >= 0,
+      ) ||
+      (probe.opt.audioTracks ?? []).some(
+        (track) => matchScore(probe.targetLang, track.lang) >= 0,
+      );
+    // A single undubbed/untagged playlist may inherit explicit source language
+    // metadata. Multiple manifest tracks without a match are a real rejection.
+    return manifestAudioTracks.length <= 1 && sourceMetadataMatch;
+  }
+
   private async loadHls(url: string): Promise<void> {
     const cfg = this.input.config;
     const Hls = await getHls();
@@ -2158,15 +2197,7 @@ export class ElfuraPlayer {
       if (probe && this.currentSource?.id === probe.opt.id) {
         queueMicrotask(() => {
           if (this.activeProbe?.seq !== probe.seq || this.hls !== hls) return;
-          const nativeMatch = this.audioTracks.find(
-            (t) => t.kind === 'native' && matchScore(probe.targetLang, t.lang) >= 0,
-          );
-          if (nativeMatch && typeof nativeMatch.ref === 'number') {
-            hls.audioTrack = nativeMatch.ref;
-          } else if (probe.opt.multiAudio || (data.audioTracks?.length ?? 0) > 1) {
-            probe.settle({ ok: false, loadFailed: false });
-            return;
-          } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') < 0) {
+          if (!this.applyHlsProbeAudioSelection(probe, data.audioTracks ?? [], hls)) {
             probe.settle({ ok: false, loadFailed: false });
             return;
           }

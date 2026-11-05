@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { registerHooks } from 'node:module';
+
+// Redirect only the lazily loaded HLS engine to the event-order adapter. All
+// player orchestration and the loadHls()/manifest handlers remain production code.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'hls.js') {
+      return {
+        url: new URL('./hls-event-order-mock.mjs', import.meta.url).href,
+        shortCircuit: true,
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
 import {
   isSafeUpstreamUrl,
   sealStreamTicket,
@@ -1810,6 +1826,66 @@ try {
   ];
   searchPlayer.sources = searchSources;
   searchPlayer.currentSource = searchSources[0];
+
+  // HLS event-order regression: MANIFEST_PARSED can run before
+  // AUDIO_TRACKS_UPDATED has replaced the previous source's track list. The
+  // incoming manifest, not stale this.audioTracks, must select Hindi.
+  const hlsOrderPlayer = new ElfuraPlayer({ postMessage: false });
+  hlsOrderPlayer.currentSource = searchSources[1];
+  hlsOrderPlayer.audioTracks = [
+    { id: 'native:0', kind: 'native', lang: 'en', label: 'English', ref: 0 },
+  ];
+  let manifestProbeResult = null;
+  const manifestProbeDone = new Promise((resolve) => {
+    hlsOrderPlayer.activeProbe = {
+      seq: 1,
+      targetLang: 'hi',
+      opt: searchSources[1],
+      startedAt: Date.now(),
+      settle: (result) => {
+        manifestProbeResult = result;
+        resolve(result);
+      },
+    };
+  });
+  await hlsOrderPlayer.loadHls(searchSources[1].url);
+  await manifestProbeDone;
+  // Let the mock finish its ordered event sequence even when a regression
+  // settles early; assertions below then identify the incorrect probe result.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(
+    hlsOrderPlayer.hls.eventLog,
+    ['manifest', 'audioTracks', 'fragment'],
+    'test must exercise manifest parsing before audio-track registration',
+  );
+  assert.equal(manifestProbeResult?.ok, true, 'real manifest handler must accept incoming Hindi');
+  assert.equal(hlsOrderPlayer.hls.audioTrack, 1, 'real manifest handler must select Hindi directly');
+  hlsOrderPlayer.destroy();
+
+  // An empty EXT-X-MEDIA list is inconclusive. It must not mark a multi-audio
+  // candidate languageRejected and thereby exclude it from the real engine pass.
+  const previousProbeFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n', {
+      status: 200,
+      headers: { 'content-type': 'application/vnd.apple.mpegurl' },
+    });
+    const unlisted = await searchPlayer.probeCandidateViaFetch(
+      {
+        ...searchSources[1],
+        id: 'unlisted-hindi',
+        audioLang: 'und',
+        availableAudioLangs: [],
+      },
+      'hi',
+      new AbortController().signal,
+    );
+    assert.equal(unlisted.ok, true, 'unknown audio metadata must remain eligible for engine probing');
+    assert.notEqual(unlisted.languageRejected, true);
+  } finally {
+    globalThis.fetch = previousProbeFetch;
+  }
+
   let languageAttempts = [];
   let racedOrder = [];
   searchPlayer.raceCandidatesBatch = async (wave) => {
