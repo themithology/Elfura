@@ -64,17 +64,29 @@ async function fetchWithTimeout(url, init = {}) {
   });
 }
 
-async function fetchManifest(url) {
+const TRANSIENT_HTTP = new Set([429, 502, 503, 504]);
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchManifest(url, attempt = 0) {
   const res = await fetchWithTimeout(url);
   const text = await res.text();
+  if (!res.ok && TRANSIENT_HTTP.has(res.status) && attempt < 1) {
+    await delay(1500);
+    return fetchManifest(url, attempt + 1);
+  }
   if (!res.ok) throw new Error(`manifest HTTP ${res.status}`);
   const contentType = String(res.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('text/html')) throw new Error('manifest returned HTML');
   return text;
 }
 
-async function fetchMediaBytes(url) {
+async function fetchMediaBytes(url, attempt = 0) {
   const res = await fetchWithTimeout(url, { headers: { Range: 'bytes=0-1023' } });
+  if (!(res.status === 200 || res.status === 206) && TRANSIENT_HTTP.has(res.status) && attempt < 1) {
+    try { await res.body?.cancel(); } catch { /* ignore */ }
+    await delay(1500);
+    return fetchMediaBytes(url, attempt + 1);
+  }
   if (!(res.status === 200 || res.status === 206)) {
     try { await res.body?.cancel(); } catch { /* ignore */ }
     throw new Error(`media HTTP ${res.status}`);
@@ -283,6 +295,13 @@ function hasMultiLangEvidence(options) {
 
 const report = [];
 let failed = 0;
+/** Same physical stream reappears in per-source and combined responses; audit once. */
+const auditCache = new Map();
+function auditOptionCached(option) {
+  const key = `${option.fingerprint || option.id}:${option.type}`;
+  if (!auditCache.has(key)) auditCache.set(key, auditOption(option));
+  return auditCache.get(key);
+}
 try {
   for (const sourceId of AUDIT_SOURCES) {
     try {
@@ -291,7 +310,7 @@ try {
       let manifestAudioTracks = 0;
       for (const option of options) {
         try {
-          const { checks, audioTracks } = await auditOption(option);
+          const { checks, audioTracks } = await auditOptionCached(option);
           manifestAudioTracks = Math.max(manifestAudioTracks, audioTracks);
           report.push({ id: option.id, label: option.label, type: option.type, ok: true, checks, audioTracks });
           console.log(`[pass] ${option.id} ${option.label}: ${checks.join(', ')}`);
