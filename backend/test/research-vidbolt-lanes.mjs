@@ -1,7 +1,7 @@
 // Audit additional native provider lanes. Never print stream URLs, signed values or bodies.
 const origin='https://vidbolt.xyz';
 const headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',Referer:origin+'/',Origin:origin,Accept:'*/*'};
-const cases=[{id:'213375',type:'tv'}, {id:'66732',type:'tv'}, {id:'94605',type:'tv'}, {id:'157336',type:'movie'}, {id:'533535',type:'movie'}, {id:'603',type:'movie'}];
+const cases=[{id:'93405',type:'tv'}, {id:'289517',type:'tv'}, {id:'693134',type:'movie'}, {id:'213375',type:'tv'}, {id:'66732',type:'tv'}, {id:'94605',type:'tv'}, {id:'157336',type:'movie'}, {id:'533535',type:'movie'}, {id:'603',type:'movie'}];
 const lanes=['callisto','vega','quantum','quasar'];
 function blocked(u){return /(?:^|\.)(?:vidstuck\.cc|nxsha\.space|embed\.aethoflix\.live|embed\.aethoflix\.world|zxcstream-mirror\.vercel\.app)$/i.test(new URL(u).hostname);}
 async function get(url,h=headers){for(let i=0;i<4;i++){if(blocked(url))return {blocked:true};const r=await fetch(url,{headers:h,redirect:'manual',signal:AbortSignal.timeout(9000)});if([301,302,303,307,308].includes(r.status)){const loc=r.headers.get('location');await r.body?.cancel();if(!loc)return {r};url=new URL(loc,url).href;continue;}return {r,url};}return {};}
