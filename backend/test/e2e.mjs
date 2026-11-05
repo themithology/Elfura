@@ -1479,6 +1479,8 @@ const { server: elfuraServer } = createBackendServer({
     enabled: true,
     embedOrigin: upBase,
     defaultServer: 'orion',
+    nxshaOrigin: upBase,
+    vidstuckOrigin: upBase,
   },
   source3: {
     enabled: true,
@@ -1646,7 +1648,7 @@ try {
   assert.equal(riftMasterRes.status, 200);
   assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
 
-  const protectedOpt = pb.sources.find((s) => s.label.includes('English'));
+  const protectedOpt = pb.sources.find((s) => s.sourceId === 'source-3');
   const protectedMasterRes = await fetch(`${apiBase}${protectedOpt.url}`, { headers: browserHeaders });
   assert.equal(protectedMasterRes.status, 200);
 
@@ -2146,8 +2148,8 @@ try {
   // Meanwhile Source 3's Hindi stream routed via `/api/core/proxy` MUST be alive!
   const s3Reze = pbReze.sources.filter((s) => s.sourceId === 'source-3');
   assert(
-    s3Reze.some((s) => s.audioLang === 'hi'),
-    'Expected Source 3 proxy-backed Hindi stream to survive deep liveness check',
+    s3Reze.length > 0,
+    'Expected Source 3 proxy-backed stream to survive deep liveness check',
   );
 
   const jaOpt = { ...pb.primary, id: 'synthetic-ja', audioLang: 'ja', label: 'Source 2 · Japanese', multiAudio: false, availableAudioLangs: [], audioTracks: [] };
@@ -3335,6 +3337,7 @@ try {
       const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
       assert.equal(castleCands[0].multiAudio, false, 'catalogue language labels are not switchable manifest tracks');
+      assert.equal(castleCands[0].audioLang, undefined, 'catalogue dub labels must not be advertised as verified audio');
       const checkedCastle = await verifyAndFilterCandidates([castleCands[0]]);
       assert.equal(checkedCastle[0].qualityOptions, 1, 'a leaf playlist must override a claimed quality ladder');
       assert.equal(checkedCastle[0].qualityLadder, undefined);

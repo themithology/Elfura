@@ -241,8 +241,8 @@ export async function fetchFromVidSyncPro(
       // availableQualities describes the provider's catalogue, not this
       // particular playlist. Do not claim its highest quality for every row.
       quality: pickBestQualityLabel(row.quality),
-      audioLang: norm.code,
-      audioLabel: norm.label,
+      // Row language labels are catalog claims and can be wrong. Only manifest
+      // evidence may supply an audio language to the player.
       // These are catalogue-wide language labels, not playable audio tracks:
       // each row represents a separate dub. Manifest liveness may promote a
       // candidate to multi-audio when it actually contains multiple tracks.

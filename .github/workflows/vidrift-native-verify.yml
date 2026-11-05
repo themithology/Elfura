@@ -1,0 +1,45 @@
+name: VidRift native playback verification
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths:
+      - backend/src/sources/**
+      - backend/test/live-sources.mjs
+      - .github/workflows/vidrift-native-verify.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - title: Dead-End Job S1E1
+            tmdb: '289517'
+          - title: VisionQuest S1E1
+            tmdb: '213375'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Verify VidRift through the real relay
+        run: node backend/test/live-sources.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: live-audit-only-not-a-production-secret
+          SOURCE1_VIDROCK_ORIGIN: https://disabled.invalid
+          AUDIT_SOURCES: source-2
+          AUDIT_TYPE: tv
+          AUDIT_TMDB: ${{ matrix.tmdb }}
+          AUDIT_SEASON: '1'
+          AUDIT_EPISODE: '1'
+          AUDIT_TITLE: ${{ matrix.title }}
+          AUDIT_MAX_RESOLVE_MS: '7000'
+          AUDIT_REQUIRE_MULTI_LANG: '0'
