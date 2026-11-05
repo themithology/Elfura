@@ -18,17 +18,21 @@ try {
   notice({step:'source-2-discovered', languages:result.langs, qualityHeights:result.qualities});
   step = 'select-source';
   await page.evaluate(async id => {
-    const p = window.__elfura.player; p.video.muted = true; await p.setSource(id);
+    const p = window.__elfura.player; p.video.muted = true;
     window.__squidEvents = [];
-    if (p.hls) {
-      for (const event of ['hlsError','hlsFragLoaded','hlsFragBuffered','hlsAudioTrackLoaded','hlsLevelLoaded']) {
-        p.hls.on(event, (_event, data) => {
+    let observed;
+    window.__squidTimer = setInterval(() => {
+      if (!p.hls || p.hls === observed) return;
+      observed = p.hls;
+      window.__squidEvents.push({event:'engine-attached', tracks:p.hls.audioTracks.length});
+      for (const event of ['hlsError','hlsManifestParsed','hlsFragLoaded','hlsFragBuffered','hlsAudioTrackLoaded','hlsLevelLoaded']) {
+        observed.on(event, (_event, data) => {
           if (window.__squidEvents.length >= 50) return;
           window.__squidEvents.push({event, details:data?.details || null, fatal:!!data?.fatal, code:data?.response?.code || data?.networkDetails?.status || null, fragType:data?.frag?.type || null});
         });
       }
-    }
-    await p.play();
+    }, 50);
+    await p.setSource(id); await p.play();
   }, result.id);
   await page.waitForFunction(() => {
     const p = window.__elfura.player;
@@ -55,6 +59,7 @@ try {
     if (state.source !== 'source-2' || !state.audioFragments) {
       const events=await page.evaluate(() => window.__squidEvents || []);
       notice({step:'engine-events', events});
+      process.exitCode = 1;
       break;
     }
   }
