@@ -27,7 +27,7 @@ import {
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
-import { fetchTmdbSeasonEpisodes } from './tmdb.js';
+import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -88,7 +88,7 @@ interface ParsedEmbedRoute {
 
 export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
   const clean = pathname.replace(/\/+$/, '') || '/';
-  if (clean === '/' || clean === '/embed' || clean === '/embed.html') {
+  if (clean === '/embed' || clean === '/embed.html') {
     return {};
   }
   const movieMatch = clean.match(/^(?:\/embed)?\/movie\/([A-Za-z0-9_-]+)$/);
@@ -124,6 +124,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
   };
 
+  let cachedLandingTemplate: string | null = null;
+  const getLandingTemplate = async (): Promise<string | null> => {
+    if (cachedLandingTemplate !== null) return cachedLandingTemplate;
+    try {
+      const html = await fs.readFile(path.join(DIST_ROOT, 'landing.html'), 'utf8');
+      if (cfg.isProd) cachedLandingTemplate = html;
+      return html;
+    } catch {
+      return null;
+    }
+  };
+
   const server = http.createServer(async (req, res) => {
     const method = (req.method || 'GET').toUpperCase();
     let url: URL;
@@ -153,6 +165,23 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         version: '0.1.0',
         sources: registry.listPublicSources(),
       });
+      return;
+    }
+
+    // 2b. Live public landing-page catalog. Only sanitized TMDB fields are
+    // returned; upstream credentials and endpoint URLs stay server-side.
+    if (method === 'GET' && pathname === '/api/v1/catalog') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+        return;
+      }
+      if (!rateLimiter.allow(`catalog:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
+        return;
+      }
+      const catalog = await fetchTmdbCatalog(cfg.tmdb);
+      sendJson(res, 200, { ok: true, ...catalog }, allowOrigin, 'manifest');
       return;
     }
 
@@ -350,8 +379,29 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       return;
     }
 
-    // 6. Embed HTML routes (serves built Part 1 player + pre-minted session token)
+    // 6. Public landing, demo, documentation, and status surfaces. The root is
+    // deliberately separate from the token-minting player routes below.
     if (method === 'GET' || method === 'HEAD') {
+      const cleanPath = pathname.replace(/\/+$/, '') || '/';
+      if (['/', '/demo', '/docs', '/status', '/landing.html'].includes(cleanPath)) {
+        const html = await getLandingTemplate();
+        if (!html) {
+          sendJson(res, 503, { ok: false, error: 'landing dist not built yet — run `npm run build` first' });
+          return;
+        }
+        const buf = Buffer.from(html, 'utf8');
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': String(buf.byteLength),
+          'X-Content-Type-Options': 'nosniff',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        });
+        res.end(method === 'HEAD' ? undefined : buf);
+        return;
+      }
+
+      // 7. Embed HTML routes (built Part 1 player + pre-minted session token)
       const embedMatch = matchEmbedPath(pathname);
       if (embedMatch) {
         const tpl = await getEmbedTemplate();
@@ -401,7 +451,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
 
-      // 7. Built static assets from dist/ (read-only)
+      // 8. Built static assets from dist/ (read-only)
       if (pathname.startsWith('/assets/') || pathname.startsWith('/lib/')) {
         const rel = pathname.replace(/^\/+/, '');
         const resolvedPath = path.resolve(DIST_ROOT, rel);

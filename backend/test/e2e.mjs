@@ -327,6 +327,30 @@ const mockUpstream = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
 
+  if (u.pathname === '/tmdb/trending/movie/week') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 533535, title: 'Deadpool & Wolverine', release_date: '2024-07-24', vote_average: 7.9, poster_path: '/deadpool.jpg', backdrop_path: '/deadpool-wide.jpg', overview: 'Movie overview' },
+      { id: 1218925, title: 'Chainsaw Man - The Movie: Reze Arc', release_date: '2025-09-19', vote_average: 8.4, poster_path: '/reze.jpg', backdrop_path: '/reze-wide.jpg', overview: 'Anime film overview' },
+    ] }));
+    return;
+  }
+  if (u.pathname === '/tmdb/trending/tv/week') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 94605, name: 'Arcane', first_air_date: '2021-11-06', vote_average: 8.7, poster_path: '/arcane.jpg', backdrop_path: '/arcane-wide.jpg', overview: 'Series overview' },
+    ] }));
+    return;
+  }
+  if (u.pathname === '/tmdb/discover/tv') {
+    assert.equal(u.searchParams.get('with_genres'), '16');
+    assert.equal(u.searchParams.get('with_original_language'), 'ja');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 2190, name: 'Dynamic Anime', first_air_date: '2024-04-01', vote_average: 8.2, poster_path: '/anime.jpg', backdrop_path: '/anime-wide.jpg', overview: 'Anime overview' },
+    ] }));
+    return;
+  }
   if (u.pathname === '/tmdb/tv/94605') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
@@ -1445,6 +1469,27 @@ try {
     { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
   ]);
+
+  // Public landing routes and live, sanitized TMDB catalog used by every
+  // dynamic poster/demo/builder surface on the home page.
+  for (const landingPath of ['/', '/demo', '/docs', '/status']) {
+    const landingRes = await fetch(`${apiBase}${landingPath}`);
+    assert.equal(landingRes.status, 200, `${landingPath} must serve the public landing site`);
+    const landingHtml = await landingRes.text();
+    assert(landingHtml.includes('TheOGPirateBot'));
+    assert(landingHtml.includes('data-poster-track'));
+    assert(!landingHtml.includes('https://image.tmdb.org/t/p/w500/'), 'Poster content must come from the catalog API, not fixed markup');
+  }
+  const catalogRes = await fetch(`${apiBase}/api/v1/catalog`, { headers: browserHeaders });
+  assert.equal(catalogRes.status, 200);
+  const catalog = await catalogRes.json();
+  assert.equal(catalog.ok, true);
+  assert.equal(catalog.movies[0].tmdbId, '533535');
+  assert.equal(catalog.series[0].tmdbId, '94605');
+  assert.equal(catalog.anime[0].type, 'anime');
+  assert.equal(catalog.movies[0].poster, 'https://image.tmdb.org/t/p/w500/deadpool.jpg');
+  assert.equal(catalog.movies[0].backdrop, 'https://image.tmdb.org/t/p/w1280/deadpool-wide.jpg');
+  assert(!JSON.stringify(catalog).includes('api_key'), 'Catalog must never expose TMDB credentials');
 
   const badOriginRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
     headers: { Origin: 'https://evil-scraper.example', 'User-Agent': browserHeaders['User-Agent'] },

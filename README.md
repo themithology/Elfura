@@ -14,6 +14,20 @@ npm start          # zero-dep Node production server on 0.0.0.0:${SERVER_PORT||P
 npm test           # end-to-end security, TMDB, Source 1 & HLS/Range relay test suite
 ```
 
+### Public landing site
+
+The production server serves a complete public product site at `/`, with direct
+entry points for `/demo`, `/docs`, and `/status`. It includes a live embed
+builder, movie/series demo, copyable iframe/SDK/PostMessage examples, playback
+telemetry, and health-driven infrastructure status.
+
+All catalog artwork and title selections are dynamic. `GET /api/v1/catalog`
+resolves trending movies, trending series, and popular Japanese animation from
+TMDB, sanitizes the response, builds TMDB poster/backdrop URLs server-side, and
+uses a bounded ten-minute RAM cache. The hero, poster filters, clickable poster
+rail, and builder quick picks all consume that single response; there is no
+hardcoded poster list or generated artwork fallback.
+
 ---
 
 ## 1. How the player takes input
