@@ -21,12 +21,12 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm install --no-save --no-package-lock playwright-core
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: npm run build:embed
       - name: Create a two-quality DASH test video
         run: |
           mkdir -p "$RUNNER_TEMP/elfura-fixture"
-          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=640x360:rate=15 -f lavfi -i sine=frequency=440:sample_rate=44100 -filter_complex '[0:v]split=2[a][b];[a]scale=320:180[v0];[b]scale=640:360[v1]' -map '[v0]' -map '[v1]' -map 1:a -t 12 -c:v libx264 -threads 2 -preset ultrafast -g 15 -keyint_min 15 -sc_threshold 0 -b:v:0 200k -b:v:1 500k -c:a aac -f dash -seg_duration 1 -adaptation_sets 'id=0,streams=v id=1,streams=a' "$RUNNER_TEMP/elfura-fixture/test.mpd"
+          "$(node -p "require('@ffmpeg-installer/ffmpeg').path")" -hide_banner -loglevel error -f lavfi -i testsrc2=size=640x360:rate=15 -f lavfi -i sine=frequency=440:sample_rate=44100 -filter_complex '[0:v]split=2[a][b];[a]scale=320:180[v0];[b]scale=640:360[v1]' -map '[v0]' -map '[v1]' -map 1:a -t 12 -c:v libx264 -threads 2 -preset ultrafast -g 15 -keyint_min 15 -sc_threshold 0 -b:v:0 200k -b:v:1 500k -c:a aac -f dash -seg_duration 1 -adaptation_sets 'id=0,streams=v id=1,streams=a' "$RUNNER_TEMP/elfura-fixture/test.mpd"
       - name: Test actual menu and rendering
         run: node backend/test/browser-dash.mjs
         env:

@@ -1,5 +1,6 @@
 // Real Chromium + dash.js regression for selectable DASH qualities.
 import { chromium } from 'playwright-core';
+import chromiumBinary from '@sparticuz/chromium';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -23,7 +24,7 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome', args:['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ executablePath: await chromiumBinary.executablePath(), args:[...chromiumBinary.args, '--autoplay-policy=no-user-gesture-required'] });
 try {
   const page = await browser.newPage();
   const errors = [];
