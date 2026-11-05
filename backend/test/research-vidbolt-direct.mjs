@@ -19,14 +19,15 @@ async function resolve(c,family,keys){
  const qs=new URLSearchParams({tmdbId:c.id,title:c.title,year:c.year});if(c.type==='tv'){qs.set('season','1');qs.set('episode','1');}
  let u;
  if(family==='callisto')u=`https://scraper.vidbolt.xyz/scrape/Callisto/${c.type}/${c.type==='tv'?'tmdb':''}${c.id}?${qs}`;
+ else if(family==='vidbolt'){const q=new URLSearchParams({type:c.type,id:c.id,season:'1',episode:'1',only:'orion',hevc:'0'});u=`https://vidbolt.xyz/api/resolve?${q}`;}
  else if(c.type==='tv')u=`https://img.animecurx.tech/api/tv/${c.id}/1/1?${new URLSearchParams({api_key:keys.tv,apikey:keys.tv})}`;
  else u=`https://api.movy.lol/api/source/${c.id}?${new URLSearchParams({api_key:keys.movie,apikey:keys.movie})}`;
- try{const start=Date.now(), x=await request(u);if(!x.r?.ok)return {id:c.id,family,status:x.r?.status||0,ms:Date.now()-start}; const payload=JSON.parse((await read(x.r)).toString('utf8')); let sources=Array.isArray(payload.sources)?payload.sources:[];if(!sources.length&&payload.m3u8_path){const base='https://img.rousav.tech';sources=[{url:`${base}/${String(payload.m3u8_path).replace(/^\//,'')}?${new URLSearchParams({api_key:c.type==='tv'?keys.tv:keys.movie})}`}];}
+ try{const start=Date.now(), x=await request(u);if(!x.r?.ok)return {id:c.id,family,status:x.r?.status||0,ms:Date.now()-start}; const payload=JSON.parse((await read(x.r)).toString('utf8')); let sources=Array.isArray(payload.sources)?payload.sources:Array.isArray(payload.stream?.sources)?payload.stream.sources:[];if(!sources.length&&payload.m3u8_path){const base='https://img.rousav.tech';sources=[{url:`${base}/${String(payload.m3u8_path).replace(/^\//,'')}?${new URLSearchParams({api_key:c.type==='tv'?keys.tv:keys.movie})}`}];}
  const candidates=sources.map(s=>s?.url||s?.file).filter(v=>typeof v==='string'&&/^https?:/i.test(v)&&!banned(v)).slice(0,3);const checks=await Promise.all(candidates.map(async url=>({host:new URL(url).hostname,stream:await playlist(url)})));return {id:c.id,family,status:x.r.status,count:sources.length,checks,ms:Date.now()-start};
  }catch(e){return {id:c.id,family,error:e.name};}
 }
 let keys={movie:'',tv:''};
 try {const r=await fetch('https://github.com/FmcStore/streamex-api/raw/refs/heads/main/players/p5_vidbolt.py',{signal:AbortSignal.timeout(12000)});const s=await r.text();keys.movie=s.match(/key = "([a-f0-9]{40,})"/)?.[1]||'';keys.tv=s.match(/"(streamrip_secret_[0-9]+)"/)?.[1]||'';}catch{}
-for(const c of cases){const out=await Promise.all(['callisto','orion'].map(f=>resolve(c,f,keys)));console.log(`::notice title=VidboltDirect::${JSON.stringify(out).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);}
+for(const c of cases){const out=await Promise.all(['vidbolt','orion'].map(f=>resolve(c,f,keys)));console.log(`::notice title=VidboltDirect::${JSON.stringify(out).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);}
 const unkeyed=await Promise.all(cases.map(async c=>{const url=c.type==='tv'?`https://img.animecurx.tech/api/tv/${c.id}/1/1`:`https://api.movy.lol/api/source/${c.id}`;try {const x=await request(url);await x.r?.body?.cancel();return {id:c.id,status:x.r?.status||0};}catch(e){return {id:c.id,error:e.name};}}));
 console.log(`::notice title=VidboltDirect::${JSON.stringify({unkeyed}).replace(/%/g,'%25')}`);
