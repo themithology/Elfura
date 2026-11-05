@@ -183,12 +183,14 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
+    // Legacy Source 2 configuration is retained in the type only; old panel
+    // environment variables must never reactivate the removed providers.
     source2: {
-      enabled: env.SOURCE2_ENABLED !== '0',
-      embedOrigin: (env.SOURCE2_EMBED_ORIGIN || '').replace(/\/+$/, ''),
-      defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
-      nxshaOrigin: (env.SOURCE2_NXSHA_ORIGIN || 'https://nxsha.space').replace(/\/+$/, ''),
-      vidstuckOrigin: (env.SOURCE2_VIDSTUCK_ORIGIN || 'https://vidstuck.cc').replace(/\/+$/, ''),
+      enabled: false,
+      embedOrigin: '',
+      defaultServer: 'orion',
+      nxshaOrigin: '',
+      vidstuckOrigin: '',
     },
     source3: {
       enabled: env.SOURCE3_ENABLED !== '0',

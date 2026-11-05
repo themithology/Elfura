@@ -269,6 +269,10 @@ def main() -> None:
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():
                 rel = file_path.relative_to(ROOT).as_posix()
+                # Legacy VidStuck/Nxsha adapter remains in the repo only for
+                # historical unit tests; it is not part of the runtime bundle.
+                if rel in ("dist/backend/sources/source2.js", "dist/backend/sources/source2.js.map"):
+                    continue
                 write_entry(zf, rel, file_path.read_bytes())
 
     os.replace(tmp_zip, OUT_ZIP)

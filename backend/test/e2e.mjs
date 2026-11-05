@@ -2923,8 +2923,12 @@ try {
     );
     assert.equal(pCfgA.source1.apiOrigin, '', 'Dead tgvidapi default must be cleared when unset');
     assert.equal(pCfgA.source2.embedOrigin, '', 'Dead aethoflix default must be cleared when unset');
-    assert.equal(pCfgA.source2.nxshaOrigin, 'https://nxsha.space');
-    assert.equal(pCfgA.source2.vidstuckOrigin, 'https://vidstuck.cc');
+    assert.equal(pCfgA.source2.enabled, false);
+    assert.equal(pCfgA.source2.nxshaOrigin, '');
+    assert.equal(pCfgA.source2.vidstuckOrigin, '');
+    const legacyCfg = loadBackendConfig({ SOURCE2_ENABLED: '1', SOURCE2_NXSHA_ORIGIN: 'https://legacy.invalid', SOURCE2_VIDSTUCK_ORIGIN: 'https://legacy.invalid' });
+    assert.equal(legacyCfg.source2.enabled, false);
+    assert.equal(legacyCfg.source2.nxshaOrigin, '');
 
     // (b) Anonymity guard blocks every newly added upstream/worker domain from direct segment offload
     for (const newLeakyUrl of [
