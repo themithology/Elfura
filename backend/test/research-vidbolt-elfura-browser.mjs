@@ -47,12 +47,15 @@ try {
     switches.push({requested:lang,...selection,...switched});
    }
    step='quality';
-   const target=info.qualities.includes(480)?480:720;
-   const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
-   if(!qualitySet)throw new Error('quality missing');
-   await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-2';},target,{timeout:35000});
-   const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
-   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches,quality:{target,rendered}});
+   const quality=[];
+   for (const target of [1080,720]) {
+    const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
+    if(!qualitySet)throw new Error('quality missing');
+    await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-2';},target,{timeout:35000});
+    const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
+    quality.push({target,rendered});
+   }
+   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches,quality});
   } catch(e){
    const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[],videoHeight:window.__elfura?.player?.video?.videoHeight||0,videoWidth:window.__elfura?.player?.video?.videoWidth||0,currentLevel:window.__elfura?.player?.hls?.currentLevel,loadLevel:window.__elfura?.player?.hls?.loadLevel,videoLevels:window.__videoLevels||[],qualityLevels:window.__elfura?.player?.getQualityLevels()||[]})).catch(()=>null);
    notice({id:c.id,success:false,step,error:e.name,snapshot});process.exitCode=1;
