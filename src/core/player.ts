@@ -573,7 +573,8 @@ export class ElfuraPlayer {
 
   /** 0 = multi-quality ABR ladder, 1 = known single quality, 2 = unknown quality. */
   private qualityTier(opt: SourceOption): number {
-    const n = opt.qualityOptions ?? opt.qualityLadder?.length ?? 0;
+    // A declared ladder's real height count wins over any options counter.
+    const n = opt.qualityLadder?.length ?? opt.qualityOptions ?? 0;
     if (n > 1) return 0;
     if (n === 1 || (opt.quality && opt.quality !== 'auto')) return 1;
     return 2;
@@ -1385,8 +1386,14 @@ export class ElfuraPlayer {
         void this.play();
       }
 
+      const realTrack = this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0);
+      // Never announce a language the engine did not actually expose: when
+      // the current engine enumerated native tracks and none matches, a
+      // multi-audio candidate did not switch, whatever its metadata claims.
+      const nativeTracks = this.audioTracks.filter((t) => t.kind === 'native');
+      if (!realTrack && cand.multiAudio && nativeTracks.length > 0) return false;
       const matchedTrack =
-        this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0) ?? {
+        realTrack ?? {
           id: `source:${targetLang}`,
           kind: 'source' as const,
           lang: targetLang,
@@ -1455,7 +1462,9 @@ export class ElfuraPlayer {
           const attachRes = await this.probeRawCandidateForLanguage(w, targetLang, seq);
           if (this.destroyed || this.audioSearchSeq !== seq) return false;
           if (attachRes.ok) {
-            return finalizeChosenCandidate(w);
+            if (finalizeChosenCandidate(w)) return true;
+            if (fp) rejectedFingerprints.add(fp);
+            continue;
           }
           if (attachRes.loadFailed) this.markCandidateFailed(w);
           if (fp) rejectedFingerprints.add(fp);
@@ -1476,7 +1485,9 @@ export class ElfuraPlayer {
       if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
       if (probeResult.ok) {
-        return finalizeChosenCandidate(cand);
+        if (finalizeChosenCandidate(cand)) return true;
+        if (cand.fingerprint) rejectedFingerprints.add(cand.fingerprint);
+        continue;
       }
 
       if (probeResult.loadFailed) {
@@ -2132,17 +2143,22 @@ export class ElfuraPlayer {
       return true;
     }
 
-    const sourceMetadataMatch =
-      matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 ||
-      (probe.opt.availableAudioLangs ?? []).some(
-        (lang) => matchScore(probe.targetLang, lang) >= 0,
-      ) ||
-      (probe.opt.audioTracks ?? []).some(
-        (track) => matchScore(probe.targetLang, track.lang) >= 0,
-      );
-    // A single undubbed/untagged playlist may inherit explicit source language
-    // metadata. Multiple manifest tracks without a match are a real rejection.
-    return manifestAudioTracks.length <= 1 && sourceMetadataMatch;
+    // Manifest truth beats provider metadata. If the manifest exposes audio
+    // renditions, only their real languages can match (handled by `hit`).
+    // With zero or one untagged rendition, accept ONLY a direct single-dub
+    // claim (candidate's own audioLang): a candidate claiming several
+    // languages whose manifest exposes at most one track cannot actually
+    // switch — accepting it fakes a language change in the UI.
+    const hasSidecarMatch = (probe.opt.audioTracks ?? []).some(
+      (track) => matchScore(probe.targetLang, track.lang) >= 0,
+    );
+    const claimsMulti =
+      !!probe.opt.multiAudio || (probe.opt.availableAudioLangs?.length ?? 0) > 1;
+    if (claimsMulti && !hasSidecarMatch) return false;
+    return (
+      manifestAudioTracks.length <= 1 &&
+      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0)
+    );
   }
 
   private async loadHls(url: string): Promise<void> {

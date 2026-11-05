@@ -1891,6 +1891,32 @@ try {
   assert.equal(hlsOrderPlayer.hls.audioTrack, 1, 'real manifest handler must select Hindi directly');
   hlsOrderPlayer.destroy();
 
+  // Fake language switch regression: a candidate whose metadata claims
+  // [hi, en] but whose manifest exposes only an English track must REJECT a
+  // Hindi probe — never report a switch that does not change the audio.
+  {
+    const fakeProbePlayer = new ElfuraPlayer({ postMessage: false });
+    const fakeCand = {
+      id: 'fake-multi', sourceId: 'source-1', label: 'Source 1', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=fake', quality: '1080p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], audioTracks: [], subtitles: [],
+    };
+    const accepted = fakeProbePlayer.applyHlsProbeAudioSelection(
+      { targetLang: 'hi', opt: fakeCand },
+      [{ id: 0, lang: 'en', name: 'English' }],
+      { audioTrack: 0 },
+    );
+    assert.equal(accepted, false, 'single-track manifest must reject metadata-claimed language switch');
+    const directCand = { ...fakeCand, multiAudio: false, availableAudioLangs: ['hi'], audioLang: 'hi' };
+    const directAccepted = fakeProbePlayer.applyHlsProbeAudioSelection(
+      { targetLang: 'hi', opt: directCand },
+      [],
+      { audioTrack: 0 },
+    );
+    assert.equal(directAccepted, true, 'direct single-dub metadata match must still be accepted');
+    fakeProbePlayer.destroy();
+  }
+
   // An empty EXT-X-MEDIA list is inconclusive. It must not mark a multi-audio
   // candidate languageRejected and thereby exclude it from the real engine pass.
   const previousProbeFetch = globalThis.fetch;

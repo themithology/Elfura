@@ -484,7 +484,7 @@ export class SourceRegistry {
     // ladder), then known single-quality streams, and only then streams
     // whose quality is unknown. Stable within each tier.
     const qualityTierOf = (o: UniformStreamOption): number => {
-      const n = o.qualityOptions ?? o.qualityLadder?.length ?? 0;
+      const n = o.qualityLadder?.length ?? o.qualityOptions ?? 0;
       if (n > 1) return 0;
       if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
       return 2;

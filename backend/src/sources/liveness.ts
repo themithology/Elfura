@@ -48,8 +48,8 @@ export function extractQualityLadder(text: string, isDash: boolean): { ladder: n
       if (h > 0) heights.add(h);
     }
     if (!heights.size) {
-      const reps = text.match(/<Representation\b/gi)?.length ?? 0;
-      return { ladder: [], options: Math.max(1, reps) };
+      // Representations without heights are not a usable quality ladder.
+      return { ladder: [], options: 0 };
     }
   } else {
     let variants = 0;
@@ -60,7 +60,9 @@ export function extractQualityLadder(text: string, isDash: boolean): { ladder: n
       if (res) heights.add(Number(res[1]));
     }
     if (!variants) return { ladder: [], options: 1 };
-    if (!heights.size) return { ladder: [], options: variants };
+    // Variants without RESOLUTION are NOT a usable quality ladder (players
+    // render them as "0k"): quality stays unknown, never multi-quality.
+    if (heights.size < 2) return { ladder: [...heights], options: heights.size };
   }
   const ladder = [...heights].sort((a, b) => b - a);
   return { ladder, options: Math.max(1, ladder.length) };
@@ -496,7 +498,22 @@ export async function verifyAndFilterCandidatesDetailed(
     let updated: RawStreamCandidate = { ...base };
 
     if (outcome.discoveredAudioLangs && outcome.discoveredAudioLangs.length > 0) {
-      if (outcome.discoveredAudioLangs.length > 1 || updated.multiAudio) {
+      if (outcome.discoveredAudioLangs.length === 1) {
+        // Manifest truth overrides provider metadata: a manifest exposing
+        // exactly one audio rendition is a single-language stream, even if
+        // the provider claimed several dubs. Advertising it as multi-audio
+        // makes language switches appear to succeed while audio never changes.
+        const only = normalizeLang(outcome.discoveredAudioLangs[0]);
+        if (only.code !== 'und') {
+          updated = {
+            ...updated,
+            multiAudio: false,
+            availableAudioLangs: [only.code],
+            audioLang: only.code,
+            audioLabel: only.label,
+          };
+        }
+      } else if (outcome.discoveredAudioLangs.length > 1 || updated.multiAudio) {
         const merged = [...(updated.availableAudioLangs ?? [])];
         for (const code of outcome.discoveredAudioLangs) {
           if (!merged.includes(code)) merged.push(code);
