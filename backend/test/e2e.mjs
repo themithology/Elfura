@@ -857,6 +857,11 @@ const mockUpstream = http.createServer(async (req, res) => {
     );
     return;
   }
+  if (u.pathname === '/vix-encrypted-segment.ts') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(Buffer.from([0xff, 0x81, 0x00, 0x94, 0xac, 0x30, 0xc3, 0x88]));
+    return;
+  }
   if (u.pathname === '/dead-child-stream/audio0.m3u8' || u.pathname === '/dead-html-segment.ts') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end('<!DOCTYPE html><html><body>CDN Marketing Landing Page</body></html>');
@@ -2304,6 +2309,15 @@ try {
     headers: browserHeaders,
   });
   assert.equal(htmlSegRes.status, 502, 'Relay must reject HTML masquerading as a binary media segment with 502');
+  const vixHeaders = { Referer: 'https://vixsrc.to/' };
+  const vixBinaryTicket = sealStreamTicket(secret, { u: `${upBase}/vix-encrypted-segment.ts`, k: 'a', h: vixHeaders });
+  const vixBinary = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(vixBinaryTicket)}`, { headers: browserHeaders });
+  assert.equal(vixBinary.status, 200);
+  assert.equal(vixBinary.headers.get('content-type'), 'application/octet-stream');
+  assert.deepEqual(Buffer.from(await vixBinary.arrayBuffer()), Buffer.from([0xff, 0x81, 0x00, 0x94, 0xac, 0x30, 0xc3, 0x88]));
+  const vixHtmlTicket = sealStreamTicket(secret, { u: `${upBase}/dead-html-segment.ts`, k: 'a', h: vixHeaders });
+  const vixHtml = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(vixHtmlTicket)}`, { headers: browserHeaders });
+  assert.equal(vixHtml.status, 502, 'Provider-specific MIME exception must still reject HTML');
 
   // Verify single-dub native audio inheritance in ElfuraPlayer produces zero ghost "Original" track
   const singleDubPlayer = new ElfuraPlayer({ postMessage: false });
