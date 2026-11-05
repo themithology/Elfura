@@ -28,3 +28,5 @@ async function resolve(c,family,keys){
 let keys={movie:'',tv:''};
 try {const r=await fetch('https://github.com/FmcStore/streamex-api/raw/refs/heads/main/players/p5_vidbolt.py',{signal:AbortSignal.timeout(12000)});const s=await r.text();keys.movie=s.match(/key = "([a-f0-9]{40,})"/)?.[1]||'';keys.tv=s.match(/"(streamrip_secret_[0-9]+)"/)?.[1]||'';}catch{}
 for(const c of cases){const out=await Promise.all(['callisto','orion'].map(f=>resolve(c,f,keys)));console.log(`::notice title=VidboltDirect::${JSON.stringify(out).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);}
+const unkeyed=await Promise.all(cases.map(async c=>{const url=c.type==='tv'?`https://img.animecurx.tech/api/tv/${c.id}/1/1`:`https://api.movy.lol/api/source/${c.id}`;try {const x=await request(url);await x.r?.body?.cancel();return {id:c.id,status:x.r?.status||0};}catch(e){return {id:c.id,error:e.name};}}));
+console.log(`::notice title=VidboltDirect::${JSON.stringify({unkeyed}).replace(/%/g,'%25')}`);
