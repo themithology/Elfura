@@ -9,6 +9,9 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, type BackendConfig } from './config.js';
 import type { SourceRegistry } from './sources/registry.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata } from './tmdb.js';
@@ -18,6 +21,32 @@ export interface DiagnosticsProbe {
   tmdbId: string;
   season: number;
   episode: number;
+}
+
+let buildInfoCache: { commit: string } | null = null;
+/** Commit stamp written into the deployment ZIP at packaging time. */
+export function readBuildInfo(): { commit: string } {
+  if (buildInfoCache) return buildInfoCache;
+  let commit = process.env.ELFURA_BUILD || 'unknown';
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      path.resolve(here, '../../build-info.json'),
+      path.resolve(process.cwd(), 'build-info.json'),
+    ];
+    for (const p of candidates) {
+      if (!fs.existsSync(p)) continue;
+      const parsed = JSON.parse(fs.readFileSync(p, 'utf8')) as { commit?: string };
+      if (parsed.commit) {
+        commit = parsed.commit;
+        break;
+      }
+    }
+  } catch {
+    /* keep fallback */
+  }
+  buildInfoCache = { commit };
+  return buildInfoCache;
 }
 
 const DIAG_CACHE_TTL_MS = 45_000;
@@ -132,6 +161,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
 
   return {
     ok: true,
+    build: readBuildInfo(),
     generatedAt: new Date().toISOString(),
     totalMs: Date.now() - started,
     runtime: { node: process.version, uptimeSec: Math.round(process.uptime()) },

@@ -9,6 +9,7 @@ Node 22/24 Egg even when global typescript@7+ TSGo is installed).
 import json
 import os
 from pathlib import Path
+import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -238,6 +239,17 @@ def main() -> None:
     with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         # Ship `.env.example` ONLY — never write `.env` at the archive root so
         # unarchiving on Pterodactyl preserves any existing `/home/container/.env`.
+        # Build stamp so the running server can report exactly which commit
+        # it booted from (health + diagnostics) — ends stale-deploy confusion.
+        try:
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True
+            ).strip()
+        except Exception:
+            commit = "unknown"
+        build_info = json.dumps({"commit": commit}) + "\n"
+        write_entry(zf, "build-info.json", build_info.encode("utf-8"))
+
         write_entry(zf, ".env.example", (ROOT / ".env.example").read_bytes())
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))

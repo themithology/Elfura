@@ -960,7 +960,13 @@ async function fetchFromNxsha(
     lane: 'nx',
     ok: out.length > 0,
     ms: 0,
-    detail: `serversListed=${Array.isArray(srvResp?.servers) ? srvResp.servers.length : 0} providersTried=${orderedProviders.length} candidates=${out.length}`,
+    detail:
+      `serversListed=${Array.isArray(srvResp?.servers) ? srvResp.servers.length : 0} ` +
+      `tried=[${orderedProviders.join(',')}] ` +
+      `hits=${providerResults.filter((r) => Array.isArray(r.data?.sources) && r.data.sources.length > 0).length} ` +
+      `empty=${providerResults.filter((r) => r.data && Array.isArray(r.data.sources) && r.data.sources.length === 0).length} ` +
+      `null=${providerResults.filter((r) => !r.data).length} ` +
+      `candidates=${out.length}`,
   });
   return out;
 }

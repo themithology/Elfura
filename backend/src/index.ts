@@ -14,7 +14,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadBackendConfig, type BackendConfig } from './config.js';
-import { collectDiagnostics } from './diagnostics.js';
+import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -164,6 +164,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         ok: true,
         service: 'elfura-backend',
         version: '0.1.0',
+        build: readBuildInfo().commit,
         sources: registry.listPublicSources(),
       });
       return;
