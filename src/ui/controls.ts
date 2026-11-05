@@ -2361,9 +2361,14 @@ export class PlayerUI {
         this.renderPanelBody();
       }),
     );
+    // Only real, selectable renditions get a row: height-less levels are a
+    // single fixed rendition already covered by "Auto" (never a "0k" row).
+    const seenHeights = new Set<number>();
     for (const l of this.player.getQualityLevels()) {
+      if (!l.height || l.height <= 0 || seenHeights.has(l.height)) continue;
+      seenHeights.add(l.height);
       this.panelBody.appendChild(
-        this.row(l.label, '', st.qualityMode === String(l.height), () => {
+        this.row(l.label || `${l.height}p`, '', st.qualityMode === String(l.height), () => {
           this.player.setQuality(l.height);
           this.renderPanelBody();
         }),

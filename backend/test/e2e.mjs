@@ -1550,10 +1550,8 @@ try {
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
   assert.deepEqual(pb.segments.intro, [52, 94]);
   assert.deepEqual([...pb.primary.availableAudioLangs].sort(), ['en', 'hi']);
-  assert(
-    (pb.primary.qualityOptions ?? pb.primary.qualityLadder?.length ?? 0) > 1,
-    'Primary must be a multi-quality ABR stream (hierarchy: multi-audio + multi-quality first)',
-  );
+  // A provider's quality catalogue is not proof that the selected manifest
+  // actually contains multiple renditions; only measured ladders may rank so.
   // Hierarchy invariant: within the same multi-audio class, multi-quality
   // options never rank below single-quality or unknown-quality options.
   {
@@ -3114,6 +3112,8 @@ try {
                       type: 'hls',
                       quality: '1080p',
                       audioLanguage: 'en',
+                      audioTracks: [{ language: 'English' }, { language: 'Hindi' }],
+                      availableQualities: ['1080p', '720p', '480p'],
                       headers: { Referer: 'https://api.hlowb.com/' },
                       subtitles: [
                         { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
@@ -3412,6 +3412,10 @@ try {
       // signed CDN lane as a secondary candidate for registry-level liveness filtering.
       const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
+      assert.equal(castleCands[0].multiAudio, false, 'catalogue language labels are not switchable manifest tracks');
+      const checkedCastle = await verifyAndFilterCandidates([castleCands[0]]);
+      assert.equal(checkedCastle[0].qualityOptions, 1, 'a leaf playlist must override a claimed quality ladder');
+      assert.equal(checkedCastle[0].qualityLadder, undefined);
       assert(
         castleCands[0].standbyUrl?.includes('/ip-locked/index_287.m3u8'),
         'Direct signed CDN URL must remain available as a verified failover',

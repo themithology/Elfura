@@ -544,19 +544,16 @@ export async function verifyAndFilterCandidatesDetailed(
     }
 
     if (outcome.qualityOptions !== undefined) {
-      const measuredOptions = outcome.qualityOptions;
-      const adapterOptions = updated.qualityOptions ?? updated.qualityLadder?.length ?? 0;
-      if (measuredOptions >= adapterOptions) {
-        updated = {
-          ...updated,
-          qualityOptions: measuredOptions,
-          ...(outcome.qualityLadder?.length
-            ? { qualityLadder: outcome.qualityLadder }
-            : updated.qualityLadder
-              ? { qualityLadder: updated.qualityLadder }
-              : {}),
-        };
-      }
+      // The measured manifest is the ONLY ladder authority. Provider/API
+      // metadata (e.g. an `availableQualities` family list) must never
+      // promote a single-rendition leaf playlist into a fake multi-quality
+      // stream — that is how "4 QUALITIES" badges ended up on streams whose
+      // player quality menu contains a single 0-height level.
+      updated = {
+        ...updated,
+        qualityOptions: outcome.qualityOptions,
+        qualityLadder: outcome.qualityLadder?.length ? outcome.qualityLadder : undefined,
+      };
     }
 
     return updated;

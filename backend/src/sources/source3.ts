@@ -215,44 +215,26 @@ export async function fetchFromVidSyncPro(
       standbyHeaders = { Referer: `${origin}/`, 'User-Agent': BROWSER_UA };
     }
 
-    const discoveredRowLangs = Array.isArray(row.audioTracks)
-      ? [
-          ...new Set(
-            row.audioTracks
-              .map((t) => normalizeLang(t?.language || t?.label, t?.label).code)
-              .filter((c) => c && c !== 'und'),
-          ),
-        ]
-      : [];
-
-    // VidSync Pro rows carry a permanent (non-expiring) HLS URL and a plain
-    // quality ladder (`availableQualities: ["1080p","720p",...]`). Use the
-    // permanent URL as an extra failover and expose the real ladder so
-    // multi-quality hierarchy ranking applies.
+    // Use the provider's alternative URL as a failover; its lifetime and
+    // language must still be verified. availableQualities describes the
+    // catalogue, not necessarily selectable renditions in this manifest.
     const permanentUrl = String(row.permanent_m3u8_url ?? '').trim();
     if (!standbyUrl && permanentUrl && permanentUrl !== primaryUrl && isSafeUpstreamUrl(permanentUrl)) {
       standbyUrl = permanentUrl;
       standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
     }
-    const ladderHeights = [...new Set(
-      (row.availableQualities ?? [])
-        .map((q) => Number(String(q).replace(/\D+/g, '')))
-        .filter((n) => n >= 144 && n <= 4320),
-    )].sort((a, b) => b - a);
-
     out.push({
       key: primaryUrl,
       type: inferStreamType(row.type, primaryUrl),
       url: primaryUrl,
       headers: primaryHeaders,
       quality: pickBestQualityLabel(row.quality, row.availableQualities),
-      ...(ladderHeights.length
-        ? { qualityLadder: ladderHeights, qualityOptions: ladderHeights.length }
-        : {}),
       audioLang: norm.code,
       audioLabel: norm.label,
-      ...(discoveredRowLangs.length ? { availableAudioLangs: discoveredRowLangs } : {}),
-      multiAudio: Array.isArray(row.audioTracks) && row.audioTracks.length > 1,
+      // These are catalogue-wide language labels, not playable audio tracks:
+      // each row represents a separate dub. Manifest liveness may promote a
+      // candidate to multi-audio when it actually contains multiple tracks.
+      multiAudio: false,
       subtitles: mapSubtitles([...(row.subtitles ?? []), ...topLevelSubs]),
       ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
       rank: 2 + i,

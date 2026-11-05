@@ -2219,7 +2219,14 @@ export class ElfuraPlayer {
           height: l.height ?? 0,
           width: l.width ?? 0,
           bitrate: l.bitrate ?? 0,
-          label: l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`,
+          // Height-less levels are labelled by bitrate only when it is
+          // meaningful; a 0-height/0-bitrate level is a single fixed
+          // rendition and must never surface as a "0k" quality option.
+          label: l.height
+            ? `${l.height}p`
+            : (l.bitrate ?? 0) >= 100_000
+              ? `${Math.round((l.bitrate ?? 0) / 1000)}k`
+              : '',
         }))
         .sort((a, b) => b.height - a.height);
       this.emit('qualityLevels', this.qualityLevels);
@@ -2396,7 +2403,7 @@ export class ElfuraPlayer {
           height: b.height,
           width: b.width,
           bitrate: b.bitrate,
-          label: b.height ? `${b.height}p` : `${Math.round(b.bitrate / 1000)}k`,
+          label: b.height ? `${b.height}p` : b.bitrate >= 100_000 ? `${Math.round(b.bitrate / 1000)}k` : '',
         }))
         .sort((a, b) => b.height - a.height);
       this.emit('qualityLevels', this.qualityLevels);
