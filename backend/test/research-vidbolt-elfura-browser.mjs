@@ -32,7 +32,7 @@ try {
    step='tracks';
    await page.waitForFunction(()=>window.__elfura.player.hls?.audioTracks?.some(t=>/^(hi|hin)(-|$)/i.test(t.lang||'')),null,{timeout:20000});
    step='hindi';
-   const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio'){window.__audioSegments++;(window.__audioLevels ||= []).push(d.frag.level);}});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
+   const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio'){window.__audioSegments++;(window.__audioLevels ||= []).push(d.frag.level);}else if(d.frag?.type==='main'){(window.__videoLevels ||= []).push(d.frag.level);}});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
    await page.waitForFunction(()=>window.__audioSegments>0 && window.__elfura.player.video.currentTime>0.1,null,{timeout:35000});
    const state=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,errors:window.__hlsErrors}));
    if(!selected.ok||!state.audioSegments||state.source!=='source-2')throw new Error('playback assertion failed');
@@ -54,7 +54,7 @@ try {
    const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
    notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches,quality:{target,rendered}});
   } catch(e){
-   const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[],videoHeight:window.__elfura?.player?.video?.videoHeight||0,videoWidth:window.__elfura?.player?.video?.videoWidth||0,currentLevel:window.__elfura?.player?.hls?.currentLevel,qualityLevels:window.__elfura?.player?.getQualityLevels()||[]})).catch(()=>null);
+   const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[],videoHeight:window.__elfura?.player?.video?.videoHeight||0,videoWidth:window.__elfura?.player?.video?.videoWidth||0,currentLevel:window.__elfura?.player?.hls?.currentLevel,loadLevel:window.__elfura?.player?.hls?.loadLevel,videoLevels:window.__videoLevels||[],qualityLevels:window.__elfura?.player?.getQualityLevels()||[]})).catch(()=>null);
    notice({id:c.id,success:false,step,error:e.name,snapshot});process.exitCode=1;
   }
  }
