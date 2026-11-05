@@ -150,7 +150,7 @@ const selectDemoItem = (item: CatalogItem, reset = true) => {
   demoBackdrop.alt = `${item.title} artwork`;
   demoPlayButton.disabled = false;
   $('span', demoPlayButton).textContent = 'Play demo';
-  $<HTMLAnchorElement>('[data-demo-open]').href = `${embedPathFor(item)}?color=d7ff64`;
+  $<HTMLAnchorElement>('[data-demo-open]').href = `${embedPathFor(item)}?color=f4f4f4`;
   if (reset) resetDemoFrame();
 };
 demoBackdrop.addEventListener('error', () => { demoBackdrop.hidden = true; });
@@ -160,7 +160,7 @@ const loadDemo = () => {
     void loadCatalog();
     return;
   }
-  demoFrame.src = `${embedPathFor(activeDemoItem)}?color=d7ff64&autoplay=1`;
+  demoFrame.src = `${embedPathFor(activeDemoItem)}?color=f4f4f4&autoplay=1`;
   demoFrame.hidden = false;
   demoOverlay.hidden = true;
   $('[data-demo-event]').textContent = 'sources';
@@ -421,9 +421,9 @@ updateGeneratedCode();
 /* Documentation examples and tabs */
 const origin = window.location.origin;
 const codeExamples: Record<string, string> = {
-  movie: `<iframe\n  src="${origin}/embed/movie/533535?color=d7ff64"\n  title="Movie player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
+  movie: `<iframe\n  src="${origin}/embed/movie/533535?color=f4f4f4"\n  title="Movie player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
   tv: `<iframe\n  src="${origin}/embed/tv/94605/1/1?episodeSelector=1&autoplayNextEp=1"\n  title="Episode player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
-  sdk: `import { Elfura } from '${origin}/lib/elfura.js';\nimport '${origin}/lib/elfura-player.css';\n\nconst { player, ui, destroy } = Elfura.mount(\n  document.querySelector('#player'),\n  {\n    tmdb: '94605',\n    mediaType: 'tv',\n    season: 1,\n    episode: 1,\n    lang: 'hi',\n    sublang: 'en',\n    color: '#d7ff64',\n    autoplayNextEp: true,\n  }\n);\n\nconst state = player.getState();\nconsole.log(state.audioLang, state.qualityMode);`,
+  sdk: `import { Elfura } from '${origin}/lib/elfura.js';\nimport '${origin}/lib/elfura-player.css';\n\nconst { player, ui, destroy } = Elfura.mount(\n  document.querySelector('#player'),\n  {\n    tmdb: '94605',\n    mediaType: 'tv',\n    season: 1,\n    episode: 1,\n    lang: 'hi',\n    sublang: 'en',\n    color: '#f4f4f4',\n    autoplayNextEp: true,\n  }\n);\n\nconst state = player.getState();\nconsole.log(state.audioLang, state.qualityMode);`,
   events: `window.addEventListener('message', (event) => {\n  // Always pin the sender to your player origin.\n  if (event.origin !== '${origin}') return;\n  const message = event.data;\n  if (message?.__elfura !== 1 || message.kind !== 'event') return;\n\n  analytics.track(\`player:\${message.name}\`, {\n    ...message.data,\n    sessionId: message.sessionId,\n  });\n});\n\n// Commands use the same versioned, origin-locked envelope.\n// The player acknowledges every command with its reqId.`,
 };
 $$('[data-code]').forEach((code) => {
