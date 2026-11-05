@@ -345,6 +345,9 @@ export class PlayerUI {
     this.player = player;
     this.build();
     this.wire();
+    // Initial intro/outro configuration can predate UI construction. Render it
+    // immediately; loadedmetadata/durationchange will refine it once known.
+    this.renderSegments();
     this.syncMediaMetadata();
     this.syncCapabilities();
     if (this.player.config.tmdb && !this.player.config.src) this.showInitialLoading();
@@ -1303,6 +1306,7 @@ export class PlayerUI {
       this.syncCapabilities();
       this.renderSegments();
     });
+    v.addEventListener('loadedmetadata', () => this.renderSegments());
     bus.on('autoplay:blocked', () => this.showToast('Tap to play with sound'));
     bus.on('error', (d) => {
       const code = (d as { code?: string })?.code ?? '';

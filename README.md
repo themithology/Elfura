@@ -137,6 +137,12 @@ video — and the same changes apply to real cues immediately.
   resolution the ABR is actually serving (`LEVEL_SWITCHED` / `QUALITY_CHANGE_RENDERED`).
 - Centre state flash on play/pause/seek; buffering spinner; auto-hide after 2.6 s.
 - Intro/outro render as coloured segments inside the scrubber plus a skip pill.
+  Segment metadata is resolved independently of stream racing, and the ranges
+  refresh on initial UI creation and `loadedmetadata`. Intro/outro clicks seek
+  past the range; an outro opens the next episode instead when one is available.
+- When OpenSubtitles returns usable tracks, every stream exposes that same
+  deduplicated one-track-per-language catalogue. Native subtitles are retained
+  only as the fallback when OpenSubtitles has no usable result.
 
 ### Nothing is hardcoded
 Quality rows come from the manifest; tabs, buttons and segments derive from

@@ -34,6 +34,11 @@ export class SourceRegistry {
   private readonly cfg: BackendConfig;
   private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
+  private readonly segmentCache = new Map<
+    string,
+    { expiresAt: number; result: SkipSegments | undefined }
+  >();
+  private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
@@ -99,6 +104,51 @@ export class SourceRegistry {
     return p;
   }
 
+  private resolveSegmentsWithCache(
+    adapter: SourceAdapter,
+    baseKey: string,
+    query: SourceQuery,
+  ): Promise<SkipSegments | undefined> {
+    if (!adapter.resolveSegments) return Promise.resolve(undefined);
+
+    const cached = this.segmentCache.get(baseKey);
+    if (cached) {
+      if (Date.now() <= cached.expiresAt) {
+        // Refresh LRU position even when the cached result is undefined.
+        this.segmentCache.delete(baseKey);
+        this.segmentCache.set(baseKey, cached);
+        return Promise.resolve(cached.result);
+      }
+      this.segmentCache.delete(baseKey);
+    }
+
+    const existing = this.segmentInFlight.get(baseKey);
+    if (existing) return existing;
+
+    const resolveSegments = adapter.resolveSegments.bind(adapter);
+    const p = resolveSegments({ ...query, preferredLang: undefined })
+      .catch(() => undefined)
+      .then((result) => {
+        if (this.segmentCache.has(baseKey)) this.segmentCache.delete(baseKey);
+        while (this.segmentCache.size >= MAX_ADAPTER_CACHE_ENTRIES) {
+          const oldest = this.segmentCache.keys().next().value;
+          if (oldest === undefined) break;
+          this.segmentCache.delete(oldest);
+        }
+        this.segmentCache.set(baseKey, {
+          expiresAt: Date.now() + ADAPTER_CACHE_TTL_MS,
+          result,
+        });
+        return result;
+      })
+      .finally(() => {
+        this.segmentInFlight.delete(baseKey);
+      });
+
+    this.segmentInFlight.set(baseKey, p);
+    return p;
+  }
+
   async resolvePlayback(params: {
     type: 'movie' | 'tv';
     tmdbId: string;
@@ -159,8 +209,18 @@ export class SourceRegistry {
     let earlyRelease: (() => void) | null = null;
     let lagTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const cacheKeys = activeAdapters.map(
+      (adapter) =>
+        `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`,
+    );
+    // Segment lookup is deliberately independent of the adapter race. A fast
+    // Source 2 response must not discard Source 1's slower intro/outro metadata.
+    const segmentTasks = activeAdapters.map((adapter, idx) =>
+      this.resolveSegmentsWithCache(adapter, cacheKeys[idx], query),
+    );
+
     const adapterTasks = activeAdapters.map(async (adapter, idx) => {
-      const cacheKey = `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`;
+      const cacheKey = cacheKeys[idx];
       try {
         const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
         slots[idx] = { adapter, result };
@@ -240,11 +300,14 @@ export class SourceRegistry {
       }
     }
 
-    const media = await mediaPromise;
+    const [media, segmentResults] = await Promise.all([mediaPromise, Promise.all(segmentTasks)]);
     const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;
+    for (const segments of segmentResults) {
+      if (!mergedSegments && segments) mergedSegments = segments;
+    }
 
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
       if (!mergedSegments && result.segments) {
@@ -283,14 +346,14 @@ export class SourceRegistry {
 
     if (!uniformOptions.length) return null;
 
-    // Automatic OpenSubtitles fallback: seal & backfill missing subtitle languages
-    // whenever any stream option has sparse or zero native subtitles.
-    const needsSubFallback =
-      Boolean(media.imdbId) &&
-      Boolean(this.cfg.subtitles?.enabled) &&
-      uniformOptions.some((o) => o.subtitles.length < 3);
+    // OpenSubtitles is the single subtitle catalogue whenever it returns usable
+    // tracks. Mixing those entries with provider/native tracks produced duplicate
+    // languages and inconsistent labels. If OpenSubtitles is unavailable or has
+    // no usable result, each option keeps its existing native subtitle fallback.
+    const shouldResolveOpenSubtitles =
+      Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
-    if (needsSubFallback && media.imdbId) {
+    if (shouldResolveOpenSubtitles && media.imdbId) {
       const rawFallbackSubs =
         (await earlyOpenSubsPromise) ??
         (await fetchOpenSubtitlesFallback(this.cfg.subtitles, {
@@ -315,13 +378,7 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          const existingLangs = new Set(opt.subtitles.map((s) => s.lang.toLowerCase()));
-          for (const fb of sealedFallbackSubs) {
-            if (!existingLangs.has(fb.lang.toLowerCase())) {
-              opt.subtitles.push(fb);
-              existingLangs.add(fb.lang.toLowerCase());
-            }
-          }
+          opt.subtitles = [...sealedFallbackSubs];
         }
       }
     }

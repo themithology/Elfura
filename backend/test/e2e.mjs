@@ -322,6 +322,7 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
 
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 
+let skipSegmentRequestCount = 0;
 const mockUpstream = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
@@ -597,12 +598,18 @@ const mockUpstream = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && u.pathname.startsWith('/_serverFn/6b4f5d')) {
-    const serResp = serializeSerovalEnvelope({
-      intro: { start: 52, end: 94 },
-      outro: { start: 2310, end: 2420 },
-    });
-    res.writeHead(200, { 'Content-Type': 'application/json', 'X-Tss-Serialized': 'true' });
-    res.end(serResp);
+    const respond = () => {
+      const serResp = serializeSerovalEnvelope({
+        intro: { start: 52, end: 94 },
+        outro: { start: 2310, end: 2420 },
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Tss-Serialized': 'true' });
+      res.end(serResp);
+    };
+    // Regression: the old 180ms post-discovery grace period discarded this
+    // perfectly valid response before it could reach playback.segments.
+    if (skipSegmentRequestCount++ === 0) setTimeout(respond, 1200);
+    else respond();
     return;
   }
 
@@ -939,6 +946,13 @@ const mockUpstream = http.createServer(async (req, res) => {
         JSON.stringify({
           success: true,
           sources: byServer.orion.sources,
+          subtitles: [
+            {
+              url: `${origin}/media/rousav94605/subs_en.vtt`,
+              lang: 'en',
+              label: 'Native English',
+            },
+          ],
           byServer,
           scanReport: { totalServers: 30, onlineServers: 30, servers: scanServers },
         }),
@@ -1508,7 +1522,7 @@ try {
   assert.equal(s2SubRes.status, 200);
   const s2SubText = await s2SubRes.text();
   assert(!s2SubText.includes('aethoflix'), 'Expected WebVTT spam cue to be stripped');
-  assert(s2SubText.includes('Real subtitle line from Source 2.'));
+  assert(s2SubText.includes('Welcome to Piltover.'), 'Expected the exclusive OpenSubtitles catalogue');
 
   // Requesting preferred lang=fr promotes Source 2 French directly to `primary`!
   const pbFrRes = await fetch(
@@ -1540,7 +1554,7 @@ try {
 
   const subRes = await fetch(`${apiBase}${pb.primary.subtitles[0].url}`, { headers: browserHeaders });
   assert.equal(subRes.status, 200);
-  assert((await subRes.text()).includes('Welcome to Piltover!'));
+  assert((await subRes.text()).includes('Welcome to Piltover.'));
 
   // 7. Verify exhaustive raw-source audio search + fallback + unavailable message in ElfuraPlayer
   // Provide minimal DOM shims in Node so we can test ElfuraPlayer's real searchRawSourcesForLanguage logic
@@ -1825,6 +1839,15 @@ try {
   assert(s2Movie.some((s) => s.audioLang === 'hi'), 'Expected Hindi dub in movie/533535');
   assert(s2Movie.some((s) => s.audioLang === 'te'), 'Expected Telugu dub in movie/533535');
   assert(s2Movie.some((s) => s.audioLang === 'uk'), 'Expected "Ukr" normalized to ISO "uk"');
+  const movieFallbackSubs = pb533535.sources.flatMap((s) => s.subtitles);
+  assert(movieFallbackSubs.length > 0, 'Native subtitles must remain when OpenSubtitles has no result');
+  assert(movieFallbackSubs.every((s) => s.lang === 'en' && s.label === 'English'));
+  const nativeFallbackTicket = new URL(movieFallbackSubs[0].url, 'https://elfura.example').searchParams.get('t');
+  assert.equal(
+    openStreamTicket(secret, nativeFallbackTicket).u,
+    `${upBase}/media/rousav94605/subs_en.vtt`,
+    'The no-result fallback must retain the sealed native subtitle URL',
+  );
 
   // 9. Verify concurrent fastest-server racing (not sequential top-to-bottom) in ElfuraPlayer
   const deadTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/dead.mp4`, k: 'a' }))}`;
@@ -2605,6 +2628,23 @@ try {
   //     (a) Automatic OpenSubtitles Fallback (zero-disk RAM cache, .sub filtering, legacy tag canonicalization,
   //         sealed `/api/v1/stream?t=...` tickets with zero external domain leak, and SRT spam-cue sanitization)
   const arcaneSubLangs = pb.primary.subtitles.map((s) => s.lang);
+  assert.deepEqual(
+    [...arcaneSubLangs].sort(),
+    ['en', 'es-419', 'hi', 'pt-br'],
+    'OpenSubtitles must replace—not mix with—the native subtitle catalogue',
+  );
+  assert.equal(new Set(arcaneSubLangs).size, arcaneSubLangs.length, 'No duplicate subtitle languages');
+  for (const option of pb.sources) {
+    assert.deepEqual(
+      option.subtitles.map((s) => s.lang).sort(),
+      [...arcaneSubLangs].sort(),
+      'Every stream option must expose the same unambiguous OpenSubtitles choices',
+    );
+    assert(
+      option.subtitles.every((s) => !['1. English [CC]', 'Native English'].includes(s.label)),
+      'Native/provider labels must not leak into the OpenSubtitles-only catalogue',
+    );
+  }
   assert(arcaneSubLangs.includes('en'), 'Expected OpenSubtitles English fallback track');
   assert(arcaneSubLangs.includes('hi'), 'Expected OpenSubtitles Hindi fallback track');
   assert(arcaneSubLangs.includes('pt-br'), 'Expected OpenSubtitles `pob` to canonicalize to `pt-br`');

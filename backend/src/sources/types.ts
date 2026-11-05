@@ -97,6 +97,12 @@ export interface SourceAdapter {
   readonly label: string;
   enabled(): boolean;
   resolve(query: SourceQuery): Promise<RawSourceResult>;
+  /**
+   * Resolve time-range metadata independently from stream racing. This keeps a
+   * fast adapter from finalizing playback before another adapter's intro/outro
+   * metadata has arrived.
+   */
+  resolveSegments?(query: SourceQuery): Promise<SkipSegments | undefined>;
 }
 
 /* ------------------------------------------------------------------ */

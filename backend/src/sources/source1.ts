@@ -1176,6 +1176,17 @@ async function fetchSkipSegments(
 ): Promise<SkipSegments | undefined> {
   if (isSubOriginCoolingDown(cfg.appOrigin)) return undefined;
   try {
+    // TMDB supplies the canonical IMDb id used by the metadata endpoint. It is
+    // already resolving concurrently for the playback response, so await that
+    // shared promise instead of issuing a duplicate metadata request.
+    let imdbId = query.imdbId;
+    if (!imdbId && query.resolveMetaFallback) {
+      try {
+        imdbId = (await query.resolveMetaFallback()).imdbId ?? undefined;
+      } catch {
+        // TMDB metadata is optional; the endpoint can still resolve by TMDB id.
+      }
+    }
     const res = await callServerFn<{
       intro?: { start?: number; end?: number } | null;
       outro?: { start?: number; end?: number } | null;
@@ -1187,7 +1198,7 @@ async function fetchSkipSegments(
       data: {
         type: query.type,
         tmdbId: String(query.tmdbId),
-        imdbId: query.imdbId ?? null,
+        imdbId: imdbId ?? null,
         ...(query.type === 'tv' ? { season: query.season ?? 1, episode: query.episode ?? 1 } : {}),
       },
       refererPath,
@@ -1225,6 +1236,14 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
     id: 'source-1',
     label: 'Source 1',
     enabled: () => cfg.enabled,
+
+    async resolveSegments(query: SourceQuery): Promise<SkipSegments | undefined> {
+      const refererPath =
+        query.type === 'movie'
+          ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
+          : `/embed/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
+      return fetchSkipSegments(cfg, query, refererPath);
+    },
 
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
       const apiPath =
@@ -1310,8 +1329,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pSegments = fetchSkipSegments(cfg, query, refererPath);
-
       await Promise.race([
         Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]),
         new Promise<void>((r) => {
@@ -1319,12 +1336,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         }),
       ]);
       if (graceTimer) clearTimeout(graceTimer);
-
-      // Give skip-segments a tiny window if streams already finished, never blocking cold playback long
-      const segments = await Promise.race([
-        pSegments,
-        new Promise<undefined>((r) => setTimeout(() => r(undefined), 180)),
-      ]);
 
       // Do NOT stamp upstream JSON-scraper RPC duration onto `latencyMs`: leave `latencyMs`
       // unset unless known so `liveness.ts` populates the true measured CDN manifest RTT!
@@ -1426,7 +1437,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
 
       return {
         candidates,
-        ...(segments ? { segments } : {}),
         ...(metaHint ? { metaHint } : {}),
       };
     },
