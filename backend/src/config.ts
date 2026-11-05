@@ -176,7 +176,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       enabled: env.SOURCE1_ENABLED !== '0',
       appOrigin: (env.SOURCE1_APP_ORIGIN || 'https://tgvid.lovable.app').replace(/\/+$/, ''),
       apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
-      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || '').replace(/\/+$/, ''),
+      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
       syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),

@@ -14,7 +14,6 @@ import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { fetchFromVidSyncPro } from './source3.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -553,29 +552,21 @@ async function fetchFromRiftBoot(
     query.type === 'movie'
       ? `/api/boot/movie/${encodeURIComponent(query.tmdbId)}`
       : `/api/boot/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
-  const bootUrl = `${cfg.riftOrigin}${bootPath}`;
-  const wrapRelay = (target: string, manifest = false) =>
-    cfg.riftRelay
-      ? `${cfg.riftRelay}/api/relay?u=${Buffer.from(target, 'utf8').toString('base64url')}${manifest ? '&m=1' : ''}`
-      : target;
+  const bootQuery = new URLSearchParams({ type: query.type, id: query.tmdbId, source: '0', provider: '', shell: '1' });
+  const bootUrl = `${cfg.riftOrigin}${bootPath}?${bootQuery}`;
+  const wrapRelay = (target: string, _manifest = false) => target;
 
   try {
     const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
-    let res = await fetch(bootUrl, {
+    const res = await fetch(bootUrl, {
       headers: {
         Accept: 'application/json',
         Referer: `${cfg.riftOrigin}/`,
+        Origin: cfg.riftOrigin,
         'User-Agent': BROWSER_UA,
       },
       signal: sig,
     });
-    if (!res.ok && cfg.riftRelay && !isSubOriginCoolingDown(cfg.riftRelay)) {
-      res = await fetch(wrapRelay(bootUrl, false), {
-        headers: { 'User-Agent': BROWSER_UA },
-        signal: AbortSignal.timeout(3500),
-      });
-      if (!res.ok) tripSubOriginCooldown(cfg.riftRelay);
-    }
     if (!res.ok) {
       if (res.status === 404 || res.status >= 500) tripSubOriginCooldown(cfg.riftOrigin);
       return [];
@@ -660,8 +651,6 @@ async function fetchFromRiftBoot(
       const hash = s.url.split('/api/orion/')[1]?.split('/')[0];
       if (!hash) continue;
 
-      const rawLangName = String(s.name ?? 'Original').split('·').pop()?.trim() || 'Original';
-      const norm = normalizeLang(rawLangName, rawLangName);
       const maxHeight = Math.max(0, ...(s.rungs ?? []).map((r) => Number(r.height || 0)));
       const streamType = inferStreamType(s.type, s.url);
 
@@ -710,8 +699,7 @@ async function fetchFromRiftBoot(
         url: finalUrl,
         headers,
         quality: maxHeight ? `${maxHeight}p` : 'auto',
-        audioLang: norm.code,
-        audioLabel: norm.label,
+        // Language must come from manifest evidence, not the provider's stream name.
         multiAudio: false,
         subtitles: sharedSubs,
         ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
@@ -1068,10 +1056,11 @@ async function fetchSkipSegments(
 /* Source 1 Adapter Factory                                            */
 /* ------------------------------------------------------------------ */
 
-export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapter {
+export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2 = 1): SourceAdapter {
+  const id = `source-${group}`;
   return {
-    id: 'source-1',
-    label: 'Source 1',
+    id,
+    label: `Source ${group}`,
     enabled: () => cfg.enabled,
 
     async resolveSegments(query: SourceQuery): Promise<SkipSegments | undefined> {
@@ -1079,7 +1068,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         query.type === 'movie'
           ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
           : `/embed/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
-      return fetchSkipSegments(cfg, query, refererPath);
+      return group === 1 ? fetchSkipSegments(cfg, query, refererPath) : undefined;
     },
 
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
@@ -1125,44 +1114,42 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         }
         // Once at least two independent pipelines have produced candidates,
         // start a short grace window instead of waiting for every slow lane.
-        if (liveSourcePipelines >= 2 && slots.sync && !graceTimer) {
+        if (liveSourcePipelines >= 2 && (group === 1 || slots.rift) && !graceTimer) {
           graceTimer = setTimeout(() => releaseEarly?.(), 360);
         }
       };
 
-      const pSecure = timed(fetchFromSecureFn(cfg, apiPath, refererPath, query.signal)).then((r) => {
+      const pSecure = timed(group === 1 ? fetchFromSecureFn(cfg, apiPath, refererPath, query.signal) : Promise.resolve(null)).then((r) => {
         slots.secure = r;
         settledCount++;
         if (r.val?.links?.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pPublic = timed(fetchFromPublicApi(cfg, apiPath, query.signal)).then((r) => {
+      const pPublic = timed(group === 1 ? fetchFromPublicApi(cfg, apiPath, query.signal) : Promise.resolve(null)).then((r) => {
         slots.public = r;
         settledCount++;
         if (r.val?.links?.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pRift = timed(fetchFromRiftBoot(cfg, query)).then((r) => {
+      const pRift = timed(group === 2 ? fetchFromRiftBoot(cfg, query) : Promise.resolve([])).then((r) => {
         slots.rift = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pSync = timed(
-        fetchFromVidSyncPro(cfg.syncOrigin, query, { core: true, stream: false }),
-      ).then((r) => {
+      const pSync = timed(Promise.resolve([] as RawStreamCandidate[])).then((r) => {
         slots.sync = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pRock = timed(fetchFromVidRock(cfg, query)).then((r) => {
+      const pRock = timed(group === 2 ? fetchFromVidRock(cfg, query) : Promise.resolve([])).then((r) => {
         slots.rock = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pLink = timed(fetchFromVidLink(cfg, query)).then((r) => {
+      const pLink = timed(group === 1 ? fetchFromVidLink(cfg, query) : Promise.resolve([])).then((r) => {
         slots.link = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
@@ -1268,18 +1255,20 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
       if (query.diag) {
         const lane = (name: string, slot: { ms: number } | null, count: number) =>
           query.diag!.push({
-            adapter: 'source-1',
+            adapter: id,
             lane: name,
             ok: !!slot && count > 0,
             ms: slot?.ms ?? 0,
             detail: !slot ? 'not-settled' : `candidates=${count}`,
           });
-        lane('A', slots.secure, secureCandidates.length);
-        lane('B', slots.public, publicCandidates.length);
-        lane('C', slots.rift, riftCandidates.length);
-        lane('D', slots.sync, syncCandidates.length);
-        lane('E', slots.rock, rockCandidates.length);
-        lane('F', slots.link, linkCandidates.length);
+        if (group === 1) {
+          lane('A', slots.secure, secureCandidates.length);
+          lane('B', slots.public, publicCandidates.length);
+          lane('F', slots.link, linkCandidates.length);
+        } else {
+          lane('C', slots.rift, riftCandidates.length);
+          lane('E', slots.rock, rockCandidates.length);
+        }
       }
 
       const metaSource = slots.secure?.val ?? slots.public?.val;

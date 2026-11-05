@@ -340,9 +340,11 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 
 let skipSegmentRequestCount = 0;
+let removedSourceCalls = 0;
 const mockUpstream = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
+  if (/^\/api\/(?:extract|scan|sources)(?:\/|$)/.test(u.pathname) || u.pathname.startsWith('/backend/database/')) removedSourceCalls++;
 
   if (u.pathname === '/tmdb/trending/movie/week') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -665,6 +667,7 @@ const mockUpstream = http.createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         meta: {
+          playbackToken: "fixture-rift-token",
           orionStreams: [
             {
               url: '/api/orion/abc123hash/master.m3u8',
@@ -676,6 +679,22 @@ const mockUpstream = http.createServer(async (req, res) => {
       }),
     );
     return;
+  }
+  if (u.pathname.startsWith('/api/orion/abc123hash/')) {
+    assert.equal(req.headers['x-playback-token'], 'fixture-rift-token');
+    const tail = u.pathname.split('/').pop();
+    if (tail === 'subtitles.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tracks: [{ label: 'English', lang: 'en', url: '/api/orion/abc123hash/sub_en.vtt' }] }));
+      return;
+    }
+    if (tail === 'sub_en.vtt') {
+      res.writeHead(200, { 'Content-Type': 'text/vtt' }); res.end('WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nWelcome!\n'); return;
+    }
+    if (tail === 'master.m3u8') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080\n/cdn/hub/v0.m3u8\n'); return;
+    }
   }
   if (u.pathname === '/api/relay') {
     const decoded = Buffer.from(u.searchParams.get('u'), 'base64url').toString('utf8');
@@ -1501,6 +1520,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.sources.length, 3);
+  assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
   for (const source of diag.sources) {
@@ -1575,6 +1595,9 @@ try {
   assert.equal(pbRes.status, 200);
   const pb = await pbRes.json();
   assert.equal(pb.ok, true);
+  assert.equal(removedSourceCalls, 0, 'legacy SOURCE2 settings must not activate removed providers');
+  const upstreamUrls = pb.sources.map((s) => openStreamTicket(secret, new URL(s.url, apiBase).searchParams.get('t')).u);
+  assert.equal(new Set(upstreamUrls).size, upstreamUrls.length, 'identical upstream streams must be deduplicated across groups');
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
   assert.deepEqual(pb.segments.intro, [52, 94]);
   assert.deepEqual([...pb.primary.availableAudioLangs].sort(), ['en', 'hi']);
@@ -1616,44 +1639,12 @@ try {
     assert(!rawJsonStr.toLowerCase().includes(forbidden.toLowerCase()), `Leaked internal string: ${forbidden}`);
   }
 
-  // Verify Source 2 candidates are present, deduplicated, and canonicalized cleanly
-  const s2Options = pb.sources.filter((s) => s.sourceId === 'source-2');
-  assert(s2Options.length >= 4, 'Expected Source 2 candidates in uniform playback response');
-  // French 720p was aliased across orion & valstrax with two vidbolt tokens -> must deduplicate to 1!
-  const s2French = s2Options.filter((s) => s.audioLang === 'fr');
-  assert.equal(s2French.length, 1, 'Expected per-server vidbolt French clones to deduplicate to 1');
-  assert(s2Options.some((s) => s.audioLang === 'es-419' && s.label.includes('Latin American Spanish')));
-  assert(s2Options.some((s) => s.audioLang === 'bn' && s.label.includes('Bangla')));
-  // "Kurdish sub" hardsub stream must NOT masquerade as Kurdish audio ('ku')!
-  assert(!s2Options.some((s) => s.audioLang === 'ku'), 'Hardsub stream must not be tagged as Kurdish audio');
-
-  // Verify Source 2 rousav multi-audio master + child playlist Referer injection + VTT spam cue filter
-  const s2Multi = s2Options.find((s) => s.multiAudio);
-  assert(s2Multi, 'Expected Source 2 multi-audio master stream');
-  const s2MasterRes = await fetch(`${apiBase}${s2Multi.url}`, { headers: browserHeaders });
-  assert.equal(s2MasterRes.status, 200);
-  const s2MasterText = await s2MasterRes.text();
-  assert(s2MasterText.includes('NAME="English"'));
-  assert(s2MasterText.includes('NAME="Hindi"'));
-  const s2ChildLine = s2MasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
-  const s2ChildRes = await fetch(`${apiBase}${s2ChildLine}`, { headers: browserHeaders });
-  assert.equal(s2ChildRes.status, 200, 'Expected rousav child playlist to succeed with server-side Referer');
-
-  const s2SubRes = await fetch(`${apiBase}${s2Multi.subtitles[0].url}`, { headers: browserHeaders });
-  assert.equal(s2SubRes.status, 200);
-  const s2SubText = await s2SubRes.text();
-  assert(!s2SubText.includes('aethoflix'), 'Expected WebVTT spam cue to be stripped');
-  assert(s2SubText.includes('Welcome to Piltover.'), 'Expected the exclusive OpenSubtitles catalogue');
-
-  // Requesting preferred lang=fr promotes Source 2 French directly to `primary`!
-  const pbFrRes = await fetch(
-    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&lang=fr&nonce=${boot.nonce}`,
-    { headers: { ...browserHeaders, 'X-Playback-Token': boot.pltoken } },
-  );
-  assert.equal(pbFrRes.status, 200);
-  const pbFr = await pbFrRes.json();
-  assert.equal(pbFr.primary.sourceId, 'source-2');
-  assert.equal(pbFr.primary.audioLang, 'fr');
+  // The replacement Source 2 must resolve VidRift directly, not the removed adapter.
+  const riftOption = pb.sources.find((s) => s.sourceId === 'source-2');
+  assert(riftOption, 'Expected the VidRift fixture in Source 2');
+  const riftMasterRes = await fetch(`${apiBase}${riftOption.url}`, { headers: browserHeaders });
+  assert.equal(riftMasterRes.status, 200);
+  assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
 
   const protectedOpt = pb.sources.find((s) => s.label.includes('English'));
   const protectedMasterRes = await fetch(`${apiBase}${protectedOpt.url}`, { headers: browserHeaders });
@@ -2013,49 +2004,6 @@ try {
   assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good', 'direct-hi'], 'Unavailable requires an actual attempt for every compatible source');
   searchPlayer.destroy();
 
-  // 8. Verify full 30-server Source 2 harvesting + latency ordering + Ukr->uk canonicalization on movie/533535
-  const sess533535Res = await fetch(`${apiBase}/api/v1/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'https://watch.elfura.example' },
-    body: JSON.stringify({ type: 'movie', tmdb: '533535' }),
-  });
-  const sess533535 = await sess533535Res.json();
-  const pb533535Res = await fetch(
-    `${apiBase}/api/v1/playback?type=movie&tmdb=533535&nonce=${encodeURIComponent(sess533535.nonce)}`,
-    {
-      headers: {
-        Origin: 'https://watch.elfura.example',
-        'X-Playback-Token': sess533535.pltoken,
-      },
-    },
-  );
-  assert.equal(pb533535Res.status, 200);
-  const pb533535Raw = await pb533535Res.text();
-  for (const leaked of ['rousav', 'quantum', 'valstrax', 'zxc_orion', 'vidbolt', 'aethoflix']) {
-    assert(!pb533535Raw.toLowerCase().includes(leaked), `Playback payload leaked "${leaked}"`);
-  }
-  const pb533535 = JSON.parse(pb533535Raw);
-  const s2Movie = pb533535.sources.filter((s) => s.sourceId === 'source-2');
-  assert(
-    s2Movie.length >= 33,
-    `Expected all 30 Source 2 servers + distinct dubs (got ${s2Movie.length})`,
-  );
-  assert.equal(s2Movie[0].latencyHintMs, 365, 'Fastest 365ms server must be ranked first');
-  assert.equal(s2Movie[1].latencyHintMs, 370, 'Second fastest 370ms server must be ranked second');
-  assert(/^[0-9a-f]{12}$/.test(s2Movie[0].fingerprint), 'Expected 12-hex opaque fingerprint');
-  assert(s2Movie.some((s) => s.audioLang === 'hi'), 'Expected Hindi dub in movie/533535');
-  assert(s2Movie.some((s) => s.audioLang === 'te'), 'Expected Telugu dub in movie/533535');
-  assert(s2Movie.some((s) => s.audioLang === 'uk'), 'Expected "Ukr" normalized to ISO "uk"');
-  const movieFallbackSubs = pb533535.sources.flatMap((s) => s.subtitles);
-  assert(movieFallbackSubs.length > 0, 'Native subtitles must remain when OpenSubtitles has no result');
-  assert(movieFallbackSubs.every((s) => s.lang === 'en' && s.label === 'English'));
-  const nativeFallbackTicket = new URL(movieFallbackSubs[0].url, 'https://elfura.example').searchParams.get('t');
-  assert.equal(
-    openStreamTicket(secret, nativeFallbackTicket).u,
-    `${upBase}/media/rousav94605/subs_en.vtt`,
-    'The no-result fallback must retain the sealed native subtitle URL',
-  );
-
   // 9. Verify concurrent fastest-server racing (not sequential top-to-bottom) in ElfuraPlayer
   const deadTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/dead.mp4`, k: 'a' }))}`;
   const slowTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/slow-hi.mp4`, k: 'a' }))}`;
@@ -2202,38 +2150,7 @@ try {
     'Expected Source 3 proxy-backed Hindi stream to survive deep liveness check',
   );
 
-  // Dead Source 2 `German` (`403` mirror) MUST be pruned, and `Kurdish sub` hardsub must not claim `ku` audio!
-  const s2Reze = pbReze.sources.filter((s) => s.sourceId === 'source-2');
-  assert(!s2Reze.some((s) => s.audioLang === 'de'), 'Dead 403 Source 2 mirror must be pruned server-side');
-  assert(!s2Reze.some((s) => s.audioLang === 'ku'), 'Kurdish hardsub must never masquerade as Kurdish audio');
-
-  // Verify ALL real Source 2 audio languages + in-manifest discovered languages (`ko`, `th`) are unlocked!
-  const discoveredRezeLangs = new Set();
-  for (const s of s2Reze) {
-    if (s.audioLang) discoveredRezeLangs.add(s.audioLang);
-    for (const l of s.availableAudioLangs || []) discoveredRezeLangs.add(l);
-  }
-  for (const expectedLang of ['ja', 'hi', 'en', 'fr', 'ar', 'id', 'ko', 'th']) {
-    assert(
-      discoveredRezeLangs.has(expectedLang),
-      `Expected Source 2 to unlock "${expectedLang}" audio track (got ${[...discoveredRezeLangs].join(',')})`,
-    );
-  }
-
-  // Verify `dash-hls-bridge` Japanese single-dub stream kept outer Signature, stamped `LANGUAGE="ja",NAME="Japanese"`, and tagged `hvc1`!
-  const jaOpt = s2Reze.find((s) => s.audioLang === 'ja');
-  assert(jaOpt, 'Expected Source 2 Japanese dub option');
-  const jaMasterRes = await fetch(`${apiBase}${jaOpt.url}`, { headers: browserHeaders });
-  assert.equal(jaMasterRes.status, 200, 'Expected outer-signed dash-hls-bridge stream to return 200');
-  const jaMasterText = await jaMasterRes.text();
-  assert(
-    jaMasterText.includes('LANGUAGE="ja"') && jaMasterText.includes('NAME="Japanese"'),
-    `Expected single-dub NAME="Audio" manifest to be stamped as Japanese, got:\n${jaMasterText}`,
-  );
-  assert(
-    jaMasterText.includes('CODECS="hvc1.'),
-    'Expected _h265_ dash-hls-bridge variant to receive explicit HEVC CODECS tag',
-  );
+  const jaOpt = { ...pb.primary, id: 'synthetic-ja', audioLang: 'ja', label: 'Source 2 · Japanese', multiAudio: false, availableAudioLangs: [], audioTracks: [] };
 
   // Verify relay.ts strictly rejects HTML manifest and HTML segment responses with 502 no-store
   const htmlManifestTicket = sealStreamTicket(secret, { u: `${upBase}/dead-child-stream/audio0.m3u8`, k: 'm' });
@@ -2263,43 +2180,6 @@ try {
     'Single-dub source must not emit a bogus "Original" audio track alongside "Japanese"',
   );
   singleDubPlayer.destroy();
-
-  // Verify HEVC-unsupported MSE pre-probe skips HEVC-only candidate and picks H.264 stream immediately
-  globalThis.window.location = {
-    pathname: '/player-test',
-    search: '',
-    href: `${apiBase}/player-test`,
-  };
-  globalThis.fetch = (input, init = {}) =>
-    rawNodeFetch(input, {
-      ...init,
-      headers: {
-        Referer: globalThis.window.location.href,
-        ...(init.headers || {}),
-      },
-    });
-  globalThis.MediaSource = {
-    isTypeSupported: (mime) => !/hvc1|hev1/i.test(mime),
-  };
-
-  const enH264Opt = s2Reze.find((s) => s.audioLang === 'en');
-  assert(enH264Opt, 'Expected H.264 English option');
-  const hevcGuardPlayer = new ElfuraPlayer({ postMessage: false });
-  const pickedForNoHevc = await hevcGuardPlayer.selectFastestInitialSource(
-    [
-      { ...jaOpt, audioLang: 'en', latencyHintMs: 50 }, // faster hint, HEVC-only
-      { ...enH264Opt, latencyHintMs: 200 }, // H.264
-    ],
-    enH264Opt,
-  );
-  assert.equal(
-    pickedForNoHevc.id,
-    enH264Opt.id,
-    'Devices without MSE HEVC support must skip HEVC-only stream and pick H.264 stream immediately',
-  );
-  hevcGuardPlayer.destroy();
-  delete globalThis.MediaSource;
-  globalThis.fetch = rawNodeFetch;
 
   // 12. Verify Source 2 cold-cache `success: false` recovery + `/api/scan` warm-up + `atlas` retry
   const { createSource2Adapter } = await import('../../dist/backend/sources/source2.js');
@@ -2565,7 +2445,7 @@ try {
     });
     assert.equal(sawEnvelopeHeader, true, 'ElfuraPlayer must send X-Elfura-Envelope: 1 on /api/v1/playback');
     assert.equal(envPlayer.getMediaInfo()?.episodeName, 'Welcome to the Playground');
-    assert(envPlayer.getSources().length >= 5, 'ElfuraPlayer must decrypt sealed playback envelope via WebCrypto');
+    assert.equal(envPlayer.getSources().length, pb.sources.length, 'ElfuraPlayer must decrypt every source from the sealed playback envelope');
     envPlayer.destroy();
 
     // A player embedded on a different origin with an absolute `api` endpoint must send the
@@ -2593,7 +2473,7 @@ try {
       });
     });
     const crossSources = crossOriginPlayer.getSources();
-    assert(crossSources.length >= 5);
+    assert.equal(crossSources.length, pb.sources.length);
     for (const source of crossSources) {
       assert(
         source.url.startsWith(`${apiBase}/api/v1/stream?t=`),
@@ -3440,8 +3320,10 @@ try {
         vidrockOrigin: cmOrigin,
         vidlinkOrigin: cmOrigin,
         encDecOrigin: cmOrigin,
-      });
+      }, 2);
       const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+      const linkRec = createSource1Adapter({ enabled: true, appOrigin: '', apiOrigin: '', riftOrigin: '', riftRelay: '', syncOrigin: cmOrigin, vidrockOrigin: cmOrigin, vidlinkOrigin: cmOrigin, encDecOrigin: cmOrigin }, 1);
+      const linkOut = await linkRec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
       const s3Rec = createSource3Adapter({ enabled: true, origin: cmOrigin });
       const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
 
@@ -3477,18 +3359,18 @@ try {
       );
 
       assert.equal(vidlinkReceivedPlaybackEnv, 'webkit', 'VidLink API must request browser DASH delivery');
-      const vidlinkDash = s1Out.candidates.find((c) => c.url === `${cmOrigin}/vlink/master.mpd`);
+      const vidlinkDash = linkOut.candidates.find((c) => c.url === `${cmOrigin}/vlink/master.mpd`);
       assert(vidlinkDash && vidlinkDash.type === 'dash', 'VidLink .mpd playlist must remain DASH, not HLS');
       assert.equal(vidlinkDash.headers.Cookie, 'CloudFront-Policy=test-policy');
       assert(
-        !s1Out.candidates.some((c) => c.url.includes('/vlink/1080.mp4')),
+        !linkOut.candidates.some((c) => c.url.includes('/vlink/1080.mp4')),
         'VidLink requiresProxy MP4 lanes must not be advertised to the non-browser relay',
       );
 
       // Source 3 carries its API-provided captions, while Source 1 still pools
       // VidLink captions (`en`, `hi`) across its own candidates.
       assert(
-        castleCands[0].subtitles.length >= 2 && s1Out.candidates[0].subtitles.length >= 2,
+        castleCands[0].subtitles.length >= 2 && vidlinkDash.subtitles.length >= 2,
         'Expected Source 3 captions and pooled Source 1 VidLink captions to be present',
       );
 

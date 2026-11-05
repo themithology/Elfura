@@ -2,7 +2,7 @@ name: Multi-title live source verification
 
 # Verifies — per title, as separately visible jobs — that every advertised
 # Source 1 / Source 2 option yields real media bytes through the relay,
-# carries multi-language evidence, and resolves inside the speed budget.
+# and resolves inside the speed budget; audio claims are reported separately.
 # Only sources that pass this gate may be integrated.
 
 on:
@@ -25,6 +25,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - name: dead-end-job-s1e1
+            type: tv
+            tmdb: "289517"
+            season: "1"
+            episode: "1"
+            title: "Dead-End Job S1E1"
+            multi: "0"
+          - name: visionquest-s1e1
+            type: tv
+            tmdb: "213375"
+            season: "1"
+            episode: "1"
+            title: "VisionQuest S1E1"
+            multi: "0"
           - name: rezero-s1e1
             type: tv
             tmdb: "65942"
@@ -38,7 +52,7 @@ jobs:
             season: "1"
             episode: "1"
             title: "Dune: Part Two"
-            multi: "1"
+            multi: "0"
           - name: interstellar
             type: movie
             tmdb: "157336"

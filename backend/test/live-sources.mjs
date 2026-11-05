@@ -3,7 +3,7 @@
  *
  * Runs against real upstreams through the real uniform backend and relay.
  * Never prints upstream URLs, headers, signed tickets, or provider identifiers.
- * Every advertised Source 1 / Source 2 option must yield actual media bytes.
+ * Every advertised option must yield recognizable media bytes. Language metadata is not audible-language verification.
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -110,6 +110,10 @@ async function fetchMediaBytes(url, attempt = 0) {
   if (/NoSuchKey|AccessDenied|<!doctype\s+html|<html\b/i.test(prefix)) {
     throw new Error('media returned an upstream error document');
   }
+  const bytes = Buffer.from(first.value);
+  const box = bytes.subarray(4, 8).toString('ascii');
+  const recognizable = bytes[0] === 0x47 || ['ftyp', 'styp', 'moof', 'mdat', 'sidx'].includes(box) || bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  if (!recognizable) throw new Error('unrecognized media bytes');
   return { status: res.status, bytes: first.value.byteLength };
 }
 
@@ -328,13 +332,13 @@ try {
       // It is enforced on the combined (real user) response when present:
       // multi-language is a catalogue-level property of the full option set,
       // not a claim every individual adapter must satisfy for every title.
-      const multiLangVerified = hasMultiLangEvidence(options) || manifestAudioTracks > 1;
-      annotate(multiLangVerified ? 'notice' : 'error', 'ElfuraMultiLang', `${TITLE_LABEL} ${sourceId}: manifestAudioTracks=${manifestAudioTracks}, metadataEvidence=${hasMultiLangEvidence(options)}`);
+      const multiLangVerified = manifestAudioTracks > 1;
+      annotate('notice', 'ElfuraMultiLang', `${TITLE_LABEL} ${sourceId}: manifestAudioTracks=${manifestAudioTracks}, metadataEvidence=${hasMultiLangEvidence(options)}`);
       const gateApplies = sourceId === 'combined' || !AUDIT_SOURCES.includes('combined');
       if (REQUIRE_MULTI_LANG && gateApplies && !multiLangVerified) {
         failed++;
-        report.push({ id: sourceId, ok: false, error: 'no verified multi-language evidence (metadata or manifest audio tracks)' });
-        console.error(`[fail] ${sourceId}: no verified multi-language evidence`);
+        report.push({ id: sourceId, ok: false, error: 'no manifest evidence of multiple audio tracks' });
+        console.error(`[fail] ${sourceId}: no manifest evidence of multiple audio tracks`);
       }
     } catch (error) {
       failed++;

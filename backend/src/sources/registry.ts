@@ -15,7 +15,6 @@ import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
-import { createSource2Adapter } from './source2.js';
 import { createSource3Adapter } from './source3.js';
 import type {
   RawSourceResult,
@@ -45,8 +44,8 @@ export class SourceRegistry {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      createSource1Adapter(cfg.source1),
-      createSource2Adapter(cfg.source2),
+      createSource1Adapter(cfg.source1, 1),
+      createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
     ];
   }
@@ -414,6 +413,9 @@ export class SourceRegistry {
     const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
+    // Identical upstream URLs exposed by different providers are one stream,
+    // not independent source choices. Keep the first verified occurrence.
+    const seenUpstreamUrls = new Set<string>();
     let mergedSegments: SkipSegments | undefined;
     for (const segments of segmentResults) {
       if (!mergedSegments && segments) mergedSegments = segments;
@@ -436,11 +438,14 @@ export class SourceRegistry {
       let optionSeq = 0;
 
       for (const cand of liveCandidates) {
+        if (seenUpstreamUrls.has(cand.url)) continue;
+        seenUpstreamUrls.add(cand.url);
         const sealed = this.sealCandidate(adapter, cand, ++optionSeq, labelCounts, streamBase);
         uniformOptions.push(sealed);
 
         // If candidate includes a distinct healthy standby backup URL, expose as automatic failover slot
-        if (cand.standbyUrl && cand.standbyUrl !== cand.url) {
+        if (cand.standbyUrl && !seenUpstreamUrls.has(cand.standbyUrl)) {
+          seenUpstreamUrls.add(cand.standbyUrl);
           const backupCand: RawStreamCandidate = {
             ...cand,
             key: `${cand.key}#standby`,
