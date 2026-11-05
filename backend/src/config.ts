@@ -84,6 +84,12 @@ function parseOrigins(raw?: string): string[] {
 
 const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
 
+/** True when a real (non-placeholder) ELFURA_SECRET is set via env or .env. */
+export function hasConfiguredSecret(): boolean {
+  const merged = { ...readDotEnvOverlay(), ...process.env };
+  return isConfiguredSecret(merged.ELFURA_SECRET);
+}
+
 function isConfiguredSecret(raw?: string): boolean {
   const trimmed = raw?.trim() || '';
   return trimmed.length > 0 && !PLACEHOLDER_SECRET_RE.test(trimmed);

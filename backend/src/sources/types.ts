@@ -11,9 +11,20 @@
 
 import type { MediaMetadata } from '../tmdb.js';
 
+/** Operator diagnostics entry collected during a single resolution (never sent to player clients). */
+export interface DiagEntry {
+  adapter: string;
+  lane: string;
+  ok: boolean;
+  ms: number;
+  detail: string;
+}
+
 export interface SourceQuery {
   type: 'movie' | 'tv';
   tmdbId: string;
+  /** When present, adapters append lane-level diagnostics for /api/v1/diagnostics. */
+  diag?: DiagEntry[];
   imdbId?: string | null;
   title?: string;
   year?: string;

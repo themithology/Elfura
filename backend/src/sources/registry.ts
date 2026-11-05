@@ -53,6 +53,66 @@ export class SourceRegistry {
     return this.adapters.filter((a) => a.enabled()).map((a) => ({ id: a.id, label: a.label }));
   }
 
+  /**
+   * Operator diagnostics: resolve one title through every adapter WITHOUT the
+   * response cache, reporting raw vs liveness-verified candidate counts and
+   * lane-level entries. Contains no upstream URLs or provider identifiers.
+   */
+  async diagnosePlayback(params: {
+    type: 'movie' | 'tv';
+    tmdbId: string;
+    season?: number;
+    episode?: number;
+  }) {
+    const diag: import('./types.js').DiagEntry[] = [];
+    const query: SourceQuery = {
+      type: params.type,
+      tmdbId: params.tmdbId,
+      season: params.season,
+      episode: params.episode,
+      diag,
+      signal: AbortSignal.timeout(15_000),
+    };
+    const adapters = await Promise.all(
+      this.adapters
+        .filter((a) => a.enabled())
+        .map(async (adapter) => {
+          const t0 = Date.now();
+          try {
+            const result = await adapter.resolve(query);
+            const raw = result.candidates;
+            const { candidates: verified, verifiedAliveCount } =
+              await verifyAndFilterCandidatesDetailed(raw);
+            return {
+              id: adapter.id,
+              ms: Date.now() - t0,
+              raw: raw.length,
+              verified: verified.length,
+              verifiedAlive: verifiedAliveCount,
+              multiAudio: verified.filter((c) => c.multiAudio).length,
+              types: verified.reduce<Record<string, number>>((acc, c) => {
+                acc[c.type] = (acc[c.type] ?? 0) + 1;
+                return acc;
+              }, {}),
+              error: null as string | null,
+            };
+          } catch (err) {
+            return {
+              id: adapter.id,
+              ms: Date.now() - t0,
+              raw: 0,
+              verified: 0,
+              verifiedAlive: 0,
+              multiAudio: 0,
+              types: {} as Record<string, number>,
+              error: err instanceof Error ? err.name : 'error',
+            };
+          }
+        }),
+    );
+    return { adapters, lanes: diag };
+  }
+
   private getCachedAdapterResult(key: string): RawSourceResult | null {
     const entry = this.ramCache.get(key);
     if (!entry) return null;

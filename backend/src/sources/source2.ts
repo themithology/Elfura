@@ -947,6 +947,13 @@ async function fetchFromNxsha(
     }
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'nx',
+    ok: out.length > 0,
+    ms: 0,
+    detail: `serversListed=${Array.isArray(srvResp?.servers) ? srvResp.servers.length : 0} providersTried=${orderedProviders.length} candidates=${out.length}`,
+  });
   return out;
 }
 
@@ -1232,6 +1239,13 @@ async function fetchFromVidStuck(
     vidstuckCache.set(cacheKey, { expiresAt: Date.now() + VS_CACHE_TTL_MS, candidates: out });
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'vs',
+    ok: out.length > 0,
+    ms: 0,
+    detail: `serversResponded=${[orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes].filter(Boolean).length}/5 candidates=${out.length}`,
+  });
   return out;
 }
 
@@ -1289,6 +1303,13 @@ async function resolveViaExtractApi(
   }
 
   if (!fetched || !hasAnySources(fetched.payload)) {
+    query.diag?.push({
+      adapter: 'source-2',
+      lane: 'extract',
+      ok: false,
+      ms: 0,
+      detail: cfg.embedOrigin ? 'no-sources-or-unreachable' : 'not-configured',
+    });
     return [];
   }
 
@@ -1643,6 +1664,13 @@ async function resolveViaExtractApi(
     );
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'extract',
+    ok: emittedCandidates.length > 0,
+    ms: requestLatencyMs,
+    detail: `candidates=${emittedCandidates.length}`,
+  });
   return emittedCandidates;
 }
 

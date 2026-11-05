@@ -1429,6 +1429,23 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         return a.rank - b.rank;
       });
 
+      if (query.diag) {
+        const lane = (name: string, slot: { ms: number } | null, count: number) =>
+          query.diag!.push({
+            adapter: 'source-1',
+            lane: name,
+            ok: !!slot && count > 0,
+            ms: slot?.ms ?? 0,
+            detail: !slot ? 'not-settled' : `candidates=${count}`,
+          });
+        lane('A', slots.secure, secureCandidates.length);
+        lane('B', slots.public, publicCandidates.length);
+        lane('C', slots.rift, riftCandidates.length);
+        lane('D', slots.sync, syncCandidates.length);
+        lane('E', slots.rock, rockCandidates.length);
+        lane('F', slots.link, linkCandidates.length);
+      }
+
       const metaSource = slots.secure?.val ?? slots.public?.val;
       const metaHint = metaSource
         ? {

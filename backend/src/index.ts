@@ -14,6 +14,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadBackendConfig, type BackendConfig } from './config.js';
+import { collectDiagnostics } from './diagnostics.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -182,6 +183,24 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const catalog = await fetchTmdbCatalog(cfg.tmdb);
       sendJson(res, 200, { ok: true, ...catalog }, allowOrigin, 'manifest');
+      return;
+    }
+
+    // 2c. Operator diagnostics (sanitized JSON: no secrets, URLs, or provider names)
+    if (method === 'GET' && (pathname === '/api/v1/diagnostics' || pathname === '/diagnostic')) {
+      const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+      const tmdbRaw = (url.searchParams.get('tmdb') || '693134').replace(/\D/g, '');
+      const num = (raw: string | null, fallback: number) => {
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? Math.min(999, Math.floor(n)) : fallback;
+      };
+      const report = await collectDiagnostics(cfg, registry, {
+        type,
+        tmdbId: tmdbRaw || '693134',
+        season: num(url.searchParams.get('s'), 1),
+        episode: num(url.searchParams.get('e'), 1),
+      });
+      sendJson(res, 200, report, '*', 'no-store');
       return;
     }
 
