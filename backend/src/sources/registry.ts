@@ -13,7 +13,7 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource2Adapter } from './source2.js';
 import { createSource3Adapter } from './source3.js';
@@ -92,6 +92,29 @@ export class SourceRegistry {
               verified: verified.length,
               verifiedAlive: verifiedAliveCount,
               multiAudio: verified.filter((c) => c.multiAudio).length,
+              // Raw claims and independently measured manifest evidence are
+              // intentionally separate. Never return URLs, headers or tokens.
+              options: raw.slice(0, 20).map((candidate) => {
+                const evidence = cachedCandidateEvidence(candidate);
+                return {
+                  fingerprint: crypto.createHmac('sha256', this.cfg.secret)
+                    .update(candidate.url).digest('hex').slice(0, 12),
+                  type: candidate.type,
+                  claimedAudio: candidate.audioLang ?? null,
+                  claimedMultiAudio: !!candidate.multiAudio,
+                  claimedQuality: /^[a-z0-9 ._-]{1,32}$/i.test(candidate.quality) ? candidate.quality : 'unknown',
+                  probe: evidence ? {
+                    alive: evidence.alive,
+                    confirmedDead: evidence.confirmedDead,
+                    ms: evidence.rttMs ?? null,
+                    manifestKind: evidence.manifestKind ?? null,
+                    audioRenditions: evidence.manifestAudioRenditions ?? null,
+                    audioLanguages: evidence.discoveredAudioLangs ?? [],
+                    videoVariants: evidence.manifestVideoVariants ?? null,
+                    qualityHeights: evidence.qualityLadder ?? [],
+                  } : null,
+                };
+              }),
               types: verified.reduce<Record<string, number>>((acc, c) => {
                 acc[c.type] = (acc[c.type] ?? 0) + 1;
                 return acc;

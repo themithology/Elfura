@@ -1492,6 +1492,34 @@ try {
     { id: 'source-3', label: 'Source 3' },
   ]);
 
+  // The public diagnostic reports observations, never upstream links or
+  // credentials. A leaf playlist cannot become a verified quality ladder.
+  const diagRes = await fetch(`${apiBase}/diagnose/?type=tv&tmdb=94605&s=1&e=1`);
+  assert.equal(diagRes.status, 200);
+  assert.match(diagRes.headers.get('cache-control') || '', /no-store/);
+  const diag = await diagRes.json();
+  assert.equal(diag.ok, true);
+  assert.equal(diag.probe.tmdbId, '94605');
+  assert.equal(diag.sources.length, 3);
+  assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
+  assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
+  for (const source of diag.sources) {
+    assert(source.options.length <= 20);
+    for (const option of source.options) {
+      assert.match(option.fingerprint, /^[a-f0-9]{12}$/);
+      assert(!('url' in option) && !('headers' in option));
+      if (option.probe?.manifestKind === 'hls-media') {
+        assert.deepEqual(option.probe.qualityHeights, []);
+      }
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const cachedDiag = await fetch(`${apiBase}/api/v1/diagnostics?type=tv&tmdb=94605&s=1&e=1`);
+    assert.equal(cachedDiag.status, 200);
+  }
+  const limitedDiag = await fetch(`${apiBase}/diagnostic?type=movie&tmdb=1`);
+  assert.equal(limitedDiag.status, 429, 'different titles must not bypass the global diagnostics limit');
+
   // Public landing routes and live, sanitized TMDB catalog used by every
   // dynamic poster/demo/builder surface on the home page.
   for (const landingPath of ['/', '/demo', '/docs', '/status']) {

@@ -200,6 +200,8 @@ export function collectDiagnostics(
     return Promise.resolve(cached.value);
   }
   if (inFlight && inFlight.key === key) return inFlight.promise;
+  // Only one active report globally, even when callers vary the title.
+  if (inFlight) return Promise.reject(new Error('diagnostics busy'));
   const promise = collect(cfg, registry, probe)
     .then((value) => {
       cached = { key, expiresAt: Date.now() + DIAG_CACHE_TTL_MS, value };

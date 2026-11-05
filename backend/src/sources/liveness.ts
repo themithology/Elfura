@@ -33,6 +33,9 @@ export interface LivenessProbeOutcome {
   confirmedDead: boolean;
   rttMs?: number;
   discoveredAudioLangs?: string[];
+  manifestKind?: 'hls-master' | 'hls-media' | 'dash';
+  manifestAudioRenditions?: number;
+  manifestVideoVariants?: number;
   /** Distinct rendition heights (desc) for multi-quality ABR streams. */
   qualityLadder?: number[];
   /** Number of quality options when known (1 = single fixed quality). */
@@ -89,6 +92,11 @@ function getCachedLiveness(key: string): LivenessProbeOutcome | null {
   livenessRamCache.delete(key);
   livenessRamCache.set(key, hit);
   return hit;
+}
+
+/** Report only existing liveness evidence; does not initiate upstream requests. */
+export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
+  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
@@ -349,6 +357,7 @@ async function runSingleProbe(
           alive: true,
           confirmedDead: false,
           rttMs: elapsed(),
+          manifestKind: 'dash',
           qualityOptions: dashLadder.options,
           ...(dashLadder.ladder.length ? { qualityLadder: dashLadder.ladder } : {}),
           ...(dashLangs.length ? { discoveredAudioLangs: dashLangs } : {}),
@@ -405,6 +414,9 @@ async function runSingleProbe(
         alive: true,
         confirmedDead: false,
         rttMs: elapsed(),
+        manifestKind: isMaster ? 'hls-master' : 'hls-media',
+        manifestAudioRenditions: (bodyText.match(/^#EXT-X-MEDIA:.*\bTYPE=AUDIO\b/gim) ?? []).length,
+        manifestVideoVariants: (bodyText.match(/^#EXT-X-STREAM-INF\b/gim) ?? []).length,
         qualityOptions: hlsLadder.options,
         ...(hlsLadder.ladder.length ? { qualityLadder: hlsLadder.ladder } : {}),
         ...(hlsLangs.length ? { discoveredAudioLangs: hlsLangs } : {}),

@@ -112,6 +112,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  // Diagnostics perform real upstream requests; keep public research bounded.
+  const diagnosticLimiter = new SlidingWindowLimiter(6);
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -188,20 +190,30 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     // 2c. Operator diagnostics (sanitized JSON: no secrets, URLs, or provider names)
-    if (method === 'GET' && (pathname === '/api/v1/diagnostics' || pathname === '/diagnostic')) {
+    if (method === 'GET' && ['/api/v1/diagnostics', '/diagnostic', '/diagnose', '/diagnose/'].includes(pathname)) {
+      // Global limit avoids title/query variations bypassing the report cache.
+      if (!diagnosticLimiter.allow('global')) {
+        sendJson(res, 429, { ok: false, error: 'diagnostics rate limit exceeded; try again later' });
+        return;
+      }
       const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
       const tmdbRaw = (url.searchParams.get('tmdb') || '693134').replace(/\D/g, '');
       const num = (raw: string | null, fallback: number) => {
         const n = Number(raw);
         return Number.isFinite(n) && n > 0 ? Math.min(999, Math.floor(n)) : fallback;
       };
-      const report = await collectDiagnostics(cfg, registry, {
-        type,
-        tmdbId: tmdbRaw || '693134',
-        season: num(url.searchParams.get('s'), 1),
-        episode: num(url.searchParams.get('e'), 1),
-      });
-      sendJson(res, 200, report, '*', 'no-store');
+      try {
+        const report = await collectDiagnostics(cfg, registry, {
+          type,
+          tmdbId: tmdbRaw.slice(0, 12) || '693134',
+          season: num(url.searchParams.get('s'), 1),
+          episode: num(url.searchParams.get('e'), 1),
+        });
+        sendJson(res, 200, report, '*', 'no-store');
+      } catch (error) {
+        const busy = error instanceof Error && error.message === 'diagnostics busy';
+        sendJson(res, busy ? 429 : 500, { ok: false, error: busy ? 'diagnostics busy; try again shortly' : 'diagnostics failed' });
+      }
       return;
     }
 
