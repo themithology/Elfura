@@ -166,10 +166,9 @@ try {
 }
 
 const streamAttempts = [
-  ['bearer-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null, { Authorization: `Bearer ${sessionToken}` }],
-  ['xsession-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null, { 'x-stream-session': sessionToken }],
-  ['bearer-post', 'POST', '/api/stream', { tmdbId: Number(TMDB), type: 'movie' }, { Authorization: `Bearer ${sessionToken}` }],
-  ['plain-get-id', 'GET', `/api/stream?id=${TMDB}&type=movie`, null, { Authorization: `Bearer ${sessionToken}` }],
+  ['shape-naked', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary`, null, {}],
+  ['shape-bearer', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary`, null, { Authorization: `Bearer ${sessionToken}` }],
+  ['shape-audio-hindi', 'GET', `/api/stream?type=movie&id=${TMDB}&season=1&episode=1&stage=primary&audio=hindi&dubLang=hindi`, null, { Authorization: `Bearer ${sessionToken}` }],
 ];
 for (const [label, method, pathName, body, extraHeaders] of streamAttempts) {
   try {
@@ -188,6 +187,21 @@ for (const [label, method, pathName, body, extraHeaders] of streamAttempts) {
       if (srcs?.length) {
         const first = srcs[0] ?? {};
         info += ` firstKeys=[${Object.keys(first).join(',')}] servers=[${[...new Set(srcs.map((s) => String(s.server ?? s.name ?? s.provider ?? '?')))].slice(0, 10).join(',')}]`;
+        const kinds = { hls: 0, dash: 0, mp4: 0, embed: 0, other: 0 };
+        const langSet = new Set();
+        let multiCount = 0;
+        for (const s of srcs) {
+          const u = String(s.url ?? s.link ?? s.file ?? '');
+          if (/\.m3u8(\?|$)/i.test(u)) kinds.hls++;
+          else if (/\.mpd(\?|$)/i.test(u)) kinds.dash++;
+          else if (/\.mp4(\?|$)/i.test(u)) kinds.mp4++;
+          else if (/embed|player|watch/i.test(u)) kinds.embed++;
+          else kinds.other++;
+          const langs = s.audioTracks ?? s.multiLangs ?? s.langs ?? (s.lang ? [s.lang] : []);
+          if (Array.isArray(langs)) langs.forEach((l) => langSet.add(String(l?.lang ?? l?.code ?? l)));
+          if (s.multiAudio || (Array.isArray(langs) && langs.length > 1)) multiCount++;
+        }
+        info += ` kinds=${JSON.stringify(kinds)} multi=${multiCount} langs=[${[...langSet].slice(0, 14).join(',')}]`;
       }
     } catch { /* not json */ }
     annotate(r.ok ? 'notice' : 'warning', 'VsStreamTry', `${label}: HTTP ${r.status} ${info}`);
