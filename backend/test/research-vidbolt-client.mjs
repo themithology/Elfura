@@ -6,6 +6,6 @@ const page=await text('/movie/550');const indexName=page.match(/\/assets\/(index
 const providers=[...embedded.matchAll(/\{(?:id|"id"):"([a-z0-9-]+)",name:"([^"]*)",desc:"([^"]*)"/g)].map(m=>m[1]);
 const id=providers.find(x=>/orion|darkmatter/i.test(x));let chunk='';if(id){const match=embedded.match(new RegExp(`id:"${id}"([\\s\\S]*?)import\\("\\./([A-Za-z0-9_.-]+\\.js)"\\)`));if(match)chunk=await text('/assets/'+match[2]);}
 const domains=[...new Set([...chunk.matchAll(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?=[\/:"'`\\\s]|$)/gi)].map(m=>m[1]))];
-const summary={page:!!page,index:!!index,embedded:!!embedded,providers,id,chunk:!!chunk,domains,markers:Object.fromEntries(['api.movy.lol','animecurx','api_key','apikey','streamrip','rousav'].map(s=>[s,chunk.includes(s)]))};
+const summary={page:!!page,pageScripts:[...page.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(m=>m[1]),indexName:!!indexName,index:!!index,embedded:!!embedded,providers,id,chunk:!!chunk,domains,markers:Object.fromEntries(['api.movy.lol','animecurx','api_key','apikey','streamrip','rousav'].map(s=>[s,chunk.includes(s)]))};
 console.log(`::notice title=VidboltClient::${JSON.stringify(summary).replace(/%/g,'%25')}`);
 for(const term of ['api.movy.lol','animecurx','streamrip','api_key']){const i=chunk.indexOf(term);if(i>=0){let s=chunk.slice(Math.max(0,i-180),i+300);s=s.replace(/[a-f0-9]{32,}/gi,'[redacted]').replace(/streamrip_secret_[0-9]+/g,'[redacted]');console.log(`::notice title=VidboltClient::${JSON.stringify({term,context:s}).replace(/%/g,'%25')}`);}}
