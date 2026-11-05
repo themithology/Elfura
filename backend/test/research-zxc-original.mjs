@@ -67,6 +67,31 @@ async function verifyHls(url, headers) {
   }
   return 'nesting-limit';
 }
+async function verifyDash(url, headers) {
+  const {response:r,url:final,blocked:denied}=await get(url,{headers});
+  if(denied) return 'removed-provider';
+  if(!r?.ok) return `http-${r?.status||0}`;
+  const text=(await bodyLimit(r,524288)).toString('utf8');
+  if(!/<MPD\b/i.test(text)) return 'not-mpd';
+  const audioSets=[...text.matchAll(/<AdaptationSet\b([^>]*)>/gi)].map(x=>x[1]).filter(s=>/audio/i.test(s));
+  const langs=[...new Set(audioSets.map(s=>s.match(/\blang=["']([^"']+)["']/i)?.[1]).filter(Boolean))];
+  const heights=[...new Set([...text.matchAll(/\bheight=["'](\d+)["']/gi)].map(x=>x[1]))];
+  const template=text.match(/<SegmentTemplate\b[^>]*\bmedia=["']([^"']+)["']/i)?.[1];
+  const repr=text.match(/<Representation\b[^>]*\bid=["']([^"']+)["']/i)?.[1];
+  const bandwidth=text.match(/<Representation\b[^>]*\bbandwidth=["'](\d+)["']/i)?.[1];
+  let segment='unresolved';
+  if(template && !/\$Time/i.test(template)) {
+    const base=text.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i)?.[1] || final;
+    let rel=template.replaceAll('&amp;','&').replace(/\$RepresentationID\$/g,repr||'').replace(/\$Bandwidth\$/g,bandwidth||'').replace(/\$Number(?:%0(\d+)d)?\$/g,(_,n)=>'1'.padStart(Number(n)||1,'0'));
+    if(!rel.includes('$')) {
+      const media=await get(new URL(rel,new URL(base,final)).href,{headers:{...headers,Range:'bytes=0-65535'}});
+      if(media.blocked) segment='removed-provider';
+      else if(!media.response?.ok) segment=`http-${media.response?.status||0}`;
+      else {const b=await bodyLimit(media.response,65536); const tag=b.subarray(4,8).toString('ascii'); segment=['ftyp','styp','moof','mdat'].includes(tag)||b[0]===0x47 ? `bytes-${b.length}` : 'unrecognized';}
+    }
+  }
+  return `mpd audioSets=${audioSets.length} langs=${langs.join('|')||'none'} heights=${heights.join('|')||'none'} segment=${segment}`;
+}
 async function test(item,server) {
   const h={'User-Agent':userAgent,Referer:`${root}/player/${item.type}/${item.id}${item.type==='tv'?'/1/1':''}`,Origin:root,'Content-Type':'application/json'};
   const form = {[fields.id]:item.id,[fields.mediaType]:item.type,[fields.path]:server};
@@ -84,7 +109,8 @@ async function test(item,server) {
     const payload=await src.response.json();
     const candidates=(Array.isArray(payload.links)?payload.links:[]).map(x=>({url:decrypt(String(x.link||'')),type:x.type}));
     const candidate=candidates.find(c=>/^https?:/i.test(c.url) && !blocked(c.url) && (c.type==='hls'||c.url.includes('.m3u8')));
-    const result=candidate ? await verifyHls(candidate.url,h) : 'no-eligible-hls';
+    const dash=candidates.find(c=>/^https?:/i.test(c.url) && !blocked(c.url) && c.type==='dash');
+    const result=candidate ? await verifyHls(candidate.url,h) : dash ? await verifyDash(dash.url,h) : 'no-eligible-hls';
     const summary = candidates.map(c => {
       let hostClass='-', pathClass='-', wrapped='none';
       try {
