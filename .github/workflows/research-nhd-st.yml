@@ -16,3 +16,4 @@ jobs:
         with:
           node-version: '22'
       - run: node backend/test/research-nhd-st.mjs
+      - run: node backend/test/research-nhd-st-protocol.mjs
