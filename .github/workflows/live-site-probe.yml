@@ -24,6 +24,18 @@ jobs:
           - name: rezero-tv
             type: tv
             tmdb: "65942"
+          - name: interstellar-movie
+            type: movie
+            tmdb: "157336"
+          - name: breaking-bad-tv
+            type: tv
+            tmdb: "1396"
+          - name: avengers-endgame-movie
+            type: movie
+            tmdb: "299534"
+          - name: frieren-tv
+            type: tv
+            tmdb: "209867"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -97,7 +97,10 @@ interface ExtractSubtitleItem {
   url?: string;
   file?: string;
   src?: string;
+  /** Nxsha's current subtitle API uses `uri` instead of `url`/`file`. */
+  uri?: string;
   lang?: string;
+  lan?: string;
   language?: string;
   srclang?: string;
   label?: string;
@@ -307,13 +310,13 @@ function mapSubtitles(
   const seen = new Set<string>();
   const out: RawTrackRef[] = [];
   for (const s of items) {
-    const rawUrl = s?.url || s?.file || s?.src || '';
+    const rawUrl = s?.url || s?.file || s?.src || s?.uri || '';
     if (!rawUrl) continue;
     const unwrapped = unwrapUpstreamUrl(rawUrl, embedOrigin);
     if (!unwrapped) continue;
 
     const rawLabel = String(s.label || s.display || '').trim();
-    const rawLang = String(s.lang || s.language || s.srclang || rawLabel).trim();
+    const rawLang = String(s.lang || s.lan || s.language || s.srclang || rawLabel).trim();
     const norm = normalizeLang(rawLang, rawLabel);
     const dedupKey = `${norm.code}:${unwrapped.url}`;
     if (seen.has(dedupKey)) continue;
@@ -492,25 +495,55 @@ const VS_FIELDS = {
   imdb: 'f35a8194265e871c4933a725f',
 } as const;
 
+// Current Nxsha scraper IDs, with native multi-language providers first.
+// `/api/servers` remains authoritative; this order only chooses which healthy
+// providers fit inside the bounded probe set and provides a fallback if discovery fails.
 const NX_PRIORITY_SERVERS = [
-  'nitro',
+  'awsind', // AwsPly
+  'nitro', // Nitro
+  'watchout', // Multi-bill
+  'bdxs', // Multi-blue
+  'showbox-online', // Xuhd
+  'stvv', // Stvvid
   'vidapi',
   'mhbox',
-  'rive-citadel',
-  'castle',
-  'awsind',
-  'bdxs',
-  'rive-hindicast',
-  'rive-primevids',
+  'rive-citadel', // Citadel
+  'castle', // CastVid
+  'streamflix', // StremFx
+  'xdownloader', // XDrop
+  'purstream', // PureWave
+  'vixolity', // Vixo
+  'rive-primevids', // Prvibd
+  'ophim', // Ophm
+  'rive-hindicast', // VidHindi
   'rive-flowcast',
   'rive-guru',
   'rive-quasar',
-  'watchout',
   'hdhub4u',
   'k4khdhub',
-  'streamflix',
   'em-8',
 ];
+
+const NX_MAX_PROVIDER_PROBES = 8;
+
+/** Known dead/IP-locked worker lanes and non-media pages returned as sources. */
+function isDeadNxshaSourceUrl(rawUrl: string): boolean {
+  const lower = rawUrl.trim().toLowerCase();
+  if (!lower) return true;
+  if (
+    lower.includes('nxstreamhub.workers.dev') ||
+    lower.includes('worker-inosuke.workers.dev') ||
+    lower.includes('silent-math-8425.itsnitrox.tech') ||
+    lower.includes('wts.itsnitrox.tech/pitro') ||
+    lower.includes('wts.itsnitrox.tech/litro') ||
+    lower.includes('husvu445bey.com') ||
+    lower.includes('kkphimplayer') ||
+    lower.includes('gemma416okl.com/play/')
+  ) {
+    return true;
+  }
+  return /\/file\/[a-z0-9]+$/i.test(lower) || /\.(?:mkv|html?|js|exe|swf)(?:[?#]|$)/i.test(lower);
+}
 
 const NON_LANG_NOISE_RE =
   /^(?:hguider|sply(?:-\d+)?|pitro|litro|nitro|vidapi|mhbox|castle|bdxs|awsind|dub|dubbed|sub|subbed|subs|hd|sd|fhd|uhd|qhd|hdr|hdr10|sdr|dv|hevc|h264|h265|x264|x265|aac|eac3|ddp|atmos|auto|raw|org|ori|original|original\s+audio|audio|main|backup|vip|server\s*\d*|stream\s*\d*|\d{2,4}[pk]?|\d+(?:\.\d+)?\s*(?:gb|mb|kbps|mbps))$/i;
@@ -585,7 +618,11 @@ export function openSslDecrypt(b64OrUrlSafe: string, pass: string): string | nul
   }
 }
 
-function parseNxItemMeta(rawLabel?: string, rawQuality?: string): {
+function parseNxItemMeta(
+  rawLabel?: string,
+  rawQuality?: string,
+  hints?: { lang?: string; langName?: string; multiLangs?: string[] },
+): {
   quality: string;
   singleCode?: string;
   singleLabel?: string;
@@ -630,6 +667,19 @@ function parseNxItemMeta(rawLabel?: string, rawQuality?: string): {
     }
   }
 
+  // Newer Nxsha providers expose language metadata separately from the label.
+  // Prefer those explicit values instead of trying to infer audio from server names.
+  const addExplicitLang = (rawCode: string, rawName = '') => {
+    const norm = normalizeLang(rawCode, rawName || rawCode);
+    if (!norm.code || norm.code === 'und' || codes.includes(norm.code)) return;
+    codes.push(norm.code);
+    labelsByCode.set(norm.code, norm.label);
+  };
+  for (const rawCode of Array.isArray(hints?.multiLangs) ? hints.multiLangs : []) {
+    if (typeof rawCode === 'string' && rawCode.trim()) addExplicitLang(rawCode.trim());
+  }
+  if (hints?.lang?.trim()) addExplicitLang(hints.lang.trim(), hints.langName?.trim() || '');
+
   const multiAudio = !isHardsub && (codes.length > 1 || /multi[- ]?audio/i.test(label));
   if (!isHardsub && !multiAudio && codes.length === 1) {
     return {
@@ -658,6 +708,9 @@ interface NxRawSource {
   headers?: Record<string, string>;
   quality?: string | number;
   label?: string;
+  lang?: string;
+  langName?: string;
+  multiLangs?: string[];
   isEmbed?: boolean;
   type?: string;
   subtitles?: ExtractSubtitleItem[];
@@ -719,22 +772,39 @@ async function fetchFromNxsha(
       : {}),
   };
 
-  const srvResp = await callNx<{
+  const serverPromise = callNx<{
     servers?: {
       id?: string;
       provider?: string;
       scraper?: string;
       status?: string;
       web_support?: boolean;
+      isDisable?: boolean;
+      types?: string[];
       high_priority?: number;
       position?: number;
     }[];
-  }>('/api/servers', baseReq, 3600);
+  }>('/api/servers', baseReq, 2800);
+  // Subtitle discovery is independent of server probing; start it concurrently so
+  // current `language` + `uri` tracks do not add another serial playback delay.
+  const subtitlePromise = callNx<
+    { subtitles?: ExtractSubtitleItem[] } | ExtractSubtitleItem[]
+  >('/api/subtitles', baseReq, 3000);
+  const srvResp = await serverPromise;
 
   let activeIds: string[] = [];
   if (Array.isArray(srvResp?.servers) && srvResp.servers.length > 0) {
     activeIds = srvResp.servers
-      .filter((s) => s && s.web_support !== false && s.status !== 'error' && s.status !== 'offline')
+      .filter(
+        (s) =>
+          s &&
+          s.web_support !== false &&
+          s.isDisable !== true &&
+          (!Array.isArray(s.types) || s.types.length === 0 || s.types.includes('web')) &&
+          s.status !== 'error' &&
+          s.status !== 'offline' &&
+          s.status !== 'disabled',
+      )
       .sort((a, b) => {
         const ap = Number(a.high_priority ?? a.position ?? 999);
         const bp = Number(b.high_priority ?? b.position ?? 999);
@@ -747,30 +817,40 @@ async function fetchFromNxsha(
     activeIds = NX_PRIORITY_SERVERS.slice(0, 8);
   }
 
-  // Sort active servers by priority order (`nitro` multi-audio, `vidapi` 1080p H.264, `mhbox` 6-dub DASH, etc.)
+  // Keep fan-out bounded: current multi-language scrapers sort ahead of legacy
+  // single-language lanes, while unknown future IDs retain upstream list order.
   const orderedProviders = [...new Set(activeIds)]
     .sort((a, b) => {
       const ia = NX_PRIORITY_SERVERS.indexOf(a);
       const ib = NX_PRIORITY_SERVERS.indexOf(b);
       return (ia >= 0 ? ia : 999) - (ib >= 0 ? ib : 999);
     })
-    .slice(0, 10);
+    .slice(0, NX_MAX_PROVIDER_PROBES);
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const providerResults = await Promise.all(
+  const providerResultsPromise = Promise.all(
     orderedProviders.map(async (provider, pIdx) => {
       const t0 = performance.now();
       const data = await callNx<{ sources?: NxRawSource[]; subtitles?: ExtractSubtitleItem[] }>(
         '/api/sources',
         { ...baseReq, provider },
-        5200,
+        4200,
       );
       const ms = Math.max(1, Math.round(performance.now() - t0));
       return { provider, pIdx, ms, data };
     }),
   );
+  const [providerResults, dedicatedSubtitleResp] = await Promise.all([
+    providerResultsPromise,
+    subtitlePromise,
+  ]);
 
   const rawSubs: ExtractSubtitleItem[] = [];
+  if (Array.isArray(dedicatedSubtitleResp)) {
+    rawSubs.push(...dedicatedSubtitleResp);
+  } else if (Array.isArray(dedicatedSubtitleResp?.subtitles)) {
+    rawSubs.push(...dedicatedSubtitleResp.subtitles);
+  }
   for (const r of providerResults) {
     if (Array.isArray(r.data?.subtitles)) rawSubs.push(...r.data!.subtitles!);
     for (const s of r.data?.sources ?? []) {
@@ -791,12 +871,27 @@ async function fetchFromNxsha(
       const s = list[sIdx];
       if (!s || s.isEmbed) continue;
       const rawUrl = String(s.url ?? '').trim();
-      if (!rawUrl || !isSafeUpstreamUrl(rawUrl) || seenUrls.has(rawUrl)) continue;
-      if (/\/file\/[A-Za-z0-9]+$/i.test(rawUrl)) continue;
+      if (
+        !rawUrl ||
+        !isSafeUpstreamUrl(rawUrl) ||
+        isDeadNxshaSourceUrl(rawUrl) ||
+        seenUrls.has(rawUrl)
+      ) {
+        continue;
+      }
 
       try {
-        const expParam = new URL(rawUrl).searchParams.get('expire');
-        if (expParam && Number(expParam) > 0 && Number(expParam) < nowSec + 30) continue;
+        const parsedUrl = new URL(rawUrl);
+        let expRaw = '';
+        for (const [key, value] of parsedUrl.searchParams) {
+          if (['expire', 'expires', 'exp'].includes(key.toLowerCase())) {
+            expRaw = value;
+            break;
+          }
+        }
+        let expSec = Number(expRaw);
+        if (expSec > 1_000_000_000_000) expSec /= 1000;
+        if (expSec > 0 && expSec < nowSec + 30) continue;
       } catch {
         continue;
       }
@@ -819,7 +914,11 @@ async function fetchFromNxsha(
         };
       }
 
-      const meta = parseNxItemMeta(s.label, s.quality !== undefined ? String(s.quality) : undefined);
+      const meta = parseNxItemMeta(
+        s.label,
+        s.quality !== undefined ? String(s.quality) : undefined,
+        { lang: s.lang, langName: s.langName, multiLangs: s.multiLangs },
+      );
       const streamType = inferStreamType(s.type, rawUrl);
       const qualityBonus = meta.quality === '2160p' || meta.quality === '1080p' ? 0 : meta.quality === '720p' ? 2 : 4;
       const rankBase = meta.isHardsub
@@ -941,11 +1040,20 @@ async function fetchFromVidStuck(
     type?: string;
     resolution?: string | number;
     quality?: string;
+    label?: string;
+    lang?: string;
+    langName?: string;
+    multiLangs?: string[];
+    onlyHevc?: boolean;
   }
   interface VsDubItem {
     lanCode?: string;
     lanName?: string;
     dubType?: string | number;
+    /** Current direct API aliases. */
+    lang?: string;
+    name?: string;
+    type?: string | number;
   }
   interface VsServerPayload {
     success?: boolean;
@@ -1013,8 +1121,8 @@ async function fetchFromVidStuck(
   const advertisedDubs = orionRes?.dubs ?? orionRes?.data?.dubs ?? [];
   const wantedDubItems: { rawCode: string; normCode: string; normLabel: string; dubType: string }[] = [];
   for (const d of advertisedDubs) {
-    const rawCode = String(d?.lanCode ?? '').trim();
-    const rawName = String(d?.lanName ?? '').trim();
+    const rawCode = String(d?.lanCode ?? d?.lang ?? '').trim();
+    const rawName = String(d?.lanName ?? d?.name ?? '').trim();
     if (!rawCode || HARDSUB_LABEL_RE.test(rawName)) continue;
     const norm = normalizeLang(rawName || rawCode, rawName || rawCode);
     if (!norm.code || norm.code === 'und') continue;
@@ -1025,7 +1133,7 @@ async function fetchFromVidStuck(
           rawCode,
           normCode: norm.code,
           normLabel: norm.label,
-          dubType: String(d?.dubType ?? '0'),
+          dubType: String(d?.dubType ?? d?.type ?? '0'),
         });
       }
     }
@@ -1057,6 +1165,9 @@ async function fetchFromVidStuck(
     if (!Array.isArray(links)) return;
     for (let i = 0; i < links.length; i++) {
       const item = links[i];
+      // HEVC-only DASH/MP4 responses are not reliable browser playback sources;
+      // keep compatible H.264/HLS candidates instead of advertising a broken option.
+      if (item?.onlyHevc === true) continue;
       const rawLink = String(item?.link ?? '').trim();
       if (!rawLink) continue;
       const decrypted = /^https?:\/\//i.test(rawLink) ? rawLink : openSslDecrypt(rawLink, VS_PASS)?.trim() || '';
@@ -1072,17 +1183,30 @@ async function fetchFromVidStuck(
       seen.add(url);
 
       const resNum = Number(String(item?.resolution || item?.quality || '').replace(/\D+/g, '')) || 0;
-      const quality = resNum >= 2160 ? '2160p' : resNum > 0 ? `${resNum}p` : 'auto';
+      const detectedQuality = resNum >= 2160 ? '2160p' : resNum > 0 ? `${resNum}p` : 'auto';
+      const meta = parseNxItemMeta(item?.label, detectedQuality, {
+        lang: item?.lang,
+        langName: item?.langName,
+        multiLangs: item?.multiLangs,
+      });
+      const quality = detectedQuality === 'auto' ? meta.quality : detectedQuality;
       out.push({
         key: `vs:${srvId}:${explicitLang?.code || 'orig'}:${i}:${url}`,
         type: inferStreamType(item?.type, url),
         url,
         headers: mediaHeaders,
         quality,
-        ...(explicitLang ? { audioLang: explicitLang.code, audioLabel: explicitLang.label } : {}),
-        multiAudio: false,
+        ...(explicitLang
+          ? { audioLang: explicitLang.code, audioLabel: explicitLang.label }
+          : meta.singleCode
+            ? { audioLang: meta.singleCode, audioLabel: meta.singleLabel }
+            : {}),
+        ...(!explicitLang && meta.discoveredCodes.length
+          ? { availableAudioLangs: meta.discoveredCodes }
+          : {}),
+        multiAudio: explicitLang ? false : meta.multiAudio,
         subtitles: vsSubs,
-        rank: rankBase + i * 0.2,
+        rank: rankBase + (!explicitLang && meta.multiAudio ? -4 : 0) + i * 0.2,
       });
     }
   };
