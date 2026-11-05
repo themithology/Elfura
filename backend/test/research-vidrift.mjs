@@ -11,13 +11,15 @@ for (const [type, id] of cases) {
     const body = await boot.json().catch(() => ({}));
     const meta = body.meta || {};
     const streams = (meta.warmStreams || []).filter(s => s.type === 'hls' && !s.direct && (s.proxyUrl || s.url));
+    let sourceInfo = '';
     if (!streams.length && meta.playbackToken) {
       const q = new URLSearchParams({token: meta.playbackToken, provider: 'vaplayer'});
       const r = await fetch(`${origin}/api/source/${path}?${q}`, {headers, signal: AbortSignal.timeout(10000)});
       const json = await r.json().catch(() => ({}));
+      sourceInfo = ` sourceStatus=${r.status} sourceKeys=${Object.keys(json).join(',')} sourceStreams=${Array.isArray(json.streams) ? json.streams.length : -1} success=${json.success ?? '-'} `;
       streams.push(...(json.streams || []).filter(s => s.type === 'hls' && !s.direct && (s.proxyUrl || s.url)));
     }
-    let result = `boot=${boot.status} warm=${meta.warmStreams?.length || 0} token=${!!meta.playbackToken} hls=${streams.length}`;
+    let result = `boot=${boot.status} metaKeys=${Object.keys(meta).join(',')} orion=${Array.isArray(meta.orionStreams) ? meta.orionStreams.length : -1} warm=${meta.warmStreams?.length || 0} token=${!!meta.playbackToken} hls=${streams.length}${sourceInfo}`;
     if (streams[0]) {
       let u = new URL(streams[0].proxyUrl || streams[0].url, origin);
       let kind = ''; let audio = 0; let variants = 0;
