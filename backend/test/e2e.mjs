@@ -29,9 +29,11 @@ import {
   unscramblePayload,
   serializeSerovalEnvelope,
   deserializeSerovalNode,
+  fetchFromVidBolt,
 } from '../../dist/backend/sources/source1.js';
 import {
   rewriteHlsManifest,
+  resolveHlsChildUrl,
   rewriteDashManifest,
   materializeDashTicket,
   sanitizeWebVtt,
@@ -50,6 +52,36 @@ assert.equal(isSafeUpstreamUrl('http://192.168.1.1/secret'), false);
 assert.equal(isSafeUpstreamUrl('http://[::1]/secret'), false);
 assert.equal(isSafeUpstreamUrl('file:///etc/passwd'), false);
 assert.equal(isSafeUpstreamUrl('https://cdn.example.com/stream/master.m3u8'), true);
+
+// Same-origin access parameters propagate only for the specific CDN families,
+// never to a different origin or over an explicit child key.
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.get('api_key'), 'fixture');
+assert.equal(new URL(resolveHlsChildUrl('https://other.example/a.m3u8', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8?apikey=child', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+
+// The original provider is resolved independently, with untrusted domains rejected.
+{
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.pathname, '/api/resolve');
+      assert.equal(parsed.searchParams.get('only'), 'orion');
+      assert.equal(parsed.searchParams.get('season'), '2');
+      assert.equal(parsed.searchParams.get('episode'), '3');
+      return new Response(JSON.stringify({ stream: { sources: [
+        { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls' },
+        { url: 'https://vidstuck.cc/master.m3u8', type: 'hls' },
+        { url: 'https://untrusted.example/master.m3u8', type: 'hls' },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const sources = await fetchFromVidBolt('https://vidbolt.xyz', {type:'tv',tmdbId:'93405',season:2,episode:3});
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
+    assert.equal(sources[0].multiAudio, undefined); // manifest verification establishes this
+  } finally { globalThis.fetch = originalFetch; }
+}
 
 // 2. Embed route matcher
 assert.deepEqual(matchEmbedPath('/embed/movie/278'), { mediaType: 'movie', tmdbId: '278' });

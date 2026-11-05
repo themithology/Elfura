@@ -397,6 +397,17 @@ function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string
   });
 }
 
+/** Preserve this CDN's manifest access parameter only on same-origin children. */
+export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
+  const base = new URL(baseUrl);
+  const child = new URL(normalizeManifestUriReference(rawRef), base);
+  if (child.origin === base.origin && /(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/i.test(base.hostname)) {
+    const key = base.searchParams.get('api_key') || base.searchParams.get('apikey');
+    if (key && !child.searchParams.has('api_key') && !child.searchParams.has('apikey')) child.searchParams.set('api_key', key);
+  }
+  return child.toString();
+}
+
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
@@ -428,7 +439,7 @@ export function rewriteHlsManifest(
     if (!trimmed || trimmed.startsWith('data:')) return rawRef;
     let abs: string;
     try {
-      abs = new URL(trimmed, baseUrl).toString();
+      abs = resolveHlsChildUrl(trimmed, baseUrl);
     } catch {
       return rawRef;
     }

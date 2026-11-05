@@ -543,6 +543,40 @@ async function fetchFromPublicApi(
   }
 }
 
+/** Resolve the original provider's Orion lane; media is fetched from its CDN, not Aethoflix. */
+export async function fetchFromVidBolt(
+  origin: string,
+  query: SourceQuery,
+): Promise<RawStreamCandidate[]> {
+  const qs = new URLSearchParams({ type: query.type, id: query.tmdbId, only: 'orion', hevc: '0' });
+  if (query.type === 'tv') {
+    qs.set('season', String(query.season ?? 1));
+    qs.set('episode', String(query.episode ?? 1));
+  }
+  try {
+    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
+    const res = await fetch(`${origin}/api/resolve?${qs}`, {
+      headers: { Accept: 'application/json', Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA },
+      signal,
+    });
+    if (!res.ok) return [];
+    const payload = (await res.json()) as { stream?: { sources?: { url?: string; type?: string }[] } };
+    const out: RawStreamCandidate[] = [];
+    for (const source of payload.stream?.sources ?? []) {
+      if (typeof source.url !== 'string' || !isSafeUpstreamUrl(source.url)) continue;
+      const host = new URL(source.url).hostname.toLowerCase();
+      const testLoopback = process.env.NODE_ENV === 'test' && process.env.ELFURA_ALLOW_LOOPBACK_TEST === '1' && (host === 'localhost' || host === '127.0.0.1');
+      if (!testLoopback && !/(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/.test(host)) continue;
+      if (inferStreamType(source.type, source.url) !== 'hls') continue;
+      out.push({ key: source.url, url: source.url, type: 'hls', quality: 'auto', rank: 4,
+        headers: { Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA } });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 async function fetchFromRiftBoot(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
@@ -1114,7 +1148,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         }
         // Once at least two independent pipelines have produced candidates,
         // start a short grace window instead of waiting for every slow lane.
-        if (liveSourcePipelines >= 2 && (group === 1 || slots.rift) && !graceTimer) {
+        if (liveSourcePipelines >= 2 && (group === 1 || (slots.rift && slots.sync)) && !graceTimer) {
           graceTimer = setTimeout(() => releaseEarly?.(), 360);
         }
       };
@@ -1137,7 +1171,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pSync = timed(Promise.resolve([] as RawStreamCandidate[])).then((r) => {
+      const pSync = timed(group === 2 ? fetchFromVidBolt(cfg.vidboltOrigin || 'https://vidbolt.xyz', query) : Promise.resolve([] as RawStreamCandidate[])).then((r) => {
         slots.sync = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
@@ -1267,6 +1301,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
           lane('F', slots.link, linkCandidates.length);
         } else {
           lane('C', slots.rift, riftCandidates.length);
+          lane('D', slots.sync, syncCandidates.length);
           lane('E', slots.rock, rockCandidates.length);
         }
       }
