@@ -1,0 +1,74 @@
+name: Multi-title live source verification
+
+# Verifies — per title, as separately visible jobs — that every advertised
+# Source 1 / Source 2 option yields real media bytes through the relay,
+# carries multi-language evidence, and resolves inside the speed budget.
+# Only sources that pass this gate may be integrated.
+
+on:
+  push:
+    branches:
+      - arena/dcf86284-elfura
+    paths:
+      - backend/src/sources/**
+      - backend/src/sources/registry.ts
+      - backend/test/live-sources.mjs
+      - .github/workflows/live-source-verify.yml
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: rezero-s1e1
+            type: tv
+            tmdb: "65942"
+            season: "1"
+            episode: "1"
+            title: "Re:Zero S1E1"
+          - name: dune-part-two
+            type: movie
+            tmdb: "693134"
+            season: "1"
+            episode: "1"
+            title: "Dune: Part Two"
+          - name: interstellar
+            type: movie
+            tmdb: "157336"
+            season: "1"
+            episode: "1"
+            title: "Interstellar"
+          - name: breaking-bad-s1e1
+            type: tv
+            tmdb: "1396"
+            season: "1"
+            episode: "1"
+            title: "Breaking Bad S1E1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Verify every advertised option (real bytes, multi-lang, speed)
+        run: node backend/test/live-sources.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: live-audit-only-not-a-production-secret
+          RELAY_MODE: hybrid
+          RESOLVE_TIMEOUT_MS: 9000
+          TMDB_TIMEOUT_MS: 8000
+          AUDIT_TYPE: ${{ matrix.type }}
+          AUDIT_TMDB: ${{ matrix.tmdb }}
+          AUDIT_SEASON: ${{ matrix.season }}
+          AUDIT_EPISODE: ${{ matrix.episode }}
+          AUDIT_TITLE: ${{ matrix.title }}
+          AUDIT_MAX_RESOLVE_MS: 7000
+          AUDIT_REQUIRE_MULTI_LANG: "1"

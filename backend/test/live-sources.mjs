@@ -9,9 +9,19 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createBackendServer } from '../../dist/backend/index.js';
 
-const TMDB_ID = '65942';
-const SEASON = '1';
-const EPISODE = '1';
+const TMDB_ID = process.env.AUDIT_TMDB || '65942';
+const TYPE = (process.env.AUDIT_TYPE || 'tv').trim().toLowerCase() === 'movie' ? 'movie' : 'tv';
+const SEASON = process.env.AUDIT_SEASON || '1';
+const EPISODE = process.env.AUDIT_EPISODE || '1';
+const TITLE_LABEL = process.env.AUDIT_TITLE || 'Re:Zero S1E1';
+const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+/** Hard speed budget for one /api/v1/playback resolution (0 = disabled). */
+const MAX_RESOLVE_MS = Math.max(0, Number(process.env.AUDIT_MAX_RESOLVE_MS || 0));
+/** Fail unless at least one advertised option carries real multi-language evidence. */
+const REQUIRE_MULTI_LANG = process.env.AUDIT_REQUIRE_MULTI_LANG === '1';
 const REQUEST_TIMEOUT_MS = 20_000;
 const browserHeaders = {
   Origin: 'https://audit.elfura.invalid',
@@ -231,22 +241,45 @@ async function auditOption(option) {
 }
 
 async function resolveSource(sourceId) {
-  const playbackUrl = `${apiBase}/api/v1/playback?type=tv&tmdb=${TMDB_ID}&s=${SEASON}&e=${EPISODE}&source=${sourceId}`;
+  const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
+  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}&source=${sourceId}`;
+  const t0 = performance.now();
   const res = await fetchWithTimeout(playbackUrl);
+  const resolveMs = Math.round(performance.now() - t0);
   const payload = await res.json().catch(() => ({}));
   if (!res.ok || !payload.ok || !Array.isArray(payload.sources) || !payload.sources.length) {
     throw new Error(`${sourceId} resolution failed (${res.status})`);
   }
+  console.log(`[resolve] ${sourceId}: ${payload.sources.length} option(s) in ${resolveMs}ms`);
+  if (MAX_RESOLVE_MS > 0 && resolveMs > MAX_RESOLVE_MS) {
+    throw new Error(`${sourceId} resolution too slow: ${resolveMs}ms > ${MAX_RESOLVE_MS}ms budget`);
+  }
   return payload.sources;
+}
+
+function hasMultiLangEvidence(options) {
+  const distinctSingle = new Set();
+  for (const o of options) {
+    if (Array.isArray(o.availableAudioLangs) && o.availableAudioLangs.length > 1) return true;
+    if (o.multiAudio && Array.isArray(o.availableAudioLangs) && o.availableAudioLangs.length) return true;
+    if (o.audioLang && o.audioLang !== 'und') distinctSingle.add(o.audioLang.split('-')[0]);
+    if (Array.isArray(o.audioTracks) && o.audioTracks.length > 1) return true;
+  }
+  return distinctSingle.size > 1;
 }
 
 const report = [];
 let failed = 0;
 try {
-  for (const sourceId of ['source-1', 'source-2']) {
+  for (const sourceId of AUDIT_SOURCES) {
     try {
       const options = await resolveSource(sourceId);
       console.log(`[audit] ${sourceId}: ${options.length} advertised option(s)`);
+      if (REQUIRE_MULTI_LANG && !hasMultiLangEvidence(options)) {
+        failed++;
+        report.push({ id: sourceId, ok: false, error: 'no multi-language evidence in advertised options' });
+        console.error(`[fail] ${sourceId}: no multi-language evidence in advertised options`);
+      }
       for (const option of options) {
         try {
           const checks = await auditOption(option);
@@ -271,7 +304,8 @@ try {
 }
 
 console.log('[audit-summary] ' + JSON.stringify({
-  title: 'Re:Zero S1E1',
+  title: TITLE_LABEL,
+  type: TYPE,
   tmdb: TMDB_ID,
   passed: report.filter((row) => row.ok).length,
   failed,

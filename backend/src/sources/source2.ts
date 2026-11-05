@@ -784,7 +784,7 @@ async function fetchFromNxsha(
       high_priority?: number;
       position?: number;
     }[];
-  }>('/api/servers', baseReq, 3600);
+  }>('/api/servers', baseReq, 2800);
   // Subtitle discovery is independent of server probing; start it concurrently so
   // current `language` + `uri` tracks do not add another serial playback delay.
   const subtitlePromise = callNx<
