@@ -1,0 +1,37 @@
+name: Live site probe
+
+on:
+  push:
+    branches:
+      - arena/dcf86284-elfura
+    paths:
+      - backend/test/live-site-probe.mjs
+      - .github/workflows/live-site-probe.yml
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: probe (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: dune-movie
+            type: movie
+            tmdb: "693134"
+          - name: rezero-tv
+            type: tv
+            tmdb: "65942"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe deployed site end to end
+        run: node backend/test/live-site-probe.mjs
+        env:
+          SITE_ORIGIN: https://embed.theogpiratebot.online
+          PROBE_TYPE: ${{ matrix.type }}
+          PROBE_TMDB: ${{ matrix.tmdb }}
