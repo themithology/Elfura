@@ -78,6 +78,7 @@ export interface SourceOption {
   qualityLadder?: number[];
   /** Number of quality options when known (>1 ranks above single/unknown). */
   qualityOptions?: number;
+  qualityLabelsUnreliable?: boolean;
   fingerprint?: string;
   latencyHintMs?: number;
   audioLang?: string;
@@ -2268,7 +2269,7 @@ export class ElfuraPlayer {
         return;
       }
 
-      this.qualityLevels = data.levels
+      this.qualityLevels = (this.currentSource?.qualityLabelsUnreliable ? [] : data.levels)
         .map((l, i) => ({
           id: i,
           height: l.height ?? 0,

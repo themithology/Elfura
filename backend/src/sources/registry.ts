@@ -648,6 +648,7 @@ export class SourceRegistry {
       type: cand.type,
       url: `${streamBase}?t=${encodeURIComponent(streamTicket)}`,
       quality: cand.quality || 'auto',
+      ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
       ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
       ...((cand.qualityOptions ?? cand.qualityLadder?.length) !== undefined
         ? { qualityOptions: cand.qualityOptions ?? cand.qualityLadder?.length }

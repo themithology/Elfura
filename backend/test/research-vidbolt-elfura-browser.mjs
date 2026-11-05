@@ -48,7 +48,11 @@ try {
    }
    step='quality';
    const quality=[];
-   for (const target of [1080,720]) {
+   if(c.type==='movie') {
+    const levels=await page.evaluate(()=>window.__elfura.player.getQualityLevels());
+    if(levels.length || info.qualities?.length)throw new Error('unreliable movie quality labels exposed');
+   }
+   for (const target of c.type==='movie'?[]:[1080,720]) {
     const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
     if(!qualitySet)throw new Error('quality missing');
     await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-2';},target,{timeout:35000});

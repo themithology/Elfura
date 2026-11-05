@@ -570,8 +570,8 @@ export async function verifyAndFilterCandidatesDetailed(
       // player quality menu contains a single 0-height level.
       updated = {
         ...updated,
-        qualityOptions: outcome.qualityOptions,
-        qualityLadder: outcome.qualityLadder?.length ? outcome.qualityLadder : undefined,
+        qualityOptions: updated.qualityLabelsUnreliable ? 0 : outcome.qualityOptions,
+        qualityLadder: !updated.qualityLabelsUnreliable && outcome.qualityLadder?.length ? outcome.qualityLadder : undefined,
         // A leaf playlist or height-less master cannot substantiate a
         // catalogue's fixed-resolution label.
         ...((outcome.manifestKind === 'hls-media' || outcome.manifestKind === 'hls-master') && !outcome.qualityLadder?.length ? { quality: 'auto' } : {}),

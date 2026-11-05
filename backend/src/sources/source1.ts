@@ -569,6 +569,9 @@ export async function fetchFromVidBolt(
       if (!testLoopback && !/(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/.test(host)) continue;
       if (inferStreamType(source.type, source.url) !== 'hls') continue;
       out.push({ key: source.url, url: source.url, type: 'hls', quality: 'auto', rank: 4,
+        // The movie CDN has served 1080p and 720p bytes under 720p and 480p labels.
+        // Keep adaptive playback, but do not advertise untrustworthy manual heights.
+        ...(host === 'img.rousav.tech' ? { qualityLabelsUnreliable: true } : {}),
         headers: { Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA } });
     }
     return out;

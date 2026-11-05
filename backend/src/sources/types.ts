@@ -71,6 +71,8 @@ export interface RawStreamCandidate {
   qualityLadder?: number[];
   /** Number of quality options when known (1 = single fixed quality). */
   qualityOptions?: number;
+  /** Manifest rendition heights are known to be unreliable; keep ABR but hide manual labels. */
+  qualityLabelsUnreliable?: boolean;
   /** Primary BCP-47 language if single-dub stream (e.g. 'hi', 'en'). */
   audioLang?: string;
   audioLabel?: string;
@@ -139,6 +141,7 @@ export interface UniformStreamOption {
   qualityLadder?: number[];
   /** Number of quality options when known (>1 ranks above single/unknown). */
   qualityOptions?: number;
+  qualityLabelsUnreliable?: boolean;
   /** Opaque 12-char HMAC digest identifying shared upstream streams without leaking URLs */
   fingerprint?: string;
   /** Optional edge latency hint in ms for initial candidate ordering */

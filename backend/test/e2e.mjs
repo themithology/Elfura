@@ -80,6 +80,7 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     assert.equal(sources.length, 1);
     assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
     assert.equal(sources[0].multiAudio, undefined); // manifest verification establishes this
+    assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
   } finally { globalThis.fetch = originalFetch; }
 }
 
