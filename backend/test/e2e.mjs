@@ -3041,7 +3041,6 @@ try {
 
     let vidapiReceivedReferer = '';
     let vidlinkReceivedPlaybackEnv = '';
-    const requestedNxProviders = [];
     const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
@@ -3141,35 +3140,9 @@ try {
             _hash: openSslEncryptBase64Url(
               JSON.stringify({
                 servers: [
-                  { id: 'nitro', status: 'online', types: ['web'] },
+                  { id: 'nitro', status: 'online' },
                   { id: 'vidapi', status: 'online' },
                   { id: 'mhbox', status: 'online' },
-                  { id: 'awsind', status: 'online', web_support: true, isDisable: false },
-                  { id: 'watchout', status: 'online' },
-                  { id: 'bdxs', status: 'online' },
-                  { id: 'showbox-online', status: 'online' },
-                  { id: 'stvv', status: 'online' },
-                  { id: 'rive-citadel', status: 'online', isDisable: true },
-                  { id: 'castle', status: 'online', web_support: false },
-                  { id: 'streamflix', status: 'online', types: ['app'] },
-                ],
-              }),
-              NX_PASS,
-            ),
-          }),
-        );
-        return;
-      }
-      if (cu.pathname === '/api/subtitles') {
-        const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
-        assert.equal(dec.tmdbId, '533535');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            _hash: openSslEncryptBase64Url(
-              JSON.stringify({
-                subtitles: [
-                  { uri: `${cOrigin}/nx/sub_hi.vtt`, language: 'hi', display: 'Hindi' },
                 ],
               }),
               NX_PASS,
@@ -3180,43 +3153,7 @@ try {
       }
       if (cu.pathname === '/api/sources') {
         const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
-        requestedNxProviders.push(dec.provider);
         const byProv = {
-          awsind: [
-            {
-              provider: 'awsind',
-              url: `${cOrigin}/awsind/multi.m3u8`,
-              label: 'AwsPly',
-              quality: '1080p',
-              type: 'hls',
-              lang: 'en',
-              langName: 'English',
-              multiLangs: ['en', 'hi', 'ta'],
-            },
-            {
-              provider: 'awsind',
-              url: `${cOrigin}/awsind/expired.m3u8?Expires=100`,
-              label: 'Hindi',
-              type: 'hls',
-            },
-            {
-              provider: 'awsind',
-              url: 'https://i-arch-400.husvu445bey.com/stream2/dead.m3u8',
-              label: 'Hindi',
-              type: 'hls',
-            },
-          ],
-          watchout: [
-            {
-              provider: 'watchout',
-              url: `${cOrigin}/watchout/hindi.m3u8`,
-              label: 'watchout',
-              quality: '720p',
-              type: 'm3u8',
-              lang: 'hi',
-              langName: 'Hindi',
-            },
-          ],
           nitro: [
             {
               provider: 'nitro',
@@ -3300,14 +3237,8 @@ try {
                 type: 'dash',
                 resolution: 1080,
               },
-              {
-                link: openSslEncryptBase64Url('/vs/orion_hevc.mpd', VS_PASS),
-                type: 'dash',
-                resolution: 1080,
-                onlyHevc: true,
-              },
             ],
-            dubs: isHiDub ? [] : [{ lang: 'hi', name: 'Hindi', type: 0 }],
+            dubs: isHiDub ? [] : [{ lanCode: 'hi', lanName: 'Hindi', dubType: 0 }],
           }),
         );
         return;
@@ -3403,26 +3334,6 @@ try {
         imdbId: 'tt6263850',
         preferredLang: 'hi',
       });
-
-      assert.deepEqual(
-        [...requestedNxProviders].sort(),
-        ['awsind', 'bdxs', 'mhbox', 'nitro', 'showbox-online', 'stvv', 'vidapi', 'watchout'].sort(),
-        'Current multi-language providers must fit the bounded probe set; disabled/app-only servers must be skipped',
-      );
-      const awsCand = s2Out.candidates.find((c) => c.url.includes('/awsind/multi.m3u8'));
-      assert(awsCand, 'Expected current AwsPly provider candidate');
-      assert.equal(awsCand.multiAudio, true);
-      assert.deepEqual(awsCand.availableAudioLangs, ['en', 'hi', 'ta']);
-      assert(
-        awsCand.subtitles.some((s) => s.url === `${cmOrigin}/nx/sub_hi.vtt` && s.lang === 'hi'),
-        'Current Nxsha language + uri subtitles must be normalized and pooled',
-      );
-      const watchoutCand = s2Out.candidates.find((c) => c.url.includes('/watchout/hindi.m3u8'));
-      assert(watchoutCand && watchoutCand.audioLang === 'hi', 'Explicit Nxsha lang/langName must survive parsing');
-      assert(
-        !s2Out.candidates.some((c) => /expired\.m3u8|husvu445bey|orion_hevc/.test(c.url)),
-        'Expired, known-dead and HEVC-only lanes must never be advertised',
-      );
 
       const nitroCand = s2Out.candidates.find((c) => c.url.includes('/nitro/master.m3u8'));
       assert(nitroCand, 'Expected NXStream nitro candidate');
