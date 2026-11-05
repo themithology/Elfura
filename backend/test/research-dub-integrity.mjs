@@ -1,5 +1,6 @@
 // Research-only: compare provider-labelled dubs without exposing URLs or tokens.
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 const origin = 'https://vidsync.pro';
 const headers = { 'User-Agent': 'Mozilla/5.0 Chrome/137.0.0.0 Safari/537.36', Referer: `${origin}/`, Accept: '*/*' };
 const hash = (value) => createHash('sha256').update(value).digest('hex').slice(0, 12);
@@ -30,7 +31,13 @@ for (const endpoint of ['core/streams', 'stream']) {
           const next = new URL(first, candidate);
           const r = await fetch(next, { headers, signal: AbortSignal.timeout(12000) });
           const bytes = new Uint8Array(await r.arrayBuffer());
-          media = `${r.status}:${hash(bytes)}`;
+          const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type:stream_tags=language', '-of', 'json', 'pipe:0'], { input: bytes, timeout: 5000, maxBuffer: 1000000 });
+          let audioTags = [];
+          try {
+            audioTags = (JSON.parse(probe.stdout.toString()).streams || [])
+              .filter(s => s.codec_type === 'audio').map(s => s.tags?.language || 'untagged');
+          } catch { /* missing or encrypted media, not proof of language */ }
+          media = `${r.status}:${hash(bytes)}:audioTags=${audioTags.join('/') || 'none'}`;
         }
         reports.push(`${language}:status=${response.status},manifest=${hash(text)},audio=${renditions},variants=${variants},first=${media}`);
       } catch (e) { reports.push(`${language}:error=${e.name}`); }
