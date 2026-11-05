@@ -284,7 +284,10 @@ export async function fetchFromVixSrc(origin: string, query: SourceQuery): Promi
     url.searchParams.set('token', token);
     url.searchParams.set('expires', expires);
     url.searchParams.set('h', '1');
-    return [{ key: url.href, url: url.href, type: 'hls', quality: 'auto', headers, rank: 4 }];
+    // Movie renditions have not yet passed rendered-height verification.
+    // Keep adaptive playback but avoid advertising potentially misleading labels.
+    return [{ key: url.href, url: url.href, type: 'hls', quality: 'auto', headers, rank: 4,
+      ...(query.type === 'movie' ? { qualityLabelsUnreliable: true } : {}) }];
   } catch {
     return [];
   }
