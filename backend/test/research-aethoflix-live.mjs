@@ -29,3 +29,10 @@ const terms=['rousav','vidbolt','AethoOrion','AethoRousav','/api/extract','/api/
 const contexts=Object.fromEntries(terms.map(term=>{ const i=all.indexOf(term); return [term,i<0?'missing':all.slice(Math.max(0,i-300),i+450).replace(/https?:\\?\/\\?\/[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]')]; }));
 const definitions=[...all.matchAll(/\{id:`([^`]+)`,name:`Aetho[^`]+`,description:`[^`]*`,provider:`([^`]+)`,upstreamServer:`([^`]+)`/g)].map(m=>({id:m[1],provider:m[2],upstream:m[3]}));
 notice({definitions,contexts});
+// Preserve complete source labels and the client-side request construction without tokens.
+const defRaw=[...all.matchAll(/\{id:`([^`]+)`,name:`Aetho[^`]+`,description:`[^`]*`,provider:`[^`]+`,upstreamServer:`[^`]+`[^}]*\}/g)].map(m=>m[0]);
+for(const value of defRaw) notice({sourceDefinition:value.slice(0,900)});
+for(const term of ['provider:`sniper`','upstreamServer:`download`','/api/extract','/api/scan']) {
+ const matches=[...all.matchAll(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'))].slice(0,5);
+ for(const m of matches) notice({term,near:all.slice(Math.max(0,m.index-500),m.index+900).replace(/https?:\\?\/\\?\/[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]')});
+}
