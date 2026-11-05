@@ -16,7 +16,8 @@ for(const r of responses) notice({path:r.path,status:r.status,contentType:r.cont
 const html=responses[0]?.body||'';
 const scripts=[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(m=>new URL(m[1],root).href).filter(u=>new URL(u).origin===root).slice(0,12);
 const files=await Promise.all(scripts.map(async u=>{
- try {const r=await fetch(u,{signal:AbortSignal.timeout(12000)});const text=await limited(r);return {status:r.status,text};}catch{return {status:0,text:''};}
+ for(let attempt=0;attempt<2;attempt++) {try {const r=await fetch(u,{signal:AbortSignal.timeout(30000)});const text=await limited(r);return {status:r.status,text};}catch{}}
+ return {status:0,text:''};
 }));
 const all=html+'\n'+files.map(f=>f.text).join('\n');
 await import('node:fs/promises').then(fs=>fs.writeFile('/tmp/aethoflix-public-client.txt',all));
@@ -24,3 +25,6 @@ const hostnames=[...new Set([...all.matchAll(/https?:\\?\/\\?\/([a-z0-9.-]+\.[a-
 const relevant=hostnames.filter(h=>/aetho|rousav|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|zxcstream|workers|hscow|telegram|tgflix|tghub/i.test(h)).sort();
 const markers=['/api/extract','/api/scan','/embed/movie/','/embed/tv/','/api/proxy-m3u8','rousav','vidbolt','nxsha','vidstuck'];
 notice({scripts:scripts.length,statuses:files.map(x=>x.status),relevantHosts:relevant,markers:Object.fromEntries(markers.map(m=>[m,all.includes(m)]))});
+const terms=['rousav','vidbolt','AethoOrion','AethoRousav','/api/extract','/api/proxy-m3u8','aethoflix.world'];
+const contexts=Object.fromEntries(terms.map(term=>{ const i=all.indexOf(term); return [term,i<0?'missing':all.slice(Math.max(0,i-300),i+450).replace(/https?:\\?\/\\?\/[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]')]; }));
+notice({contexts});
