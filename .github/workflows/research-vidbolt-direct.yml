@@ -15,5 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: npm install --no-save --no-package-lock @ffmpeg-installer/ffmpeg
       - run: node backend/test/research-vidbolt-direct.mjs
       - run: node backend/test/research-vidbolt-client.mjs

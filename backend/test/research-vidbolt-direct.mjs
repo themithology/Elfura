@@ -1,6 +1,11 @@
 // Research only. Contacts original VidBolt-family upstreams, never Aethoflix.
 // Do not log request URLs, API keys, signed URLs, or response bodies.
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync, unlinkSync } from 'node:fs';
+const require=createRequire(import.meta.url);
+let ffmpeg=''; try{ffmpeg=require('@ffmpeg-installer/ffmpeg').path;}catch{}
 const cases=[{id:'93405',type:'tv',title:'Squid Game',year:'2021'}, {id:'289517',type:'tv',title:'Dead-End Job',year:'2026'}, {id:'693134',type:'movie',title:'Dune: Part Two',year:'2024'}];
 const h={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',Referer:'https://vidbolt.xyz/',Origin:'https://vidbolt.xyz',Accept:'*/*'};
 const banned=u=>/(^|\.)(vidstuck\.cc|nxsha\.space|embed\.aethoflix\.live|embed\.aethoflix\.world|zxcstream-mirror\.vercel\.app)$/i.test(new URL(u).hostname);
@@ -18,7 +23,9 @@ async function playlist(url,depth=0){
 }
 async function variantProof(url){
  try {const x=await request(url);if(!x.r?.ok)return [];const text=(await read(x.r)).toString();const lines=text.split(/\r?\n/);const variants=[];
- for(let i=0;i<lines.length;i++){if(!/^#EXT-X-STREAM-INF/i.test(lines[i]))continue;let j=i+1;while(j<lines.length&&(!lines[j].trim()||lines[j].startsWith('#')))j++;if(j>=lines.length)continue;const height=lines[i].match(/RESOLUTION=\d+x(\d+)/i)?.[1];const r=await request(new URL(lines[j].trim(),x.url).href);if(!r.r?.ok){variants.push({height,status:r.r?.status||0});continue;}const body=(await read(r.r)).toString();const first=body.split(/\r?\n/).map(l=>l.trim()).find(l=>l&&!l.startsWith('#'));if(!first){variants.push({height,empty:true});continue;}const seg=await request(new URL(first,r.url).href,{...h,Range:'bytes=0-65535'});if(!seg.r?.ok){variants.push({height,status:seg.r?.status||0});continue;}const b=await read(seg.r,65536);variants.push({height,bytes:b.length,hash:createHash('sha256').update(b).digest('hex').slice(0,16)});}
+ for(let i=0;i<lines.length;i++){if(!/^#EXT-X-STREAM-INF/i.test(lines[i]))continue;let j=i+1;while(j<lines.length&&(!lines[j].trim()||lines[j].startsWith('#')))j++;if(j>=lines.length)continue;const height=lines[i].match(/RESOLUTION=\d+x(\d+)/i)?.[1];const r=await request(new URL(lines[j].trim(),x.url).href);if(!r.r?.ok){variants.push({height,status:r.r?.status||0});continue;}const body=(await read(r.r)).toString();const first=body.split(/\r?\n/).map(l=>l.trim()).find(l=>l&&!l.startsWith('#'));if(!first){variants.push({height,empty:true});continue;}const seg=await request(new URL(first,r.url).href,{...h,Range:'bytes=0-65535'});if(!seg.r?.ok){variants.push({height,status:seg.r?.status||0});continue;}const b=await read(seg.r,65536);let resolution='unavailable';
+ if(ffmpeg){const map=body.match(/#EXT-X-MAP:.*URI="([^"]+)"/i)?.[1];let init=Buffer.alloc(0);if(map){const ir=await request(new URL(map,r.url).href);if(ir.r?.ok)init=await read(ir.r,2_000_000);}const path=`/tmp/elfura-variant-${height}.bin`;try{writeFileSync(path,Buffer.concat([init,b]));const p=spawnSync(ffmpeg,['-hide_banner','-i',path,'-frames:v','1','-f','null','-'],{encoding:'utf8',timeout:15000});resolution=(p.stderr||'').match(/Video:.*?\b(\d{2,5}x\d{2,5})\b/)?.[1]||'unknown';}finally{try{unlinkSync(path);}catch{}}}
+ variants.push({height,bytes:b.length,hash:createHash('sha256').update(b).digest('hex').slice(0,16),resolution});}
  return variants;
  }catch(e){return [{error:e.name}];}
 }
