@@ -53,7 +53,6 @@ export interface BackendConfig {
     apiOrigin: string;
     riftOrigin: string;
     riftRelay: string;
-    syncOrigin: string;
     vidlinkOrigin?: string;
     encDecOrigin?: string;
     vidrockOrigin?: string;
@@ -65,6 +64,11 @@ export interface BackendConfig {
     defaultServer: string;
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
+  };
+  /** Source 3 configurable endpoint (kept purely server-side). */
+  source3: {
+    enabled: boolean;
+    origin: string;
   };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
@@ -173,7 +177,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || '').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
-      syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),
       encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
@@ -184,6 +187,17 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
       nxshaOrigin: (env.SOURCE2_NXSHA_ORIGIN || 'https://nxsha.space').replace(/\/+$/, ''),
       vidstuckOrigin: (env.SOURCE2_VIDSTUCK_ORIGIN || 'https://vidstuck.cc').replace(/\/+$/, ''),
+    },
+    source3: {
+      enabled: env.SOURCE3_ENABLED !== '0',
+      // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
+      // used to be an internal Source 1 lane before becoming Source 3.
+      origin: (
+        env.SOURCE3_ORIGIN ||
+        env.VIDSYNC_ORIGIN ||
+        env.SOURCE1_SYNC_ORIGIN ||
+        'https://vidsync.pro'
+      ).replace(/\/+$/, ''),
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',

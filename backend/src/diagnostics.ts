@@ -110,12 +110,12 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       probeOrigin('s1-app', cfg.source1.appOrigin),
       probeOrigin('s1-api', cfg.source1.apiOrigin),
       probeOrigin('s1-rift', cfg.source1.riftOrigin),
-      probeOrigin('s1-sync', cfg.source1.syncOrigin),
       probeOrigin('s1-link', cfg.source1.vidlinkOrigin),
       probeOrigin('s1-rock', cfg.source1.vidrockOrigin),
       probeOrigin('s2-embed', cfg.source2.embedOrigin),
       probeOrigin('s2-nx', cfg.source2.nxshaOrigin),
       probeOrigin('s2-vs', cfg.source2.vidstuckOrigin),
+      probeOrigin('s3-vidsync', cfg.source3.origin),
       probeOrigin('subtitles', cfg.subtitles.openSubtitlesBase),
     ]),
     (async () => {

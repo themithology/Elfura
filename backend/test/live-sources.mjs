@@ -14,7 +14,7 @@ const TYPE = (process.env.AUDIT_TYPE || 'tv').trim().toLowerCase() === 'movie' ?
 const SEASON = process.env.AUDIT_SEASON || '1';
 const EPISODE = process.env.AUDIT_EPISODE || '1';
 const TITLE_LABEL = process.env.AUDIT_TITLE || 'Re:Zero S1E1';
-const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2')
+const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2,source-3')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);

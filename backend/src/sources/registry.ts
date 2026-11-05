@@ -16,6 +16,7 @@ import { normalizeLang } from './lang.js';
 import { verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource2Adapter } from './source2.js';
+import { createSource3Adapter } from './source3.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -46,6 +47,7 @@ export class SourceRegistry {
     this.adapters = [
       createSource1Adapter(cfg.source1),
       createSource2Adapter(cfg.source2),
+      createSource3Adapter(cfg.source3),
     ];
   }
 
@@ -362,26 +364,27 @@ export class SourceRegistry {
       // that merely timed out): releasing early there would discard slower
       // adapters' verified-healthy streams and strand the player.
       const fastHasMultiAudio = verifiedBatch.vFlat.some((c) => !!c.multiAudio);
-      if (
+      const needsLongGrace =
         verifiedBatch.totalLive === 0 ||
         verifiedBatch.verifiedLive === 0 ||
         !fastHasWantedLang ||
-        !fastHasMultiAudio
-      ) {
-        // Never sacrifice a slower adapter's multi-audio stream for ~1s of
-        // speed: give remaining adapters a bounded grace window to deliver
-        // one. When nothing at all is live yet, wait for full resolution.
-        const graceMs = verifiedBatch.totalLive === 0 ? 0 : 4000;
-        if (graceMs > 0) {
-          await Promise.race([
-            Promise.allSettled(adapterTasks),
-            new Promise((r) => setTimeout(r, graceMs)),
-          ]);
-        } else {
-          await Promise.allSettled(adapterTasks);
-        }
-        verifiedBatch = await verifyCurrentSlots();
+        !fastHasMultiAudio;
+      // Combined playback must represent every enabled source, not merely
+      // the adapter that happened to finish first. Always give pending
+      // adapters a short catch-up window; use the longer window when the
+      // fast batch is unverified, misses the wanted language, or lacks a
+      // multi-audio option. This remains bounded and does not wait for a
+      // hung adapter beyond the configured grace.
+      const graceMs = verifiedBatch.totalLive === 0 ? 0 : needsLongGrace ? 4000 : 1500;
+      if (graceMs > 0) {
+        await Promise.race([
+          Promise.allSettled(adapterTasks),
+          new Promise((r) => setTimeout(r, graceMs)),
+        ]);
+      } else {
+        await Promise.allSettled(adapterTasks);
       }
+      verifiedBatch = await verifyCurrentSlots();
     }
 
     const [media, segmentResults] = await Promise.all([mediaPromise, Promise.all(segmentTasks)]);

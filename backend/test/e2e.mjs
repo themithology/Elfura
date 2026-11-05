@@ -1461,6 +1461,10 @@ const { server: elfuraServer } = createBackendServer({
     embedOrigin: upBase,
     defaultServer: 'orion',
   },
+  source3: {
+    enabled: true,
+    origin: upBase,
+  },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,
@@ -1485,6 +1489,7 @@ try {
   assert.deepEqual(health.sources, [
     { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
+    { id: 'source-3', label: 'Source 3' },
   ]);
 
   // Public landing routes and live, sanitized TMDB catalog used by every
@@ -2164,10 +2169,11 @@ try {
     !s1Reze.some((s) => s.multiAudio),
     'Master-alive / child-HTML dead Source 1 stream must be pruned before entering playback response',
   );
-  // Meanwhile Source 1's VidZee Hindi stream routed via `/api/core/proxy` MUST be alive!
+  // Meanwhile Source 3's Hindi stream routed via `/api/core/proxy` MUST be alive!
+  const s3Reze = pbReze.sources.filter((s) => s.sourceId === 'source-3');
   assert(
-    s1Reze.some((s) => s.audioLang === 'hi'),
-    'Expected VidSync proxy-backed Hindi stream to survive deep liveness check',
+    s3Reze.some((s) => s.audioLang === 'hi'),
+    'Expected Source 3 proxy-backed Hindi stream to survive deep liveness check',
   );
 
   // Dead Source 2 `German` (`403` mirror) MUST be pruned, and `Kurdish sub` hardsub must not claim `ku` audio!
@@ -2989,6 +2995,7 @@ try {
       openSslEncryptBase64Url,
       openSslDecrypt,
     } = await import('../../dist/backend/sources/source2.js');
+    const { createSource3Adapter } = await import('../../dist/backend/sources/source3.js');
     const { loadBackendConfig } = await import('../../dist/backend/config.js');
     const { rewriteHlsManifest } = await import('../../dist/backend/relay.js');
 
@@ -3108,6 +3115,10 @@ try {
                       quality: '1080p',
                       audioLanguage: 'en',
                       headers: { Referer: 'https://api.hlowb.com/' },
+                      subtitles: [
+                        { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
+                        { url: `${cOrigin}/vlink/hi.srt`, language: 'Hindi' },
+                      ],
                     },
                     {
                       provider: { id: 'castle', name: 'Castle' },
@@ -3388,16 +3399,17 @@ try {
         apiOrigin: '',
         riftOrigin: '',
         riftRelay: '',
-        syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
         vidlinkOrigin: cmOrigin,
         encDecOrigin: cmOrigin,
       });
       const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+      const s3Rec = createSource3Adapter({ enabled: true, origin: cmOrigin });
+      const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
 
-      // Castle must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
+      // Source 3 must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
       // signed CDN lane as a secondary candidate for registry-level liveness filtering.
-      const castleCands = s1Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
+      const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
       assert(
         castleCands[0].standbyUrl?.includes('/ip-locked/index_287.m3u8'),
@@ -3428,10 +3440,11 @@ try {
         'VidLink requiresProxy MP4 lanes must not be advertised to the non-browser relay',
       );
 
-      // Pooled VidLink captions (`en`, `hi`) must be shared onto VidSync & VidRock candidates!
+      // Source 3 carries its API-provided captions, while Source 1 still pools
+      // VidLink captions (`en`, `hi`) across its own candidates.
       assert(
         castleCands[0].subtitles.length >= 2 && s1Out.candidates[0].subtitles.length >= 2,
-        'Expected VidLink captions to be pooled across all Source 1 candidates',
+        'Expected Source 3 captions and pooled Source 1 VidLink captions to be present',
       );
 
       const s2Rec = createS2Recovery({
