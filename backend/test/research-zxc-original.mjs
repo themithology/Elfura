@@ -85,7 +85,8 @@ async function test(item,server) {
     const candidates=(Array.isArray(payload.links)?payload.links:[]).map(x=>({url:decrypt(String(x.link||'')),type:x.type}));
     const candidate=candidates.find(c=>/^https?:/i.test(c.url) && !blocked(c.url) && (c.type==='hls'||c.url.includes('.m3u8')));
     const result=candidate ? await verifyHls(candidate.url,h) : 'no-eligible-hls';
-    return `${item.id}/${server} sources=200 links=${candidates.length} result=${result} ms=${Date.now()-time}`;
+    const summary = candidates.map(c => ({ type:String(c.type||'unknown').replace(/[^a-z0-9_-]/gi,'').slice(0,16), shape: /^https?:/i.test(c.url) ? (blocked(c.url) ? 'excluded-host' : 'absolute') : c.url.startsWith('/') ? 'relative' : c.url ? 'opaque' : 'empty', ext: /\.mpd(?:[?#]|$)/i.test(c.url) ? 'mpd' : /\.m3u8(?:[?#]|$)/i.test(c.url) ? 'm3u8' : 'other' }));
+    return `${item.id}/${server} sources=200 links=${candidates.length} shapes=${JSON.stringify(summary)} result=${result} ms=${Date.now()-time}`;
   } catch(e) { return `${item.id}/${server} error=${e.name} ms=${Date.now()-time}`; }
 }
 for (const item of cases) {
