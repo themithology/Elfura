@@ -29,17 +29,17 @@ try {
    step='tracks';
    await page.waitForFunction(()=>window.__elfura.player.hls?.audioTracks?.some(t=>/^(hi|hin)(-|$)/i.test(t.lang||'')),null,{timeout:20000});
    step='hindi';
-   const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio')window.__audioSegments++;});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
+   const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio'){window.__audioSegments++;(window.__audioLevels ||= []).push(d.frag.level);}});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
    await page.waitForFunction(()=>window.__audioSegments>0 && window.__elfura.player.video.currentTime>0.1,null,{timeout:35000});
    const state=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,errors:window.__hlsErrors}));
    if(!selected.ok||!state.audioSegments||state.source!=='source-2')throw new Error('playback assertion failed');
    const switches=[];
    for(const lang of ['en','hi']) {
     step=`switch-${lang}`;
-    const selection=await page.evaluate(async lang=>{const p=window.__elfura.player;window.__audioSegments=0;const ok=await p.setAudio(lang);return {ok,lang:p.hls?.audioTracks[p.hls.audioTrack]?.lang||null};},lang);
+    const selection=await page.evaluate(async lang=>{const p=window.__elfura.player;window.__audioSegments=0;window.__audioLevels=[];const ok=await p.setAudio(lang);return {ok,lang:p.hls?.audioTracks[p.hls.audioTrack]?.lang||null};},lang);
     if(!selection.ok || selection.lang !== lang) throw new Error('audio selection failed');
-    await page.waitForFunction(()=>window.__audioSegments>0,null,{timeout:35000});
-    const switched=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId}));
+    await page.waitForFunction(()=>window.__audioLevels?.includes(window.__elfura.player.hls?.audioTrack),null,{timeout:35000});
+    const switched=await page.evaluate(()=>({audioSegments:window.__audioSegments,audioLevels:window.__audioLevels,nativeIndex:window.__elfura.player.hls?.audioTrack,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId}));
     if(switched.source!=='source-2')throw new Error('unexpected source fallback');
     switches.push({requested:lang,...selection,...switched});
    }
