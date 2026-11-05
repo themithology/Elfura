@@ -103,25 +103,22 @@ for (const p of [
   }
 }
 
-// 5) Call-shape archaeology: redacted code context around key endpoints
+// 5) Call-shape archaeology: redacted code context around key endpoints.
+// GitHub surfaces only a limited number of annotations per run, so all
+// contexts are combined into ONE annotation.
 const redact = (s) =>
   String(s)
     .replace(/[a-f0-9]{24,}/gi, '<hex>')
     .replace(/[A-Za-z0-9+/=_-]{40,}/g, '<long>')
     .replace(/\s+/g, ' ')
-    .slice(0, 340);
+    .slice(0, 300);
 if (bundle) {
-  for (const needle of ['/api/stream/session/init', '/api/stream', '/api/security/check', '/api/token', '/api/castle/', '/api/bingr/']) {
-    const contexts = [];
-    let idx = 0;
-    while (contexts.length < 2) {
-      const at = bundle.indexOf(needle, idx);
-      if (at < 0) break;
-      contexts.push(redact(bundle.slice(Math.max(0, at - 200), at + 200)));
-      idx = at + needle.length;
-    }
-    annotate('notice', 'VsCallShape', `${needle} :: ${contexts.join(' || ') || 'not referenced as literal'}`);
+  const parts = [];
+  for (const needle of ['/api/stream/session/init', '/api/stream?', '/api/stream"', '/api/security/check', '/api/castle/']) {
+    const at = bundle.indexOf(needle);
+    parts.push(`${needle} :: ${at < 0 ? 'not found' : redact(bundle.slice(Math.max(0, at - 160), at + 220))}`);
   }
+  annotate('notice', 'VsCallShapes', parts.join(' || ').slice(0, 950));
 }
 
 // 6) Session/security handshake attempts (statuses + key names only)
@@ -148,12 +145,55 @@ async function attempt(label, method, pathName, body) {
 }
 
 await attempt('security-check-empty', 'POST', '/api/security/check', {});
-await attempt('session-init-tmdb', 'POST', '/api/stream/session/init', {
-  tmdbId: Number(TMDB),
-  type: 'movie',
-  mediaType: 'movie',
-});
-await attempt('stream-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null);
-await attempt('stream-post', 'POST', '/api/stream', { tmdbId: Number(TMDB), type: 'movie' });
+
+// Real handshake: session init takes NO body and returns { token }.
+let sessionToken = '';
+try {
+  const r = await fetch(`${BASE}/api/stream/session/init`, {
+    method: 'POST',
+    headers: { ...H, Origin: BASE },
+    signal: AbortSignal.timeout(15_000),
+  });
+  const j = await r.json().catch(() => null);
+  sessionToken = typeof j?.token === 'string' ? j.token : '';
+  annotate(
+    r.ok && sessionToken ? 'notice' : 'warning',
+    'VsSession',
+    `init HTTP ${r.status} tokenPresent=${!!sessionToken} tokenLen=${sessionToken.length} keys=[${j ? Object.keys(j).join(',') : ''}]`,
+  );
+} catch (e) {
+  annotate('warning', 'VsSession', `init failed ${e.name}`);
+}
+
+const streamAttempts = [
+  ['bearer-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null, { Authorization: `Bearer ${sessionToken}` }],
+  ['xsession-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null, { 'x-stream-session': sessionToken }],
+  ['bearer-post', 'POST', '/api/stream', { tmdbId: Number(TMDB), type: 'movie' }, { Authorization: `Bearer ${sessionToken}` }],
+  ['plain-get-id', 'GET', `/api/stream?id=${TMDB}&type=movie`, null, { Authorization: `Bearer ${sessionToken}` }],
+];
+for (const [label, method, pathName, body, extraHeaders] of streamAttempts) {
+  try {
+    const r = await fetch(`${BASE}${pathName}`, {
+      method,
+      headers: { ...H, Origin: BASE, ...extraHeaders, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(20_000),
+    });
+    const text = await r.text();
+    let info = `bytes=${text.length}`;
+    try {
+      const j = JSON.parse(text);
+      const srcs = Array.isArray(j?.sources) ? j.sources : null;
+      info += ` error=${short(String(j?.error ?? ''), 90)} sources=${srcs ? srcs.length : 'n/a'}`;
+      if (srcs?.length) {
+        const first = srcs[0] ?? {};
+        info += ` firstKeys=[${Object.keys(first).join(',')}] servers=[${[...new Set(srcs.map((s) => String(s.server ?? s.name ?? s.provider ?? '?')))].slice(0, 10).join(',')}]`;
+      }
+    } catch { /* not json */ }
+    annotate(r.ok ? 'notice' : 'warning', 'VsStreamTry', `${label}: HTTP ${r.status} ${info}`);
+  } catch (e) {
+    annotate('warning', 'VsStreamTry', `${label}: failed ${e.name}`);
+  }
+}
 
 annotate('notice', 'VsResearchDone', `${BASE} tmdb=${TMDB}`);
