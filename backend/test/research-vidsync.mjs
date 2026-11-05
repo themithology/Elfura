@@ -24,7 +24,6 @@ try {
 }
 
 const scriptSrcs = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]);
-annotate('notice', 'VsScripts', `script tags=${scriptSrcs.length}`);
 
 let bundle = '';
 for (const src of scriptSrcs.slice(0, 6)) {
@@ -35,23 +34,16 @@ for (const src of scriptSrcs.slice(0, 6)) {
     if (text.length > bundle.length) bundle = text;
   } catch { /* ignore */ }
 }
-annotate(bundle ? 'notice' : 'error', 'VsBundle', `largest bundle bytes=${bundle.length}`);
-
-// 2) Endpoint shapes referenced by the client bundle (paths only)
+// 2) Endpoint shapes referenced by the client bundle (paths only), combined
+// into one annotation (GitHub surfaces ~10 annotations per step).
 if (bundle) {
   const paths = [...new Set([...bundle.matchAll(/["'`](\/(?:backend|api)\/[a-zA-Z0-9_/\-]{2,60})["'`]/g)].map((m) => m[1]))];
-  annotate('notice', 'VsEndpoints', paths.slice(0, 25).join(' | ') || 'none found');
-
-  // Obfuscated request-field key names near raider/token code (names only)
-  const keyNames = [...new Set([...bundle.matchAll(/["'`]([a-f0-9]{16,64})["'`]\s*:/g)].map((m) => m[1]))];
-  annotate('notice', 'VsFieldKeys', `hex-key names=${keyNames.length} sample=${keyNames.slice(0, 8).join(',')}`);
-
   const serverWords = [...new Set([...bundle.matchAll(/["'`](orion|andromeda|atlas|daedalus|ursa|icarus|berkas|athena|cinevault|nitro|castle)["'`]/gi)].map((m) => m[1].toLowerCase()))];
-  annotate('notice', 'VsServerNames', serverWords.join(',') || 'none found');
-
-  const hasRaider = /raider/i.test(bundle);
-  const hasDubLang = /dubLang/i.test(bundle);
-  annotate('notice', 'VsBundleFlags', `raider=${hasRaider} dubLang=${hasDubLang} audioTracks=${/audioTracks/i.test(bundle)}`);
+  annotate(
+    'notice',
+    'VsBundleInfo',
+    `bundleBytes=${bundle.length} scripts=${scriptSrcs.length} servers=[${serverWords.join(',')}] raider=${/raider/i.test(bundle)} paths=${paths.slice(0, 20).join(' | ')}`,
+  );
 }
 
 // 3) Try the VidStuck-family token endpoint shape (names only in output)
@@ -81,27 +73,6 @@ await tryRaider('plain-fields', `${BASE}/backend/raider`, {
   type: 'movie',
   server: 'orion',
 });
-
-// 4) Candidate JSON API shapes an embed player commonly uses (statuses only)
-for (const p of [
-  `/api/sources?tmdb=${TMDB}&type=movie`,
-  `/api/streams?tmdb=${TMDB}&type=movie`,
-  `/api/embed/movie/${TMDB}`,
-  `/backend/servers/orion?id=${TMDB}&type=movie`,
-]) {
-  try {
-    const r = await fetch(`${BASE}${p}`, { headers: H, signal: AbortSignal.timeout(15_000) });
-    const text = await r.text();
-    let keys = '';
-    try {
-      const j = JSON.parse(text);
-      keys = Array.isArray(j) ? `array(${j.length})` : Object.keys(j).join(',');
-    } catch { /* not json */ }
-    annotate(r.ok ? 'notice' : 'warning', 'VsApiGuess', `${p.split('?')[0]}: HTTP ${r.status} bytes=${text.length} keys=[${short(keys, 140)}]`);
-  } catch (e) {
-    annotate('warning', 'VsApiGuess', `${p.split('?')[0]}: failed ${e.name}`);
-  }
-}
 
 // 5) Call-shape archaeology: redacted code context around key endpoints.
 // GitHub surfaces only a limited number of annotations per run, so all
