@@ -20,7 +20,9 @@ const cases = [
   {type:'tv', id:'289517', title:'Dead-End Job', year:'2026'},
   {type:'movie', id:'693134', title:'Dune: Part Two', year:'2024'},
 ];
-const servers = ['atlas','ursa','daedalus'];
+// Other ZXC identifiers and similarly named lanes are research leads only;
+// this does not establish that Aethoflix's separate sniper provider is ZXC.
+const servers = ['andromeda','download','resshin','valstrax','alatreon','orion'];
 function blocked(url) { return /(?:^|\.)(?:vidstuck\.cc|nxsha\.space|zxcstream-mirror\.vercel\.app)$/i.test(new URL(url).hostname); }
 function decrypt(value) {
   try {
@@ -137,5 +139,5 @@ try {
 } catch(e) {console.log(`::notice title=OriginalZxc::aethoflix error=${e.name}`);}
 for (const item of cases) {
   const results=await Promise.all(servers.map(server=>test(item,server)));
-  for(const msg of results) console.log(`::notice title=OriginalZxc::${msg.replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
+  console.log(`::notice title=OriginalZxc::${JSON.stringify(results).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
 }
