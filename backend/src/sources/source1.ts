@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { fetchFromVidSyncPro } from './source3.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -1099,17 +1100,19 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         secure: { val: Awaited<ReturnType<typeof fetchFromSecureFn>>; ms: number } | null;
         public: { val: Awaited<ReturnType<typeof fetchFromPublicApi>>; ms: number } | null;
         rift: { val: RawStreamCandidate[]; ms: number } | null;
+        sync: { val: RawStreamCandidate[]; ms: number } | null;
         rock: { val: RawStreamCandidate[]; ms: number } | null;
         link: { val: RawStreamCandidate[]; ms: number } | null;
       } = {
         secure: null,
         public: null,
         rift: null,
+        sync: null,
         rock: null,
         link: null,
       };
 
-      const totalPipelines = 5;
+      const totalPipelines = 6;
       let settledCount = 0;
       let liveSourcePipelines = 0;
       let releaseEarly: (() => void) | null = null;
@@ -1122,7 +1125,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         }
         // Once at least two independent pipelines have produced candidates,
         // start a short grace window instead of waiting for every slow lane.
-        if (liveSourcePipelines >= 2 && !graceTimer) {
+        if (liveSourcePipelines >= 2 && slots.sync && !graceTimer) {
           graceTimer = setTimeout(() => releaseEarly?.(), 360);
         }
       };
@@ -1145,6 +1148,14 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
+      const pSync = timed(
+        fetchFromVidSyncPro(cfg.syncOrigin, query, { core: true, stream: false }),
+      ).then((r) => {
+        slots.sync = r;
+        settledCount++;
+        if (r.val.length) liveSourcePipelines++;
+        checkFastSettle();
+      });
       const pRock = timed(fetchFromVidRock(cfg, query)).then((r) => {
         slots.rock = r;
         settledCount++;
@@ -1158,7 +1169,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         checkFastSettle();
       });
       await Promise.race([
-        Promise.allSettled([pSecure, pPublic, pRift, pRock, pLink]),
+        Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]),
         new Promise<void>((r) => {
           releaseEarly = r;
         }),
@@ -1182,12 +1193,14 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         ? withTiming(mapApiLinksToCandidates(slots.public.val.links, `${cfg.apiOrigin}/`, 10), slots.public.ms)
         : [];
       const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms) : [];
+      const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms) : [];
       const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms) : [];
       const linkCandidates = slots.link ? withTiming(slots.link.val, slots.link.ms) : [];
 
       const byUrl = new Map<string, RawStreamCandidate>();
       for (const c of [
         ...secureCandidates,
+        ...syncCandidates,
         ...rockCandidates,
         ...linkCandidates,
         ...riftCandidates,
@@ -1264,8 +1277,9 @@ export function createSource1Adapter(cfg: BackendConfig['source1']): SourceAdapt
         lane('A', slots.secure, secureCandidates.length);
         lane('B', slots.public, publicCandidates.length);
         lane('C', slots.rift, riftCandidates.length);
-        lane('D', slots.rock, rockCandidates.length);
-        lane('E', slots.link, linkCandidates.length);
+        lane('D', slots.sync, syncCandidates.length);
+        lane('E', slots.rock, rockCandidates.length);
+        lane('F', slots.link, linkCandidates.length);
       }
 
       const metaSource = slots.secure?.val ?? slots.public?.val;

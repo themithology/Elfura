@@ -3399,6 +3399,7 @@ try {
         apiOrigin: '',
         riftOrigin: '',
         riftRelay: '',
+        syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
         vidlinkOrigin: cmOrigin,
         encDecOrigin: cmOrigin,

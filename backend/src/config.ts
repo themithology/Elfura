@@ -53,6 +53,7 @@ export interface BackendConfig {
     apiOrigin: string;
     riftOrigin: string;
     riftRelay: string;
+    syncOrigin: string;
     vidlinkOrigin?: string;
     encDecOrigin?: string;
     vidrockOrigin?: string;
@@ -177,6 +178,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || '').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
+      syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),
       encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),

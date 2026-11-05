@@ -71,9 +71,10 @@ function mapSubtitles(
   return out;
 }
 
-async function fetchFromVidSyncPro(
+export async function fetchFromVidSyncPro(
   origin: string,
   query: SourceQuery,
+  endpoints: { core?: boolean; stream?: boolean } = { core: true, stream: true },
 ): Promise<RawStreamCandidate[]> {
   const prefAudio = query.preferredLang
     ? normalizeLang(query.preferredLang)
@@ -131,8 +132,8 @@ async function fetchFromVidSyncPro(
   }
 
   const [coreJson, streamJson] = (await Promise.all([
-    grab(`${origin}/api/core/streams?${qs}`),
-    grab(`${origin}/api/stream?${streamQs}`),
+    endpoints.core === false ? Promise.resolve(null) : grab(`${origin}/api/core/streams?${qs}`),
+    endpoints.stream === false ? Promise.resolve(null) : grab(`${origin}/api/stream?${streamQs}`),
   ])) as [SyncResponse | null, SyncResponse | null];
 
   const rows: SyncSourceRow[] = [...(coreJson?.sources ?? []), ...(streamJson?.sources ?? [])];
