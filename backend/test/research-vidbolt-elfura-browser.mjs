@@ -17,7 +17,7 @@ let browser;
 try {
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage();
- for(const c of [{type:'tv',id:'93405',path:'tv/93405/1/1'}, {type:'movie',id:'693134',path:'movie/693134'}]) {
+ for(const c of [{type:'tv',id:'93405',path:'tv/93405/1/1'}, {type:'tv',id:'289517',path:'tv/289517/1/1'}, {type:'movie',id:'693134',path:'movie/693134'}]) {
   let step='open';
   try {
    await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-2`,{waitUntil:'domcontentloaded',timeout:30000});
@@ -33,7 +33,17 @@ try {
    await page.waitForFunction(()=>window.__audioSegments>0 && window.__elfura.player.video.currentTime>0.1,null,{timeout:35000});
    const state=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,errors:window.__hlsErrors}));
    if(!selected.ok||!state.audioSegments||state.source!=='source-2')throw new Error('playback assertion failed');
-   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state});
+   const switches=[];
+   for(const lang of ['en','hi']) {
+    step=`switch-${lang}`;
+    const selection=await page.evaluate(async lang=>{const p=window.__elfura.player;window.__audioSegments=0;const ok=await p.setAudio(lang);return {ok,lang:p.hls?.audioTracks[p.hls.audioTrack]?.lang||null};},lang);
+    if(!selection.ok || selection.lang !== lang) throw new Error('audio selection failed');
+    await page.waitForFunction(()=>window.__audioSegments>0,null,{timeout:35000});
+    const switched=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId}));
+    if(switched.source!=='source-2')throw new Error('unexpected source fallback');
+    switches.push({requested:lang,...selection,...switched});
+   }
+   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches});
   } catch(e){
    const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[]})).catch(()=>null);
    notice({id:c.id,success:false,step,error:e.name,snapshot});process.exitCode=1;
