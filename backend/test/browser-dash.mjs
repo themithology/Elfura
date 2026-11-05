@@ -7,7 +7,9 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 const dist = path.resolve('dist');
 const media = path.resolve(process.env.FIXTURE_DIR);
+const requested = [];
 const server = http.createServer(async (req, res) => {
+  requested.push(new URL(req.url, 'http://localhost').pathname);
   try {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
     const isMedia = pathname.startsWith('/fixture/');
@@ -17,7 +19,7 @@ const server = http.createServer(async (req, res) => {
     if (!file.startsWith(root + path.sep)) throw new Error('invalid path');
     const bytes = await readFile(file);
     const ext = path.extname(file);
-    const types = { '.html':'text/html', '.js':'application/javascript', '.css':'text/css', '.mpd':'application/dash+xml', '.m4s':'video/iso.segment', '.mp4':'video/mp4' };
+    const types = { '.html':'text/html', '.js':'application/javascript', '.css':'text/css', '.mpd':'application/dash+xml', '.m4s':'video/iso.segment', '.mp4':'video/mp4', '.m3u8':'application/vnd.apple.mpegurl', '.ts':'video/mp2t' };
     res.writeHead(200, { 'Content-Type':types[ext] || 'application/octet-stream', 'Access-Control-Allow-Origin':'*' });
     res.end(bytes);
   } catch { res.writeHead(404); res.end(); }
@@ -43,6 +45,19 @@ try {
   await page.waitForFunction(() => window.__elfura.player.video.videoHeight === 180, null, {timeout:20000});
   assert.deepEqual(errors, []);
   console.log(`::notice title=BrowserDash::Chromium listed ${levels.join('/')}p, selected 180p, disabled ABR and rendered 180p`);
+  // Synthetic tones represent two separate audio renditions. This verifies the
+  // switching pipeline, not the spoken language of any real provider's dub.
+  await page.goto(`${base}/embed.html?src=${encodeURIComponent(base+'/fixture/multi.m3u8')}&autoplay=1&muted=1`);
+  await page.waitForFunction(() => window.__elfura?.player?.getAudioTracks().some(t => t.lang === 'hi'), null, {timeout:20000});
+  await page.getByRole('button', {name:'Change audio and subtitles'}).click();
+  await page.locator('.elf-audio-option').filter({hasText:'Hindi'}).click();
+  await page.waitForFunction(() => {
+    const p = window.__elfura?.player;
+    return p?.getState().audioLang === 'hi' && p.hls?.audioTracks[p.hls.audioTrack]?.lang === 'hi';
+  }, null, {timeout:10000});
+  await page.waitForTimeout(1500);
+  assert(requested.some(p => /\/hi\d+\.ts$/.test(p)), 'Hindi rendition media was not requested');
+  console.log('::notice title=BrowserHls::Chromium selected the Hindi-tagged synthetic track and fetched its media segments');
 } catch (error) {
   const state = await page?.evaluate(() => ({ ready: document.body.dataset.ready, engine: window.__elfura?.player?.engine, state: window.__elfura?.player?.getState(), levels: window.__elfura?.player?.getQualityLevels(), mediaError: document.querySelector('video')?.error?.code })).catch(() => null);
   const message = JSON.stringify({error: String(error).slice(0, 1000), errors, state});

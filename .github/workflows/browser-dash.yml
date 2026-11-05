@@ -27,6 +27,14 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/elfura-fixture"
           "$(node -p "require('@ffmpeg-installer/ffmpeg').path")" -hide_banner -loglevel error -f lavfi -i testsrc2=size=640x360:rate=15 -f lavfi -i sine=frequency=440:sample_rate=44100 -filter_complex '[0:v]split=2[a][b];[a]scale=320:180[v0];[b]scale=640:360[v1]' -map '[v0]' -map '[v1]' -map 1:a -t 12 -c:v libx264 -threads 2 -preset ultrafast -g 15 -keyint_min 15 -sc_threshold 0 -b:v:0 200k -b:v:1 500k -c:a aac -f dash -seg_duration 1 -adaptation_sets 'id=0,streams=v id=1,streams=a' "$RUNNER_TEMP/elfura-fixture/test.mpd"
+      - name: Create a two-track HLS test video
+        run: |
+          FFMPEG="$(node -p "require('@ffmpeg-installer/ffmpeg').path")"
+          D="$RUNNER_TEMP/elfura-fixture"
+          "$FFMPEG" -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=15 -t 12 -c:v libx264 -threads 2 -preset ultrafast -g 15 -an -f hls -hls_time 1 -hls_playlist_type vod "$D/video.m3u8"
+          "$FFMPEG" -hide_banner -loglevel error -f lavfi -i sine=frequency=440:sample_rate=44100 -t 12 -c:a aac -f hls -hls_time 1 -hls_playlist_type vod "$D/en.m3u8"
+          "$FFMPEG" -hide_banner -loglevel error -f lavfi -i sine=frequency=880:sample_rate=44100 -t 12 -c:a aac -f hls -hls_time 1 -hls_playlist_type vod "$D/hi.m3u8"
+          printf '%s\n' '#EXTM3U' '#EXT-X-VERSION:3' '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES,URI="en.m3u8"' '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Hindi",LANGUAGE="hi",DEFAULT=NO,AUTOSELECT=YES,URI="hi.m3u8"' '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=320x180,CODECS="avc1.42c00d,mp4a.40.2",AUDIO="audio"' 'video.m3u8' > "$D/multi.m3u8"
       - name: Test actual menu and rendering
         run: node backend/test/browser-dash.mjs
         env:
