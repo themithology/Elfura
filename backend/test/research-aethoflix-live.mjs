@@ -21,10 +21,11 @@ const files=await Promise.all(scripts.map(async u=>{
 }));
 const all=html+'\n'+files.map(f=>f.text).join('\n');
 await import('node:fs/promises').then(fs=>fs.writeFile('/tmp/aethoflix-public-client.txt',all));
-const hostnames=[...new Set([...all.matchAll(/https?:\\?\/\\?\/([a-z0-9.-]+\.[a-z]{2,})(?:[\/:"'\\]|$)/gi)].map(m=>m[1].toLowerCase()))];
+const hostnames=[...new Set([...all.matchAll(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?=[\/:"'`\\\s]|$)/gi)].map(m=>m[1].toLowerCase()))];
 const relevant=hostnames.filter(h=>/aetho|rousav|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|zxcstream|workers|hscow|telegram|tgflix|tghub/i.test(h)).sort();
 const markers=['/api/extract','/api/scan','/embed/movie/','/embed/tv/','/api/proxy-m3u8','rousav','vidbolt','nxsha','vidstuck'];
 notice({scripts:scripts.length,statuses:files.map(x=>x.status),relevantHosts:relevant,markers:Object.fromEntries(markers.map(m=>[m,all.includes(m)]))});
 const terms=['rousav','vidbolt','AethoOrion','AethoRousav','/api/extract','/api/proxy-m3u8','aethoflix.world'];
 const contexts=Object.fromEntries(terms.map(term=>{ const i=all.indexOf(term); return [term,i<0?'missing':all.slice(Math.max(0,i-300),i+450).replace(/https?:\\?\/\\?\/[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]')]; }));
-notice({contexts});
+const definitions=[...all.matchAll(/\{id:`([^`]+)`,name:`Aetho[^`]+`,description:`[^`]*`,provider:`([^`]+)`,upstreamServer:`([^`]+)`/g)].map(m=>({id:m[1],provider:m[2],upstream:m[3]}));
+notice({definitions,contexts});
