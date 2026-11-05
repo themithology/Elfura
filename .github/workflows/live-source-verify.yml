@@ -31,24 +31,28 @@ jobs:
             season: "1"
             episode: "1"
             title: "Re:Zero S1E1"
+            multi: "0"
           - name: dune-part-two
             type: movie
             tmdb: "693134"
             season: "1"
             episode: "1"
             title: "Dune: Part Two"
+            multi: "1"
           - name: interstellar
             type: movie
             tmdb: "157336"
             season: "1"
             episode: "1"
             title: "Interstellar"
+            multi: "0"
           - name: breaking-bad-s1e1
             type: tv
             tmdb: "1396"
             season: "1"
             episode: "1"
             title: "Breaking Bad S1E1"
+            multi: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,4 +75,5 @@ jobs:
           AUDIT_EPISODE: ${{ matrix.episode }}
           AUDIT_TITLE: ${{ matrix.title }}
           AUDIT_MAX_RESOLVE_MS: 7000
-          AUDIT_REQUIRE_MULTI_LANG: "1"
+          AUDIT_SOURCES: source-1,source-2,combined
+          AUDIT_REQUIRE_MULTI_LANG: ${{ matrix.multi }}

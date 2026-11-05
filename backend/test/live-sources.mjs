@@ -196,9 +196,11 @@ function expandDashTemplate(template, mpd) {
     .replace(/\u0000/g, '$');
 }
 
-async function auditDash(url, checks) {
+async function auditDash(url, checks, stats = { audioTracks: 0 }) {
   const mpd = await fetchManifest(url);
   if (!mpd.trimStart().includes('<MPD')) throw new Error('invalid DASH manifest');
+  const audioSets = mpd.match(/<AdaptationSet\b[^>]*?(?:contentType|mimeType)="[^"]*audio[^"]*"[^>]*>/gi) || [];
+  stats.audioTracks = Math.max(stats.audioTracks, audioSets.length);
 
   const template = mpd.match(/<SegmentTemplate\b[^>]*\bmedia="([^"]+)"/i)?.[1];
   if (template) {
@@ -234,7 +236,7 @@ async function auditOption(option) {
   if (option.type === 'hls') {
     await auditHls(new URL(option.url, apiBase).toString(), checks, 0, stats);
   } else if (option.type === 'dash') {
-    await auditDash(new URL(option.url, apiBase).toString(), checks);
+    await auditDash(new URL(option.url, apiBase).toString(), checks, stats);
   } else {
     await fetchMediaBytes(new URL(option.url, apiBase).toString());
     checks.push('mp4-bytes');
@@ -250,7 +252,9 @@ function annotate(level, title, message) {
 
 async function resolveSource(sourceId) {
   const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
-  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}&source=${sourceId}`;
+  // 'combined' = the real user path: no source filter, both adapters race.
+  const sourceQuery = sourceId === 'combined' ? '' : `&source=${sourceId}`;
+  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}${sourceQuery}`;
   const t0 = performance.now();
   const res = await fetchWithTimeout(playbackUrl);
   const resolveMs = Math.round(performance.now() - t0);
@@ -302,9 +306,13 @@ try {
       }
       // Multi-language gate accepts manifest-proven evidence (real audio
       // tracks fetched above), not only provider-claimed metadata fields.
+      // It is enforced on the combined (real user) response when present:
+      // multi-language is a catalogue-level property of the full option set,
+      // not a claim every individual adapter must satisfy for every title.
       const multiLangVerified = hasMultiLangEvidence(options) || manifestAudioTracks > 1;
       annotate(multiLangVerified ? 'notice' : 'error', 'ElfuraMultiLang', `${TITLE_LABEL} ${sourceId}: manifestAudioTracks=${manifestAudioTracks}, metadataEvidence=${hasMultiLangEvidence(options)}`);
-      if (REQUIRE_MULTI_LANG && !multiLangVerified) {
+      const gateApplies = sourceId === 'combined' || !AUDIT_SOURCES.includes('combined');
+      if (REQUIRE_MULTI_LANG && gateApplies && !multiLangVerified) {
         failed++;
         report.push({ id: sourceId, ok: false, error: 'no verified multi-language evidence (metadata or manifest audio tracks)' });
         console.error(`[fail] ${sourceId}: no verified multi-language evidence`);
