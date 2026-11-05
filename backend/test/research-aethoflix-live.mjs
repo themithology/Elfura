@@ -38,3 +38,5 @@ for(const term of ['provider:`sniper`','upstreamServer:`download`','/api/extract
  details[term]=matches.map(m=>all.slice(Math.max(0,m.index-350),m.index+700).replace(/https?:\\?\/\\?\/[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]'));
 }
 notice({details});
+
+// Recheck the deployed public client and endpoint availability.
