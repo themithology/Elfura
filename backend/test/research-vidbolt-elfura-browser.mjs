@@ -1,13 +1,14 @@
 // Full local Elfura backend/player against the original provider. Never log upstream URLs or keys.
 import { createBackendServer } from '../../dist/backend/index.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
+import { openStreamTicket } from '../../dist/backend/security.js';
 import { chromium } from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const base=loadBackendConfig();
 const dead='http://127.0.0.1:1';
-const {server}=createBackendServer({
+const {server,cfg}=createBackendServer({
   ...base, isProd:false, resolveTimeoutMs:10000,
-  source1:{...base.source1,appOrigin:dead,apiOrigin:dead,riftOrigin:dead,vidrockOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
+  source1:{...base.source1,appOrigin:dead,apiOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
   source3:{...base.source3,enabled:false},
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -23,7 +24,9 @@ try {
    await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-2`,{waitUntil:'domcontentloaded',timeout:30000});
    step='source';
    await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-2' && s.multiAudio),null,{timeout:45000});
-   const info=await page.evaluate(()=>{const p=window.__elfura.player;const s=p.getSources().find(x=>x.sourceId==='source-2'&&x.multiAudio);return {id:s.id,langs:s.availableAudioLangs,qualities:s.qualityLadder};});
+   const options=await page.evaluate(()=>window.__elfura.player.getSources().filter(x=>x.sourceId==='source-2'&&x.multiAudio).map(s=>({id:s.id,url:s.url,langs:s.availableAudioLangs,qualities:s.qualityLadder})));
+   const info=options.find(s=>{try{const ticket=new URL(s.url,`http://127.0.0.1:${port}`).searchParams.get('t');const raw=openStreamTicket(cfg.secret,ticket);return /(?:^|\.)rousav\.tech$/i.test(new URL(raw.u).hostname);}catch{return false;}});
+   if(!info)throw new Error('direct provider candidate missing');
    step='select';
    await page.evaluate(async id=>{const p=window.__elfura.player;p.video.muted=true;await p.setSource(id);await p.play();},info.id);
    step='tracks';
