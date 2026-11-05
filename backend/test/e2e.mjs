@@ -1878,7 +1878,7 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(dashPlayer.getQualityLevels().map((q) => q.height), [1080, 720, 480]);
   dashPlayer.setQuality(720);
-  assert.deepEqual(globalThis.__elfuraDashTestPlayer.selections.at(-1), { type: 'video', index: 1 });
+  assert.deepEqual(globalThis.__elfuraDashTestPlayer.selections.at(-1), { type: 'video', index: 1, forceReplace: true });
   assert.equal(globalThis.__elfuraDashTestPlayer.settingsCalls.at(-1).streaming.abr.autoSwitchBitrate.video, false);
   assert.equal(dashPlayer.getState().effectiveHeight, 0, 'selection must not claim a rendered height');
   globalThis.__elfuraDashTestPlayer.emitRendered(720);

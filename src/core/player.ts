@@ -1665,7 +1665,9 @@ export class ElfuraPlayer {
     if (this.hls) this.hls.currentLevel = level.id;
     else if (this.dash) {
       this.dash.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } });
-      this.dash.setRepresentationForTypeByIndex('video', level.id);
+      // Replace buffered video as well; otherwise a short title may finish
+      // before a manually selected representation is ever rendered.
+      this.dash.setRepresentationForTypeByIndex('video', level.id, true);
     }
     this.qualityMode = String(level.height);
     // The rendered height is updated by the engine switch event, not by the click.

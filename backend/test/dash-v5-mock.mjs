@@ -14,7 +14,7 @@ export function MediaPlayer() {
         {height:1080,width:1920,bandwidth:4000000},
       ]; },
       updateSettings(value) { this.settingsCalls.push(value); },
-      setRepresentationForTypeByIndex(type, index) { this.selections.push({type,index}); },
+      setRepresentationForTypeByIndex(type, index, forceReplace) { this.selections.push({type,index,forceReplace}); },
       emitRendered(height) { handlers.get(MediaPlayer.events.QUALITY_CHANGE_RENDERED)?.({mediaType:'video',newRepresentation:{height}}); },
       reset() {},
     };
