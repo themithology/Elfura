@@ -251,6 +251,7 @@ async function resolveSource(sourceId) {
     throw new Error(`${sourceId} resolution failed (${res.status})`);
   }
   console.log(`[resolve] ${sourceId}: ${payload.sources.length} option(s) in ${resolveMs}ms`);
+  annotate('notice', 'ElfuraResolve', `${TITLE_LABEL} ${sourceId}: ${resolveMs}ms, ${payload.sources.length} option(s), multiLang=${hasMultiLangEvidence(payload.sources)}`);
   if (MAX_RESOLVE_MS > 0 && resolveMs > MAX_RESOLVE_MS) {
     throw new Error(`${sourceId} resolution too slow: ${resolveMs}ms > ${MAX_RESOLVE_MS}ms budget`);
   }
@@ -279,6 +280,7 @@ try {
         failed++;
         report.push({ id: sourceId, ok: false, error: 'no multi-language evidence in advertised options' });
         console.error(`[fail] ${sourceId}: no multi-language evidence in advertised options`);
+        annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${sourceId}: no multi-language evidence in advertised options`);
       }
       for (const option of options) {
         try {
