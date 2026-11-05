@@ -17,7 +17,19 @@ try {
   });
   notice({step:'source-2-discovered', languages:result.langs, qualityHeights:result.qualities});
   step = 'select-source';
-  await page.evaluate(async id => { const p = window.__elfura.player; p.video.muted = true; await p.setSource(id); await p.play(); }, result.id);
+  await page.evaluate(async id => {
+    const p = window.__elfura.player; p.video.muted = true; await p.setSource(id);
+    window.__squidEvents = [];
+    if (p.hls) {
+      for (const event of ['hlsError','hlsFragLoaded','hlsFragBuffered','hlsAudioTrackLoaded','hlsLevelLoaded']) {
+        p.hls.on(event, (_event, data) => {
+          if (window.__squidEvents.length >= 50) return;
+          window.__squidEvents.push({event, details:data?.details || null, fatal:!!data?.fatal, code:data?.response?.code || data?.networkDetails?.status || null, fragType:data?.frag?.type || null});
+        });
+      }
+    }
+    await p.play();
+  }, result.id);
   await page.waitForFunction(() => {
     const p = window.__elfura.player;
     return p.currentSource?.sourceId === 'source-2' && p.currentSource?.multiAudio && p.hls && p.getAudioTracks().some(t => t.lang === 'hi');
@@ -40,6 +52,11 @@ try {
     await page.waitForFunction(() => window.__squidAudioFragments > 0, null, {timeout:20000}).catch(() => {});
     const state = await page.evaluate(() => ({audioFragments:window.__squidAudioFragments || 0, current:window.__elfura.player.getState().audioLang, videoTime:window.__elfura.player.getState().time, source:window.__elfura.player.currentSource?.sourceId || null}));
     notice({step, ...switched, ...state});
+    if (state.source !== 'source-2' || !state.audioFragments) {
+      const events=await page.evaluate(() => window.__squidEvents || []);
+      notice({step:'engine-events', events});
+      break;
+    }
   }
 } catch (error) {
   const snapshot = await page?.evaluate(() => ({source:window.__elfura?.player?.currentSource?.sourceId || null, counts:(window.__elfura?.player?.getSources() || []).reduce((a,s)=>(a[s.sourceId]=(a[s.sourceId]||0)+1,a),{}), audio:window.__elfura?.player?.getState().audioLang || null})).catch(() => null);
