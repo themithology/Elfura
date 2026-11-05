@@ -300,7 +300,7 @@ export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapt
       const startedAt = Date.now();
       const [sync, vix] = await Promise.all([
         fetchFromVidSyncPro(origin, query),
-        fetchFromVixSrc(cfg.vixOrigin || 'https://vixsrc.to', query),
+        cfg.vixOrigin ? fetchFromVixSrc(cfg.vixOrigin, query) : Promise.resolve([] as RawStreamCandidate[]),
       ]);
       for (const [lane, result] of [['stream', sync], ['vix', vix]] as const) {
         query.diag?.push({
