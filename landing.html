@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#050505" />
     <meta name="description" content="A cinema-grade, self-hosted embed player for movies, series, and anime. Adaptive streaming, multi-audio, beautiful subtitles, smart skipping, and developer-first controls." />
     <title>TheOGPirateBot — One player for your catalog</title>
+    <link rel="icon" type="image/png" href="/icon-maskable-512.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://image.tmdb.org" />
@@ -33,7 +34,7 @@
     <header class="site-header" data-header>
       <div class="nav-shell">
         <a class="brand" href="/" aria-label="TheOGPirateBot home">
-          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><i></i></span>
+          <img class="brand-logo" src="/icon-maskable-512.png" alt="" width="38" height="38" />
           <span class="brand-type">TheOGPirateBot<small>PLAYER</small></span>
         </a>
         <nav class="desktop-nav" aria-label="Primary navigation">
@@ -58,7 +59,7 @@
         <div class="container hero-layout">
           <div class="hero-copy" data-reveal>
             <div class="eyebrow"><span class="pulse-dot"></span> MOVIES · SHOWS · ANIME · ONE EMBED</div>
-            <h1>One player for<br />your entire catalog.</h1>
+            <h1>One iframe<br />no pain in your Ass</h1>
             <p class="hero-lede">Embed movies, shows, and anime with adaptive streaming, multi-audio, subtitles, and automatic source recovery. No SDK required.</p>
             <div class="hero-actions">
               <a class="button button-accent" href="#demo">Try live demo <svg><use href="#i-play"/></svg></a>
@@ -84,12 +85,9 @@
               <div class="demo-shade"></div>
               <iframe title="Interactive player demo" data-demo-iframe hidden></iframe>
               <div class="demo-overlay" data-demo-overlay>
-                <div class="demo-player-top"><span class="mini-brand"><i></i> TheOGPirateBot</span><span class="demo-quality">4K READY</span></div>
                 <div class="demo-title-block"><span data-demo-kicker>LOADING THIS WEEK’S CATALOG</span><h2 data-demo-title>Finding something worth watching…</h2><p data-demo-meta>Live TMDB picks &nbsp;·&nbsp; Multi-audio</p></div>
                 <button class="demo-play" type="button" data-demo-play aria-label="Load and play demo" disabled><svg><use href="#i-play"/></svg><span>Play demo</span></button>
-                <div class="demo-controls" aria-hidden="true"><span class="control-play">▶</span><span>00:00</span><div class="fake-progress"><i></i></div><span>2:08:00</span><span>CC</span><span>⛶</span></div>
               </div>
-              <div class="demo-event-chip" data-demo-chip><span></span><div><small>PLAYER EVENT</small><strong data-demo-event>ready</strong></div><code data-demo-event-value>waiting for play</code></div>
             </div>
             <div class="demo-footer"><span>Real player. Real controls. Your brand.</span><a href="/demo" target="_blank" rel="noopener" data-demo-open>Open full demo <svg><use href="#i-arrow-up"/></svg></a></div>
           </div>
@@ -156,7 +154,7 @@
 
             <article class="feature-card feature-recovery" data-reveal>
               <span class="feature-number">06 / RELIABILITY</span><h3>Automatic source<br />recovery.</h3><p>Concurrent source racing, honest language fallback, health checks, standby streams, and full/hybrid relay modes recover without making viewers troubleshoot.</p>
-              <div class="recovery-map" aria-hidden="true"><div class="map-center"><span class="brand-mark small"><i></i></span></div><span class="map-node node-a">A</span><span class="map-node node-b">B</span><span class="map-node node-c">C</span><svg viewBox="0 0 400 150"><path d="M50 35 Q200 150 350 35"/><path d="M50 115 Q200 0 350 115"/></svg><span class="map-status">FASTEST HEALTHY ROUTE <b>●</b></span></div>
+              <div class="recovery-map" aria-hidden="true"><div class="map-center"><img class="brand-logo" src="/icon-maskable-512.png" alt="" width="30" height="30" /></div><span class="map-node node-a">A</span><span class="map-node node-b">B</span><span class="map-node node-c">C</span><svg viewBox="0 0 400 150"><path d="M50 35 Q200 150 350 35"/><path d="M50 115 Q200 0 350 115"/></svg><span class="map-status">FASTEST HEALTHY ROUTE <b>●</b></span></div>
             </article>
           </div>
         </div>
@@ -182,7 +180,7 @@
             </form>
             <div class="builder-output">
               <div class="builder-output-heading"><span>02</span><div><h3>Copy. Paste. Play.</h3><p>Generated for this deployment.</p></div><span class="output-live"><i></i> LIVE</span></div>
-              <div class="builder-frame"><iframe title="Custom embed preview" data-builder-iframe></iframe><div class="builder-frame-empty" data-builder-empty><span class="brand-mark"><i></i></span><p>Your configured player will appear here.</p><small>Choose your options, then select “Update live preview”.</small></div></div>
+              <div class="builder-frame"><iframe title="Custom embed preview" data-builder-iframe></iframe><div class="builder-frame-empty" data-builder-empty><img class="brand-logo" src="/icon-maskable-512.png" alt="" width="44" height="44" /><p>Your configured player will appear here.</p><small>Choose your options, then select “Update live preview”.</small></div></div>
               <div class="code-output"><div class="code-output-label"><span>EMBED URL</span><button type="button" data-copy-target="embed-url"><svg><use href="#i-copy"/></svg> Copy</button></div><code id="embed-url" data-generated-url></code></div>
               <div class="code-output"><div class="code-output-label"><span>IFRAME</span><button type="button" data-copy-target="embed-iframe"><svg><use href="#i-copy"/></svg> Copy</button></div><pre><code id="embed-iframe" data-generated-iframe></code></pre></div>
             </div>
@@ -253,7 +251,7 @@
       <section class="final-cta section-dark"><div class="final-cta-glow" aria-hidden="true"></div><div class="container" data-reveal><span class="section-kicker">YOUR CATALOG. YOUR PLAYER.</span><h2>Ready to add<br />the player?</h2><p>One iframe away from a faster, more personal viewing experience.</p><div><a class="button button-accent" href="#playground">Build your first embed <svg><use href="#i-arrow"/></svg></a><a class="button button-ghost" href="#demo">Try the live demo</a></div></div></section>
     </main>
 
-    <footer class="site-footer"><div class="container footer-top"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><i></i></span><span class="brand-type">TheOGPirateBot<small>PLAYER</small></span></a><p>Self-hosted playback for movies,<br />shows, and anime.</p><div class="footer-links"><div><strong>PRODUCT</strong><a href="#features">Features</a><a href="#demo">Live demo</a><a href="#playground">Playground</a></div><div><strong>DEVELOPERS</strong><a href="#docs">Documentation</a><a href="#docs" data-open-events>Event API</a><a href="#status">Service status</a></div></div></div><div class="container footer-bottom"><span>© <span data-year></span> TheOGPirateBot</span><span>SELF-HOSTED · HLS + DASH · ZERO DISK</span><a href="#main">Back to top ↑</a></div><div class="container content-note">Player and embedding technology only. Content availability depends on your configured sources.</div></footer>
+    <footer class="site-footer"><div class="container footer-top"><a class="brand" href="/"><img class="brand-logo" src="/icon-maskable-512.png" alt="" width="38" height="38" /><span class="brand-type">TheOGPirateBot<small>PLAYER</small></span></a><p>Self-hosted playback for movies,<br />shows, and anime.</p><div class="footer-links"><div><strong>PRODUCT</strong><a href="#features">Features</a><a href="#demo">Live demo</a><a href="#playground">Playground</a></div><div><strong>DEVELOPERS</strong><a href="#docs">Documentation</a><a href="#docs" data-open-events>Event API</a><a href="#status">Service status</a></div></div></div><div class="container footer-bottom"><span>© <span data-year></span> TheOGPirateBot</span><span>SELF-HOSTED · HLS + DASH · ZERO DISK</span><a href="#main">Back to top ↑</a></div><div class="container content-note">Player and embedding technology only. Content availability depends on your configured sources.</div></footer>
     <div class="toast" role="status" aria-live="polite" data-toast><svg><use href="#i-check"/></svg><span>Copied to clipboard</span></div>
   </body>
 </html>

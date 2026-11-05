@@ -130,8 +130,6 @@ const resetDemoFrame = () => {
   demoFrame.src = 'about:blank';
   demoFrame.hidden = true;
   demoOverlay.hidden = false;
-  $('[data-demo-event]').textContent = 'ready';
-  $('[data-demo-event-value]').textContent = 'waiting for play';
 };
 const selectDemoItem = (item: CatalogItem, reset = true) => {
   activeDemoItem = item;
@@ -163,8 +161,6 @@ const loadDemo = () => {
   demoFrame.src = `${embedPathFor(activeDemoItem)}?color=f4f4f4&autoplay=1`;
   demoFrame.hidden = false;
   demoOverlay.hidden = true;
-  $('[data-demo-event]').textContent = 'sources';
-  $('[data-demo-event-value]').textContent = 'resolving streams';
 };
 demoPlayButton.addEventListener('click', loadDemo);
 $$('[data-demo-type]').forEach((button) => {
@@ -475,8 +471,6 @@ const addPlayerEvent = (name: string, data: unknown) => {
   row.append(time, eventName, payload);
   list.prepend(row);
   while (list.children.length > 12) list.lastElementChild?.remove();
-  $('[data-demo-event]').textContent = name;
-  $('[data-demo-event-value]').textContent = compactPayload(data);
 };
 window.addEventListener('message', (event: MessageEvent<PlayerMessage>) => {
   if (event.origin !== window.location.origin) return;
