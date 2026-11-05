@@ -20,7 +20,7 @@ const cases = [
   {type:'tv', id:'289517', title:'Dead-End Job', year:'2026'},
   {type:'movie', id:'693134', title:'Dune: Part Two', year:'2024'},
 ];
-const servers = ['orion','valstrax','alatreon'];
+const servers = ['atlas','ursa','daedalus'];
 function blocked(url) { return /(?:^|\.)(?:vidstuck\.cc|nxsha\.space|zxcstream-mirror\.vercel\.app)$/i.test(new URL(url).hostname); }
 function decrypt(value) {
   try {
