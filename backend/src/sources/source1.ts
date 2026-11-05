@@ -293,7 +293,10 @@ async function callServerFn<T = unknown>(opts: {
     body: opts.method === 'POST' ? serialized : undefined,
     signal,
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    console.warn(`[elfura-source1] serverFn HTTP ${res.status} fn=${opts.fnId.slice(0, 8)}`);
+    return null;
+  }
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   const isSerialized = !!res.headers.get('x-tss-serialized');

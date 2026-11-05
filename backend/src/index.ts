@@ -490,6 +490,22 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   server.listen(cfg.port, cfg.host, () => {
     const sources = registry.listPublicSources().map((s) => s.id).join(', ') || 'none';
     console.log(`[elfura-backend] listening on http://${cfg.host}:${cfg.port} (sources: ${sources})`);
+    // Operator-only boot diagnostics (server console; never sent to clients).
+    // Hostnames/booleans only — no keys, tokens, or secrets.
+    const hostOf = (raw?: string) => {
+      if (!raw) return 'unset';
+      try {
+        return new URL(raw).host;
+      } catch {
+        return 'invalid-url';
+      }
+    };
+    console.log(
+      `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
+        `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
+        `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
+        `source1App=${hostOf(cfg.source1.appOrigin)} source2Nxsha=${hostOf(cfg.source2.nxshaOrigin)} source2Vidstuck=${hostOf(cfg.source2.vidstuckOrigin)}`,
+    );
   });
   return { server, cfg, registry };
 }

@@ -750,6 +750,7 @@ async function fetchFromNxsha(
         signal: sig,
       });
       if (!res.ok) {
+        console.warn(`[elfura-source2] nxsha ${pathName} HTTP ${res.status} provider=${String(body.provider ?? '-')}`);
         if (res.status >= 500) tripS2OriginCooldown(nxOrigin);
         return null;
       }
@@ -757,7 +758,10 @@ async function fetchFromNxsha(
       if (!json?._hash) return null;
       const dec = openSslDecrypt(json._hash, NX_PASS);
       return dec ? (JSON.parse(dec) as T) : null;
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[elfura-source2] nxsha ${pathName} failed provider=${String(body.provider ?? '-')}: ${err instanceof Error ? err.name : 'error'}`,
+      );
       return null;
     }
   };
@@ -784,7 +788,7 @@ async function fetchFromNxsha(
       high_priority?: number;
       position?: number;
     }[];
-  }>('/api/servers', baseReq, 2800);
+  }>('/api/servers', baseReq, 3600);
   // Subtitle discovery is independent of server probing; start it concurrently so
   // current `language` + `uri` tracks do not add another serial playback delay.
   const subtitlePromise = callNx<
@@ -834,7 +838,7 @@ async function fetchFromNxsha(
       const data = await callNx<{ sources?: NxRawSource[]; subtitles?: ExtractSubtitleItem[] }>(
         '/api/sources',
         { ...baseReq, provider },
-        4200,
+        5200,
       );
       const ms = Math.max(1, Math.round(performance.now() - t0));
       return { provider, pIdx, ms, data };

@@ -158,6 +158,7 @@ export class SourceRegistry {
     preferredLang?: string;
     streamPathPrefix?: string;
   }): Promise<UniformPlaybackResponse | null> {
+    const resolveStartedAt = Date.now();
     const activeAdapters = this.adapters.filter(
       (a) => a.enabled() && (!params.sourceId || a.id === params.sourceId),
     );
@@ -367,7 +368,19 @@ export class SourceRegistry {
       }
     }
 
-    if (!uniformOptions.length) return null;
+    if (!uniformOptions.length) {
+      // Operator-only diagnostics (server console; never sent to clients).
+      const detail = verifiedEntries
+        .map(
+          (e) =>
+            `${e.adapter.id}: raw=${e.result.candidates.length} verified=${e.liveCandidates.length}`,
+        )
+        .join(' ');
+      console.warn(
+        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} :: ${detail}`,
+      );
+      return null;
+    }
 
     // OpenSubtitles is the single subtitle catalogue whenever it returns usable
     // tracks. Mixing those entries with provider/native tracks produced duplicate
@@ -441,6 +454,13 @@ export class SourceRegistry {
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
       }
+    }
+
+    const resolveMs = Date.now() - resolveStartedAt;
+    if (resolveMs > 8000) {
+      console.warn(
+        `[elfura-resolve] SLOW ${resolveMs}ms type=${params.type} tmdb=${params.tmdbId} options=${uniformOptions.length}`,
+      );
     }
 
     return {

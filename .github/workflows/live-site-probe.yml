@@ -1,12 +1,8 @@
 name: Live site probe
 
 on:
-  push:
-    branches:
-      - arena/dcf86284-elfura
-    paths:
-      - backend/test/live-site-probe.mjs
-      - .github/workflows/live-site-probe.yml
+  # Manual only: every run resolves real titles through the deployed panel,
+  # which loads upstream providers from the panel's IP. Never auto-run.
   workflow_dispatch:
 
 jobs:
