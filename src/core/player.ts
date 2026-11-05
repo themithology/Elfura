@@ -333,6 +333,17 @@ export class ElfuraPlayer {
   getSources(): SourceOption[] {
     return this.sources;
   }
+
+  /** Re-run resolution after a terminal unavailable state without reloading the host page. */
+  async retrySources(): Promise<void> {
+    this.failedSourceIds.clear();
+    this.failedFingerprints.clear();
+    if (this.input.config.tmdb) {
+      await this.resolveFromBackend();
+    } else if (this.input.config.src) {
+      await this.load(String(this.input.config.src));
+    }
+  }
   getAudioTracks(): AudioTrack[] {
     return this.audioTracks;
   }
@@ -574,6 +585,7 @@ export class ElfuraPlayer {
     opt: SourceOption,
     targetLang: string | null,
     signal: AbortSignal,
+    timeoutMs = 3200,
   ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number }> {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
@@ -586,7 +598,7 @@ export class ElfuraPlayer {
     const isBackendTicket = resolvedUrl.includes('/api/v1/stream');
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-        ? AbortSignal.any([signal, AbortSignal.timeout(3200)])
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
         : signal;
 
     try {
@@ -737,7 +749,9 @@ export class ElfuraPlayer {
 
       return { ok: true, loadFailed: false, rttMs: nowMs() };
     } catch {
-      if (signal.aborted) return { ok: false, loadFailed: false, rttMs: nowMs() };
+      // A ranking timeout is not proof that a backend-verified source is dead.
+      // Keep slow/mobile candidates eligible for startup fallback and language failover.
+      if (signal.aborted || timeoutSig.aborted) return { ok: false, loadFailed: false, rttMs: nowMs() };
       return { ok: false, loadFailed: true, rttMs: nowMs() };
     }
   }
@@ -750,6 +764,7 @@ export class ElfuraPlayer {
   private async raceCandidatesBatch(
     batch: SourceOption[],
     targetLang: string | null,
+    probeTimeoutMs = 3200,
   ): Promise<{ winner: SourceOption | null; winners: SourceOption[]; failed: SourceOption[] }> {
     if (batch.length === 0) return { winner: null, winners: [], failed: [] };
 
@@ -789,7 +804,7 @@ export class ElfuraPlayer {
 
       batch.forEach((opt, idx) => {
         const optRank = this.qualityRank(opt);
-        void this.probeCandidateViaFetch(opt, targetLang, controllers[idx].signal).then((res) => {
+        void this.probeCandidateViaFetch(opt, targetLang, controllers[idx].signal, probeTimeoutMs).then((res) => {
           pending--;
           if (settled) return;
 
@@ -862,7 +877,8 @@ export class ElfuraPlayer {
 
     if (wave.length <= 1) return wave[0] ?? fallbackPrimary;
 
-    const { winner, failed } = await this.raceCandidatesBatch(wave, null);
+    // Backend liveness has already verified these tickets. Keep the optional client ranking short.
+    const { winner, failed } = await this.raceCandidatesBatch(wave, null, 1600);
     for (const f of failed) this.markCandidateFailed(f);
     if (winner) {
       this.reorderSourcesHierarchy(null);
@@ -1434,6 +1450,10 @@ export class ElfuraPlayer {
     // Restore playable video so the player does not remain on a dead/unloaded screen
     const fallbackOpt =
       prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
+    if (!fallbackOpt) {
+      this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+    }
+
     if (fallbackOpt && (this.currentSource?.id !== fallbackOpt.id || (this.currentSource && this.isCandidateFailed(this.currentSource)))) {
       await this.activateSourceOption(fallbackOpt, savedTime > 0.5);
       if (savedTime > 0.5 && wasPlaying) void this.play();
@@ -2451,7 +2471,11 @@ export class ElfuraPlayer {
       );
       ordered.sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
-      if (!next) return;
+      if (!next) {
+        this.shell.dataset.buffering = 'false';
+        this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+        return;
+      }
       this.emit('server:switch', {
         from: this.currentSource?.label ?? null,
         to: next.label,
@@ -2461,9 +2485,20 @@ export class ElfuraPlayer {
       return;
     }
 
+    if (this.sources.length === 1) {
+      this.markCandidateFailed(this.sources[0]);
+      this.shell.dataset.buffering = 'false';
+      this.emit('error', { code: 'all-sources-failed', message: 'The only playable source failed' });
+      return;
+    }
+
     const cfg = this.input.config;
     const servers = cfg.servers ?? [];
-    if (servers.length < 2) return;
+    if (servers.length < 2) {
+      this.shell.dataset.buffering = 'false';
+      this.emit('error', { code: 'all-sources-failed', message: 'All playable servers failed' });
+      return;
+    }
     const currentIdx = servers.findIndex((s) => s.url === cfg.src);
     const next = servers[currentIdx + 1];
     if (!next) return;
@@ -2554,12 +2589,21 @@ export class ElfuraPlayer {
       label: languageLabel(x.lang, x.label),
       url: x.url,
     }));
-    const merged = [...this.subtitleTracks];
-    for (const e of external) {
-      const dup = merged.some(
-        (t) => (e.url && t.url === e.url) || (t.kind === 'native' && t.lang === e.lang && t.label === e.label),
-      );
-      if (!dup) merged.push(e);
+    const merged: SubtitleTrack[] = [];
+    const seen = new Map<string, SubtitleTrack>();
+    for (const track of [...this.subtitleTracks, ...external]) {
+      // Same URL is always redundant; otherwise collapse only identical language + label
+      // so meaningful variants such as English (Forced) and English (SDH) survive.
+      const key = track.url
+        ? `url:${track.url}`
+        : `track:${track.lang}:${track.label.trim().toLowerCase()}`;
+      const duplicate = seen.get(key);
+      if (duplicate) {
+        if (this.currentSubtitle?.id === track.id) this.currentSubtitle = duplicate;
+        continue;
+      }
+      seen.set(key, track);
+      merged.push(track);
     }
     this.subtitleTracks = merged;
     this.emit('subtitleTracks', this.subtitleTracks);

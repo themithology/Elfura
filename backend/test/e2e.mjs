@@ -2091,7 +2091,8 @@ try {
   //     - Title Logo with playful Cartoony Font fallback (`elf-title-cartoon`) when logo is unavailable
   //     - Cinema Paused Screen (`elf-pause-screen`: Title Logo/Cartoon, `PAUSED`, tagline, year + ★ rating, overview)
   //     - Zero center forward/backward 10s skip buttons, animated Play/Pause & 4-corner Fullscreen,
-  //       double-tap 10s skip, hold-for-2x, Screen Lock, and Hotstar 5s bottom language selector
+  //       double-tap 10s skip, hold-for-2x, Screen Lock, bottom Episodes/thumbnails,
+  //       integrated current-language navigation, branded loading, and terminal unavailable UI
   assert.equal(pb.media.episodeName, 'Welcome to the Playground');
   assert.equal(pb.media.tagline, 'Every legend has a beginning.');
   assert.equal(pb.media.rating, 8.8);
@@ -2115,7 +2116,14 @@ try {
     'elf-pause-screen',
     'elf-title-logo',
     'elf-title-cartoon',
-    'elf-hotstar-lang',
+    'elf-audio-quick',
+    'elf-audio-current',
+    'elf-episodes-btn',
+    'elf-epw-thumb',
+    'elf-loading-screen',
+    'elf-loading-quote',
+    'elf-unavailable-screen',
+    'retrySources',
     'elf-pp-svg',
     'elf-fs-svg',
     'elf-dtap-left',
@@ -2127,12 +2135,18 @@ try {
     assert(libBundle.includes(requiredToken), `Expected PlayerUI bundle to contain "${requiredToken}"`);
   }
   assert(!libBundle.includes('center.append(this.back10'), 'Center container must not include 10s skip buttons');
+  assert(!libBundle.includes('elf-hotstar-lang'), 'Floating language pills must stay removed');
+  assert(!builtCss.includes('.elf-hotstar-lang'), 'Floating language pill styles must stay removed');
   for (const requiredCss of [
     '.elf-og-pill',
     '.elf-pill-back',
     '.elf-pause-screen',
     '.elf-title-cartoon',
-    '.elf-hotstar-lang',
+    '.elf-audio-quick',
+    '.elf-episodes-btn',
+    '.elf-epw-thumb',
+    '.elf-loading-screen',
+    '.elf-unavailable-screen',
     '.elf-fs-tl',
     '.elf-pp-pause',
     '.elf-dtap-ripple',
