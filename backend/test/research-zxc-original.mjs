@@ -128,6 +128,13 @@ async function test(item,server) {
     return `${item.id}/${server} sources=200 links=${candidates.length} shapes=${JSON.stringify(summary)} result=${result} ms=${Date.now()-time}`;
   } catch(e) { return `${item.id}/${server} error=${e.name} ms=${Date.now()-time}`; }
 }
+try {
+  const qs = new URLSearchParams({tmdbId:'93405',mediaType:'tv',server:'callisto',season:'1',episode:'1'});
+  const r = await fetch(`https://embed.aethoflix.world/api/extract?${qs}`, {headers:{'User-Agent':userAgent,Accept:'application/json',Referer:'https://embed.aethoflix.world/embed/tv/93405'},signal:AbortSignal.timeout(5000)});
+  let result=`http-${r.status}`;
+  if (r.ok) { const data=await r.json(); result+=` top-level-sources=${Array.isArray(data.sources)?data.sources.length:0} buckets=${data.byServer && typeof data.byServer==='object'?Object.keys(data.byServer).length:0}`; }
+  console.log(`::notice title=OriginalZxc::aethoflix ${result}`);
+} catch(e) {console.log(`::notice title=OriginalZxc::aethoflix error=${e.name}`);}
 for (const item of cases) {
   const results=await Promise.all(servers.map(server=>test(item,server)));
   for(const msg of results) console.log(`::notice title=OriginalZxc::${msg.replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
