@@ -112,9 +112,10 @@ async function test(item,server) {
     const dash=candidates.find(c=>/^https?:/i.test(c.url) && !blocked(c.url) && c.type==='dash');
     const result=candidate ? await verifyHls(candidate.url,h) : dash ? await verifyDash(dash.url,h) : 'no-eligible-hls';
     const summary = candidates.map(c => {
-      let hostClass='-', pathClass='-', wrapped='none';
+      let hostClass='-', hostName='-', pathClass='-', wrapped='none';
       try {
         const u = new URL(c.url);
+        hostName = u.hostname.replace(/[^a-z0-9.-]/gi,'').slice(0,100);
         hostClass = /(?:^|\.)vidstuck\.cc$/i.test(u.hostname) ? 'vidstuck' : /(?:^|\.)nxsha\.space$/i.test(u.hostname) ? 'nxsha' : /(?:^|\.)zxcstream-mirror\.vercel\.app$/i.test(u.hostname) ? 'mirror' : 'other';
         pathClass = /proxy|stream|manifest|playlist/i.test(u.pathname) ? 'proxy-like' : 'other';
         for (const k of ['url','u','target','src','link']) {
@@ -122,7 +123,7 @@ async function test(item,server) {
           if (v && /^https?:\/\//i.test(v)) wrapped = blocked(v) ? 'excluded' : 'direct-url';
         }
       } catch { /* opaque URL */ }
-      return { type:String(c.type||'unknown').replace(/[^a-z0-9_-]/gi,'').slice(0,16), shape: /^https?:/i.test(c.url) ? (blocked(c.url) ? 'excluded-host' : 'absolute') : c.url.startsWith('/') ? 'relative' : c.url ? 'opaque' : 'empty', hostClass, pathClass, wrapped, ext: /\.mpd(?:[?#]|$)/i.test(c.url) ? 'mpd' : /\.m3u8(?:[?#]|$)/i.test(c.url) ? 'm3u8' : 'other' };
+      return { type:String(c.type||'unknown').replace(/[^a-z0-9_-]/gi,'').slice(0,16), shape: /^https?:/i.test(c.url) ? (blocked(c.url) ? 'excluded-host' : 'absolute') : c.url.startsWith('/') ? 'relative' : c.url ? 'opaque' : 'empty', hostClass, hostName, pathClass, wrapped, ext: /\.mpd(?:[?#]|$)/i.test(c.url) ? 'mpd' : /\.m3u8(?:[?#]|$)/i.test(c.url) ? 'm3u8' : 'other' };
     });
     return `${item.id}/${server} sources=200 links=${candidates.length} shapes=${JSON.stringify(summary)} result=${result} ms=${Date.now()-time}`;
   } catch(e) { return `${item.id}/${server} error=${e.name} ms=${Date.now()-time}`; }
