@@ -103,4 +103,57 @@ for (const p of [
   }
 }
 
+// 5) Call-shape archaeology: redacted code context around key endpoints
+const redact = (s) =>
+  String(s)
+    .replace(/[a-f0-9]{24,}/gi, '<hex>')
+    .replace(/[A-Za-z0-9+/=_-]{40,}/g, '<long>')
+    .replace(/\s+/g, ' ')
+    .slice(0, 340);
+if (bundle) {
+  for (const needle of ['/api/stream/session/init', '/api/stream', '/api/security/check', '/api/token', '/api/castle/', '/api/bingr/']) {
+    const contexts = [];
+    let idx = 0;
+    while (contexts.length < 2) {
+      const at = bundle.indexOf(needle, idx);
+      if (at < 0) break;
+      contexts.push(redact(bundle.slice(Math.max(0, at - 200), at + 200)));
+      idx = at + needle.length;
+    }
+    annotate('notice', 'VsCallShape', `${needle} :: ${contexts.join(' || ') || 'not referenced as literal'}`);
+  }
+}
+
+// 6) Session/security handshake attempts (statuses + key names only)
+async function attempt(label, method, pathName, body) {
+  try {
+    const r = await fetch(`${BASE}${pathName}`, {
+      method,
+      headers: { ...H, ...(body ? { 'Content-Type': 'application/json' } : {}), Origin: BASE },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15_000),
+    });
+    const text = await r.text();
+    let keys = '';
+    try {
+      const j = JSON.parse(text);
+      keys = Array.isArray(j) ? `array(${j.length})` : Object.keys(j).join(',');
+    } catch { /* not json */ }
+    annotate(r.ok ? 'notice' : 'warning', 'VsHandshake', `${label}: HTTP ${r.status} bytes=${text.length} keys=[${short(keys, 180)}]`);
+    return { status: r.status, text };
+  } catch (e) {
+    annotate('warning', 'VsHandshake', `${label}: failed ${e.name}`);
+    return null;
+  }
+}
+
+await attempt('security-check-empty', 'POST', '/api/security/check', {});
+await attempt('session-init-tmdb', 'POST', '/api/stream/session/init', {
+  tmdbId: Number(TMDB),
+  type: 'movie',
+  mediaType: 'movie',
+});
+await attempt('stream-get', 'GET', `/api/stream?tmdbId=${TMDB}&type=movie`, null);
+await attempt('stream-post', 'POST', '/api/stream', { tmdbId: Number(TMDB), type: 'movie' });
+
 annotate('notice', 'VsResearchDone', `${BASE} tmdb=${TMDB}`);
