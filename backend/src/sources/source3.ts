@@ -187,7 +187,17 @@ export async function fetchFromVidSyncPro(
 
     // Always prefer vidsync's `/api/core/proxy` whenever provided (prevents 403 rejections
     // on IP-signed `hscow.com` / `fcxmb.com` / `fastcloud.live` URLs and preserves multi-dub routing).
-    const preferProxy = !!proxyCandidate;
+    // An absolute row.url may be a direct CDN URL, not a VidSync proxy.
+    // Preserve its upstream media headers instead of replacing its Referer.
+    const preferProxy = (() => {
+      if (!proxyCandidate) return false;
+      try {
+        const u = new URL(proxyCandidate);
+        return u.origin === new URL(origin).origin && /^\/api\//.test(u.pathname);
+      } catch {
+        return false;
+      }
+    })();
     const primaryUrl = preferProxy ? proxyCandidate : directCandidate || proxyCandidate;
     if (!primaryUrl || !isSafeUpstreamUrl(primaryUrl) || seenPrimaryUrl.has(primaryUrl)) continue;
     seenPrimaryUrl.add(primaryUrl);
@@ -219,7 +229,7 @@ export async function fetchFromVidSyncPro(
     // language must still be verified. availableQualities describes the
     // catalogue, not necessarily selectable renditions in this manifest.
     const permanentUrl = String(row.permanent_m3u8_url ?? '').trim();
-    if (!standbyUrl && permanentUrl && permanentUrl !== primaryUrl && isSafeUpstreamUrl(permanentUrl)) {
+    if (!standbyUrl && !sharedDirectAcrossLangs && permanentUrl && permanentUrl !== primaryUrl && isSafeUpstreamUrl(permanentUrl)) {
       standbyUrl = permanentUrl;
       standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
     }
@@ -228,7 +238,9 @@ export async function fetchFromVidSyncPro(
       type: inferStreamType(row.type, primaryUrl),
       url: primaryUrl,
       headers: primaryHeaders,
-      quality: pickBestQualityLabel(row.quality, row.availableQualities),
+      // availableQualities describes the provider's catalogue, not this
+      // particular playlist. Do not claim its highest quality for every row.
+      quality: pickBestQualityLabel(row.quality),
       audioLang: norm.code,
       audioLabel: norm.label,
       // These are catalogue-wide language labels, not playable audio tracks:

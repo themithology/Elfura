@@ -3121,6 +3121,15 @@ try {
                       ],
                     },
                     {
+                      provider: { id: 'direct-test', name: 'Direct' },
+                      url: `${cOrigin}/direct/master.m3u8`,
+                      type: 'hls',
+                      quality: '720p',
+                      availableQualities: ['1080p', '720p'],
+                      audioLanguage: 'hi',
+                      headers: { Referer: 'https://media.example/' },
+                    },
+                    {
                       provider: { id: 'castle', name: 'Castle' },
                       url: '/api/core/proxy?data=castle_en_720&quality=720p',
                       directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
@@ -3410,6 +3419,9 @@ try {
 
       // Source 3 must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
       // signed CDN lane as a secondary candidate for registry-level liveness filtering.
+      const directCand = s3Out.candidates.find((c) => c.url.includes('/direct/master.m3u8'));
+      assert.equal(directCand?.headers?.Referer, 'https://media.example/', 'direct CDN must retain provider media headers');
+      assert.equal(directCand?.quality, '720p', 'do not use catalogue quality as selected-stream quality');
       const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
       assert.equal(castleCands[0].multiAudio, false, 'catalogue language labels are not switchable manifest tracks');
