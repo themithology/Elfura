@@ -133,6 +133,30 @@ await getStream('secondary-movie', `type=movie&id=${TMDB}&season=1&episode=1&sta
 await getStream('fallback-movie', `type=movie&id=${TMDB}&season=1&episode=1&stage=fallback`);
 await getStream('primary-tv-rezero', 'type=tv&id=65942&season=1&episode=1&stage=primary');
 
+// Audio track / quality object shapes + URL kind mix + no-stage comparison.
+if (primary[0]) {
+  const f = primary[0];
+  const t0 = (f.audioTracks ?? [])[0] ?? {};
+  const q0 = (f.availableQualities ?? [])[0];
+  let proxyCount = 0;
+  let directCount = 0;
+  let permanentCount = 0;
+  let trackUrlCount = 0;
+  for (const s of primary) {
+    const u = String(s.url ?? '');
+    if (u.startsWith(BASE)) proxyCount++;
+    else if (u) directCount++;
+    if (s.permanent_m3u8_url) permanentCount++;
+    for (const t of s.audioTracks ?? []) if (t?.url || t?.link || t?.file) trackUrlCount++;
+  }
+  annotate(
+    'notice',
+    'VsShapes',
+    `trackKeys=[${Object.keys(t0).join(',')}] trackHasUrl=${!!(t0.url || t0.link || t0.file)} trackUrlHost=${t0.url ? hostHash(String(t0.url)) : '-'} qualityShape=${JSON.stringify(q0 ?? null).slice(0, 120)} proxyUrls=${proxyCount} directUrls=${directCount} permanent=${permanentCount} trackUrls=${trackUrlCount}`,
+  );
+}
+await getStream('nostage-movie', `type=movie&id=${TMDB}&season=1&episode=1`);
+
 // Real bytes from the first primary source (manifest + first segment).
 const first = primary[0];
 if (first) {

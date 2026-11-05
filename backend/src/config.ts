@@ -66,6 +66,11 @@ export interface BackendConfig {
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
   };
+  /** Source 3 configurable endpoints (kept purely server-side). */
+  source3: {
+    enabled: boolean;
+    origin: string;
+  };
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
     enabled: boolean;
@@ -183,6 +188,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
       nxshaOrigin: (env.SOURCE2_NXSHA_ORIGIN || 'https://nxsha.space').replace(/\/+$/, ''),
       vidstuckOrigin: (env.SOURCE2_VIDSTUCK_ORIGIN || 'https://vidstuck.cc').replace(/\/+$/, ''),
+    },
+    source3: {
+      enabled: env.SOURCE3_ENABLED !== '0',
+      origin: (env.SOURCE3_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
