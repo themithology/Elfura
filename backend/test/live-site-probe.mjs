@@ -69,6 +69,7 @@ try {
 // 3) Playback per source + combined
 const seasonQ = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
 let primaryUrl = '';
+let combinedUrls = [];
 if (token) {
   for (const source of ['combined', 'source-1', 'source-2']) {
     try {
@@ -84,7 +85,10 @@ if (token) {
         `${source}: HTTP ${pb.status} in ${pb.ms}ms ok=${pb.json?.ok ?? false} options=${sources.length} error=${pb.json?.error || '-'} [${labels}]`,
       );
       if (!sources.length) failures++;
-      if (source === 'combined' && sources.length) primaryUrl = sources[0].url || '';
+      if (source === 'combined' && sources.length) {
+        primaryUrl = sources[0].url || '';
+        combinedUrls = sources.slice(0, 3).map((s) => s.url).filter(Boolean);
+      }
     } catch (e) {
       failures++;
       annotate('error', 'SitePlayback', `${source}: request failed: ${e.message}`);
@@ -93,24 +97,25 @@ if (token) {
 }
 
 // 4) Primary manifest bytes through the relay
-if (primaryUrl) {
+async function probeManifest(candidateUrl, idx) {
+  const abs = new URL(candidateUrl, SITE).toString();
   try {
-    const abs = new URL(primaryUrl, SITE).toString();
     const t0 = performance.now();
     const res = await fetch(abs, {
       headers: { 'User-Agent': UA, Origin: SITE, Referer: `${SITE}/`, ...(token ? { 'X-Playback-Token': token } : {}) },
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(15_000),
     });
     const text = await res.text();
     const kind = text.trimStart().startsWith('#EXTM3U') ? 'HLS' : text.includes('<MPD') ? 'DASH' : 'other';
+    const ok = res.ok && kind !== 'other';
     annotate(
-      res.ok && kind !== 'other' ? 'notice' : 'error',
+      ok ? 'notice' : 'error',
       'SiteStream',
-      `primary manifest: HTTP ${res.status} in ${Math.round(performance.now() - t0)}ms kind=${kind} bytes=${text.length}`,
+      `option ${idx + 1} manifest: HTTP ${res.status} in ${Math.round(performance.now() - t0)}ms kind=${kind} bytes=${text.length}`,
     );
-    if (!res.ok || kind === 'other') failures++;
+    if (!ok) return false;
     // Time the first real media segment referenced by the (rewritten) manifest.
-    if (res.ok && kind === 'HLS') {
+    if (kind === 'HLS') {
       const segRef = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith('#'));
       if (segRef) {
         try {
@@ -118,25 +123,35 @@ if (primaryUrl) {
           const s0 = performance.now();
           const segRes = await fetch(segUrl, {
             headers: { 'User-Agent': UA, Origin: SITE, Referer: `${SITE}/`, Range: 'bytes=0-1023', ...(token ? { 'X-Playback-Token': token } : {}) },
-            signal: AbortSignal.timeout(20_000),
+            signal: AbortSignal.timeout(15_000),
           });
           const buf = segRes.body ? Buffer.from(await segRes.arrayBuffer()) : Buffer.alloc(0);
+          const segOk = (segRes.ok || segRes.status === 206) && buf.byteLength > 0;
           annotate(
-            segRes.ok || segRes.status === 206 ? 'notice' : 'error',
+            segOk ? 'notice' : 'error',
             'SiteSegment',
-            `first segment: HTTP ${segRes.status} in ${Math.round(performance.now() - s0)}ms bytes=${buf.byteLength}`,
+            `option ${idx + 1} first segment: HTTP ${segRes.status} in ${Math.round(performance.now() - s0)}ms bytes=${buf.byteLength}`,
           );
-          if (!(segRes.ok || segRes.status === 206) || !buf.byteLength) failures++;
+          return segOk;
         } catch (e) {
-          failures++;
-          annotate('error', 'SiteSegment', `first segment failed: ${e.message}`);
+          annotate('error', 'SiteSegment', `option ${idx + 1} first segment failed: ${e.message}`);
+          return false;
         }
       }
     }
+    return true;
   } catch (e) {
-    failures++;
-    annotate('error', 'SiteStream', `primary manifest failed: ${e.message}`);
+    annotate('error', 'SiteStream', `option ${idx + 1} manifest failed: ${e.message}`);
+    return false;
   }
+}
+
+if (combinedUrls.length) {
+  let anyOk = false;
+  for (let i = 0; i < combinedUrls.length && !anyOk; i++) {
+    anyOk = await probeManifest(combinedUrls[i], i);
+  }
+  if (!anyOk) failures++;
 }
 
 annotate(failures ? 'error' : 'notice', 'SiteProbeSummary', `${SITE} ${TYPE} ${TMDB}: failures=${failures}`);

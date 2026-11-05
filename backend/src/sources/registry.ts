@@ -300,8 +300,25 @@ export class SourceRegistry {
       // that no liveness probe could verify alive (e.g. a hanging upstream
       // that merely timed out): releasing early there would discard slower
       // adapters' verified-healthy streams and strand the player.
-      if (verifiedBatch.totalLive === 0 || verifiedBatch.verifiedLive === 0 || !fastHasWantedLang) {
-        await Promise.allSettled(adapterTasks);
+      const fastHasMultiAudio = verifiedBatch.vFlat.some((c) => !!c.multiAudio);
+      if (
+        verifiedBatch.totalLive === 0 ||
+        verifiedBatch.verifiedLive === 0 ||
+        !fastHasWantedLang ||
+        !fastHasMultiAudio
+      ) {
+        // Never sacrifice a slower adapter's multi-audio stream for ~1s of
+        // speed: give remaining adapters a bounded grace window to deliver
+        // one. When nothing at all is live yet, wait for full resolution.
+        const graceMs = verifiedBatch.totalLive === 0 ? 0 : 4000;
+        if (graceMs > 0) {
+          await Promise.race([
+            Promise.allSettled(adapterTasks),
+            new Promise((r) => setTimeout(r, graceMs)),
+          ]);
+        } else {
+          await Promise.allSettled(adapterTasks);
+        }
         verifiedBatch = await verifyCurrentSlots();
       }
     }
@@ -387,6 +404,14 @@ export class SourceRegistry {
           opt.subtitles = [...sealedFallbackSubs];
         }
       }
+    }
+
+    // Genuine multi-audio streams (several languages muxed in one manifest)
+    // always lead the option list: they are the multi-language sources, and
+    // single-language dubs remain available underneath as fallbacks.
+    if (!params.preferredLang) {
+      // Stable sort: multi-audio options lead, relative order otherwise kept.
+      uniformOptions.sort((a, b) => Number(!!b.multiAudio) - Number(!!a.multiAudio));
     }
 
     // When a preferred audio language is requested, promote matching streams
