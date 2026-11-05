@@ -747,10 +747,18 @@ async function fetchFromVidSync(
   query: SourceQuery,
 ): Promise<RawStreamCandidate[]> {
   if (isSubOriginCoolingDown(cfg.syncOrigin)) return [];
+  const prefAudio = query.preferredLang
+    ? normalizeLang(query.preferredLang)
+    : null;
+  const audioQs =
+    prefAudio && prefAudio.code !== 'und'
+      ? `&audio=${encodeURIComponent(prefAudio.label.toLowerCase())}&dubLang=${encodeURIComponent(prefAudio.label.toLowerCase())}`
+      : '';
   const qs =
     query.type === 'movie'
       ? `type=movie&id=${encodeURIComponent(query.tmdbId)}&season=1&episode=1`
       : `type=tv&id=${encodeURIComponent(query.tmdbId)}&season=${query.season ?? 1}&episode=${query.episode ?? 1}`;
+  const streamQs = `${qs}&stage=primary${audioQs}`;
 
   const grab = async (endpoint: string) => {
     try {
@@ -786,6 +794,7 @@ async function fetchFromVidSync(
     headers?: Record<string, string>;
     standbyUrl?: string;
     standbyHeaders?: Record<string, string>;
+    permanent_m3u8_url?: string;
   }
 
   interface SyncResponse {
@@ -795,7 +804,7 @@ async function fetchFromVidSync(
 
   const [coreJson, streamJson] = (await Promise.all([
     grab(`${cfg.syncOrigin}/api/core/streams?${qs}`),
-    grab(`${cfg.syncOrigin}/api/stream?${qs}`),
+    grab(`${cfg.syncOrigin}/api/stream?${streamQs}`),
   ])) as [SyncResponse | null, SyncResponse | null];
 
   const rows: SyncSourceRow[] = [...(coreJson?.sources ?? []), ...(streamJson?.sources ?? [])];
@@ -887,12 +896,30 @@ async function fetchFromVidSync(
         ]
       : [];
 
+    // VidSync Pro rows carry a permanent (non-expiring) HLS URL and a plain
+    // quality ladder (`availableQualities: ["1080p","720p",...]`). Use the
+    // permanent URL as an extra failover and expose the real ladder so
+    // multi-quality hierarchy ranking applies.
+    const permanentUrl = String(row.permanent_m3u8_url ?? '').trim();
+    if (!standbyUrl && permanentUrl && permanentUrl !== primaryUrl && isSafeUpstreamUrl(permanentUrl)) {
+      standbyUrl = permanentUrl;
+      standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
+    }
+    const ladderHeights = [...new Set(
+      (row.availableQualities ?? [])
+        .map((q) => Number(String(q).replace(/\D+/g, '')))
+        .filter((n) => n >= 144 && n <= 4320),
+    )].sort((a, b) => b - a);
+
     out.push({
       key: primaryUrl,
       type: inferStreamType(row.type, primaryUrl),
       url: primaryUrl,
       headers: primaryHeaders,
       quality: pickBestQualityLabel(row.quality, row.availableQualities),
+      ...(ladderHeights.length
+        ? { qualityLadder: ladderHeights, qualityOptions: ladderHeights.length }
+        : {}),
       audioLang: norm.code,
       audioLabel: norm.label,
       ...(discoveredRowLangs.length ? { availableAudioLangs: discoveredRowLangs } : {}),

@@ -16,7 +16,6 @@ import { normalizeLang } from './lang.js';
 import { verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource2Adapter } from './source2.js';
-import { createSource3Adapter } from './source3.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -47,7 +46,6 @@ export class SourceRegistry {
     this.adapters = [
       createSource1Adapter(cfg.source1),
       createSource2Adapter(cfg.source2),
-      createSource3Adapter(cfg.source3),
     ];
   }
 
