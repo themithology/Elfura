@@ -13,7 +13,7 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { verifyAndFilterCandidates } from './liveness.js';
+import { verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource2Adapter } from './source2.js';
 import type {
@@ -258,7 +258,8 @@ export class SourceRegistry {
           key: `${adapterIdx}::${cand.key}`,
         })),
       );
-      const vFlat = await verifyAndFilterCandidates(tagged);
+      const { candidates: vFlat, verifiedAliveCount } =
+        await verifyAndFilterCandidatesDetailed(tagged);
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -275,6 +276,7 @@ export class SourceRegistry {
           liveCandidates: byIdx.get(idx) ?? [],
         })),
         totalLive: vFlat.length,
+        verifiedLive: verifiedAliveCount,
         vFlat,
       };
     };
@@ -294,7 +296,11 @@ export class SourceRegistry {
             c.audioLang?.split('-')[0] === wantPrimary ||
             c.availableAudioLangs?.some((l) => l === wantCode || l.split('-')[0] === wantPrimary),
         );
-      if (verifiedBatch.totalLive === 0 || !fastHasWantedLang) {
+      // Also wait when the fast batch only contains last-resort candidates
+      // that no liveness probe could verify alive (e.g. a hanging upstream
+      // that merely timed out): releasing early there would discard slower
+      // adapters' verified-healthy streams and strand the player.
+      if (verifiedBatch.totalLive === 0 || verifiedBatch.verifiedLive === 0 || !fastHasWantedLang) {
         await Promise.allSettled(adapterTasks);
         verifiedBatch = await verifyCurrentSlots();
       }

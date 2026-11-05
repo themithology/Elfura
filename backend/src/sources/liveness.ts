@@ -390,7 +390,15 @@ export async function verifyAndFilterCandidates(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
 ): Promise<RawStreamCandidate[]> {
-  if (!candidates.length) return [];
+  const detailed = await verifyAndFilterCandidatesDetailed(candidates, signal);
+  return detailed.candidates;
+}
+
+export async function verifyAndFilterCandidatesDetailed(
+  candidates: RawStreamCandidate[],
+  signal?: AbortSignal,
+): Promise<{ candidates: RawStreamCandidate[]; verifiedAliveCount: number }> {
+  if (!candidates.length) return { candidates: [], verifiedAliveCount: 0 };
 
   // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead.
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
@@ -489,6 +497,7 @@ export async function verifyAndFilterCandidates(
   });
 
   const kept: RawStreamCandidate[] = [];
+  let verifiedAliveCount = 0;
 
   for (const cand of candidates) {
     const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
@@ -505,10 +514,12 @@ export async function verifyAndFilterCandidates(
     // Always prefer a verified healthy lane, including a standby whose primary
     // timed out. Once any healthy option exists, never advertise unprobed lanes.
     if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
+      verifiedAliveCount++;
       kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       continue;
     }
     if (primaryOutcome?.alive) {
+      verifiedAliveCount++;
       const cleanedStandby = standbyOutcome?.confirmedDead
         ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
         : cand;
@@ -531,5 +542,5 @@ export async function verifyAndFilterCandidates(
     kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 
-  return kept;
+  return { candidates: kept, verifiedAliveCount };
 }
