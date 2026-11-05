@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 
 // Redirect only the lazily loaded HLS engine to the event-order adapter. All
@@ -1496,6 +1497,14 @@ try {
     assert(landingHtml.includes('data-poster-track'));
     assert(!landingHtml.includes('https://image.tmdb.org/t/p/w500/'), 'Poster content must come from the catalog API, not fixed markup');
   }
+
+  const brandIconRes = await fetch(`${apiBase}/icon-maskable-512.png`);
+  assert.equal(brandIconRes.status, 200, 'production backend must serve the official root logo');
+  assert.equal(brandIconRes.headers.get('content-type'), 'image/png');
+  const brandIconBytes = Buffer.from(await brandIconRes.arrayBuffer());
+  const expectedBrandIcon = await readFile(new URL('../../dist/icon-maskable-512.png', import.meta.url));
+  assert(brandIconBytes.equals(expectedBrandIcon), 'served logo must be the exact supplied PNG');
+
   const catalogRes = await fetch(`${apiBase}/api/v1/catalog`, { headers: browserHeaders });
   assert.equal(catalogRes.status, 200);
   const catalog = await catalogRes.json();

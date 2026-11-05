@@ -451,8 +451,13 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
 
-      // 8. Built static assets from dist/ (read-only)
-      if (pathname.startsWith('/assets/') || pathname.startsWith('/lib/')) {
+      // 8. Built static assets from dist/ (read-only). The official brand icon
+      // lives at the document root so browsers can also use it as the favicon.
+      if (
+        pathname === '/icon-maskable-512.png' ||
+        pathname.startsWith('/assets/') ||
+        pathname.startsWith('/lib/')
+      ) {
         const rel = pathname.replace(/^\/+/, '');
         const resolvedPath = path.resolve(DIST_ROOT, rel);
         if (resolvedPath.startsWith(DIST_ROOT + path.sep)) {
