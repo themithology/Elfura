@@ -27,6 +27,7 @@ export type EventName =
   | 'error'
   | 'server:switch'
   | 'sources'
+  | 'sourcesUpdated'
   | 'sourceChange'
   | 'audioTracks'
   | 'audioChange'
@@ -161,7 +162,7 @@ export class PostMessageBridge {
     const forward = (name: EventName) => (data: unknown) => this.post('event', name, data);
     const EVENTS: EventName[] = [
       'ready', 'state', 'timeupdate', 'progress', 'durationchange', 'play', 'pause', 'ended',
-      'buffering', 'buffered', 'error', 'server:switch', 'sources', 'sourceChange',
+      'buffering', 'buffered', 'error', 'server:switch', 'sources', 'sourcesUpdated', 'sourceChange',
       'audioTracks', 'audioChange', 'audio:searching', 'audio:unavailable',
       'subtitleTracks', 'subtitleChange', 'subtitleStyle',
       'qualityLevels', 'qualityChange', 'qualityEffective', 'volumechange', 'speedchange',

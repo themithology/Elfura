@@ -8,9 +8,9 @@ import { registerHooks } from 'node:module';
 // player orchestration and the loadHls()/manifest handlers remain production code.
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === 'hls.js') {
+    if (specifier === 'hls.js' || specifier === 'dashjs') {
       return {
-        url: new URL('./hls-event-order-mock.mjs', import.meta.url).href,
+        url: new URL(specifier === 'hls.js' ? './hls-event-order-mock.mjs' : './dash-v5-mock.mjs', import.meta.url).href,
         shortCircuit: true,
       };
     }
@@ -38,7 +38,7 @@ import {
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
-import { verifyAndFilterCandidates } from '../../dist/backend/sources/liveness.js';
+import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
 // 1. SSRF guard (production mode: loopback/RFC1918/metadata strictly rejected)
@@ -335,6 +335,27 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
+
+// A temporary child failure must not poison the master as permanently dead.
+{
+  const originalFetch = globalThis.fetch;
+  let childCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/retry-master.m3u8')) return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720\nretry-child.m3u8\n');
+    if (url.endsWith('/retry-child.m3u8')) {
+      if (++childCalls === 1) return new Response('temporary', { status: 503 });
+      return new Response('#EXTM3U\n#EXTINF:4,\nsegment.ts\n#EXT-X-ENDLIST\n');
+    }
+    throw new Error('unexpected fetch');
+  };
+  try {
+    const c = { key: 'retry-master', type: 'hls', url: 'https://cdn.example.com/retry-master.m3u8', quality: 'auto', rank: 1 };
+    assert.equal((await verifyAndFilterCandidatesDetailed([c])).verifiedAliveCount, 0);
+    assert.equal((await verifyAndFilterCandidatesDetailed([c])).verifiedAliveCount, 1);
+    assert.equal(childCalls, 2, 'transient child errors must be retried, not cached as dead');
+  } finally { globalThis.fetch = originalFetch; }
 }
 
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
@@ -1851,6 +1872,63 @@ try {
   // previously mislabeled as language-rejected and skipped by the engine fallback.
   // Prove that a later multi-audio source is tried, and that no-winner races also
   // exhaust every candidate before reporting a language unavailable.
+  // Exercise the actual loadDash handler against dash.js 5's representation API.
+  const dashPlayer = new ElfuraPlayer({ postMessage: false });
+  await dashPlayer.loadDash('https://cdn.example.com/movie.mpd');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(dashPlayer.getQualityLevels().map((q) => q.height), [1080, 720, 480]);
+  dashPlayer.setQuality(720);
+  assert.deepEqual(globalThis.__elfuraDashTestPlayer.selections.at(-1), { type: 'video', index: 1 });
+  assert.equal(globalThis.__elfuraDashTestPlayer.settingsCalls.at(-1).streaming.abr.autoSwitchBitrate.video, false);
+  assert.equal(dashPlayer.getState().effectiveHeight, 0, 'selection must not claim a rendered height');
+  globalThis.__elfuraDashTestPlayer.emitRendered(720);
+  assert.equal(dashPlayer.getState().effectiveHeight, 720);
+  dashPlayer.setQuality('auto');
+  assert.equal(globalThis.__elfuraDashTestPlayer.settingsCalls.at(-1).streaming.abr.autoSwitchBitrate.video, true);
+  dashPlayer.destroy();
+  delete globalThis.__elfuraDashTestPlayer;
+
+  // A late multi-audio group must appear without interrupting or relabelling
+  // the active Korean stream. The recovery request uses the same API origin.
+  {
+    const oldFetch = globalThis.fetch;
+    let releaseRecovery;
+    const recoveryGate = new Promise((resolve) => { releaseRecovery = resolve; });
+    const primary = { ...pb.primary, id: 'source-1:late-test', sourceId: 'source-1', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
+    const multi = { ...primary, id: 'source-2:1', sourceId: 'source-2', label: 'Source 2 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
+    let recoveryCalls = 0;
+    globalThis.fetch = async (input) => {
+      const u = new URL(String(input));
+      assert.equal(u.origin, 'https://recovery.example');
+      if (u.searchParams.get('source') === 'source-2') {
+        recoveryCalls++;
+        await recoveryGate;
+        return new Response(JSON.stringify({ ok: true, sources: [multi] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, sources: [primary], primary }), { status: 200 });
+    };
+    try {
+      const p = new ElfuraPlayer({ postMessage: false, api: 'https://recovery.example/api/v1/playback', tmdb: '123456', mediaType: 'movie', pltoken: 'test-token', nonce: 'test-nonce' });
+      p.selectFastestInitialSource = async (_sources, fallback) => fallback;
+      p.activateSourceOption = async (option) => { p.currentSource = option; };
+      const updated = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('late source recovery timed out')), 3000);
+        p.bus.on('sourcesUpdated', () => { clearTimeout(timer); resolve(); });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(recoveryCalls, 1);
+      assert.equal(p.currentSource?.id, primary.id);
+      p.mergeNativeAudio([{ id: 0, lang: 'ko', label: 'Korean', default: true }]);
+      releaseRecovery();
+      await updated;
+      assert(p.getSources().some((s) => s.fingerprint === 'latemulti'));
+      assert(p.getAudioTracks().some((t) => t.lang === 'hi'));
+      assert.equal(p.currentSource?.id, primary.id);
+      assert.equal(p.getState().audioLang, 'ko', 'a newly discovered Hindi option is not already playing');
+      p.destroy();
+    } finally { globalThis.fetch = oldFetch; }
+  }
+
   const searchPlayer = new ElfuraPlayer({ postMessage: false });
   const searchSources = [
     {

@@ -171,9 +171,6 @@ type EngineKind = 'hls' | 'dash' | 'native';
 
 /** Methods dash.js ships but its .d.ts omits. Kept tiny and cast once. */
 interface DashExtras {
-  getBitrateInfoListFor(type: 'video' | 'audio'): { bitrate: number; height: number; width: number; qualityIndex: number }[];
-  setQualityFor(type: 'video' | 'audio', quality: number): void;
-  getQualityFor(type: 'video' | 'audio'): number;
   updateSettings?(settings: Record<string, unknown>): void;
   extend?(name: string, factory: () => unknown, override?: boolean): void;
 }
@@ -1095,6 +1092,59 @@ export class ElfuraPlayer {
           : null;
       this.reorderSourcesHierarchy(effectiveBootLang);
 
+      // A slow provider can miss the initial bounded backend race. Fetch its
+      // source group once in the background so playback need not wait, then
+      // add newly verified choices without restarting the active stream.
+      if (!cfg.source && !this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio)) {
+        const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+        const recoveryUrl = new URL(apiUrl);
+        recoveryUrl.searchParams.set('source', 'source-2');
+        void (async () => {
+          try {
+            const response = await fetch(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) return;
+            const raw = (await response.json()) as PlaybackPayloadShape;
+            const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+              ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
+              : raw;
+            if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || cfg.source) return;
+            const fingerprints = new Set(this.sources.map((s) => s.fingerprint).filter(Boolean));
+            const ids = new Set(this.sources.map((s) => s.id));
+            let added = false;
+            for (const candidate of recovered.sources ?? []) {
+              if (candidate.sourceId !== 'source-2' || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
+              const option = resolveSource(candidate);
+              if (ids.has(option.id)) {
+                let n = 1;
+                while (ids.has(`${option.id}:late-${n}`)) n++;
+                option.id = `${option.id}:late-${n}`;
+              }
+              ids.add(option.id);
+              if (option.fingerprint) fingerprints.add(option.fingerprint);
+              this.sources.push(option);
+              added = true;
+            }
+            if (added) {
+              const native = this.audioTracks.filter((t) => t.kind === 'native' && typeof t.ref === 'number')
+                .map((t) => ({ id: t.ref as number, lang: t.lang, label: t.label, default: t.default }));
+              this.mergeNativeAudio(native);
+              this.emit('sourcesUpdated', this.sources);
+              // If the user explicitly requested a language while the group
+              // was unavailable, retry it only when the newly visible list
+              // actually reports that language. Never relabel current audio.
+              const wanted = this.desiredAudioLang;
+              if (wanted && wanted !== 'und' && matchScore(wanted, this.currentAudio?.lang ?? 'und') < 0 &&
+                  this.sources.some((s) => s.sourceId === 'source-2' &&
+                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
+                void this.setAudio(wanted);
+              }
+            }
+          } catch {
+            // Recovery is optional; current playback must keep going.
+          }
+        })();
+      }
+
       if (cfg.lang) {
         this.initialAudioApplied = true;
         await this.setAudio(String(cfg.lang));
@@ -1602,7 +1652,7 @@ export class ElfuraPlayer {
     if (want === 'auto' || want === '-1') {
       this.qualityMode = 'auto';
       if (this.hls) this.hls.currentLevel = -1;
-      else if (this.dash) (this.dash as unknown as DashExtras).setQualityFor('video', -1);
+      else if (this.dash) this.dash.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } });
       this.emit('qualityChange', { mode: 'auto', effectiveHeight: this.effectiveHeight });
       return;
     }
@@ -1613,10 +1663,13 @@ export class ElfuraPlayer {
       [...this.qualityLevels].sort((a, b) => Math.abs(a.height - height) - Math.abs(b.height - height))[0];
     if (!level) return;
     if (this.hls) this.hls.currentLevel = level.id;
-    else if (this.dash) (this.dash as unknown as DashExtras).setQualityFor('video', level.id);
+    else if (this.dash) {
+      this.dash.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } });
+      this.dash.setRepresentationForTypeByIndex('video', level.id);
+    }
     this.qualityMode = String(level.height);
-    this.effectiveHeight = level.height;
-    this.emit('qualityChange', { mode: this.qualityMode, effectiveHeight: level.height });
+    // The rendered height is updated by the engine switch event, not by the click.
+    this.emit('qualityChange', { mode: this.qualityMode, effectiveHeight: this.effectiveHeight });
   }
 
   async togglePip(): Promise<boolean> {
@@ -2362,6 +2415,16 @@ export class ElfuraPlayer {
     void this.handleAutoplay();
   }
 
+  private updateDashQualityLevels(player: MediaPlayerClass): void {
+    this.qualityLevels = player.getRepresentationsByType('video')
+      .map((rep, index) => ({
+        id: index, height: rep.height || 0, width: rep.width || 0, bitrate: rep.bandwidth || 0,
+        label: rep.height ? `${rep.height}p` : '',
+      }))
+      .sort((a, b) => b.height - a.height);
+    this.emit('qualityLevels', this.qualityLevels);
+  }
+
   private async loadDash(url: string): Promise<void> {
     const cfg = this.input.config;
     const Dash = await getDash();
@@ -2384,8 +2447,6 @@ export class ElfuraPlayer {
         true,
       );
     }
-    player.initialize(this.video, this.decorate(url), false);
-
     player.on(Dash.events.STREAM_INITIALIZED, () => {
       const dashAudio = player.getTracksFor('audio');
       this.mergeNativeAudio(
@@ -2396,17 +2457,7 @@ export class ElfuraPlayer {
           default: i === 0,
         })),
       );
-      this.qualityLevels = extras
-        .getBitrateInfoListFor('video')
-        .map((b) => ({
-          id: b.qualityIndex,
-          height: b.height,
-          width: b.width,
-          bitrate: b.bitrate,
-          label: b.height ? `${b.height}p` : b.bitrate >= 100_000 ? `${Math.round(b.bitrate / 1000)}k` : '',
-        }))
-        .sort((a, b) => b.height - a.height);
-      this.emit('qualityLevels', this.qualityLevels);
+      this.updateDashQualityLevels(player);
       this.applyQualityCap();
 
       this.subtitleTracks = player.getTracksFor('text').map((t: MediaInfo, i: number) => ({
@@ -2434,12 +2485,10 @@ export class ElfuraPlayer {
       }
     });
 
-    player.on(Dash.events.QUALITY_CHANGE_RENDERED, (e: { mediaType?: string; newQuality?: number }) => {
-      if (e.mediaType !== 'video') return;
-      const level = this.qualityLevels.find((l) => l.id === e.newQuality);
-      if (!level) return;
-      this.effectiveHeight = level.height;
-      this.emit('qualityEffective', { height: level.height, label: level.label, mode: this.qualityMode });
+    player.on(Dash.events.QUALITY_CHANGE_RENDERED, (e: { mediaType?: string; newRepresentation?: { height?: number } }) => {
+      if (e.mediaType !== 'video' || !e.newRepresentation?.height) return;
+      this.effectiveHeight = e.newRepresentation.height;
+      this.emit('qualityEffective', { height: this.effectiveHeight, mode: this.qualityMode });
     });
 
     player.on(Dash.events.ERROR, (e: { error?: unknown; message?: string }) => {
@@ -2451,6 +2500,7 @@ export class ElfuraPlayer {
       this.failover();
     });
 
+    player.initialize(this.video, this.decorate(url), false);
     void this.handleAutoplay();
   }
 
@@ -2670,7 +2720,7 @@ export class ElfuraPlayer {
             : null;
       const preferred =
         (targetMatchLang
-          ? this.audioTracks.find((t) => matchScore(targetMatchLang, t.lang) >= 0)
+          ? this.audioTracks.find((t) => t.kind === 'native' && matchScore(targetMatchLang, t.lang) >= 0)
           : null) ??
         (!this.currentAudio ? this.audioTracks.find((t) => t.default) ?? this.audioTracks[0] : null);
       if (preferred) this.currentAudio = preferred;

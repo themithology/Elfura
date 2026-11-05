@@ -196,16 +196,16 @@ async function verifyChildHlsPlaylist(
   childUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<'alive' | 'dead' | 'unknown'> {
   const res = await fetch(childUrl, {
     method: 'GET',
     headers,
     redirect: 'follow',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(1150)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
   });
   const finalUrl = res.url || childUrl;
-  if (!isSafeUpstreamUrl(finalUrl)) return false;
-  if (!res.ok) return false;
+  if (!isSafeUpstreamUrl(finalUrl)) return 'dead';
+  if (!res.ok) return res.status === 429 || res.status >= 500 ? 'unknown' : 'dead';
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (ct.includes('text/html') || ct.includes('application/xhtml')) {
@@ -214,13 +214,13 @@ async function verifyChildHlsPlaylist(
     } catch {
       /* ignore */
     }
-    return false;
+    return 'dead';
   }
 
   const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
   const lead = text.trimStart();
-  if (!lead.startsWith('#EXTM3U')) return false;
-  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return false;
+  if (!lead.startsWith('#EXTM3U')) return 'dead';
+  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return 'dead';
 
   if (/#EXT-X-ENDLIST\b/i.test(text)) {
     seedManifestRamCache(childUrl, headers, {
@@ -229,7 +229,7 @@ async function verifyChildHlsPlaylist(
       bodyText: text,
     });
   }
-  return true;
+  return 'alive';
 }
 
 async function runSingleProbe(
@@ -251,8 +251,8 @@ async function runSingleProbe(
     const t0 = performance.now();
     const elapsed = () => Math.max(1, Math.round(performance.now() - t0));
     const sig = outerSignal
-      ? AbortSignal.any([outerSignal, AbortSignal.timeout(1500)])
-      : AbortSignal.timeout(1500);
+      ? AbortSignal.any([outerSignal, AbortSignal.timeout(3000)])
+      : AbortSignal.timeout(3000);
 
     try {
       if (cand.type === 'mp4') {
@@ -317,6 +317,9 @@ async function runSingleProbe(
           await res.body?.cancel();
         } catch {
           /* ignore */
+        }
+        if (isSafeUpstreamUrl(finalUrl) && (res.status === 429 || res.status >= 500)) {
+          return { alive: false, confirmedDead: false };
         }
         const dead = { alive: false, confirmedDead: true };
         setCachedLiveness(key, dead);
@@ -387,13 +390,17 @@ async function runSingleProbe(
         if (childTargets.length > 0) {
           const childChecks = await Promise.all(
             childTargets.map((cu) =>
-              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(() => false),
+              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(() => 'unknown' as const),
             ),
           );
-          if (childChecks.some((okChild) => !okChild)) {
+          if (childChecks.includes('dead')) {
             const dead = { alive: false, confirmedDead: true };
             setCachedLiveness(key, dead);
             return dead;
+          }
+          if (childChecks.includes('unknown')) {
+            // A slow child is not a dead child; do not poison the cache.
+            return { alive: false, confirmedDead: false };
           }
         }
       }
@@ -483,8 +490,8 @@ export async function verifyAndFilterCandidatesDetailed(
   }
 
   const budgetSig = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(1950)])
-    : AbortSignal.timeout(1950);
+    ? AbortSignal.any([signal, AbortSignal.timeout(3500)])
+    : AbortSignal.timeout(3500);
 
   const outcomes = new Map<string, LivenessProbeOutcome>();
   const entries = [...uniqueTargets.entries()].sort((a, b) => a[1].priority - b[1].priority);
@@ -565,6 +572,9 @@ export async function verifyAndFilterCandidatesDetailed(
         ...updated,
         qualityOptions: outcome.qualityOptions,
         qualityLadder: outcome.qualityLadder?.length ? outcome.qualityLadder : undefined,
+        // A leaf playlist or height-less master cannot substantiate a
+        // catalogue's fixed-resolution label.
+        ...((outcome.manifestKind === 'hls-media' || outcome.manifestKind === 'hls-master') && !outcome.qualityLadder?.length ? { quality: 'auto' } : {}),
       };
     }
 

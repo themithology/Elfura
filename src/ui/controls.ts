@@ -1238,6 +1238,10 @@ export class PlayerUI {
       this.syncCapabilities();
       this.rebuildPanelIfOpen();
     });
+    bus.on('sourcesUpdated', () => {
+      this.syncCapabilities();
+      this.rebuildPanelIfOpen();
+    });
     bus.on('sourceChange', (d) => {
       if (this.loadingActive) this.loadingStatus.textContent = 'Preparing your stream…';
       this.syncCapabilities();
@@ -2380,7 +2384,12 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
-      const optionCount = s.qualityOptions ?? s.qualityLadder?.length ?? 0;
+      // Only the active engine knows which manifest representations the
+      // current browser can actually select. Do not promise a ladder for an
+      // unloaded source based solely on backend manifest metadata.
+      const optionCount = s.id === st.source
+        ? new Set(this.player.getQualityLevels().map((level) => level.height).filter((height) => height > 0)).size
+        : 0;
       const badge =
         optionCount > 1
           ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
