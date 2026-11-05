@@ -291,6 +291,7 @@ try {
           manifestAudioTracks = Math.max(manifestAudioTracks, audioTracks);
           report.push({ id: option.id, label: option.label, type: option.type, ok: true, checks, audioTracks });
           console.log(`[pass] ${option.id} ${option.label}: ${checks.join(', ')}`);
+          annotate('notice', 'ElfuraOption', `${TITLE_LABEL} ${option.id} "${option.label}" type=${option.type} quality=${option.quality || 'auto'} audioLang=${option.audioLang || '-'} langs=[${(option.availableAudioLangs || []).join(',')}] multi=${!!option.multiAudio} manifestAudio=${audioTracks} checks=${checks.join('+')}`);
         } catch (error) {
           failed++;
           const message = error instanceof Error ? error.message : String(error);
