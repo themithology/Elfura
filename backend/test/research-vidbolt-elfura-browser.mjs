@@ -46,7 +46,13 @@ try {
     if(switched.source!=='source-2')throw new Error('unexpected source fallback');
     switches.push({requested:lang,...selection,...switched});
    }
-   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches});
+   step='quality';
+   const target=info.qualities.includes(480)?480:720;
+   const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
+   if(!qualitySet)throw new Error('quality missing');
+   await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-2';},target,{timeout:35000});
+   const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
+   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches,quality:{target,rendered}});
   } catch(e){
    const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[]})).catch(()=>null);
    notice({id:c.id,success:false,step,error:e.name,snapshot});process.exitCode=1;
