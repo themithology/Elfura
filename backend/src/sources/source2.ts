@@ -471,6 +471,7 @@ interface ParsedCandidateItem {
   isHardsub: boolean;
   baseRank: number;
   latencyMs: number;
+  qualityLadder?: number[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1553,6 +1554,7 @@ async function resolveViaExtractApi(
       isHardsub,
       baseRank,
       latencyMs,
+      ...(ladderNums.length ? { qualityLadder: [...ladderNums].sort((a, b) => b - a) } : {}),
     };
   };
 
@@ -1646,6 +1648,9 @@ async function resolveViaExtractApi(
       ...(p.singleLabel ? { audioLabel: p.singleLabel } : {}),
       ...(p.discoveredCodes.length ? { availableAudioLangs: p.discoveredCodes } : {}),
       multiAudio: p.isMultiAudio,
+      ...(p.qualityLadder?.length
+        ? { qualityLadder: p.qualityLadder, qualityOptions: p.qualityLadder.length }
+        : {}),
       subtitles: sharedSubs,
       ...(standby ? { standbyUrl: standby.url, standbyHeaders: standby.headers } : {}),
       rank: p.baseRank + latencyPenalty + tieOffset,

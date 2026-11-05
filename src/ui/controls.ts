@@ -2375,8 +2375,13 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
+      const optionCount = s.qualityOptions ?? s.qualityLadder?.length ?? 0;
+      const badge =
+        optionCount > 1
+          ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
+          : qualityBadge;
       this.panelBody.appendChild(
-        this.row(s.label, qualityBadge, s.id === st.source, () => {
+        this.row(s.label, badge, s.id === st.source, () => {
           void this.player.setSource(s.id);
           this.renderPanelBody();
         }),

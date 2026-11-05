@@ -67,6 +67,10 @@ export interface RawStreamCandidate {
   url: string;
   headers?: Record<string, string>;
   quality: string;
+  /** Distinct rendition heights (desc) when the stream is a multi-quality ABR ladder. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (1 = single fixed quality). */
+  qualityOptions?: number;
   /** Primary BCP-47 language if single-dub stream (e.g. 'hi', 'en'). */
   audioLang?: string;
   audioLabel?: string;
@@ -131,6 +135,10 @@ export interface UniformStreamOption {
   /** Uniform relay URL (`/api/v1/stream?t=...`) — never raw upstream URL */
   url: string;
   quality: string;
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (>1 ranks above single/unknown). */
+  qualityOptions?: number;
   /** Opaque 12-char HMAC digest identifying shared upstream streams without leaking URLs */
   fingerprint?: string;
   /** Optional edge latency hint in ms for initial candidate ordering */

@@ -74,6 +74,10 @@ export interface SourceOption {
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   quality: string;
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (>1 ranks above single/unknown). */
+  qualityOptions?: number;
   fingerprint?: string;
   latencyHintMs?: number;
   audioLang?: string;
@@ -466,6 +470,8 @@ export class ElfuraPlayer {
       if (tDiff !== 0) return tDiff;
       const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
       if (multiDiff !== 0) return multiDiff;
+      const qDiff = this.qualityTier(a) - this.qualityTier(b);
+      if (qDiff !== 0) return qDiff;
       const sDiff = this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b);
       if (Math.abs(sDiff) > 4) return sDiff;
       return this.qualityRank(b) - this.qualityRank(a);
@@ -565,6 +571,14 @@ export class ElfuraPlayer {
     return true;
   }
 
+  /** 0 = multi-quality ABR ladder, 1 = known single quality, 2 = unknown quality. */
+  private qualityTier(opt: SourceOption): number {
+    const n = opt.qualityOptions ?? opt.qualityLadder?.length ?? 0;
+    if (n > 1) return 0;
+    if (n === 1 || (opt.quality && opt.quality !== 'auto')) return 1;
+    return 2;
+  }
+
   private qualityRank(opt: SourceOption): number {
     const q = (opt.quality || '').toLowerCase();
     let res = 720;
@@ -575,7 +589,8 @@ export class ElfuraPlayer {
     else if (q.includes('480')) res = 480;
     else if (q.includes('360')) res = 360;
     else if (q === 'auto') res = 960;
-    return res + (opt.multiAudio ? 250 : 0);
+    // A real multi-quality ladder outranks any fixed rendition at the same tier.
+    return res + (opt.multiAudio ? 250 : 0) + (this.qualityTier(opt) === 0 ? 180 : 0);
   }
 
   /**
@@ -890,6 +905,7 @@ export class ElfuraPlayer {
     const sortedPool = [...pool].sort(
       (a, b) =>
         Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
+        this.qualityTier(a) - this.qualityTier(b) ||
         this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
         this.qualityRank(b) - this.qualityRank(a),
     );

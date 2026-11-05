@@ -479,12 +479,22 @@ export class SourceRegistry {
       }
     }
 
-    // Genuine multi-audio streams (several languages muxed in one manifest)
-    // always lead the option list: they are the multi-language sources, and
-    // single-language dubs remain available underneath as fallbacks.
+    // Hierarchy: genuine multi-audio streams (several languages muxed in one
+    // manifest) lead, then multi-quality ABR streams (a real rendition
+    // ladder), then known single-quality streams, and only then streams
+    // whose quality is unknown. Stable within each tier.
+    const qualityTierOf = (o: UniformStreamOption): number => {
+      const n = o.qualityOptions ?? o.qualityLadder?.length ?? 0;
+      if (n > 1) return 0;
+      if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
+      return 2;
+    };
     if (!params.preferredLang) {
-      // Stable sort: multi-audio options lead, relative order otherwise kept.
-      uniformOptions.sort((a, b) => Number(!!b.multiAudio) - Number(!!a.multiAudio));
+      uniformOptions.sort(
+        (a, b) =>
+          Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
+          qualityTierOf(a) - qualityTierOf(b),
+      );
     }
 
     // When a preferred audio language is requested, promote matching streams
@@ -511,6 +521,7 @@ export class SourceRegistry {
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
+            qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
       }
@@ -606,6 +617,10 @@ export class SourceRegistry {
       type: cand.type,
       url: `${streamBase}?t=${encodeURIComponent(streamTicket)}`,
       quality: cand.quality || 'auto',
+      ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
+      ...((cand.qualityOptions ?? cand.qualityLadder?.length) !== undefined
+        ? { qualityOptions: cand.qualityOptions ?? cand.qualityLadder?.length }
+        : {}),
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),

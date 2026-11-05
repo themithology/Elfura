@@ -33,6 +33,37 @@ export interface LivenessProbeOutcome {
   confirmedDead: boolean;
   rttMs?: number;
   discoveredAudioLangs?: string[];
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (1 = single fixed quality). */
+  qualityOptions?: number;
+}
+
+/** Extract the ABR ladder (distinct heights, desc) from an HLS master or DASH MPD. */
+export function extractQualityLadder(text: string, isDash: boolean): { ladder: number[]; options: number } {
+  const heights = new Set<number>();
+  if (isDash) {
+    for (const m of text.matchAll(/<Representation\b[^>]*\bheight="(\d+)"/gi)) {
+      const h = Number(m[1]);
+      if (h > 0) heights.add(h);
+    }
+    if (!heights.size) {
+      const reps = text.match(/<Representation\b/gi)?.length ?? 0;
+      return { ladder: [], options: Math.max(1, reps) };
+    }
+  } else {
+    let variants = 0;
+    for (const line of text.split(/\r?\n/)) {
+      if (!/^#EXT-X-STREAM-INF\b/i.test(line.trim())) continue;
+      variants++;
+      const res = line.match(/\bRESOLUTION=\d+x(\d+)\b/i);
+      if (res) heights.add(Number(res[1]));
+    }
+    if (!variants) return { ladder: [], options: 1 };
+    if (!heights.size) return { ladder: [], options: variants };
+  }
+  const ladder = [...heights].sort((a, b) => b - a);
+  return { ladder, options: Math.max(1, ladder.length) };
 }
 
 interface CachedLivenessEntry extends LivenessProbeOutcome {
@@ -248,7 +279,12 @@ async function runSingleProbe(
           setCachedLiveness(key, dead);
           return dead;
         }
-        const ok: LivenessProbeOutcome = { alive: true, confirmedDead: false, rttMs: elapsed() };
+        const ok: LivenessProbeOutcome = {
+          alive: true,
+          confirmedDead: false,
+          rttMs: elapsed(),
+          qualityOptions: 1,
+        };
         setCachedLiveness(key, ok);
         return ok;
       }
@@ -306,10 +342,13 @@ async function runSingleProbe(
           });
         }
         const dashLangs = extractDashAudioLangs(bodyText);
+        const dashLadder = extractQualityLadder(bodyText, true);
         const ok: LivenessProbeOutcome = {
           alive: true,
           confirmedDead: false,
           rttMs: elapsed(),
+          qualityOptions: dashLadder.options,
+          ...(dashLadder.ladder.length ? { qualityLadder: dashLadder.ladder } : {}),
           ...(dashLangs.length ? { discoveredAudioLangs: dashLangs } : {}),
         };
         setCachedLiveness(key, ok);
@@ -357,10 +396,15 @@ async function runSingleProbe(
       }
 
       const hlsLangs = extractManifestAudioLangs(bodyText);
+      const hlsLadder = isMaster
+        ? extractQualityLadder(bodyText, false)
+        : { ladder: [] as number[], options: 1 };
       const ok: LivenessProbeOutcome = {
         alive: true,
         confirmedDead: false,
         rttMs: elapsed(),
+        qualityOptions: hlsLadder.options,
+        ...(hlsLadder.ladder.length ? { qualityLadder: hlsLadder.ladder } : {}),
         ...(hlsLangs.length ? { discoveredAudioLangs: hlsLangs } : {}),
       };
       setCachedLiveness(key, ok);
@@ -480,6 +524,22 @@ export async function verifyAndFilterCandidatesDetailed(
         ...updated,
         latencyMs: outcome.rttMs,
       };
+    }
+
+    if (outcome.qualityOptions !== undefined) {
+      const measuredOptions = outcome.qualityOptions;
+      const adapterOptions = updated.qualityOptions ?? updated.qualityLadder?.length ?? 0;
+      if (measuredOptions >= adapterOptions) {
+        updated = {
+          ...updated,
+          qualityOptions: measuredOptions,
+          ...(outcome.qualityLadder?.length
+            ? { qualityLadder: outcome.qualityLadder }
+            : updated.qualityLadder
+              ? { qualityLadder: updated.qualityLadder }
+              : {}),
+        };
+      }
     }
 
     return updated;

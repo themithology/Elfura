@@ -1544,7 +1544,27 @@ try {
   assert.equal(pb.ok, true);
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
   assert.deepEqual(pb.segments.intro, [52, 94]);
-  assert.deepEqual(pb.primary.availableAudioLangs, ['hi', 'en']);
+  assert.deepEqual([...pb.primary.availableAudioLangs].sort(), ['en', 'hi']);
+  assert(
+    (pb.primary.qualityOptions ?? pb.primary.qualityLadder?.length ?? 0) > 1,
+    'Primary must be a multi-quality ABR stream (hierarchy: multi-audio + multi-quality first)',
+  );
+  // Hierarchy invariant: within the same multi-audio class, multi-quality
+  // options never rank below single-quality or unknown-quality options.
+  {
+    const tierOf = (o) => {
+      const n = o.qualityOptions ?? o.qualityLadder?.length ?? 0;
+      if (n > 1) return 0;
+      if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
+      return 2;
+    };
+    let lastKey = '';
+    for (const o of pb.sources) {
+      const key = `${o.multiAudio ? '0' : '1'}:${tierOf(o)}`;
+      assert(key >= lastKey, `Source hierarchy violated at ${o.label} (${key} after ${lastKey})`);
+      lastKey = key;
+    }
+  }
 
   const rawJsonStr = JSON.stringify(pb);
   for (const forbidden of [
