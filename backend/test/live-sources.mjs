@@ -139,20 +139,21 @@ function hlsFirstSegmentRef(text) {
   return null;
 }
 
-async function auditHls(url, checks, depth = 0) {
+async function auditHls(url, checks, depth = 0, stats = { audioTracks: 0 }) {
   if (depth > 3) throw new Error('HLS playlist nesting exceeded safe depth');
   const text = await fetchManifest(url);
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('invalid HLS manifest');
 
   const variant = hlsFirstVariantRef(text);
   const audioRefs = hlsAudioRefs(text);
+  if (depth === 0) stats.audioTracks = Math.max(stats.audioTracks, audioRefs.length);
   if (variant || audioRefs.length) {
     const childRefs = [...new Set([variant, ...audioRefs].filter(Boolean))];
     for (const ref of childRefs) {
       const childUrl = new URL(ref, url).toString();
       const isAudio = depth === 0 && audioRefs.includes(ref);
       try {
-        await auditHls(childUrl, checks, depth + 1);
+        await auditHls(childUrl, checks, depth + 1, stats);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`${isAudio ? 'audio playlist' : 'variant playlist'}: ${message}`);
@@ -229,15 +230,16 @@ async function auditDash(url, checks) {
 
 async function auditOption(option) {
   const checks = [];
+  const stats = { audioTracks: 0 };
   if (option.type === 'hls') {
-    await auditHls(new URL(option.url, apiBase).toString(), checks);
+    await auditHls(new URL(option.url, apiBase).toString(), checks, 0, stats);
   } else if (option.type === 'dash') {
     await auditDash(new URL(option.url, apiBase).toString(), checks);
   } else {
     await fetchMediaBytes(new URL(option.url, apiBase).toString());
     checks.push('mp4-bytes');
   }
-  return checks;
+  return { checks, audioTracks: stats.audioTracks };
 }
 
 /** Emit a GitHub Actions annotation so CI failure reasons are visible via API. */
@@ -282,16 +284,12 @@ try {
     try {
       const options = await resolveSource(sourceId);
       console.log(`[audit] ${sourceId}: ${options.length} advertised option(s)`);
-      if (REQUIRE_MULTI_LANG && !hasMultiLangEvidence(options)) {
-        failed++;
-        report.push({ id: sourceId, ok: false, error: 'no multi-language evidence in advertised options' });
-        console.error(`[fail] ${sourceId}: no multi-language evidence in advertised options`);
-        annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${sourceId}: no multi-language evidence in advertised options`);
-      }
+      let manifestAudioTracks = 0;
       for (const option of options) {
         try {
-          const checks = await auditOption(option);
-          report.push({ id: option.id, label: option.label, type: option.type, ok: true, checks });
+          const { checks, audioTracks } = await auditOption(option);
+          manifestAudioTracks = Math.max(manifestAudioTracks, audioTracks);
+          report.push({ id: option.id, label: option.label, type: option.type, ok: true, checks, audioTracks });
           console.log(`[pass] ${option.id} ${option.label}: ${checks.join(', ')}`);
         } catch (error) {
           failed++;
@@ -300,6 +298,15 @@ try {
           console.error(`[fail] ${option.id} ${option.label}: ${message}`);
           annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${option.id} ${option.label}: ${message}`);
         }
+      }
+      // Multi-language gate accepts manifest-proven evidence (real audio
+      // tracks fetched above), not only provider-claimed metadata fields.
+      const multiLangVerified = hasMultiLangEvidence(options) || manifestAudioTracks > 1;
+      annotate(multiLangVerified ? 'notice' : 'error', 'ElfuraMultiLang', `${TITLE_LABEL} ${sourceId}: manifestAudioTracks=${manifestAudioTracks}, metadataEvidence=${hasMultiLangEvidence(options)}`);
+      if (REQUIRE_MULTI_LANG && !multiLangVerified) {
+        failed++;
+        report.push({ id: sourceId, ok: false, error: 'no verified multi-language evidence (metadata or manifest audio tracks)' });
+        console.error(`[fail] ${sourceId}: no verified multi-language evidence`);
       }
     } catch (error) {
       failed++;
