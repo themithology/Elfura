@@ -240,6 +240,12 @@ async function auditOption(option) {
   return checks;
 }
 
+/** Emit a GitHub Actions annotation so CI failure reasons are visible via API. */
+function annotate(level, title, message) {
+  const clean = String(message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  console.log(`::${level} title=${title}::${clean}`);
+}
+
 async function resolveSource(sourceId) {
   const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
   const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}&source=${sourceId}`;
@@ -292,6 +298,7 @@ try {
           const message = error instanceof Error ? error.message : String(error);
           report.push({ id: option.id, label: option.label, type: option.type, ok: false, error: message });
           console.error(`[fail] ${option.id} ${option.label}: ${message}`);
+          annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${option.id} ${option.label}: ${message}`);
         }
       }
     } catch (error) {
@@ -299,6 +306,7 @@ try {
       const message = error instanceof Error ? error.message : String(error);
       report.push({ id: sourceId, ok: false, error: message });
       console.error(`[fail] ${message}`);
+      annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${sourceId}: ${message}`);
     }
   }
 } finally {
