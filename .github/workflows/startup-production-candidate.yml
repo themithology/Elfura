@@ -15,6 +15,7 @@ jobs:
         include:
           - {type: movie, id: '693134'}
           - {type: tv, id: '93405'}
+          - {type: movie, id: '872585'}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

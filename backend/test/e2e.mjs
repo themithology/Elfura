@@ -1992,6 +1992,33 @@ try {
   searchPlayer.sources = searchSources;
   searchPlayer.currentSource = searchSources[0];
 
+  // Real HLS event handlers must abandon a startup whose child playlists
+  // repeatedly time out, not wait forever on a parsed master manifest.
+  {
+    const p = new ElfuraPlayer({ postMessage: false });
+    let failures = 0;
+    p.failover = () => { failures++; };
+    await p.loadHls(searchSources[1].url);
+    p.hls.emit('hlsError', { details: 'levelLoadTimeOut', fatal: false, type: 'networkError' });
+    assert.equal(failures, 0);
+    p.hls.emit('hlsError', { details: 'audioTrackLoadTimeOut', fatal: false, type: 'networkError' });
+    assert.equal(failures, 1);
+    p.destroy();
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+
+  // Fatal fallback favors a separate provider over a faster sibling.
+  {
+    const p = new ElfuraPlayer({ postMessage: false });
+    p.sources = [searchSources[1], {...searchSources[1], id:'sibling', fingerprint:'sibling', latencyHintMs:1}, searchSources[2]];
+    p.currentSource = p.sources[0];
+    let chosen;
+    p.activateSourceOption = async opt => { chosen = opt; };
+    p.failover();
+    assert.equal(chosen.id, 'multi-good');
+    p.destroy();
+  }
+
   // HLS event-order regression: MANIFEST_PARSED can run before
   // AUDIO_TRACKS_UPDATED has replaced the previous source's track list. The
   // incoming manifest, not stale this.audioTracks, must select Hindi.

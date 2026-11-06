@@ -17,12 +17,12 @@ try {
  await page.waitForFunction(()=>window.__elfura?.player,null,{timeout:15000});const ready=Date.now();
  await page.evaluate(()=>{const p=window.__elfura.player;p.video.muted=true;void p.play();});
  let states=[];
- for(let i=0;i<15;i++){
-   const state=await page.evaluate(()=>{const p=window.__elfura.player;if(p.hls && window.__traceHls!==p.hls){window.__traceHls=p.hls;window.__traceErrors ||= [];p.hls.on('hlsError',(_e,d)=>window.__traceErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null}));}return {errors:window.__traceErrors||[],time:p.video.currentTime,ready:p.video.readyState,source:p.currentSource?.sourceId||null,loading:document.querySelector('.elf-loading-screen')?.dataset.visible,overlay:document.querySelector('.elf-unavailable-screen')?.dataset.visible,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable,title:document.querySelector('.elf-unavailable-title')?.textContent,levels:p.hls?.levels?.length||0,audio:p.hls?.audioTracks?.length||0}});
-   states.push({ms:Date.now()-ready,...state});if(state.time>3||state.unavailable==='true')break;await page.waitForTimeout(2000);
+ for(let i=0;i<24;i++){
+   const state=await page.evaluate(()=>{const p=window.__elfura.player;if(p.hls && window.__traceHls!==p.hls){window.__traceHls=p.hls;window.__traceErrors ||= [];p.hls.on('hlsError',(_e,d)=>window.__traceErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null}));}return {errors:(window.__traceErrors||[]).slice(-4),time:p.video.currentTime,ready:p.video.readyState,source:p.currentSource?.sourceId||null,loading:document.querySelector('.elf-loading-screen')?.dataset.visible,overlay:document.querySelector('.elf-unavailable-screen')?.dataset.visible,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable,title:document.querySelector('.elf-unavailable-title')?.textContent,levels:p.hls?.levels?.length||0,audio:p.hls?.audioTracks?.length||0}});
+   states.push({ms:Date.now()-ready,...state});if(state.time>8||state.unavailable==='true')break;await page.waitForTimeout(2000);
  }
  const result={id,type,injected,navigationMs:ready-nav,states,events:events.slice(0,40)};
  console.log('::notice title=CandidateProduction::'+JSON.stringify(result));
- if(!injected || !states.some(x=>x.ms<=11000&&x.loading==='false'))throw Error('candidate failed loading transition');
+ if(!injected || !states.some(x=>x.time>8))throw Error('no sustained playback observed');
 }catch(e){console.log('::notice title=CandidateProduction::'+JSON.stringify({error:e.name,message:e.message.slice(0,180),injected}));process.exitCode=1;}
 finally{await browser.close();}

@@ -1080,7 +1080,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = ['source-1', 'source-2', 'source-4', 'source-5'].filter((id) =>
+      const lateGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5', 'source-6'].filter((id) =>
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
@@ -1108,13 +1108,13 @@ export class ElfuraPlayer {
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
             for (const candidate of recovered.sources ?? []) {
-              if (candidate.sourceId !== recoveryId || !candidate.multiAudio) continue;
+              if (candidate.sourceId !== recoveryId) continue;
               if (candidate.fingerprint && fingerprints.has(candidate.fingerprint)) {
                 // A timed-out first probe may have returned this exact stream
                 // as an unknown single fallback. Upgrade it in place once the
                 // independently checked manifest is available.
                 const existing = this.sources.find(s => s.fingerprint === candidate.fingerprint);
-                if (existing && !existing.multiAudio) {
+                if (existing && candidate.multiAudio && !existing.multiAudio) {
                   existing.multiAudio = true;
                   existing.availableAudioLangs = candidate.availableAudioLangs;
                   existing.audioLang = undefined;
@@ -2434,7 +2434,7 @@ export class ElfuraPlayer {
       if (
         !data.fatal &&
         this.video.readyState === 0 &&
-        /^(?:fragLoadError|fragLoadTimeOut|keyLoadError|levelLoadError|audioTrackLoadError)$/i.test(details)
+        /^(?:fragLoadError|fragLoadTimeOut|keyLoadError|keyLoadTimeOut|levelLoadError|levelLoadTimeOut|audioTrackLoadError|audioTrackLoadTimeOut)$/i.test(details)
       ) {
         startupFragErrors++;
         if (startupFragErrors >= 2) {
@@ -2686,9 +2686,10 @@ export class ElfuraPlayer {
         if (option.fingerprint) fingerprints.add(option.fingerprint);
         this.sources.push(option); recovered.push(option);
       }
-      if (!recovered.length) return;
-      this.reorderSourcesHierarchy(this.desiredAudioLang);
-      this.emit('sourcesUpdated', this.sources);
+      if (recovered.length) {
+        this.reorderSourcesHierarchy(this.desiredAudioLang);
+        this.emit('sourcesUpdated', this.sources);
+      }
       const next = this.sources.find(s => !this.isCandidateFailed(s));
       if (!next) return;
       activated = true;
@@ -2722,7 +2723,11 @@ export class ElfuraPlayer {
       const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
         (s) => !this.isCandidateFailed(s),
       );
-      ordered.sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
+      // After a failure, prefer a different provider group over another
+      // rendition from the same failing upstream; latency breaks ties.
+      ordered.sort((a, b) =>
+        Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId) ||
+        (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
       if (!next) {
         this.recoverExhaustedSources();
