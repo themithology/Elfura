@@ -1444,6 +1444,7 @@ const { server: elfuraServer } = createBackendServer({
     appOrigin: upBase,
     apiOrigin: upBase,
     riftOrigin: upBase,
+    vidboltOrigin: upBase, // Keep integration tests isolated from live upstreams.
     riftRelay: upBase,
     syncOrigin: upBase,
   },
