@@ -1482,6 +1482,7 @@ try {
   assert.deepEqual(health.sources, [
     { id: 'source-2', label: 'Source 2' },
     { id: 'source-3', label: 'Source 3' },
+    { id: 'source-5', label: 'Source 5' },
   ]);
 
   // The public diagnostic reports observations, never upstream links or
@@ -1492,7 +1493,7 @@ try {
   const diag = await diagRes.json();
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
-  assert.equal(diag.sources.length, 2);
+  assert.equal(diag.sources.length, 3);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
@@ -1851,8 +1852,8 @@ try {
       const p=new ElfuraPlayer({postMessage:false});p.input.config.tmdb='693134';p.input.config.mediaType='movie';p.input.config.api='https://retry.example/api/v1/playback';p.sources=[dead];p.currentSource=dead;
       let active; p.activateSourceOption=async opt=>{active=opt;p.currentSource=opt};
       p.failover();await new Promise(r=>setTimeout(r,40));
-      assert.deepEqual(requested.sort(),['source-2','source-3']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
-      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,2,'exhaustion recovery must be bounded');
+      assert.deepEqual(requested.sort(),['source-2','source-3','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
+      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,3,'exhaustion recovery must be bounded');
       p.destroy();
     } finally {globalThis.fetch=originalFetch;}
   }

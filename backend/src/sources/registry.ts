@@ -16,6 +16,7 @@ import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
+import { createVidaraAdapter } from './source5.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
@@ -47,6 +48,7 @@ export class SourceRegistry {
     this.adapters = [
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
+      createVidaraAdapter(cfg.source5?.enabled !== false),
     ];
   }
 

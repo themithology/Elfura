@@ -21,6 +21,7 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
       multi.push({ adapter:entry.adapter, candidate:{...c,multiAudio:true,availableAudioLangs:langs,audioLang:undefined,audioLabel:undefined} });
       continue;
     }
+    if (c.requireVerifiedMultiAudio) continue;
     // Never promote upstream metadata, a timed-out probe, or multiple copies of
     // the same language into a supposedly multilingual source.
     let host = '';

@@ -84,6 +84,8 @@ export interface RawStreamCandidate {
   availableAudioLangs?: string[];
   /** True when the manifest itself carries multiple muxed audio tracks. */
   multiAudio?: boolean;
+  /** Never fall back to a single/unknown stream for this candidate. */
+  requireVerifiedMultiAudio?: boolean;
   /** Direct non-manifest external audio files (m4a/mp3/aac) for ExternalAudioSync. */
   audioTracks?: RawTrackRef[];
   /** Subtitle files (VTT / SRT / ASS). */
