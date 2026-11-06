@@ -9,6 +9,18 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - path: movie/693134
+            query: ''
+          - path: movie/693134
+            query: '?source=source-2'
+          - path: movie/693134
+            query: '?source=source-3'
+          - path: tv/95479/1/1
+            query: ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,3 +28,6 @@ jobs:
           node-version: 22
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/production-playback-audit.mjs
+        env:
+          TEST_PATH: ${{ matrix.path }}
+          TEST_QUERY: ${{ matrix.query }}
