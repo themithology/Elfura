@@ -1835,6 +1835,31 @@ try {
   dashPlayer.destroy();
   delete globalThis.__elfuraDashTestPlayer;
 
+  // A single stalled initial source must not leave the startup screen forever:
+  // retry both provider groups and actually attach a newly discovered option.
+  {
+    const originalFetch=globalThis.fetch;
+    const dead={...pb.primary,id:'source-3:1',sourceId:'source-3',fingerprint:'dead-initial',multiAudio:false,audioTracks:[],subtitles:[]};
+    const good={...dead,id:'source-2:1',sourceId:'source-2',fingerprint:'late-good',multiAudio:true,availableAudioLangs:['en','hi']};
+    let requested=[];
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-2'?[good]:[dead]})};
+    try {
+      const p=new ElfuraPlayer({postMessage:false});p.input.config.tmdb='693134';p.input.config.mediaType='movie';p.input.config.api='https://retry.example/api/v1/playback';p.sources=[dead];p.currentSource=dead;
+      let active; p.activateSourceOption=async opt=>{active=opt;p.currentSource=opt};
+      p.failover();await new Promise(r=>setTimeout(r,40));
+      assert.deepEqual(requested.sort(),['source-2','source-3']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
+      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,2,'exhaustion recovery must be bounded');
+      p.destroy();
+    } finally {globalThis.fetch=originalFetch;}
+  }
+  // The watchdog must cover a single option too and not stop at metadata or
+  // the first fragment: it is released only once decoded data is available.
+  {
+    const p=new ElfuraPlayer({postMessage:false}); const opt={...pb.primary,id:'only-option',sourceId:'source-3'};p.sources=[opt];p.currentSource=opt;p.video.readyState=0;
+    const oldTimer=globalThis.setTimeout;let callback,delay,called=0;globalThis.setTimeout=(fn,ms)=>{callback=fn;delay=ms;return 1};p.failover=()=>{called++};
+    try {p.armStartupWatchdog(opt.id);assert.equal(delay,10000);callback();assert.equal(called,1);}finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
+  }
+
   // A late multi-audio group must appear without interrupting or relabelling
   // the active Korean stream. The recovery request uses the same API origin.
   {

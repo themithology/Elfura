@@ -237,6 +237,8 @@ export class ElfuraPlayer {
     settle: (res: { ok: boolean; loadFailed?: boolean }) => void;
   } | null = null;
   private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private exhaustedRecoveryAttempted = false;
+  private exhaustedRecoveryInFlight = false;
   private hevcSupportedCache: boolean | null = null;
   private destroyed = false;
 
@@ -993,7 +995,7 @@ export class ElfuraPlayer {
         headers['X-Elfura-Envelope'] = '1';
       }
 
-      const res = await fetch(apiUrl.toString(), { headers });
+      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.timeout(15000) });
       if (this.destroyed) return;
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
@@ -1073,6 +1075,7 @@ export class ElfuraPlayer {
       this.failedFingerprints.clear();
       this.measuredRttByFp.clear();
       this.initialAudioApplied = false;
+      this.exhaustedRecoveryAttempted = false;
       if (this.mediaInfo) this.emit('media', this.mediaInfo);
       this.emit('config', redacted(cfg as unknown as Record<string, unknown>));
 
@@ -1269,8 +1272,12 @@ export class ElfuraPlayer {
     }
     if ((this.input.config.subsrc?.length ?? 0) > 0) this.mergeExternalSubs();
 
-    if (engine === 'hls') void this.loadHls(url, loadSeq);
-    else if (engine === 'dash') void this.loadDash(url, loadSeq);
+    this.armStartupWatchdog(this.currentSource?.id);
+    const onEngineError = () => {
+      if (!this.destroyed && loadSeq === this.engineLoadSeq) this.handleFatal('engine-load', url, true);
+    };
+    if (engine === 'hls') void this.loadHls(url, loadSeq).catch(onEngineError);
+    else if (engine === 'dash') void this.loadDash(url, loadSeq).catch(onEngineError);
     else this.loadNative(url);
 
     this.applyInitialPrefs();
@@ -1601,13 +1608,13 @@ export class ElfuraPlayer {
     const fallbackOpt =
       prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
     if (!fallbackOpt) {
-      this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+      this.recoverExhaustedSources();
     }
 
     if (fallbackOpt && (this.currentSource?.id !== fallbackOpt.id || (this.currentSource && this.isCandidateFailed(this.currentSource)))) {
       await this.activateSourceOption(fallbackOpt, savedTime > 0.5);
       if (savedTime > 0.5 && wasPlaying) void this.play();
-    } else {
+    } else if (fallbackOpt) {
       this.shell.dataset.buffering = 'false';
     }
 
@@ -2183,19 +2190,19 @@ export class ElfuraPlayer {
 
   private armStartupWatchdog(expectedSourceId: string | undefined): void {
     this.clearStartupWatchdog();
-    if (!expectedSourceId || this.sources.length < 2 || this.activeProbe) return;
+    if (!expectedSourceId || this.activeProbe) return;
     this.startupWatchdogTimer = setTimeout(() => {
       this.startupWatchdogTimer = null;
       if (
         this.destroyed ||
         this.activeProbe ||
         this.currentSource?.id !== expectedSourceId ||
-        this.video.readyState >= 1
+        this.video.readyState >= 2
       ) {
         return;
       }
       this.failover();
-    }, 4500);
+    }, 10000);
   }
 
   private teardownEngine(): void {
@@ -2299,8 +2306,6 @@ export class ElfuraPlayer {
     this.hls = hls;
 
     let startupFragErrors = 0;
-    this.armStartupWatchdog(this.currentSource?.id);
-
     hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
       // Guard against HEVC-only levels on MSE engines without hardware HEVC support
       const hasPlayableCodec =
@@ -2355,7 +2360,6 @@ export class ElfuraPlayer {
 
     hls.on(Hls.Events.FRAG_LOADED, () => {
       startupFragErrors = 0;
-      this.clearStartupWatchdog();
     });
 
     // The truth behind "Auto": what ABR is really serving right now.
@@ -2638,6 +2642,69 @@ export class ElfuraPlayer {
     this.failover();
   }
 
+  /** Re-resolve groups once when startup exhausts the early bounded result.
+   * Slow lanes can have warmed the backend cache after the initial response.
+   * Failed fingerprints are never retried in this recovery pass.
+   */
+  private recoverExhaustedSources(): void {
+    if (this.exhaustedRecoveryInFlight) return;
+    const cfg = this.input.config;
+    const terminal = () => {
+      if (this.destroyed) return;
+      this.shell.dataset.buffering = 'false';
+      this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+    };
+    if (this.exhaustedRecoveryAttempted || !cfg.tmdb) { terminal(); return; }
+    this.exhaustedRecoveryAttempted = true;
+    this.exhaustedRecoveryInFlight = true;
+    const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+    const groups = cfg.source ? [String(cfg.source)] : ['source-2', 'source-3'];
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+    if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';
+    void (async () => {
+      const results = await Promise.all(groups.map(async group => {
+        try {
+          const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
+          url.searchParams.set('type', cfg.mediaType || 'movie');
+          url.searchParams.set('tmdb', String(cfg.tmdb));
+          if (cfg.mediaType === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
+          url.searchParams.set('source', group);
+          if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
+          if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+          const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10000) });
+          if (!res.ok) return [];
+          const raw = await res.json() as { s?: number; p?: string; sources?: SourceOption[] };
+          const data = raw.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+            ? await openSealedEnvelope<{ sources?: SourceOption[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce)) : raw;
+          return (data.sources ?? []).filter(c => c.sourceId === group);
+        } catch { return []; }
+      }));
+      this.exhaustedRecoveryInFlight = false;
+      if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+      const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
+      const ids = new Set(this.sources.map(s => s.id));
+      const recovered: SourceOption[] = [];
+      for (const candidate of results.flat()) {
+        if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
+        let id = candidate.id, n = 0;
+        while (ids.has(id) || this.failedSourceIds.has(id)) id = `${candidate.id}:recovery-${++n}`;
+        const option: SourceOption = { ...candidate, id, url: this.resolveBackendMediaUrl(candidate.url),
+          audioTracks: candidate.audioTracks?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})),
+          subtitles: candidate.subtitles?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})) };
+        ids.add(id);
+        if (option.fingerprint) fingerprints.add(option.fingerprint);
+        this.sources.push(option); recovered.push(option);
+      }
+      if (!recovered.length) { terminal(); return; }
+      this.reorderSourcesHierarchy(this.desiredAudioLang);
+      this.emit('sourcesUpdated', this.sources);
+      const next = this.sources.find(s => !this.isCandidateFailed(s));
+      if (!next) { terminal(); return; }
+      void this.activateSourceOption(next, true);
+    })();
+  }
+
   /**
    * Walk `sources` on fatal error. If an audio language is actively selected,
    * first try all remaining raw sources of that selected language before
@@ -2660,8 +2727,7 @@ export class ElfuraPlayer {
       ordered.sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
       if (!next) {
-        this.shell.dataset.buffering = 'false';
-        this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+        this.recoverExhaustedSources();
         return;
       }
       this.emit('server:switch', {
@@ -2675,8 +2741,7 @@ export class ElfuraPlayer {
 
     if (this.sources.length === 1) {
       this.markCandidateFailed(this.sources[0]);
-      this.shell.dataset.buffering = 'false';
-      this.emit('error', { code: 'all-sources-failed', message: 'The only playable source failed' });
+      this.recoverExhaustedSources();
       return;
     }
 
@@ -2899,7 +2964,7 @@ export class ElfuraPlayer {
       if (this.input.config.autoplayNextEp || this.input.config.next) this.emit('episode:next', {});
     });
     v.addEventListener('waiting', () => this.emit('buffering', {}));
-    v.addEventListener('loadedmetadata', () => this.clearStartupWatchdog());
+    v.addEventListener('loadeddata', () => this.clearStartupWatchdog());
     v.addEventListener('playing', () => {
       this.clearStartupWatchdog();
       this.emit('buffered', {});
