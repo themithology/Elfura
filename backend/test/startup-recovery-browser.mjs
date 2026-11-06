@@ -9,7 +9,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 const tmp=mkdtempSync(path.join(tmpdir(),'elfura-recovery-'));
-execFileSync('ffmpeg',['-loglevel','error','-f','lavfi','-i','color=c=blue:s=320x180:r=25','-f','lavfi','-i','sine=frequency=440:sample_rate=44100','-t','8','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac','-f','mpegts',path.join(tmp,'segment.ts')]);
+try { execFileSync('ffmpeg',['-loglevel','error','-filter_threads','1','-threads','1','-f','lavfi','-i','color=c=blue:s=320x180:r=25','-f','lavfi','-i','sine=frequency=440:sample_rate=44100','-t','8','-c:v','libx264','-threads','1','-preset','ultrafast','-pix_fmt','yuv420p','-c:a','aac','-f','mpegts',path.join(tmp,'segment.ts')],{stdio:'pipe'}); } catch(e) { console.log('::error title=FixtureError::'+JSON.stringify({message:e.message,stderr:String(e.stderr||'').slice(0,1000)})); process.exit(1); }
 const media=readFileSync(path.join(tmp,'segment.ts'));
 const cfg=loadBackendConfig();const {server}=createBackendServer({...cfg,isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`;let browser,page;
