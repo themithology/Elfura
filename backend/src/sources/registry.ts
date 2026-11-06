@@ -388,8 +388,12 @@ export class SourceRegistry {
           key: `${adapterIdx}::${cand.key}`,
         })),
       );
+      // The curated Source 5 requires a proven master and child playlists;
+      // give it a little longer only when it actually returned a candidate.
+      // Unsupported titles still get the normal short startup budget.
+      const verificationBudget = ready.some(e => e.adapter.id === 'source-5' && e.result.candidates.length > 0) ? 2500 : 1300;
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
+        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(verificationBudget, remaining()))));
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
