@@ -10,7 +10,7 @@ const dir=await mkdtemp(path.join(os.tmpdir(),'roxy-browser-'));process.env.ROXY
 const {server}=createBackendServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
 let browser; let step='launch'; const debug=[];
 try {
- browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:chromiumBinary.args});const page=await browser.newPage();page.on('pageerror',e=>debug.push('pageerror:'+e.message));page.on('response',r=>{if(r.url().includes('/roxy/api/'))debug.push(new URL(r.url()).pathname+':'+r.status())});
+ browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:chromiumBinary.args.filter(x=>x!=='--disable-web-security')});const page=await browser.newPage();page.on('pageerror',e=>debug.push('pageerror:'+e.message));page.on('request',r=>{if(r.url().includes('/roxy/api/login'))debug.push('origin:'+(r.headers().origin||'missing'))});page.on('response',r=>{if(r.url().includes('/roxy/api/'))debug.push(new URL(r.url()).pathname+':'+r.status())});
  step='login'; await page.goto(base+'/roxy');await page.fill('#password','roxy-browser-test');await page.click('#loginForm button');await page.waitForSelector('#dashboard:not(.hidden)');
  assert.equal(await page.locator('#watching').textContent(),'0');assert.equal(await page.locator('#chart .bar').count(),72);
  step='telemetry'; const embed=await browser.newPage();await embed.goto(base+'/embed/movie/872585',{referer:'https://example.com/'});await embed.waitForFunction(()=>!!window.__elfura?.player?.video);await embed.evaluate(()=>window.__elfura.player.video.dispatchEvent(new Event('playing')));
