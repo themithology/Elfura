@@ -266,9 +266,10 @@ async function runSingleProbe(
   const task = (async (): Promise<LivenessProbeOutcome> => {
     const t0 = performance.now();
     const elapsed = () => Math.max(1, Math.round(performance.now() - t0));
-    const sig = outerSignal
-      ? AbortSignal.any([outerSignal, AbortSignal.timeout(3000)])
-      : AbortSignal.timeout(3000);
+    // A caller can stop waiting at its startup deadline without cancelling the
+    // shared 3s network probe. Successful late results warm the liveness cache
+    // for background recovery; no new request extends initial playback.
+    const sig = AbortSignal.timeout(3000);
 
     try {
       if (cand.type === 'mp4') {

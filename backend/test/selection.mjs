@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {verifyAndFilterCandidatesDetailed, diagnoseMultiAudioCandidate} from '../../dist/backend/sources/liveness.js';
+import {verifyAndFilterCandidatesDetailed, diagnoseMultiAudioCandidate, cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
 import {createSource1Adapter} from '../../dist/backend/sources/source1.js';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
@@ -24,6 +24,9 @@ try {
  assert(!multi.some(x=>x.candidate.key==='single-b'),'single-track source must not be called multi-audio');
  assert.equal(new Set(single.map(x=>new URL(x.candidate.url).hostname)).size,2,'fallbacks should use different hosts');
  const preferred=selectPlaybackCandidates(entries.map(x=>x.candidate.key==='single-b'?{...x,candidate:{...x.candidate,audioLang:'hi'}}:x),'hi');assert(preferred.some(x=>x.candidate.key==='single-b'),'prefer a verified requested-language fallback');
+ const slow=cand('slow-verify.example','late-multi',{multiAudio:true,availableAudioLangs:['hi','en']});
+ globalThis.fetch=async input=>{if(String(input).includes('late-multi'))await new Promise(r=>setTimeout(r,250));return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');};
+ await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));assert.equal(cachedCandidateEvidence(slow),null);await new Promise(r=>setTimeout(r,350));assert.equal(cachedCandidateEvidence(slow)?.alive,true,'shared probe should finish and warm cache after startup timeout');assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slow}])[0].candidate.multiAudio,true);
  const unknown=selectPlaybackCandidates([{adapter:one,candidate:cand('e.example','unverified',{multiAudio:true,availableAudioLangs:['hi','en']})}]);assert.equal(unknown.length,1);assert.equal(unknown[0].candidate.multiAudio,false);assert.equal(unknown[0].candidate.availableAudioLangs,undefined);
  const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,three].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.equal(playback.sources.filter(x=>!x.multiAudio).length,2);assert.equal(playback.sources.filter(x=>x.multiAudio).length,2);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
  const cfg=loadBackendConfig({ELFURA_SECRET:'test'});cfg.source1.riftOrigin='https://rift.example';cfg.source1.vidrockOrigin='';cfg.source1.vidboltOrigin='https://bolt.example';

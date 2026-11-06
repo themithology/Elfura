@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { extractManifestAudioLangs } from '../relay.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -110,7 +111,7 @@ export async function fetchFromVidBolt(
       signal,
     });
     if (!res.ok) return [];
-    const payload = (await res.json()) as { stream?: { sources?: { url?: string; type?: string }[] } };
+    const payload = (await res.json()) as { stream?: { sources?: { url?: string; type?: string; master?: unknown }[] } };
     const out: RawStreamCandidate[] = [];
     for (const source of payload.stream?.sources ?? []) {
       if (typeof source.url !== 'string' || !isSafeUpstreamUrl(source.url)) continue;
@@ -118,7 +119,12 @@ export async function fetchFromVidBolt(
       const testLoopback = process.env.NODE_ENV === 'test' && process.env.ELFURA_ALLOW_LOOPBACK_TEST === '1' && (host === 'localhost' || host === '127.0.0.1');
       if (!testLoopback && !/(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/.test(host)) continue;
       if (inferStreamType(source.type, source.url) !== 'hls') continue;
+      // The API's embedded master is a scheduling hint only. The actual URL
+      // still has to pass independent manifest and child-playlist checks.
+      const hintedLangs = typeof source.master === 'string' && source.master.length <= 512 * 1024
+        ? extractManifestAudioLangs(source.master) : [];
       out.push({ key: source.url, url: source.url, type: 'hls', quality: 'auto', rank: 4,
+        ...(new Set(hintedLangs).size > 1 ? {multiAudio:true, availableAudioLangs:hintedLangs} : {}),
         // The movie CDN has served 1080p and 720p bytes under 720p and 480p labels.
         // Keep adaptive playback, but do not advertise untrustworthy manual heights.
         ...(host === 'img.rousav.tech' ? { qualityLabelsUnreliable: true } : {}),

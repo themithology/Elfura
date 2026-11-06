@@ -68,7 +68,7 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
       assert.equal(parsed.searchParams.get('season'), '2');
       assert.equal(parsed.searchParams.get('episode'), '3');
       return new Response(JSON.stringify({ stream: { sources: [
-        { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls' },
+        { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls', master: '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en"' },
         { url: 'https://vidstuck.cc/master.m3u8', type: 'hls' },
         { url: 'https://untrusted.example/master.m3u8', type: 'hls' },
       ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -76,7 +76,8 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     const sources = await fetchFromVidBolt('https://vidbolt.xyz', {type:'tv',tmdbId:'93405',season:2,episode:3});
     assert.equal(sources.length, 1);
     assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
-    assert.equal(sources[0].multiAudio, undefined); // manifest verification establishes this
+    assert.equal(sources[0].multiAudio, true); // scheduling hint, independently verified before playback
+    assert.deepEqual(sources[0].availableAudioLangs, ['hi','en']);
     assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
   } finally { globalThis.fetch = originalFetch; }
 }
@@ -1891,6 +1892,18 @@ try {
       p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
       release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-2'));assert.deepEqual(requested,['hi']);p.destroy();
     }finally{globalThis.fetch=oldFetch}
+  }
+
+  // A source-specific playback request can recover the same fingerprint after
+  // the startup probe times out, without duplicating or restarting it.
+  {
+    const oldFetch=globalThis.fetch;let calls=0,release;const gate=new Promise(r=>{release=r});
+    const fallback={...pb.primary,id:'late-source-2',sourceId:'source-2',audioLang:undefined,multiAudio:false,availableAudioLangs:[],fingerprint:'same-vidbolt',audioTracks:[],subtitles:[]};
+    const proven={...fallback,multiAudio:true,availableAudioLangs:['hi','en']};
+    globalThis.fetch=async input=>{if(!String(input).includes('/api/v1/playback'))return new Response('',{status:404});calls++;if(calls===1)return Response.json({ok:true,primary:fallback,sources:[fallback]});await gate;return Response.json({ok:true,primary:proven,sources:[proven]});};
+    try {const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'872585',mediaType:'movie',source:'source-2',pltoken:'token',nonce:'nonce'});
+      p.activateSourceOption=async opt=>{p.currentSource=opt};await new Promise(r=>setTimeout(r,20));assert.equal(calls,2);release();await new Promise(r=>setTimeout(r,30));assert.equal(p.getSources().length,1);assert.equal(p.getSources()[0].multiAudio,true);assert.deepEqual(p.getSources()[0].availableAudioLangs,['hi','en']);p.destroy();
+    } finally {globalThis.fetch=oldFetch;}
   }
 
   // Preferred Hindi must choose a known matching source without running the

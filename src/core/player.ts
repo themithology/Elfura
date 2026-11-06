@@ -1101,7 +1101,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = !cfg.source ? [
+      const lateGroups = (!cfg.source || cfg.source === 'source-2') ? [
         ...(!this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio) ? ['source-2'] : []),
       ] : [];
       for (const recoveryId of lateGroups) {
@@ -1120,12 +1120,26 @@ export class ElfuraPlayer {
             const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
               ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
               : raw;
-            if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || cfg.source) return;
+            if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
             const fingerprints = new Set(this.sources.map((s) => s.fingerprint).filter(Boolean));
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
             for (const candidate of recovered.sources ?? []) {
-              if (candidate.sourceId !== recoveryId || !candidate.multiAudio || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
+              if (candidate.sourceId !== recoveryId || !candidate.multiAudio) continue;
+              if (candidate.fingerprint && fingerprints.has(candidate.fingerprint)) {
+                // A timed-out first probe may have returned this exact stream
+                // as an unknown single fallback. Upgrade it in place once the
+                // independently checked manifest is available.
+                const existing = this.sources.find(s => s.fingerprint === candidate.fingerprint);
+                if (existing && !existing.multiAudio) {
+                  existing.multiAudio = true;
+                  existing.availableAudioLangs = candidate.availableAudioLangs;
+                  existing.audioLang = undefined;
+                  existing.label = candidate.label;
+                  added = true;
+                }
+                continue;
+              }
               const option = resolveSource(candidate);
               if (ids.has(option.id)) {
                 let n = 1;

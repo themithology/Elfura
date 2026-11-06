@@ -8,7 +8,7 @@ const base=loadBackendConfig();
 const dead='http://127.0.0.1:1';
 const {server,cfg}=createBackendServer({
   ...base, isProd:false, resolveTimeoutMs:10000,
-  source1:{...base.source1,appOrigin:dead,apiOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
+  source1:{...base.source1,riftOrigin:dead,vidrockOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
   source3:{...base.source3,enabled:false},
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -18,7 +18,8 @@ let browser;
 try {
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage();
- for(const c of [{type:'tv',id:'93405',path:'tv/93405/1/1'}, {type:'tv',id:'289517',path:'tv/289517/1/1'}, {type:'movie',id:'693134',path:'movie/693134'}]) {
+ const cases=[{type:'movie',id:'872585',path:'movie/872585'}, {type:'tv',id:'93405',path:'tv/93405/1/1'}, {type:'tv',id:'289517',path:'tv/289517/1/1'}];
+ for(const c of cases.filter(x=>!process.env.VIDBOLT_TEST_ID || x.id===process.env.VIDBOLT_TEST_ID)) {
   let step='open';
   try {
    await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-2`,{waitUntil:'domcontentloaded',timeout:30000});

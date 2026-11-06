@@ -10,6 +10,10 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        tmdb: ['872585', '93405', '289517']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,6 +21,7 @@ jobs:
           node-version: '22'
       - run: npm ci
       - run: npm run build
-      - run: npm test
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/research-vidbolt-elfura-browser.mjs
+        env:
+          VIDBOLT_TEST_ID: ${{ matrix.tmdb }}
