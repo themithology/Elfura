@@ -1,0 +1,20 @@
+name: Diagnose live confirmation
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/diagnose-live-confirmation.mjs, .github/workflows/diagnose-live-confirmation.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/diagnose-live-confirmation.mjs
+        env:
+          ELFURA_BUILD: 96af590
