@@ -18,4 +18,6 @@ await Promise.all(Array.from({length:3},async()=>{while(cursor<labels.length){co
   const matching=all.filter(x=>JSON.stringify(x.hashes)===JSON.stringify(canonical)).map(x=>x.id);
   results.push({id:item.id,ms:Date.now()-started,own:own.length,top:top.length,hashes:canonical,matching,claimedLanguages:[...new Set(own.flatMap(s=>s.audioLanguages||[s.language]).filter(Boolean))]});
  }catch(e){results.push({id:item.id,ms:Date.now()-started,error:e.message})}}}));
-notice({type,id,completed:results.length,results:results.sort((a,b)=>a.id.localeCompare(b.id)).map(r=>({id:r.id,ms:r.ms,own:r.own,top:r.top,hashes:r.hashes,matchingCount:r.matching?.length,claimedLanguages:r.claimedLanguages,error:r.error})),note:'Exact relay URL hashes only; tokens may rotate across requests. Matching counts are within one response.'});
+results.sort((a,b)=>a.id.localeCompare(b.id));
+for(let i=0;i<results.length;i+=8) notice({type,id,part:i/8+1,results:results.slice(i,i+8).map(r=>({id:r.id,ms:r.ms,own:r.own,top:r.top,hashes:r.hashes,matchingCount:r.matching?.length,claimedLanguages:r.claimedLanguages,error:r.error}))});
+notice({type,id,completed:results.length,withSources:results.filter(r=>r.own>0).length,failures:results.filter(r=>r.error).length,note:'Exact relay URL hashes only; tokens may rotate across requests. Matching counts are within one response.'});
