@@ -1,5 +1,7 @@
 import {createBackendServer} from '../../dist/backend/index.js';
 import {chromium} from 'playwright-core';import chromiumBinary from '@sparticuz/chromium';
+process.on('uncaughtException', e => console.log('::error title=NodeUncaught::'+String(e.stack||e).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,1600)));
+process.on('unhandledRejection', e => console.log('::error title=NodeUnhandled::'+String(e?.stack||e).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,1600)));
 const log=v=>console.log('::notice title=AnimeBrowser::'+JSON.stringify(v).replace(/%/g,'%25'));
 const {server}=createBackendServer({isProd:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;let browser;
 try{browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
