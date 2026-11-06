@@ -19,4 +19,7 @@ jobs:
       - run: node backend/test/bingr-live-adapter.mjs
       - run: npm run build:embed
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
-      - run: node backend/test/bingr-elfura-browser.mjs
+      - name: Player check
+        run: |
+          node backend/test/bingr-elfura-browser.mjs > /tmp/browser-result 2>&1 || { head -c 3000 /tmp/browser-result | sed 's/^/::notice title=BrowserError::/'; exit 1; }
+          cat /tmp/browser-result
