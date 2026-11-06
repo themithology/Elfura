@@ -1,0 +1,10 @@
+// Browser research only. Never log URLs, tokens, cookies, or response bodies.
+import {chromium} from 'playwright-core';
+import chromiumBinary from '@sparticuz/chromium';
+const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
+const page=await browser.newPage();
+const results=[]; let manifests=[]; let requests=[];
+page.on('response',async r=>{try{const u=new URL(r.url()); if(/(?:^|\.)(?:vidstuck\.cc|nxsha\.space)$/.test(u.hostname))return; const ct=r.headers()['content-type']||''; if(!/mpegurl|\.m3u8/i.test(ct+u.pathname))return; const t=(await r.text()).slice(0,300000);if(!t.includes('#EXTM3U'))return;const a=t.split(/\r?\n/).filter(l=>/^#EXT-X-MEDIA:.*TYPE=AUDIO/i.test(l));manifests.push({host:u.hostname,status:r.status(),audio:a.length,langs:a.map(l=>l.match(/LANGUAGE="([^"]+)"/i)?.[1]).filter(Boolean),variants:(t.match(/^#EXT-X-STREAM-INF/gim)||[]).length});}catch{}});
+page.on('request',r=>{try{let u=new URL(r.url());if(/m3u8|mpd|api\/|embed/.test(u.pathname))requests.push({host:u.hostname,kind:/api\//.test(u.pathname)?'source':/\.mpd/.test(u.pathname)?'dash':'hls'});}catch{}});
+for(const path of ['/embed/movie/872585','/embed/movie/299534','/embed/tv/93405/1/1','/embed/tv/85937/1/1']) {manifests=[];requests=[];try{await page.goto('https://vidcore.org'+path,{waitUntil:'domcontentloaded',timeout:45000});await page.waitForTimeout(18000);const state=await page.evaluate(()=>({video:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,ready:v.readyState,height:v.videoHeight})),buttons:[...document.querySelectorAll('button')].map(b=>b.innerText.trim()||b.getAttribute('aria-label')||'').filter(Boolean).slice(0,35),body:document.body.innerText.slice(0,350)}));results.push({path,state,manifests:manifests.slice(0,12),requests:[...new Map(requests.map(x=>[x.host+':'+x.kind,x])).values()].slice(0,15)});}catch(e){results.push({path,error:e.name})}}
+await browser.close();for(const result of results)console.log(`::notice title=VidcoreBrowser::${JSON.stringify(result).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
