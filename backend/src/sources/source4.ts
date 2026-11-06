@@ -55,8 +55,8 @@ export async function fetchAnimeMultiAudio(query: SourceQuery): Promise<RawStrea
   } catch { return []; }
 }
 
-export function createSource4Adapter(): SourceAdapter {
-  return {id:'source-4',label:'Source 4',enabled:()=>true,async resolve(query){
+export function createSource4Adapter(enabled = true): SourceAdapter {
+  return {id:'source-4',label:'Source 4',enabled:()=>enabled,async resolve(query){
     const start=Date.now(); const candidates=await fetchAnimeMultiAudio(query);
     query.diag?.push({adapter:'source-4',lane:'anime',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${candidates.length}`});
     return {candidates};

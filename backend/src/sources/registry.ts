@@ -48,7 +48,7 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 1),
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
-      createSource4Adapter(),
+      createSource4Adapter(cfg.source4?.enabled !== false),
     ];
   }
 
