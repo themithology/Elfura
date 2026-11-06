@@ -2,7 +2,7 @@ name: Vidara research
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/test/research-vidara.mjs, .github/workflows/research-vidara.yml]
+    paths: [backend/test/research-vidara.mjs, backend/test/vidara-browser-research.mjs, .github/workflows/research-vidara.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,3 +15,5 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: node backend/test/research-vidara.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium hls.js
+      - run: node backend/test/vidara-browser-research.mjs
