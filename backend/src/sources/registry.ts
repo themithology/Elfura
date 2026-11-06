@@ -16,6 +16,7 @@ import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
+import { createSource4Adapter } from './source4.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -47,6 +48,7 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 1),
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
+      createSource4Adapter(),
     ];
   }
 
@@ -72,6 +74,7 @@ export class SourceRegistry {
       season: params.season,
       episode: params.episode,
       diag,
+      resolveMetaFallback: () => fetchTmdbMetadata(this.cfg.tmdb, params),
       signal: AbortSignal.timeout(15_000),
     };
     const adapters = await Promise.all(
@@ -594,6 +597,7 @@ export class SourceRegistry {
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
       ...(singleDubHint ? { l: singleDubHint } : {}),
+      ...(cand.refreshNekoEpisode ? { nr: cand.refreshNekoEpisode, fp: 1 as const } : {}),
     });
 
     const audioTracks = (cand.audioTracks ?? []).map((t) => ({

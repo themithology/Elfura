@@ -212,6 +212,8 @@ export interface StreamTicketPayload {
   l?: string;
   /** Force 100% backend segment relay (bypasses hybrid CDN offload, e.g. on ISP block fallback). */
   fp?: 1;
+  /** Opaque episode ID used only for refreshing NekoMux's expiring HLS signature. */
+  nr?: string;
   /** Unix seconds expiration. */
   exp: number;
 }

@@ -1096,10 +1096,14 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      if (!cfg.source && !this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio)) {
+      const lateGroups = !cfg.source ? [
+        ...(!this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio) ? ['source-2'] : []),
+        ...((cfg.mediaType || data.media?.type) === 'tv' && !this.sources.some((s) => s.sourceId === 'source-4') ? ['source-4'] : []),
+      ] : [];
+      for (const recoveryId of lateGroups) {
         const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
         const recoveryUrl = new URL(apiUrl);
-        recoveryUrl.searchParams.set('source', 'source-2');
+        recoveryUrl.searchParams.set('source', recoveryId);
         void (async () => {
           try {
             // The first group result may precede a slower lane. Retry once
@@ -1117,7 +1121,7 @@ export class ElfuraPlayer {
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
             for (const candidate of recovered.sources ?? []) {
-              if (candidate.sourceId !== 'source-2' || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
+              if (candidate.sourceId !== recoveryId || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
               const option = resolveSource(candidate);
               if (ids.has(option.id)) {
                 let n = 1;
@@ -1139,12 +1143,12 @@ export class ElfuraPlayer {
               // actually reports that language. Never relabel current audio.
               const wanted = this.desiredAudioLang;
               if (wanted && wanted !== 'und' && matchScore(wanted, this.currentAudio?.lang ?? 'und') < 0 &&
-                  this.sources.some((s) => s.sourceId === 'source-2' &&
+                  this.sources.some((s) => s.sourceId === recoveryId &&
                     (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
                 void this.setAudio(wanted);
               }
             }
-            if ((recovered.sources ?? []).some((s) => s.sourceId === 'source-2' && s.multiAudio)) break;
+            if ((recovered.sources ?? []).some((s) => s.sourceId === recoveryId && s.multiAudio)) break;
             }
           } catch {
             // Recovery is optional; current playback must keep going.

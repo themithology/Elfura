@@ -1593,6 +1593,7 @@ try {
     { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
     { id: 'source-3', label: 'Source 3' },
+    { id: 'source-4', label: 'Source 4' },
   ]);
 
   // The public diagnostic reports observations, never upstream links or
@@ -1603,7 +1604,7 @@ try {
   const diag = await diagRes.json();
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
-  assert.equal(diag.sources.length, 3);
+  assert.equal(diag.sources.length, 4);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');

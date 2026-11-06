@@ -411,6 +411,8 @@ export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
+  /** Private signed-ticket context for refreshing this provider's HLS paths. */
+  nekoEpisode?: string;
   /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
   canOffloadSegment?: (absUrl: string) => boolean;
 }
@@ -452,6 +454,7 @@ export function rewriteHlsManifest(
       ...(headers && Object.keys(headers).length ? { h: headers } : {}),
       k: kind,
       ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
+      ...(options?.nekoEpisode && new URL(abs).hostname === 'play.nekomux.com' ? { nr: options.nekoEpisode } : {}),
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
   };
@@ -819,6 +822,7 @@ async function sendRewrittenManifest(
     relayMode: 'hybrid' | 'full';
     forceProxy: boolean;
     requireHttpsOffload: boolean;
+    nekoEpisode?: string;
   },
 ): Promise<void> {
   const allowedBuckets = new Set<string>();
@@ -845,6 +849,7 @@ async function sendRewrittenManifest(
 
   const rewriteOptions: RewriteManifestOptions = {
     forceProxy: relayOpts.forceProxy,
+    ...(relayOpts.nekoEpisode ? { nekoEpisode: relayOpts.nekoEpisode } : {}),
     ...(allowedBuckets.size > 0
       ? {
           canOffloadSegment: (absUrl: string) =>
@@ -879,6 +884,51 @@ async function sendRewrittenManifest(
   res.end(buf);
 }
 
+// NekoMux signs its media paths for about 20 minutes, shorter than an
+// episode. Refresh through the fixed provider origin and only replace the
+// signature prefix when the returned stream identity matches the old path.
+const nekoRefreshCache = new Map<string, { prefix: string; root: string; exp: number }>();
+const nekoRefreshInFlight = new Map<string, Promise<{ prefix: string; root: string; exp: number } | null>>();
+export async function refreshNekoSignedUrl(raw: string, episode: string): Promise<string> {
+  if (!/^\d{1,10}$/.test(episode)) return raw;
+  let url: URL;
+  try { url = new URL(raw); } catch { return raw; }
+  if (url.protocol !== 'https:' || url.hostname !== 'play.nekomux.com') return raw;
+  const old = url.pathname.match(/^\/p\/[^/]+\/(\d+)\/(\d+\/hls\/[0-9A-Z]{26}\/.*)$/i);
+  if (!old || Number(old[1]) > Date.now()/1000 + 90) return raw;
+  let fresh = nekoRefreshCache.get(episode);
+  if (!fresh || fresh.exp <= Date.now()/1000 + 90) {
+    let pending = nekoRefreshInFlight.get(episode);
+    if (!pending) {
+      pending = (async () => {
+        try {
+          const r = await fetch(`https://player.nekomux.com/episode/${episode}/source`, {
+            headers: {Referer:`https://player.nekomux.com/episode/${episode}`, 'User-Agent':DEFAULT_RELAY_UA},
+            signal:AbortSignal.timeout(3500), redirect:'error',
+          });
+          if (!r.ok) return null;
+          const d = await r.json() as {ok?:unknown;type?:unknown;url?:unknown};
+          if (!d.ok || d.type !== 'hls' || typeof d.url !== 'string') return null;
+          const u = new URL(d.url);
+          if (u.protocol !== 'https:' || u.hostname !== 'play.nekomux.com') return null;
+          const m = u.pathname.match(/^(\/p\/[^/]+\/(\d+)\/)(\d+\/hls\/[0-9A-Z]{26}\/)master\.m3u8$/i);
+          if (!m || Number(m[2]) <= Date.now()/1000 + 90) return null;
+          const value = {prefix:m[1],root:m[3],exp:Number(m[2])};
+          if (nekoRefreshCache.size >= 128) nekoRefreshCache.delete(nekoRefreshCache.keys().next().value!);
+          nekoRefreshCache.set(episode,value);
+          return value;
+        } catch { return null; }
+      })();
+      nekoRefreshInFlight.set(episode, pending);
+      void pending.then(() => { if (nekoRefreshInFlight.get(episode) === pending) nekoRefreshInFlight.delete(episode); });
+    }
+    fresh = (await pending) ?? undefined;
+  }
+  if (!fresh || !old[2].startsWith(fresh.root)) return raw;
+  url.pathname = fresh.prefix + old[2];
+  return url.href;
+}
+
 export async function handleStreamRelay(
   req: IncomingMessage,
   res: ServerResponse,
@@ -911,11 +961,12 @@ export async function handleStreamRelay(
     return;
   }
 
+  if (ticket.nr) ticket.u = await refreshNekoSignedUrl(ticket.u, ticket.nr);
   const streamPath = opts.streamPath || '/api/v1/stream';
   const relayMode = opts.relayMode ?? 'hybrid';
   const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1;
   const requireHttpsOffload = opts.requireHttpsOffload ?? true;
-  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload };
+  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload, ...(ticket.nr ? { nekoEpisode: ticket.nr } : {}) };
 
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
