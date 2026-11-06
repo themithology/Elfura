@@ -5,10 +5,11 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const type=process.env.TEST_TYPE||'movie',id=process.env.TEST_TMDB||'807';
 const route=type==='tv'?`tv/${id}/${process.env.TEST_SEASON||'1'}/${process.env.TEST_EPISODE||'1'}`:`movie/${id}`;
-const start=Date.now(); let browser,page;
+let start=Date.now(),browser,page;
 try {
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  page=await browser.newPage({viewport:{width:393,height:873},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'});
+ start=Date.now();
  await page.goto(`https://embed.theogpiratebot.online/embed/${route}?autoplay=1&muted=1`,{waitUntil:'domcontentloaded',timeout:30000});
  await page.waitForFunction(()=>window.__elfura?.player,null,{timeout:15000});
  // Ask for muted playback immediately; do not wait 10 seconds before starting.

@@ -1,0 +1,17 @@
+name: Vidara research
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-vidara.mjs, .github/workflows/research-vidara.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: node backend/test/research-vidara.mjs
