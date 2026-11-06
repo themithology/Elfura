@@ -7,7 +7,6 @@
  *   - Pipeline C: VidRift/Orion boot
  *   - Pipeline D: VidBolt
  *   - Pipeline E: VidRock
- *   - Pipeline F: VidLink
  */
 
 import crypto from 'node:crypto';
@@ -410,137 +409,6 @@ async function fetchFromVidRock(
   }
 }
 
-async function fetchFromVidLink(
-  cfg: BackendConfig['source1'],
-  query: SourceQuery,
-): Promise<RawStreamCandidate[]> {
-  const linkOrigin = cfg.vidlinkOrigin;
-  const encOrigin = cfg.encDecOrigin;
-  if (!linkOrigin || !encOrigin || isSubOriginCoolingDown(linkOrigin) || isSubOriginCoolingDown(encOrigin)) {
-    return [];
-  }
-
-  try {
-    const encSig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
-    const encRes = await fetch(
-      `${encOrigin}/api/enc-vidlink?text=${encodeURIComponent(query.tmdbId)}`,
-      {
-        headers: { Accept: 'application/json', 'User-Agent': BROWSER_UA },
-        signal: encSig,
-      },
-    );
-    if (!encRes.ok) {
-      if (encRes.status >= 500) tripSubOriginCooldown(encOrigin);
-      return [];
-    }
-    const encJson = (await encRes.json()) as { result?: string };
-    const encId = typeof encJson?.result === 'string' ? encJson.result.trim() : '';
-    if (!encId) return [];
-
-    const apiPath =
-      query.type === 'movie'
-        ? `/api/b/movie/${encodeURIComponent(encId)}?multiLang=0`
-        : `/api/b/tv/${encodeURIComponent(encId)}/${query.season ?? 1}/${query.episode ?? 1}?multiLang=0`;
-
-    const apiSig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
-    const res = await fetch(`${linkOrigin}${apiPath}`, {
-        headers: {
-          Accept: 'application/json',
-          Referer: `${linkOrigin}/`,
-          Origin: linkOrigin,
-          'User-Agent': BROWSER_UA,
-          // Request the browser DASH delivery lane. Without this, VidLink
-          // returns requiresProxy MP4s that rate-limit non-browser relays.
-          'X-Playback-Environment': 'webkit',
-        },
-        signal: apiSig,
-    });
-    if (!res.ok) {
-      if (res.status >= 500) tripSubOriginCooldown(linkOrigin);
-      return [];
-    }
-
-    const data = (await res.json()) as {
-      stream?: {
-        type?: 'hls' | 'file' | 'dash';
-        playlist?: string;
-        playlistHeaders?: Record<string, string>;
-        headers?: Record<string, string>;
-        qualities?: Record<string, { type?: string; url?: string; requiresProxy?: boolean }>;
-        captions?: { url?: string; language?: string; label?: string }[];
-      };
-    };
-    const stream = data?.stream;
-    if (!stream) return [];
-
-    const mediaHeaders: Record<string, string> = {
-      Referer: `${linkOrigin}/`,
-      Origin: linkOrigin,
-      'User-Agent': BROWSER_UA,
-      // DASH delivery uses CloudFront signed cookies. Preserve them on the
-      // manifest and every rewritten child segment, exactly as provided.
-      ...(stream.playlistHeaders ?? {}),
-      ...(stream.headers ?? {}),
-    };
-
-    const subs = mapSubtitles(
-      (stream.captions ?? []).map((c) => ({
-        url: c.url,
-        lang: c.language || c.label,
-        label: c.label || c.language,
-      })),
-      mediaHeaders,
-    );
-
-    const out: RawStreamCandidate[] = [];
-    if (typeof stream.playlist === 'string' && isSafeUpstreamUrl(stream.playlist)) {
-      const playlistType = inferStreamType(stream.type, stream.playlist);
-      out.push({
-        key: `vlink:${playlistType}:${stream.playlist}`,
-        type: playlistType,
-        url: stream.playlist,
-        headers: mediaHeaders,
-        quality: 'auto',
-        multiAudio: false,
-        subtitles: subs,
-        rank: 12,
-      });
-    }
-
-    if (stream.qualities && typeof stream.qualities === 'object') {
-      const rungs = Object.entries(stream.qualities)
-        .map(([qKey, qObj]) => ({
-          height: parseInt(qKey.replace(/\D+/g, ''), 10) || 0,
-          url: String(qObj?.url ?? '').trim(),
-          type: qObj?.type,
-          requiresProxy: qObj?.requiresProxy === true,
-        }))
-        .filter((r) => r.url && !r.requiresProxy && isSafeUpstreamUrl(r.url))
-        .sort((a, b) => b.height - a.height);
-
-      if (rungs.length > 0) {
-        const best = rungs[0];
-        const fallbackRung = rungs[1];
-        out.push({
-          key: `vlink:mp4:${best.url}`,
-          type: inferStreamType(best.type || 'mp4', best.url),
-          url: best.url,
-          headers: mediaHeaders,
-          quality: best.height ? `${best.height}p` : 'auto',
-          multiAudio: false,
-          subtitles: subs,
-          ...(fallbackRung ? { standbyUrl: fallbackRung.url, standbyHeaders: mediaHeaders } : {}),
-          rank: 18,
-        });
-      }
-    }
-
-    return out;
-  } catch {
-    return [];
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Source 1 Adapter Factory                                            */
 /* ------------------------------------------------------------------ */
@@ -561,15 +429,13 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         rift: { val: RawStreamCandidate[]; ms: number } | null;
         sync: { val: RawStreamCandidate[]; ms: number } | null;
         rock: { val: RawStreamCandidate[]; ms: number } | null;
-        link: { val: RawStreamCandidate[]; ms: number } | null;
       } = {
         rift: null,
         sync: null,
         rock: null,
-        link: null,
       };
 
-      const totalPipelines = 4;
+      const totalPipelines = 3;
       let settledCount = 0;
       let liveSourcePipelines = 0;
       let releaseEarly: (() => void) | null = null;
@@ -606,13 +472,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pLink = timed(group === 1 ? fetchFromVidLink(cfg, query) : Promise.resolve([])).then((r) => {
-        slots.link = r;
-        settledCount++;
-        if (r.val.length) liveSourcePipelines++;
-        checkFastSettle();
-      });
-      const allLanes = Promise.allSettled([pRift, pSync, pRock, pLink]);
+      const allLanes = Promise.allSettled([pRift, pSync, pRock]);
       // A diagnostic must measure every lane, even those skipped by the fast
       // playback race. Normal playback retains its short grace window.
       if (query.diag) await allLanes;
@@ -636,13 +496,11 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
       const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms) : [];
       const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms) : [];
       const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms) : [];
-      const linkCandidates = slots.link ? withTiming(slots.link.val, slots.link.ms) : [];
 
       const byUrl = new Map<string, RawStreamCandidate>();
       for (const c of [
         ...syncCandidates,
         ...rockCandidates,
-        ...linkCandidates,
         ...riftCandidates,
       ]) {
         const existing = byUrl.get(c.key);
@@ -713,9 +571,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
             ms: slot?.ms ?? 0,
             detail: !slot ? 'not-settled' : `candidates=${count}`,
           });
-        if (group === 1) {
-          lane('F', slots.link, linkCandidates.length);
-        } else {
+        if (group === 2) {
           lane('C', slots.rift, riftCandidates.length);
           lane('D', slots.sync, syncCandidates.length);
           lane('E', slots.rock, rockCandidates.length);

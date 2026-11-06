@@ -13,15 +13,12 @@ import { normalizeLang } from './lang.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
-  RawTrackRef,
   SourceAdapter,
   SourceQuery,
 } from './types.js';
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
-
-const IP_LOCKED_RE = /(?::\d{1,3}(?:\.\d{1,3}){3}:|[?&]KeyName=Signature\b)/i;
 
 function pickBestQualityLabel(primary?: string, list?: string[]): string {
   const candidates = [primary, ...(Array.isArray(list) ? list : [])].filter(
@@ -45,30 +42,6 @@ function inferStreamType(rawType?: string, url = ''): 'hls' | 'dash' | 'mp4' {
   if (t === 'dash' || /\.mpd(?:[?#]|$)/i.test(url)) return 'dash';
   if (t === 'mp4' || t === 'mkv' || t === 'webm' || /\.(?:mp4|webm|mkv)(?:[?#]|$)/i.test(url)) return 'mp4';
   return 'hls';
-}
-
-function mapSubtitles(
-  subs: { label?: string; lang?: string; url?: string }[] | undefined,
-  baseHeaders?: Record<string, string>,
-): RawTrackRef[] {
-  if (!Array.isArray(subs)) return [];
-  const seen = new Set<string>();
-  const out: RawTrackRef[] = [];
-  for (const s of subs) {
-    if (!s?.url || !isSafeUpstreamUrl(s.url)) continue;
-    const cleanLabel = String(s.label ?? '').replace(/\s*·\s*Orion\s*$/i, '').trim();
-    const norm = normalizeLang(s.lang || cleanLabel, cleanLabel);
-    const dedupKey = `${norm.code}:${s.url}`;
-    if (seen.has(dedupKey)) continue;
-    seen.add(dedupKey);
-    out.push({
-      lang: norm.code,
-      label: norm.label,
-      url: s.url,
-      ...(baseHeaders ? { headers: baseHeaders } : {}),
-    });
-  }
-  return out;
 }
 
 export async function fetchFromVidSyncPro(
@@ -137,16 +110,16 @@ export async function fetchFromVidSyncPro(
   ])) as [SyncResponse | null, SyncResponse | null];
 
   const rows: SyncSourceRow[] = [...(coreJson?.sources ?? []), ...(streamJson?.sources ?? [])];
-  const topLevelSubs = [...(coreJson?.subtitles ?? []), ...(streamJson?.subtitles ?? [])];
 
   // Detect if multiple distinct audio languages share an identical directUrl
   // (e.g. Castle returning the English rawUrl on Hindi/Japanese rows while
   // row.url `/api/core/proxy?...&defaultAudio=hi` serves the real dub).
   const langsByDirectUrl = new Map<string, Set<string>>();
   for (const r of rows) {
-    const dUrl = r?.directUrl || r?.rawUrl;
+    const rawUrl = r?.directUrl || r?.rawUrl || r?.url;
+    const dUrl = typeof rawUrl === 'string' && rawUrl.startsWith('/') ? `${origin}${rawUrl}` : rawUrl;
     if (!dUrl) continue;
-    const lang = normalizeLang(r.audioLanguage || r.language || 'en', r.audioLabel).code;
+    const lang = normalizeLang(r.audioLanguage || r.language || 'und', r.audioLabel).code;
     if (!langsByDirectUrl.has(dUrl)) langsByDirectUrl.set(dUrl, new Set());
     langsByDirectUrl.get(dUrl)!.add(lang);
   }
@@ -174,7 +147,7 @@ export async function fetchFromVidSyncPro(
           ? row.url
           : '';
 
-    const norm = normalizeLang(row.audioLanguage || row.language || 'en', row.audioLabel);
+    const norm = normalizeLang(row.audioLanguage || row.language || 'und', row.audioLabel);
     const providerKey = (row.provider?.id || 'sync').toLowerCase();
 
     // Collapse Castle's 5 quality clones (`1080p`, `720p`, `480p`, `360p`, `Auto`) per language
@@ -183,7 +156,7 @@ export async function fetchFromVidSyncPro(
     seenGroup.add(groupKey);
 
     const sharedDirectAcrossLangs =
-      directCandidate && (langsByDirectUrl.get(directCandidate)?.size ?? 0) > 1 && norm.code !== 'en';
+      (langsByDirectUrl.get(directCandidate || proxyCandidate)?.size ?? 0) > 1;
 
     // Always prefer vidsync's `/api/core/proxy` whenever provided (prevents 403 rejections
     // on IP-signed `hscow.com` / `fcxmb.com` / `fastcloud.live` URLs and preserves multi-dub routing).
@@ -217,22 +190,11 @@ export async function fetchFromVidSyncPro(
         standbyUrl = directCandidate;
         standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
       }
-    } else if (row.standbyUrl && isSafeUpstreamUrl(row.standbyUrl) && !IP_LOCKED_RE.test(row.standbyUrl)) {
-      standbyUrl = row.standbyUrl;
-      standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.standbyHeaders ?? row.headers ?? {}) };
-    } else if (proxyCandidate && isSafeUpstreamUrl(proxyCandidate)) {
-      standbyUrl = proxyCandidate;
-      standbyHeaders = { Referer: `${origin}/`, 'User-Agent': BROWSER_UA };
-    }
 
-    // Use the provider's alternative URL as a failover; its lifetime and
-    // language must still be verified. availableQualities describes the
-    // catalogue, not necessarily selectable renditions in this manifest.
-    const permanentUrl = String(row.permanent_m3u8_url ?? '').trim();
-    if (!standbyUrl && !sharedDirectAcrossLangs && permanentUrl && permanentUrl !== primaryUrl && isSafeUpstreamUrl(permanentUrl)) {
-      standbyUrl = permanentUrl;
-      standbyHeaders = { 'User-Agent': BROWSER_UA, ...(row.headers ?? {}) };
     }
+    // Do not trust provider standby/permanent URLs as same-language backups:
+    // in practice they can point to another dub entirely.
+
     out.push({
       key: primaryUrl,
       type: inferStreamType(row.type, primaryUrl),
@@ -241,13 +203,14 @@ export async function fetchFromVidSyncPro(
       // availableQualities describes the provider's catalogue, not this
       // particular playlist. Do not claim its highest quality for every row.
       quality: pickBestQualityLabel(row.quality),
-      // Row language labels are catalog claims and can be wrong. Only manifest
-      // evidence may supply an audio language to the player.
+      // An unambiguous row label is a single-track hint, not evidence of
+      // switchable audio or proof of spoken language. If the same direct URL
+      // is labelled as multiple languages, do not assign any label to it.
+      ...(!sharedDirectAcrossLangs && norm.code !== 'und' ? {audioLang:norm.code, audioLabel:norm.label} : {}),
       // These are catalogue-wide language labels, not playable audio tracks:
       // each row represents a separate dub. Manifest liveness may promote a
       // candidate to multi-audio when it actually contains multiple tracks.
       multiAudio: false,
-      subtitles: mapSubtitles([...(row.subtitles ?? []), ...topLevelSubs]),
       ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
       rank: 2 + i,
     });

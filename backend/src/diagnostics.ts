@@ -109,7 +109,6 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       probeOrigin('tmdb', tmdbBase),
       probeOrigin('s1-rift', cfg.source1.riftOrigin),
       probeOrigin('s1-sync', cfg.source1.syncOrigin),
-      probeOrigin('s1-link', cfg.source1.vidlinkOrigin),
       probeOrigin('s1-rock', cfg.source1.vidrockOrigin),
       probeOrigin('s3-vidsync', cfg.source3.origin),
       probeOrigin('subtitles', cfg.subtitles.openSubtitlesBase),

@@ -1476,7 +1476,6 @@ try {
   assert.equal(healthRes.status, 200);
   const health = await healthRes.json();
   assert.deepEqual(health.sources, [
-    { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
     { id: 'source-3', label: 'Source 3' },
   ]);
@@ -1489,7 +1488,7 @@ try {
   const diag = await diagRes.json();
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
-  assert.equal(diag.sources.length, 3);
+  assert.equal(diag.sources.length, 2);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
@@ -3064,7 +3063,7 @@ try {
       'Expected hin -> hi Hindi normalization on rewritten nitro manifest',
     );
 
-    // (c) End-to-end mock cluster test for Source 1 (VidSync Castle Proxy + VidRock GCM + VidLink)
+    // (c) End-to-end mock cluster test for VidSync Castle Proxy and VidRock GCM
     //     and Source 2 (NXStream Salted__ AES-256-CBC + VidStuck Raider Salted__ AES-256-CBC)
     const NX_PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
     const VS_PASS = '7f4c9e2a81d63b05c4f7a9e8126d3b50e1a8c7f23d9465ab0c6e9f1d4a7b832c';
@@ -3081,7 +3080,6 @@ try {
     };
 
     let vidapiReceivedReferer = '';
-    let vidlinkReceivedPlaybackEnv = '';
     const requestedNxProviders = [];
     const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
@@ -3153,34 +3151,6 @@ try {
             Nova: encryptVidRock(`${cOrigin}/vrock/nova.m3u8`),
             Hindi: encryptVidRock(`${cOrigin}/vrock/hindi.m3u8`),
             Luna: encryptVidRock('https://belfast.armadilloscp.workers.dev/browser-gated'),
-          }),
-        );
-        return;
-      }
-
-      // VidLink enc-dec + /api/b/movie
-      if (cu.pathname === '/api/enc-vidlink') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 200, result: 'ENC_533535_OK' }));
-        return;
-      }
-      if (cu.pathname === '/api/b/movie/ENC_533535_OK') {
-        vidlinkReceivedPlaybackEnv = String(req.headers['x-playback-environment'] || '');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            stream: {
-              type: 'dash',
-              playlist: `${cOrigin}/vlink/master.mpd`,
-              playlistHeaders: { Cookie: 'CloudFront-Policy=test-policy' },
-              qualities: {
-                1080: { type: 'mp4', url: `${cOrigin}/vlink/1080.mp4`, requiresProxy: true },
-              },
-              captions: [
-                { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
-                { url: `${cOrigin}/vlink/hi.srt`, language: 'Hindi' },
-              ],
-            },
           }),
         );
         return;
@@ -3400,12 +3370,8 @@ try {
         riftRelay: '',
         syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
-        vidlinkOrigin: cmOrigin,
-        encDecOrigin: cmOrigin,
       }, 2);
       const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
-      const linkRec = createSource1Adapter({ enabled: true, appOrigin: '', apiOrigin: '', riftOrigin: '', riftRelay: '', syncOrigin: cmOrigin, vidrockOrigin: cmOrigin, vidlinkOrigin: cmOrigin, encDecOrigin: cmOrigin }, 1);
-      const linkOut = await linkRec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
       const s3Rec = createSource3Adapter({ enabled: true, origin: cmOrigin });
       const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
 
@@ -3417,7 +3383,9 @@ try {
       const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
       assert.equal(castleCands[0].multiAudio, false, 'catalogue language labels are not switchable manifest tracks');
-      assert.equal(castleCands[0].audioLang, undefined, 'catalogue dub labels must not be advertised as verified audio');
+      assert.equal(castleCands[0].audioLang, 'en', 'unambiguous single-track language is retained as a hint');
+      assert.equal(directCand.audioLang, 'hi');
+      assert.equal(directCand.subtitles, undefined, 'provider subtitles must be ignored');
       const checkedCastle = await verifyAndFilterCandidates([castleCands[0]]);
       assert.equal(checkedCastle[0].qualityOptions, 1, 'a leaf playlist must override a claimed quality ladder');
       assert.equal(checkedCastle[0].qualityLadder, undefined);
@@ -3439,22 +3407,6 @@ try {
       assert(
         !s1Out.candidates.some((c) => c.url.includes('workers.dev')),
         'Browser/TLS-gated VidRock Workers lanes must not be advertised as playable',
-      );
-
-      assert.equal(vidlinkReceivedPlaybackEnv, 'webkit', 'VidLink API must request browser DASH delivery');
-      const vidlinkDash = linkOut.candidates.find((c) => c.url === `${cmOrigin}/vlink/master.mpd`);
-      assert(vidlinkDash && vidlinkDash.type === 'dash', 'VidLink .mpd playlist must remain DASH, not HLS');
-      assert.equal(vidlinkDash.headers.Cookie, 'CloudFront-Policy=test-policy');
-      assert(
-        !linkOut.candidates.some((c) => c.url.includes('/vlink/1080.mp4')),
-        'VidLink requiresProxy MP4 lanes must not be advertised to the non-browser relay',
-      );
-
-      // Source 3 carries its API-provided captions, while Source 1 still pools
-      // VidLink captions (`en`, `hi`) across its own candidates.
-      assert(
-        castleCands[0].subtitles.length >= 2 && vidlinkDash.subtitles.length >= 2,
-        'Expected Source 3 captions and pooled Source 1 VidLink captions to be present',
       );
 
       const s2Rec = createS2Recovery({

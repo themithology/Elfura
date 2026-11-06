@@ -45,7 +45,6 @@ export class SourceRegistry {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      createSource1Adapter(cfg.source1, 1),
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
     ];

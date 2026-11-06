@@ -53,8 +53,6 @@ export interface BackendConfig {
     vidboltOrigin?: string;
     riftRelay: string;
     syncOrigin: string;
-    vidlinkOrigin?: string;
-    encDecOrigin?: string;
     vidrockOrigin?: string;
   };
   /** Source 2 configurable endpoints (kept purely server-side). */
@@ -179,8 +177,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
       syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
-      vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),
-      encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
     // Legacy Source 2 configuration is retained in the type only; old panel

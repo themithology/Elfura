@@ -1,0 +1,31 @@
+name: VidSync playback verification
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/src/sources/source3.ts, backend/src/sources/selection.ts, backend/test/vidsync-browser.mjs, .github/workflows/vidsync-browser.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - type: movie
+            tmdb: '872585'
+          - type: tv
+            tmdb: '95479'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/vidsync-browser.mjs
+        env:
+          SYNC_TYPE: ${{ matrix.type }}
+          SYNC_TMDB: ${{ matrix.tmdb }}

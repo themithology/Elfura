@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {verifyAndFilterCandidatesDetailed, diagnoseMultiAudioCandidate, cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
+import {fetchFromVidSyncPro} from '../../dist/backend/sources/source3.js';
 import {createSource1Adapter} from '../../dist/backend/sources/source1.js';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
@@ -29,6 +30,15 @@ try {
  await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));assert.equal(cachedCandidateEvidence(slow),null);await new Promise(r=>setTimeout(r,350));assert.equal(cachedCandidateEvidence(slow)?.alive,true,'shared probe should finish and warm cache after startup timeout');assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slow}])[0].candidate.multiAudio,true);
  const unknown=selectPlaybackCandidates([{adapter:one,candidate:cand('e.example','unverified',{multiAudio:true,availableAudioLangs:['hi','en']})}]);assert.equal(unknown.length,1);assert.equal(unknown[0].candidate.multiAudio,false);assert.equal(unknown[0].candidate.availableAudioLangs,undefined);
  const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,three].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.equal(playback.sources.filter(x=>!x.multiAudio).length,2);assert.equal(playback.sources.filter(x=>x.multiAudio).length,2);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
+ // VidSync can label the same file in multiple languages and its standby
+ // may point to a different dub. Neither may be advertised as proven tracks.
+ const vsRows=[
+  {provider:{id:'castle'},url:'https://cdn.example/english.m3u8',directUrl:'https://cdn.example/english.m3u8',audioLanguage:'en',standbyUrl:'https://cdn.example/hindi.m3u8',quality:'720p'},
+  {provider:{id:'castle'},url:'https://cdn.example/hindi.m3u8',directUrl:'https://cdn.example/hindi.m3u8',audioLanguage:'hi',standbyUrl:'https://cdn.example/english.m3u8',quality:'720p'},
+  {provider:{id:'castle'},url:'https://cdn.example/english.m3u8',directUrl:'https://cdn.example/english.m3u8',audioLanguage:'ta',quality:'720p'},
+ ];globalThis.fetch=async()=>Response.json({sources:vsRows});
+ const vs=await fetchFromVidSyncPro('https://vidsync.example',{type:'movie',tmdbId:'872585'});const hi=vs.find(c=>c.url.endsWith('/hindi.m3u8')),shared=vs.find(c=>c.url.endsWith('/english.m3u8'));
+ assert.equal(hi.audioLang,'hi');assert.equal(hi.multiAudio,false);assert.equal(hi.standbyUrl,undefined);assert.equal(shared.audioLang,undefined);assert(vs.every(c=>!c.subtitles));
  const cfg=loadBackendConfig({ELFURA_SECRET:'test'});cfg.source1.riftOrigin='https://rift.example';cfg.source1.vidrockOrigin='';cfg.source1.vidboltOrigin='https://bolt.example';
  let subtitleRequests=0;globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.endsWith('subtitles.json'))subtitleRequests++;if(u.hostname==='rift.example')return Response.json({meta:{playbackToken:'test-token',orionStreams:[{url:'/api/orion/a/master.m3u8',name:'Orion · Hindi'},{url:'/api/orion/b/master.m3u8',name:'Orion · English'},{url:'/api/orion/c/master.m3u8',name:'Orion · Original'}]}});return new Response('',{status:404})};
  const rift=await createSource1Adapter(cfg.source1,2).resolve({type:'tv',tmdbId:'123',season:1,episode:1,diag:[]});assert.deepEqual(rift.candidates.map(c=>c.audioLang),['hi','en',undefined]);assert(rift.candidates.every(c=>!c.multiAudio && !c.subtitles));assert.equal(subtitleRequests,0);
