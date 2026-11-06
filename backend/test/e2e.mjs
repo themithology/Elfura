@@ -3371,9 +3371,12 @@ try {
         syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
       }, 2);
-      const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+      const laneDiag = [];
+      const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi', diag: laneDiag });
+      assert(s1Out.candidates.every(c => c.diagnosticLane === 'E'), 'diagnostics must attribute VidRock candidates to lane E');
       const s3Rec = createSource3Adapter({ enabled: true, origin: cmOrigin });
-      const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+      const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi', diag: [] });
+      assert(s3Out.candidates.every(c => c.diagnosticLane === 'stream'));
 
       // Source 3 must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
       // signed CDN lane as a secondary candidate for registry-level liveness filtering.

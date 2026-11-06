@@ -216,6 +216,7 @@ export async function fetchFromVidSyncPro(
       // candidate to multi-audio when it actually contains multiple tracks.
       multiAudio: false,
       ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
+      ...(query.diag ? { diagnosticLane: 'stream' } : {}),
       rank: 2 + i,
     });
   }

@@ -76,6 +76,7 @@ export class SourceRegistry {
       signal: AbortSignal.timeout(15_000),
     };
     const diagnosticCandidates = new Map<string, RawStreamCandidate[]>();
+    const diagnosticRaw = new Map<string, RawStreamCandidate[]>();
     const adapters = await Promise.all(
       this.adapters
         .filter((a) => a.enabled())
@@ -84,6 +85,7 @@ export class SourceRegistry {
           try {
             const result = await adapter.resolve(query);
             const raw = result.candidates;
+            diagnosticRaw.set(adapter.id, raw);
             const { candidates: verified, verifiedAliveCount } =
               await verifyAndFilterCandidatesDetailed(raw);
             diagnosticCandidates.set(adapter.id, verified);
@@ -156,7 +158,15 @@ export class SourceRegistry {
       languages:candidate.availableAudioLangs ?? [],
       verified:!!cachedCandidateEvidence(candidate)?.alive,
     }));
-    return { adapters, lanes: diag, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Fresh diagnostic snapshot; a reachable manifest does not prove full playback or audible language.' } };
+    const lanes = diag.map(entry => {
+      const candidates = (diagnosticRaw.get(entry.adapter) ?? []).filter(c => c.diagnosticLane === entry.lane);
+      const evidence = candidates.map(c => cachedCandidateEvidence(c));
+      return { ...entry, verifiedAlive: evidence.filter(e => e?.alive).length,
+        confirmedDead: evidence.filter(e => e?.confirmedDead).length,
+        unknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
+        verifiedMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
+    });
+    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Fresh diagnostic snapshot; a reachable manifest does not prove full playback or audible language.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {

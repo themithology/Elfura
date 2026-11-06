@@ -493,9 +493,9 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
           rank: c.rank + Math.min(ms, 5000) / 1000,
         }));
 
-      const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms) : [];
-      const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms) : [];
-      const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms) : [];
+      const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms).map(c => query.diag ? { ...c, diagnosticLane: 'C' } : c) : [];
+      const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms).map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) : [];
+      const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms).map(c => query.diag ? { ...c, diagnosticLane: 'E' } : c) : [];
 
       const byUrl = new Map<string, RawStreamCandidate>();
       for (const c of [

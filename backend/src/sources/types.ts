@@ -63,6 +63,8 @@ export interface RawStreamCandidate {
   key: string;
   /** Internal canonical stream identity (hashed into an opaque digest at the registry boundary). */
   fingerprint?: string;
+  /** Internal lane attribution, populated only during operator diagnostics. */
+  diagnosticLane?: string;
   /** Upstream-reported or adapter-measured edge latency in milliseconds. */
   latencyMs?: number;
   type: 'hls' | 'dash' | 'mp4';
