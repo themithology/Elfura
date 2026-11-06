@@ -238,6 +238,10 @@ export class PlayerUI {
   private nextEpWrap!: HTMLElement;
   private nextEpBtn!: HTMLButtonElement;
   private nextEpLabelEl!: HTMLElement;
+  private nextEpTitleEl!: HTMLElement;
+  private nextEpDetailsEl!: HTMLElement;
+  private nextEpThumb!: HTMLImageElement;
+  private nextSeasonRequested = 0;
   private nextEpDismissBtn!: HTMLButtonElement;
   private nextEpDismissedKey = '';
 
@@ -529,8 +533,16 @@ export class PlayerUI {
     this.nextEpBtn = el('button', 'elf-next-ep-btn') as HTMLButtonElement;
     const nextProg = el('span', 'elf-next-ep-prog');
     const nextIco = el('span', 'elf-next-ep-ico', I.nextEp);
+    this.nextEpThumb = el('img', 'elf-next-ep-thumb') as HTMLImageElement;
+    this.nextEpThumb.alt = '';
+    this.nextEpThumb.hidden = true;
+    this.nextEpThumb.onerror = () => { this.nextEpThumb.hidden = true; };
+    const nextText = el('span', 'elf-next-ep-text');
     this.nextEpLabelEl = el('span', 'elf-next-ep-label', 'Next Episode');
-    this.nextEpBtn.append(nextProg, nextIco, this.nextEpLabelEl);
+    this.nextEpTitleEl = el('span', 'elf-next-ep-title');
+    this.nextEpDetailsEl = el('span', 'elf-next-ep-details');
+    nextText.append(this.nextEpLabelEl, this.nextEpTitleEl, this.nextEpDetailsEl);
+    this.nextEpBtn.append(nextProg, this.nextEpThumb, nextIco, nextText);
     this.nextEpDismissBtn = el('button', 'elf-next-ep-dismiss', I.close) as HTMLButtonElement;
     this.nextEpDismissBtn.title = 'Dismiss';
     this.nextEpDismissBtn.setAttribute('aria-label', 'Dismiss next episode');
@@ -1378,6 +1390,7 @@ export class PlayerUI {
       const ev = d as { season?: number; episode?: number } | undefined;
       this.showInitialLoading();
       this.nextEpDismissedKey = '';
+      this.nextSeasonRequested = 0;
       this.nextEpWrap.dataset.visible = 'false';
       this.lastMediaSig = '';
       this.syncMediaMetadata();
@@ -1987,6 +2000,10 @@ export class PlayerUI {
 
     const dm = this.resolveDisplayMedia();
     const nextTarget = dm.mediaType === 'tv' ? this.player.getNextEpisodeTarget() : null;
+    if (nextTarget && nextTarget.season !== Number(dm.season ?? 1) && !this.player.getSeasonCatalog(nextTarget.season) && this.nextSeasonRequested !== nextTarget.season) {
+      this.nextSeasonRequested = nextTarget.season;
+      void this.player.fetchSeasonEpisodes(nextTarget.season);
+    }
 
     if (hit) {
       const span = Math.max(0.1, hit.end - hit.start);
@@ -2024,6 +2041,18 @@ export class PlayerUI {
       this.nextEpBtn.style.setProperty('--elf-next-pct', `${nextPct}%`);
       const lbl = `Next Episode · E${nextTarget.episode} (${countdown}s)`;
       if (this.nextEpLabelEl.textContent !== lbl) this.nextEpLabelEl.textContent = lbl;
+      const catalog = this.player.getSeasonCatalog(nextTarget.season);
+      const ep = catalog?.episodes.find(item => item.episodeNumber === nextTarget.episode);
+      const title = ep?.name || nextTarget.name || `Episode ${nextTarget.episode}`;
+      if (this.nextEpTitleEl.textContent !== title) this.nextEpTitleEl.textContent = title;
+      const details = `S${nextTarget.season} · E${nextTarget.episode}` + (ep?.runtime && ep.runtime > 0 ? ` · ${ep.runtime} min` : '');
+      if (this.nextEpDetailsEl.textContent !== details) this.nextEpDetailsEl.textContent = details;
+      const still = ep?.still || '';
+      if (this.nextEpThumb.dataset.src !== still) {
+        this.nextEpThumb.dataset.src = still;
+        this.nextEpThumb.hidden = !still;
+        if (still) this.nextEpThumb.src = still; else this.nextEpThumb.removeAttribute('src');
+      }
       if (this.nextEpWrap.dataset.visible !== 'true') this.nextEpWrap.dataset.visible = 'true';
     } else if (this.nextEpWrap.dataset.visible !== 'false') {
       this.nextEpWrap.dataset.visible = 'false';

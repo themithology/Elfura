@@ -213,6 +213,7 @@ export class ElfuraPlayer {
   private seasonCatalogCache = new Map<number, SeasonCatalogInfo>();
   private nextEpisodeTarget: NextEpisodeTarget | null = null;
   private prewarmedKeyTriggered = '';
+  private skipLookupKey = '';
   private prewarmedNext: {
     season: number;
     episode: number;
@@ -2958,6 +2959,34 @@ export class ElfuraPlayer {
     this.bus.emit(name, data);
   }
 
+  /** Enrich already-playing TV episodes without delaying source selection. */
+  private async fetchBackgroundSkipMarkers(): Promise<void> {
+    const cfg = this.input.config;
+    const duration = this.video.duration;
+    const tmdb = String(cfg.tmdb || this.mediaInfo?.tmdbId || '');
+    const season = Number(cfg.season || 1), episode = Number(cfg.episode || 1);
+    if (cfg.mediaType !== 'tv' || !/^\d+$/.test(tmdb) || !Number.isFinite(duration) || duration < 60 || duration > 21600 || (cfg.intro && cfg.outro)) return;
+    const key = `${tmdb}:${season}:${episode}:${Math.round(duration)}`;
+    if (this.skipLookupKey === key) return;
+    this.skipLookupKey = key;
+    try {
+      const url = new URL('/api/v1/segments', new URL(cfg.api || '/api/v1/playback', window.location.href));
+      url.searchParams.set('tmdb', tmdb); url.searchParams.set('s', String(season));
+      url.searchParams.set('e', String(episode)); url.searchParams.set('duration', String(duration));
+      if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+      const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(4500) });
+      if (!res.ok) return;
+      const data = await res.json() as { segments?: { intro?: [number, number]; outro?: [number, number] } };
+      if (this.destroyed || this.skipLookupKey !== key || Number(cfg.season || 1) !== season || Number(cfg.episode || 1) !== episode || String(cfg.tmdb || this.mediaInfo?.tmdbId || '') !== tmdb || Math.abs(this.video.duration - duration) > 1) return;
+      const toRange = (range?: [number, number]) => Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] >= 0 && range[1] > range[0] && range[1] <= duration ? [{ lang: String(range[0]), url: String(range[1]) }] : undefined;
+      if (!cfg.intro) cfg.intro = toRange(data.segments?.intro);
+      if (!cfg.outro) cfg.outro = toRange(data.segments?.outro);
+      this.emit('segments:invalidate', {});
+    } catch { /* optional enrichment must not affect playback */ }
+  }
+
   private bindMediaEvents(): void {
     const v = this.video;
     v.addEventListener('play', () => this.emit('play', {}));
@@ -2972,6 +3001,7 @@ export class ElfuraPlayer {
       this.clearStartupWatchdog();
       this.emit('buffered', {});
     });
+    v.addEventListener('loadedmetadata', () => { void this.fetchBackgroundSkipMarkers(); });
     v.addEventListener('durationchange', () => {
       this.emit('durationchange', { duration: v.duration });
       this.emit('segments:invalidate', {});

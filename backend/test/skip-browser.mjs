@@ -1,0 +1,38 @@
+import {createBackendServer} from '../../dist/backend/index.js';
+import {loadBackendConfig} from '../../dist/backend/config.js';
+import {chromium} from 'playwright-core';
+import chromiumBinary from '@sparticuz/chromium';
+import ffmpeg from '@ffmpeg-installer/ffmpeg';
+import {execFileSync} from 'node:child_process';
+import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+const tmp=mkdtempSync(path.join(tmpdir(),'elfura-skip-'));
+execFileSync(ffmpeg.path,['-loglevel','error','-f','lavfi','-i','color=c=blue:s=160x90:r=2','-t','80','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-movflags','+faststart',path.join(tmp,'movie.mp4')]);
+const media=readFileSync(path.join(tmp,'movie.mp4'));
+const {server}=createBackendServer({...loadBackendConfig(),isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const base=`http://127.0.0.1:${server.address().port}`;let browser,page,lookups=0;
+try {
+ browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
+ page=await browser.newPage({viewport:{width:900,height:600}});
+ await page.route('**/api/v1/playback**',async route=>{const u=new URL(route.request().url());const ep=Number(u.searchParams.get('e')||u.searchParams.get('episode')||1);const source={id:'source-1:1',sourceId:'source-1',label:'Source 1',type:'mp4',url:'/fixture/movie.mp4',quality:'auto',fingerprint:'fixture',audioTracks:[],subtitles:[]};await route.fulfill({json:{ok:true,primary:source,sources:[source],media:{type:'tv',tmdbId:'1399',season:1,episode:ep}}});});
+ await page.route('**/api/v1/segments**',async route=>{lookups++;await route.fulfill({json:{ok:true,segments:{intro:[1,5],outro:[60,65]}}});});
+ await page.route('**/api/v1/episodes**',async route=>route.fulfill({json:{ok:true,tmdbId:'1399',season:1,seasons:[{seasonNumber:1,name:'Season 1',episodeCount:2}],episodes:[{seasonNumber:1,episodeNumber:1,name:'First',runtime:80,still:null},{seasonNumber:1,episodeNumber:2,name:'The Next Chapter',runtime:42,still:'https://example.test/still.jpg'}]}}));
+ await page.route('**/fixture/movie.mp4',route=>route.fulfill({status:200,contentType:'video/mp4',body:media}));
+ await page.goto(`${base}/embed/tv/1399/1/1?autoplay=1&muted=1&autoplayNextEp=0`,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.__elfura?.player?.config.intro&&window.__elfura.player.getNextEpisodeTarget(),null,{timeout:20000});
+ await page.evaluate(()=>{const v=window.__elfura.player.video;v.currentTime=2;v.dispatchEvent(new Event('timeupdate'));});
+ await page.waitForFunction(()=>document.querySelector('.elf-skip')?.dataset.visible==='true',null,{timeout:5000});
+ await page.locator('.elf-skip').click();
+ const afterIntro=await page.evaluate(()=>window.__elfura.player.video.currentTime);
+ if(afterIntro<4.9)throw Error('intro did not seek');
+ await page.evaluate(()=>{let v=window.__elfura.player.video;v.currentTime=61;v.dispatchEvent(new Event('timeupdate'));});
+ await page.waitForFunction(()=>document.querySelector('.elf-skip')?.dataset.visible==='true'&&document.querySelector('.elf-skip-label')?.textContent.includes('Next Episode'),null,{timeout:5000});
+ await page.evaluate(()=>{let v=window.__elfura.player.video;v.pause();v.currentTime=70;v.dispatchEvent(new Event('timeupdate'));});
+ await page.waitForFunction(()=>document.querySelector('.elf-next-ep-wrap')?.dataset.visible==='true',null,{timeout:5000});
+ const card=await page.evaluate(()=>({title:document.querySelector('.elf-next-ep-title')?.textContent,details:document.querySelector('.elf-next-ep-details')?.textContent,src:document.querySelector('.elf-next-ep-thumb')?.getAttribute('src')}));
+ if(card.title!=='The Next Chapter'||!card.details.includes('42 min')||card.src!=='https://example.test/still.jpg')throw Error('next episode metadata incorrect '+JSON.stringify(card));
+ await page.locator('.elf-next-ep-dismiss').click();
+ if(await page.locator('.elf-next-ep-wrap').getAttribute('data-visible')!=='false')throw Error('dismiss failed');
+ console.log('::notice title=SkipBrowser::'+JSON.stringify({ok:true,afterIntro,card,lookups}));
+}catch(e){console.log('::notice title=SkipBrowser::'+JSON.stringify({ok:false,error:String(e),lookups}));process.exitCode=1;}finally{await browser?.close();await new Promise(r=>server.close(r));rmSync(tmp,{recursive:true,force:true});}

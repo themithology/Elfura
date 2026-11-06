@@ -2635,3 +2635,12 @@
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Next-episode details use the existing catalogue; unavailable fields stay hidden. */
+.elf-next-ep-btn { border-radius: 14px; max-width: min(330px, 75vw); padding: 8px; text-align: left; }
+.elf-next-ep-thumb { width: 92px; height: 52px; flex: none; border-radius: 8px; object-fit: cover; }
+.elf-next-ep-thumb[hidden] { display: none; }
+.elf-next-ep-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-right: 5px; }
+.elf-next-ep-label { font-size: 11px; color: rgba(255,255,255,.74); }
+.elf-next-ep-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.elf-next-ep-details { color: rgba(255,255,255,.7); font-size: 11px; font-weight: 500; }

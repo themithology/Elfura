@@ -32,6 +32,7 @@ import {
 import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
+import { fetchSkipMarkers } from './segments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -444,6 +445,30 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const wantEnvelope = req.headers['x-elfura-envelope'] === '1' && Boolean(pltoken && nonce);
       const responseBody = wantEnvelope ? sealPlaybackEnvelope(payload, pltoken, nonce!) : payload;
       sendJson(res, 200, responseBody, allowOrigin, wantEnvelope ? 'no-store' : 'manifest');
+      return;
+    }
+
+    // Independent, best-effort TV skip markers. Never runs on the playback critical path.
+    if (method === 'GET' && pathname === '/api/v1/segments') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }); return; }
+      if (!rateLimiter.allow(`segments:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false }, allowOrigin); return; }
+      const tmdbId = (url.searchParams.get('tmdb') || '').trim();
+      const season = Number(url.searchParams.get('s'));
+      const episode = Number(url.searchParams.get('e'));
+      const duration = Number(url.searchParams.get('duration'));
+      if (!/^\d{1,12}$/.test(tmdbId) || !Number.isInteger(season) || season < 1 || season > 999 ||
+          !Number.isInteger(episode) || episode < 1 || episode > 9999 || !Number.isFinite(duration) || duration < 60 || duration > 21600) {
+        sendJson(res, 400, { ok: false }, allowOrigin); return;
+      }
+      const pltoken = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
+      const nonce = (url.searchParams.get('nonce') || '').trim() || undefined;
+      if (cfg.requireToken) {
+        const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, { mediaType: 'tv', tmdbId, bindIp: cfg.bindTokenIp });
+        if (!verified.ok) { sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin); return; }
+      }
+      const segments = await fetchSkipMarkers({ tmdbId, season, episode, duration });
+      sendJson(res, 200, { ok: true, segments }, allowOrigin, 'no-store');
       return;
     }
 
