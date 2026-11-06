@@ -18,6 +18,7 @@ jobs:
       - run: node backend/test/bingr-adapter.mjs
       - run: node backend/test/bingr-live-adapter.mjs
       - run: npm run build:embed
+      - run: npm run build:backend
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - name: Player check
         run: |
