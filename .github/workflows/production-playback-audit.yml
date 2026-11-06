@@ -14,14 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - path: movie/693134
+          - path: movie/807
             query: ''
-          - path: movie/693134
+          - path: movie/807
             query: '?source=source-2'
-          - path: movie/693134
+          - path: movie/807
             query: '?source=source-3'
-          - path: tv/95479/1/1
-            query: ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
