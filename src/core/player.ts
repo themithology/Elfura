@@ -2658,6 +2658,7 @@ export class ElfuraPlayer {
     this.exhaustedRecoveryAttempted = true;
     this.exhaustedRecoveryInFlight = true;
     const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+    const recoveryLoadSeq = this.engineLoadSeq;
     const groups = cfg.source ? [String(cfg.source)] : ['source-2', 'source-3'];
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
@@ -2681,7 +2682,7 @@ export class ElfuraPlayer {
         } catch { return []; }
       }));
       this.exhaustedRecoveryInFlight = false;
-      if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+      if (this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
       const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
       const ids = new Set(this.sources.map(s => s.id));
       const recovered: SourceOption[] = [];
