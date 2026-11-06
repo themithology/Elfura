@@ -12,6 +12,6 @@ for(const c of cases){
    const text=await m.text();const lines=text.split(/\r?\n/).filter(l=>/^#EXT-X-MEDIA:.*TYPE=AUDIO/i.test(l));
    manifest={status:m.status,isHls:text.trimStart().startsWith('#EXTM3U'),audio:lines.map(l=>({lang:/\bLANGUAGE="([^"]+)"/i.exec(l)?.[1]||null,name:/\bNAME="([^"]+)"/i.exec(l)?.[1]||null}))};
   }
-  console.log('::notice title=VidaraResearch::'+JSON.stringify({name:c.name,status:res.status,hasStream:!!raw,manifest,ms:Date.now()-start}));
+  console.log('::notice title=VidaraResearch::'+JSON.stringify({name:c.name,status:res.status,hasStream:!!raw,reportedTitle:typeof json?.title==='string'&&!json.title.includes('://')?json.title.slice(0,120):null,manifest,ms:Date.now()-start}));
  }catch(e){console.log('::notice title=VidaraResearch::'+JSON.stringify({name:c.name,error:e.name,ms:Date.now()-start}));}
 }
