@@ -10,12 +10,12 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address()
 try {
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  page=await browser.newPage();const path=type==='tv'?`tv/${id}/1/1`:`movie/${id}`;
- await page.goto(`http://127.0.0.1:${port}/embed/${path}?source=source-1&lang=hi`,{waitUntil:'domcontentloaded',timeout:25000});
- step='source';await page.waitForFunction((expected)=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-1'&&(expected==='unknown'?!s.audioLang:s.audioLang===expected)),expected,{timeout:30000});
- const selected=await page.evaluate(async(expected)=>{const p=window.__elfura.player;const opt=p.getSources().find(s=>s.sourceId==='source-1'&&(expected==='unknown'?!s.audioLang:s.audioLang===expected));p.video.muted=true;await p.setSource(opt.id);await p.play();return {id:opt.sourceId,lang:opt.audioLang,multi:!!opt.multiAudio};},expected);
+ await page.goto(`http://127.0.0.1:${port}/embed/${path}?source=source-3&lang=hi`,{waitUntil:'domcontentloaded',timeout:25000});
+ step='source';await page.waitForFunction((expected)=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-3'&&(expected==='unknown'?!s.audioLang:s.audioLang===expected)),expected,{timeout:30000});
+ const selected=await page.evaluate(async(expected)=>{const p=window.__elfura.player;const opt=p.getSources().find(s=>s.sourceId==='source-3'&&(expected==='unknown'?!s.audioLang:s.audioLang===expected));p.video.muted=true;await p.setSource(opt.id);await p.play();return {id:opt.sourceId,lang:opt.audioLang,multi:!!opt.multiAudio};},expected);
  step='playing';await page.waitForFunction(()=>window.__elfura.player.video.currentTime>1 && window.__elfura.player.video.readyState>=2,null,{timeout:40000});
  const state=await page.evaluate(()=>({time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,lang:window.__elfura.player.currentSource?.audioLang,tracks:window.__elfura.player.getAudioTracks().map(t=>({lang:t.lang,kind:t.kind}))}));
- if(state.source!=='source-1'||(expected==='unknown'?!!state.lang:state.lang!==expected)||selected.multi)throw new Error('unexpected source or language classification');
+ if(state.source!=='source-3'||(expected==='unknown'?!!state.lang:state.lang!==expected)||selected.multi)throw new Error('unexpected source or language classification');
  console.log('::notice title=VidSyncBrowser::'+JSON.stringify({id,type,ok:true,selected,state}));
 } catch(e) {const snapshot=await page?.evaluate(()=>({time:window.__elfura?.player?.video?.currentTime,source:window.__elfura?.player?.currentSource?.sourceId,options:window.__elfura?.player?.getSources().map(s=>({source:s.sourceId,lang:s.audioLang,multi:s.multiAudio}))})).catch(()=>null);console.log('::notice title=VidSyncBrowser::'+JSON.stringify({id,type,ok:false,step,error:e?.name,snapshot}));process.exitCode=1;}
 finally{await browser?.close();await new Promise(r=>server.close(r));}

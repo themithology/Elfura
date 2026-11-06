@@ -1621,7 +1621,7 @@ try {
   assert.equal(riftMasterRes.status, 200);
   assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
 
-  const protectedOpt = pb.sources.find((s) => s.sourceId === 'source-1');
+  const protectedOpt = pb.sources.find((s) => s.sourceId === 'source-3');
   const protectedMasterRes = await fetch(`${apiBase}${protectedOpt.url}`, { headers: browserHeaders });
   assert.equal(protectedMasterRes.status, 200);
 
@@ -1871,13 +1871,13 @@ try {
     const oldFetch = globalThis.fetch;
     let releaseRecovery;
     const recoveryGate = new Promise((resolve) => { releaseRecovery = resolve; });
-    const primary = { ...pb.primary, id: 'source-1:late-test', sourceId: 'source-1', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
-    const multi = { ...primary, id: 'source-3:1', sourceId: 'source-3', label: 'Source 3 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
+    const primary = { ...pb.primary, id: 'source-3:late-test', sourceId: 'source-3', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
+    const multi = { ...primary, id: 'source-1:1', sourceId: 'source-1', label: 'Source 1 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
     let recoveryCalls = 0;
     globalThis.fetch = async (input) => {
       const u = new URL(String(input));
       assert.equal(u.origin, 'https://recovery.example');
-      if (u.searchParams.get('source') === 'source-3') {
+      if (u.searchParams.get('source') === 'source-1') {
         recoveryCalls++;
         await recoveryGate;
         return new Response(JSON.stringify({ ok: true, sources: [multi] }), { status: 200 });
@@ -1911,15 +1911,15 @@ try {
   {
     const oldFetch=globalThis.fetch;
     let release; const gate=new Promise(r=>{release=r});
-    const primary={...pb.primary,id:'anime-primary',sourceId:'source-1',audioLang:'en',multiAudio:false,availableAudioLangs:[],audioTracks:[],subtitles:[]};
-    const anime={...primary,id:'source-3:1',sourceId:'source-3',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
-    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-3'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
+    const primary={...pb.primary,id:'anime-primary',sourceId:'source-3',audioLang:'en',multiAudio:false,availableAudioLangs:[],audioTracks:[],subtitles:[]};
+    const anime={...primary,id:'source-1:1',sourceId:'source-1',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-1'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
     try{
       const p=new ElfuraPlayer({postMessage:false,api:'https://anime-recovery.example/api/v1/playback',tmdb:'95479',mediaType:'tv',season:1,episode:1,lang:'hi',pltoken:'token',nonce:'nonce'});
       p.activateSourceOption=async option=>{p.currentSource=option};let requested=[];p.setAudio=async lang=>{requested.push(lang);return true};
       await new Promise(r=>setTimeout(r,20));assert.equal(p.currentSource?.id,primary.id);
       p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
-      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-3'));assert.deepEqual(requested,['hi']);p.destroy();
+      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-1'));assert.deepEqual(requested,['hi']);p.destroy();
     }finally{globalThis.fetch=oldFetch}
   }
 
@@ -1927,10 +1927,10 @@ try {
   // the startup probe times out, without duplicating or restarting it.
   {
     const oldFetch=globalThis.fetch;let calls=0,release;const gate=new Promise(r=>{release=r});
-    const fallback={...pb.primary,id:'late-source-3',sourceId:'source-3',audioLang:undefined,multiAudio:false,availableAudioLangs:[],fingerprint:'same-vidbolt',audioTracks:[],subtitles:[]};
+    const fallback={...pb.primary,id:'late-source-1',sourceId:'source-1',audioLang:undefined,multiAudio:false,availableAudioLangs:[],fingerprint:'same-vidbolt',audioTracks:[],subtitles:[]};
     const proven={...fallback,multiAudio:true,availableAudioLangs:['hi','en']};
     globalThis.fetch=async input=>{if(!String(input).includes('/api/v1/playback'))return new Response('',{status:404});calls++;if(calls===1)return Response.json({ok:true,primary:fallback,sources:[fallback]});await gate;return Response.json({ok:true,primary:proven,sources:[proven]});};
-    try {const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'872585',mediaType:'movie',source:'source-3',pltoken:'token',nonce:'nonce'});
+    try {const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'872585',mediaType:'movie',source:'source-1',pltoken:'token',nonce:'nonce'});
       p.activateSourceOption=async opt=>{p.currentSource=opt};await new Promise(r=>setTimeout(r,20));assert.equal(calls,2);release();await new Promise(r=>setTimeout(r,30));assert.equal(p.getSources().length,1);assert.equal(p.getSources()[0].multiAudio,true);assert.deepEqual(p.getSources()[0].availableAudioLangs,['hi','en']);p.destroy();
     } finally {globalThis.fetch=oldFetch;}
   }
@@ -2249,11 +2249,11 @@ try {
     !s1Reze.some((s) => s.multiAudio),
     'Master-alive / child-HTML dead Source 1 stream must be pruned before entering playback response',
   );
-  // Meanwhile Source 1's Hindi stream routed via `/api/core/proxy` MUST be alive!
-  const s3Reze = pbReze.sources.filter((s) => s.sourceId === 'source-1');
+  // Meanwhile Source 3's Hindi stream routed via `/api/core/proxy` MUST be alive!
+  const s3Reze = pbReze.sources.filter((s) => s.sourceId === 'source-3');
   assert(
     s3Reze.length > 0,
-    'Expected Source 1 proxy-backed stream to survive deep liveness check',
+    'Expected Source 3 proxy-backed stream to survive deep liveness check',
   );
 
   const jaOpt = { ...pb.primary, id: 'synthetic-ja', audioLang: 'ja', label: 'Source 2 · Japanese', multiAudio: false, availableAudioLangs: [], audioTracks: [] };

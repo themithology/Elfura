@@ -22,10 +22,10 @@ try {
  for(const c of cases.filter(x=>!process.env.VIDBOLT_TEST_ID || x.id===process.env.VIDBOLT_TEST_ID)) {
   let step='open';
   try {
-   await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-3`,{waitUntil:'domcontentloaded',timeout:30000});
+   await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-1`,{waitUntil:'domcontentloaded',timeout:30000});
    step='source';
-   await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-3' && s.multiAudio),null,{timeout:45000});
-   const options=await page.evaluate(()=>window.__elfura.player.getSources().filter(x=>x.sourceId==='source-3'&&x.multiAudio).map(s=>({id:s.id,url:s.url,langs:s.availableAudioLangs,qualities:s.qualityLadder})));
+   await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-1' && s.multiAudio),null,{timeout:45000});
+   const options=await page.evaluate(()=>window.__elfura.player.getSources().filter(x=>x.sourceId==='source-1'&&x.multiAudio).map(s=>({id:s.id,url:s.url,langs:s.availableAudioLangs,qualities:s.qualityLadder})));
    const info=options.find(s=>{try{const ticket=new URL(s.url,`http://127.0.0.1:${port}`).searchParams.get('t');const raw=openStreamTicket(cfg.secret,ticket);return /(?:^|\.)rousav\.tech$/i.test(new URL(raw.u).hostname);}catch{return false;}});
    if(!info)throw new Error('direct provider candidate missing');
    step='select';
@@ -36,7 +36,7 @@ try {
    const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio'){window.__audioSegments++;(window.__audioLevels ||= []).push(d.frag.level);}else if(d.frag?.type==='main'){(window.__videoLevels ||= []).push(d.frag.level);}});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
    await page.waitForFunction(()=>window.__audioSegments>0 && window.__elfura.player.video.currentTime>0.1,null,{timeout:35000});
    const state=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,errors:window.__hlsErrors}));
-   if(!selected.ok||!state.audioSegments||state.source!=='source-3')throw new Error('playback assertion failed');
+   if(!selected.ok||!state.audioSegments||state.source!=='source-1')throw new Error('playback assertion failed');
    const switches=[];
    for(const lang of ['en','hi']) {
     step=`switch-${lang}`;
@@ -44,7 +44,7 @@ try {
     if(!selection.ok || selection.lang !== lang) throw new Error('audio selection failed');
     await page.waitForFunction(()=>window.__audioLevels?.includes(window.__elfura.player.hls?.audioTrack),null,{timeout:35000});
     const switched=await page.evaluate(()=>({audioSegments:window.__audioSegments,audioLevels:window.__audioLevels,nativeIndex:window.__elfura.player.hls?.audioTrack,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId}));
-    if(switched.source!=='source-3')throw new Error('unexpected source fallback');
+    if(switched.source!=='source-1')throw new Error('unexpected source fallback');
     switches.push({requested:lang,...selection,...switched});
    }
    step='quality';
@@ -56,7 +56,7 @@ try {
    for (const target of c.type==='movie'?[]:[1080,720]) {
     const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
     if(!qualitySet)throw new Error('quality missing');
-    await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-3';},target,{timeout:35000});
+    await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-1';},target,{timeout:35000});
     const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
     quality.push({target,rendered});
    }

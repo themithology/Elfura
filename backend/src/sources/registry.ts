@@ -45,20 +45,20 @@ export class SourceRegistry {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      // VidSync moves to Source 1. Source 2 retains VidRift and VidRock.
-      createSource3Adapter(cfg.source3, 1),
-      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      // Source 1 contains direct upstreams independently identified in Aethoflix.
       // VidBolt/Orion is a direct upstream used by Aethoflix. No Aethoflix
       // or ZXC mirror requests are made by this group.
       {
-        id: 'source-3', label: 'Source 3', enabled: () => cfg.source1.enabled,
+        id: 'source-1', label: 'Source 1', enabled: () => cfg.source1.enabled,
         resolve: async (query) => {
           const start = Date.now();
           const candidates = await fetchFromVidBolt(cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', query);
-          query.diag?.push({ adapter: 'source-3', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
+          query.diag?.push({ adapter: 'source-1', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
           return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) };
         },
       },
+      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      createSource3Adapter(cfg.source3),
     ];
   }
 

@@ -1104,7 +1104,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = ['source-2', 'source-3'].filter((id) =>
+      const lateGroups = ['source-1', 'source-2'].filter((id) =>
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
