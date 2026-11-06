@@ -13,6 +13,7 @@ try {
  app=await start();
  const call=(p,opts={})=>fetch(app.base+p,opts);
  const post=(p,data,cookie,org=app.base)=>call(p,{method:'POST',headers:{'Content-Type':'application/json',Origin:org,...cookie?{Cookie:cookie}:{}},body:JSON.stringify(data)});
+ let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);
  let res=await call('/roxy');assert.equal(res.status,200);assert.equal(res.headers.get('x-frame-options'),'DENY');assert.match(await res.text(),/Playback, at a glance/);
  res=await call('/roxy/api/overview');assert.equal(res.status,401);assert.equal(res.headers.get('access-control-allow-origin'),null);
  assert.equal((await post('/roxy/api/login',{password:'wrong'})).status,401);

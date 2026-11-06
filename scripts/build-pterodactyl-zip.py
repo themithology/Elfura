@@ -7,6 +7,7 @@ Node 22/24 Egg even when global typescript@7+ TSGo is installed).
 """
 
 import json
+from datetime import datetime
 import os
 from pathlib import Path
 import subprocess
@@ -226,8 +227,14 @@ module.exports = {
 '''
 
 
+# ZIP tools using "update if newer" must see this deployment as newer than
+# older installed files. A fixed historical timestamp can silently leave an
+# old backend in place while copying a new build-info.json.
+ZIP_TIMESTAMP = datetime.now().timetuple()[:6]
+
+
 def write_entry(zf: zipfile.ZipFile, arcname: str, data: bytes) -> None:
-    info = zipfile.ZipInfo(arcname, date_time=(2026, 11, 2, 0, 0, 0))
+    info = zipfile.ZipInfo(arcname, date_time=ZIP_TIMESTAMP)
     info.compress_type = zipfile.ZIP_DEFLATED
     info.create_system = 3  # Unix
     info.external_attr = 0o100644 << 16

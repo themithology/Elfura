@@ -228,6 +228,9 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         service: 'elfura-backend',
         version: '0.1.0',
         build: readBuildInfo().commit,
+        // Emitted by the running code, unlike build-info.json which can be
+        // replaced on disk while an older Node process is still running.
+        features: { roxy: true },
         sources: registry.listPublicSources(),
       });
       return;
@@ -586,7 +589,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     const sources = registry.listPublicSources().map((s) => s.id).join(', ') || 'none';
-    console.log(`[elfura-backend] listening on http://${cfg.host}:${cfg.port} (sources: ${sources})`);
+    console.log(`[elfura-backend] listening on http://${cfg.host}:${cfg.port} (sources: ${sources}; roxy: enabled)`);
     // Operator-only boot diagnostics (server console; never sent to clients).
     // Hostnames/booleans only — no keys, tokens, or secrets.
     const hostOf = (raw?: string) => {
