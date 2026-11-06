@@ -1,5 +1,6 @@
 name: Production playback audit
 on:
+  workflow_dispatch:
   push:
     branches: [arena/dcf86284-elfura]
     paths: [backend/test/production-playback-audit.mjs, .github/workflows/production-playback-audit.yml]
