@@ -17,6 +17,8 @@ import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCa
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
+import { createSource5Adapter } from './source5.js';
+import { createSource6Adapter } from './source6.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
@@ -61,6 +63,8 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
+      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
+      createSource6Adapter(() => cfg.source6?.enabled ?? process.env.ELFURA_VIDMODY_ENABLED !== '0'),
     ];
   }
 

@@ -2660,7 +2660,7 @@ export class ElfuraPlayer {
     this.exhaustedRecoveryInFlight = true;
     const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     const recoveryLoadSeq = this.engineLoadSeq;
-    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4'];
+    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4', 'source-5', 'source-6'];
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
     if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';

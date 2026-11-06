@@ -1,0 +1,19 @@
+name: Nuvio HLS fallback verification
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/src/sources/source5.ts, backend/src/sources/source6.ts, backend/test/nuvio-adapters.mjs, backend/test/nuvio-adapters-live.mjs, .github/workflows/nuvio-adapters.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/nuvio-adapters.mjs
+      - run: node backend/test/nuvio-adapters-live.mjs
