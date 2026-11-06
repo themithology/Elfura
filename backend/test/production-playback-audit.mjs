@@ -17,7 +17,7 @@ for(const test of cases){
   await page.waitForTimeout(15000);
   const before=await page.evaluate(()=>{const p=window.__elfura.player,v=p.video;return {time:v.currentTime,ready:v.readyState,network:v.networkState,paused:v.paused,source:p.currentSource&&{id:p.currentSource.sourceId,type:p.currentSource.type,multi:p.currentSource.multiAudio},sources:p.getSources().map(s=>({id:s.sourceId,type:s.type,multi:s.multiAudio,lang:s.audioLang})),error:v.error?.code,loading:document.querySelector('.elf-loading-status')?.textContent,body:document.body.innerText.slice(0,350),buttons:[...document.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')||b.title).filter(Boolean).slice(0,20)}});
   step='play';
-  const play=await page.evaluate(async()=>{const p=window.__elfura.player;try{await p.play();return 'resolved'}catch(e){return e.name}});
+  const play=await page.evaluate(async()=>{const p=window.__elfura.player;try{return await Promise.race([p.play().then(()=>'resolved'),new Promise(r=>setTimeout(()=>r('pending'),5000))])}catch(e){return e.name}});
   await page.waitForTimeout(15000);
   const after=await page.evaluate(()=>{const p=window.__elfura.player,v=p.video;return {time:v.currentTime,ready:v.readyState,network:v.networkState,paused:v.paused,source:p.currentSource&&{id:p.currentSource.sourceId,type:p.currentSource.type,multi:p.currentSource.multiAudio},error:v.error?.code,loading:document.querySelector('.elf-loading-status')?.textContent,body:document.body.innerText.slice(0,350)}});
   console.log('::notice title=ProductionPlayback::'+JSON.stringify({path:test.path,step,play,before,after,events:events.slice(-35)}));
