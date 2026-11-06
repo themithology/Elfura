@@ -7,7 +7,7 @@ const browser=await chromium.launch({executablePath:await chromiumBinary.executa
 const page=await browser.newPage({viewport:{width:393,height:873},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'});
 let started=Date.now(),events=[],pending=new Map();
 page.on('request',r=>{const u=new URL(r.url());if(u.pathname==='/api/v1/stream')pending.set(r,{kind:'relay',at:Date.now()-started});else if(u.hostname!=='embed.theogpiratebot.online'&&['xhr','fetch','media'].includes(r.resourceType()))pending.set(r,{kind:'external',at:Date.now()-started});});
-page.on('response',r=>{let p=pending.get(r.request());if(p){const h=r.headers(),ct=(h['content-type']||'').split(';')[0];events.push({...p,ms:Date.now()-started,status:r.status(),ct,cache:h['cf-cache-status']||null,cloudflare:!!h['cf-ray']});}});
+page.on('response',async r=>{let p=pending.get(r.request());if(p){const h=r.headers(),ct=(h['content-type']||'').split(';')[0];let cause=null;if(r.status()>=400 && ct==='application/json'){try{const body=await r.json();const e=String(body.error||'');if(/^upstream responded [0-9]{3}$/.test(e)||['invalid upstream manifest payload','blocked unsafe redirect','upstream returned HTML instead of media segment'].includes(e))cause=e;}catch{}}events.push({...p,ms:Date.now()-started,status:r.status(),ct,cause,cache:h['cf-cache-status']||null,cloudflare:!!h['cf-ray']});}});
 page.on('requestfailed',r=>{let p=pending.get(r);if(p)events.push({...p,ms:Date.now()-started,error:r.failure()?.errorText});});
 if(mode==='full') await page.route('**/api/v1/stream**',r=>{const u=new URL(r.request().url());u.searchParams.set('p','1');return r.continue({url:u.toString()});});
 try {
