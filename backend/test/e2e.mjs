@@ -3401,6 +3401,7 @@ try {
         riftRelay: '',
         syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
+        vidboltOrigin: cmOrigin,
       }, 2);
       const laneDiag = [];
       const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi', diag: laneDiag });
