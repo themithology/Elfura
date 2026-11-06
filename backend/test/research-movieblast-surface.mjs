@@ -1,0 +1,16 @@
+// Research only. Read public client constants at runtime; do not log tokens or media URLs.
+import {createHmac} from 'node:crypto';
+const code=await (await fetch('https://github.com/alwayszihanx/ZeroPlug/raw/refs/heads/main/MovieBlast/plugin.js',{signal:AbortSignal.timeout(15000)})).text();
+const extract=key=>{const m=code.match(new RegExp('var '+key+' = "([^"\\n]+)"'));if(!m)throw Error('client format changed');return m[1]};
+const token=extract('TOKEN'), secret=extract('SIGN_SECRET'), app=extract('APP_ID');
+const sh=/"hash256":\s*"([^"]+)"/.exec(code)?.[1];if(!sh)throw Error('search headers unavailable');
+const base='https://app.cloud-mb.xyz';
+const cases=[{title:'Dune: Part Two',year:2024},{title:'Oppenheimer',year:2023},{title:'Interstellar',year:2014},{title:'Se7en',year:1995},{title:'Breaking Bad',year:2008,tv:true}];
+const headers={'user-agent':'okhttp/5.0.0-alpha.6','x-request-x':app};
+async function json(url,h){const r=await fetch(url,{headers:h,signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('HTTP '+r.status);return r.json()}
+for(const c of cases){const start=Date.now();try{const data=await json(`${base}/api/search/${encodeURIComponent(c.title)}/${token}`,{...headers,hash256:sh,packagename:app});const exact=(data.search||[]).filter(x=>String(x.name||'').toLowerCase()===c.title.toLowerCase());const hit=exact.find(x=>String(x.release_date||'').slice(0,4)===String(c.year))||null;
+ if(!hit){console.log('::notice title=MovieBlastResearch::'+JSON.stringify({title:c.title,searchResults:(data.search||[]).length,exact:exact.length,matchedYear:false,ms:Date.now()-start}));continue;}
+ const d=await json(`${base}/api/${c.tv?'series/show':'media/detail'}/${hit.id}/${token}`,headers); const vids=c.tv?(d.seasons||[]).find(x=>+x.season_number===1)?.episodes?.find(x=>+x.episode_number===1)?.videos||[]:d.videos||[];
+ const checked=[];for(const v of vids.slice(0,3)){try {const raw=String(v.link||''); const u=new URL(raw.startsWith('http')?raw:'https://'+raw);if(u.protocol!=='https:')continue;const t=String(Math.floor(Date.now()/1000));const sig=createHmac('sha256',secret).update(u.pathname+t).digest('base64');u.searchParams.set('verify',`${t}-${sig}`);const r=await fetch(u,{headers:{'User-Agent':'MovieBlast','Referer':'MovieBlast','x-request-x':app,Range:'bytes=0-65535'},signal:AbortSignal.timeout(10000)});const contentType=r.headers.get('content-type')||'';const b=Buffer.from(await r.arrayBuffer());const text=b.toString('utf8');const audio=[...text.matchAll(/^#EXT-X-MEDIA:.*TYPE=AUDIO.*$/gim)].map(x=>/LANGUAGE="([^"]+)"/i.exec(x[0])?.[1]||null);checked.push({status:r.status,contentType,server:String(v.server||'').slice(0,100),bytes:b.length,hls:text.startsWith('#EXTM3U'),audio});}catch(e){checked.push({error:e.name});}}
+ console.log('::notice title=MovieBlastResearch::'+JSON.stringify({title:c.title,matchedYear:true,kind:hit.type,videoCount:vids.length,checked,ms:Date.now()-start}));
+}catch(e){console.log('::notice title=MovieBlastResearch::'+JSON.stringify({title:c.title,error:e.message.startsWith('HTTP ')?e.message:e.name,ms:Date.now()-start}));}}
