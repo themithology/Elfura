@@ -1,3 +1,4 @@
+process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';

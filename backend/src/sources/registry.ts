@@ -16,6 +16,7 @@ import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
+import { createSource4Adapter } from './source4.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
@@ -59,6 +60,7 @@ export class SourceRegistry {
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource3Adapter(cfg.source3),
+      createSource4Adapter(() => cfg.source1.enabled && process.env.ELFURA_BINGR_ENABLED !== '0'),
     ];
   }
 
