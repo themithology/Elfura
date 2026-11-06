@@ -300,17 +300,29 @@ export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapt
     label: 'Source 3',
     enabled: () => !!cfg?.enabled && !!origin,
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
+      let sync: RawStreamCandidate[] = [];
+      let vix: RawStreamCandidate[] = [];
+      let settled = 0;
+      let release: (() => void) | undefined;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const measure = async (lane: string, promise: Promise<RawStreamCandidate[]>) => {
         const startedAt = Date.now();
         const result = await promise;
+        if (lane === 'stream') sync = result; else vix = result;
+        settled++;
         query.diag?.push({adapter:'source-3', lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}`});
-        return result;
+        if (result.length && !timer && !query.diag) timer = setTimeout(() => release?.(), 700);
       };
-      const [sync, vix] = await Promise.all([
+      const allLanes = Promise.allSettled([
         measure('stream', fetchFromVidSyncPro(origin, query)),
         measure('vix', cfg.vixOrigin ? fetchFromVixSrc(cfg.vixOrigin, query) : Promise.resolve([] as RawStreamCandidate[])),
       ]);
-      return { candidates: [...sync, ...vix] };
+      if (query.diag) await allLanes;
+      else await Promise.race([allLanes, new Promise<void>((resolve) => { release = resolve; })]);
+      if (timer) clearTimeout(timer);
+      const result = () => ({ candidates: [...sync, ...vix] });
+      if (!query.diag && settled < 2 && query.onLateResult) void allLanes.then(() => query.onLateResult?.(result()));
+      return result();
     },
   };
 }

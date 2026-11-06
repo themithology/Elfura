@@ -1102,8 +1102,12 @@ export class ElfuraPlayer {
         recoveryUrl.searchParams.set('source', 'source-2');
         void (async () => {
           try {
+            // The first group result may precede a slower lane. Retry once
+            // after it has had time to warm the shared adapter cache.
+            for (let attempt = 0; attempt < 2; attempt++) {
+            if (attempt) await new Promise((resolve) => setTimeout(resolve, 1400));
             const response = await fetch(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
-            if (!response.ok) return;
+            if (!response.ok) continue;
             const raw = (await response.json()) as PlaybackPayloadShape;
             const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
               ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
@@ -1140,18 +1144,26 @@ export class ElfuraPlayer {
                 void this.setAudio(wanted);
               }
             }
+            if ((recovered.sources ?? []).some((s) => s.sourceId === 'source-2' && s.multiAudio)) break;
+            }
           } catch {
             // Recovery is optional; current playback must keep going.
           }
         })();
       }
 
-      if (cfg.lang) {
+      if (effectiveBootLang) {
+        // Start a known matching source immediately instead of exhaustively
+        // probing every audio candidate before anything can play. Native HLS
+        // and DASH select the desired rendition when their tracks arrive.
         this.initialAudioApplied = true;
-        await this.setAudio(String(cfg.lang));
-      } else if (storedLang && storedMatchesAny) {
-        this.initialAudioApplied = true;
-        await this.setAudio(storedLang);
+        this.desiredAudioLang = canonLang(effectiveBootLang);
+        const matches = (s: SourceOption) =>
+          (s.audioLang && matchScore(effectiveBootLang, s.audioLang) >= 0) ||
+          (s.availableAudioLangs ?? []).some((lang) => matchScore(effectiveBootLang, lang) >= 0) ||
+          (s.audioTracks ?? []).some((track) => matchScore(effectiveBootLang, track.lang) >= 0);
+        const initial = this.sources.find(matches) ?? data.primary ?? this.sources[0];
+        await this.activateSourceOption(initial, false);
       } else {
         const fallbackPrimary = data.primary ?? this.sources[0];
         const fastest = await this.selectFastestInitialSource(this.sources, fallbackPrimary);
@@ -2452,6 +2464,8 @@ export class ElfuraPlayer {
     }
     player.on(Dash.events.STREAM_INITIALIZED, () => {
       const dashAudio = player.getTracksFor('audio');
+      const preferredDashAudio = this.desiredAudioLang && dashAudio.find((t: MediaInfo) => matchScore(this.desiredAudioLang!, t.lang ?? '') >= 0);
+      if (!this.activeProbe && preferredDashAudio) player.setCurrentTrack(preferredDashAudio);
       this.mergeNativeAudio(
         dashAudio.map((t: MediaInfo, i: number) => ({
           id: i,

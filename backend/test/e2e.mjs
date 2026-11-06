@@ -1990,6 +1990,26 @@ try {
     } finally { globalThis.fetch = oldFetch; }
   }
 
+  // Preferred Hindi must choose a known matching source without running the
+  // exhaustive audio search before the first source is attached.
+  {
+    const oldFetch = globalThis.fetch;
+    const eng = { ...pb.primary, id:'initial-english', sourceId:'source-2', audioLang:'en', multiAudio:false, availableAudioLangs:[], audioTracks:[], subtitles:[] };
+    const hin = { ...eng, id:'initial-hindi-multi', audioLang:undefined, multiAudio:true, availableAudioLangs:['en','hi'] };
+    globalThis.fetch = async () => new Response(JSON.stringify({ok:true,primary:eng,sources:[eng,hin]}),{status:200});
+    try {
+      const p = new ElfuraPlayer({postMessage:false,api:'https://initial.example/api/v1/playback',tmdb:'123456',mediaType:'movie',source:'source-2',lang:'hi',pltoken:'token',nonce:'nonce'});
+      let searches=0, selected=null;
+      p.setAudio = async () => { searches++; return false; };
+      p.activateSourceOption = async (option) => { selected=option.id; p.currentSource=option; };
+      await new Promise(r=>setTimeout(r,20));
+      assert.equal(selected,'initial-hindi-multi');
+      assert.equal(searches,0,'Initial playback must not wait for exhaustive audio search');
+      assert.equal(p.desiredAudioLang,'hi');
+      p.destroy();
+    } finally { globalThis.fetch=oldFetch; }
+  }
+
   const searchPlayer = new ElfuraPlayer({ postMessage: false });
   const searchSources = [
     {

@@ -175,7 +175,7 @@ export class SourceRegistry {
     if (existing) return existing;
 
     const p = adapter
-      .resolve({ ...query, preferredLang: undefined })
+      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => this.setCachedAdapterResult(baseKey, result) })
       .then((res) => {
         this.setCachedAdapterResult(baseKey, res);
         return res;
@@ -243,6 +243,10 @@ export class SourceRegistry {
     streamPathPrefix?: string;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
+    // One end-to-end budget, not additive provider + liveness + metadata waits.
+    const deadline = resolveStartedAt + 4800;
+    const remaining = () => Math.max(0, deadline - Date.now());
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
       (a) => a.enabled() && (!params.sourceId || a.id === params.sourceId),
     );
@@ -258,6 +262,9 @@ export class SourceRegistry {
       episode: params.episode,
     });
 
+    let readyMedia: Awaited<typeof mediaPromise> | undefined;
+    void mediaPromise.then((m) => { readyMedia = m; }).catch(() => {});
+    const subtitleState: { value: Awaited<ReturnType<typeof fetchOpenSubtitlesFallback>> | null } = { value: null };
     // Warm OpenSubtitles fallback concurrently as soon as TMDB resolves `imdbId`
     const earlyOpenSubsPromise = this.cfg.subtitles?.enabled
       ? mediaPromise
@@ -273,6 +280,7 @@ export class SourceRegistry {
           )
           .catch(() => null)
       : Promise.resolve(null);
+    void earlyOpenSubsPromise.then((subs) => { subtitleState.value = subs; }).catch(() => {});
 
     const query: SourceQuery = {
       type: params.type,
@@ -300,8 +308,10 @@ export class SourceRegistry {
     );
     // Segment lookup is deliberately independent of the adapter race. A fast
     // Source 2 response must not discard Source 1's slower intro/outro metadata.
+    const segmentResults: (SkipSegments | undefined)[] = activeAdapters.map(() => undefined);
     const segmentTasks = activeAdapters.map((adapter, idx) =>
-      this.resolveSegmentsWithCache(adapter, cacheKeys[idx], query),
+      this.resolveSegmentsWithCache(adapter, cacheKeys[idx], query)
+        .then((value) => { segmentResults[idx] = value; }).catch(() => {}),
     );
 
     const adapterTasks = activeAdapters.map(async (adapter, idx) => {
@@ -312,7 +322,7 @@ export class SourceRegistry {
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
-            lagTimer = setTimeout(() => earlyRelease?.(), 2600);
+            lagTimer = setTimeout(() => earlyRelease?.(), 450);
           }
         }
       } catch {
@@ -330,6 +340,7 @@ export class SourceRegistry {
       new Promise<void>((r) => {
         earlyRelease = r;
       }),
+      wait(Math.min(3400, remaining())),
     ]);
     if (lagTimer) clearTimeout(lagTimer);
 
@@ -344,7 +355,7 @@ export class SourceRegistry {
         })),
       );
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged);
+        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -368,48 +379,27 @@ export class SourceRegistry {
 
     let verifiedBatch = await verifyCurrentSlots();
 
-    // If an adapter is still in flight AND our fast batch either had 0 live streams OR lacked
-    // the requested `preferredLang`, wait for all remaining adapters so no language dub is missed!
-    if (doneCount < activeAdapters.length) {
-      const wantCode = params.preferredLang ? normalizeLang(params.preferredLang).code : '';
-      const wantPrimary = wantCode && wantCode !== 'und' ? wantCode.split('-')[0] : '';
-      const fastHasWantedLang =
-        !wantPrimary ||
-        verifiedBatch.vFlat.some(
-          (c) =>
-            c.audioLang === wantCode ||
-            c.audioLang?.split('-')[0] === wantPrimary ||
-            c.availableAudioLangs?.some((l) => l === wantCode || l.split('-')[0] === wantPrimary),
-        );
-      // Also wait when the fast batch only contains last-resort candidates
-      // that no liveness probe could verify alive (e.g. a hanging upstream
-      // that merely timed out): releasing early there would discard slower
-      // adapters' verified-healthy streams and strand the player.
-      const fastHasMultiAudio = verifiedBatch.vFlat.some((c) => !!c.multiAudio);
-      const needsLongGrace =
-        verifiedBatch.totalLive === 0 ||
-        verifiedBatch.verifiedLive === 0 ||
-        !fastHasWantedLang ||
-        !fastHasMultiAudio;
-      // Combined playback must represent every enabled source, not merely
-      // the adapter that happened to finish first. Always give pending
-      // adapters a short catch-up window; use the longer window when the
-      // fast batch is unverified, misses the wanted language, or lacks a
-      // multi-audio option. This remains bounded and does not wait for a
-      // hung adapter beyond the configured grace.
-      const graceMs = verifiedBatch.totalLive === 0 ? 0 : needsLongGrace ? 4000 : 1500;
-      if (graceMs > 0) {
-        await Promise.race([
-          Promise.allSettled(adapterTasks),
-          new Promise((r) => setTimeout(r, graceMs)),
-        ]);
-      } else {
-        await Promise.allSettled(adapterTasks);
-      }
+    // If the fast batch is empty or couldn't be verified, allow outstanding
+    // adapters to finish within the same overall deadline. Healthy sources
+    // start immediately; preference matching must not block initial playback.
+    if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+      await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
     }
 
-    const [media, segmentResults] = await Promise.all([mediaPromise, Promise.all(segmentTasks)]);
+    // Metadata, skip markers and subtitles are enrichments; none may hold the
+    // first playable stream hostage. Their requests continue warming caches.
+    // A brief opportunistic window retains metadata and skip markers when
+    // they're already close, without making their upstream timeout additive.
+    if (remaining() > 0) await Promise.race([
+      Promise.allSettled([mediaPromise, ...segmentTasks]),
+      wait(Math.min(1200, remaining())),
+    ]);
+    const media = readyMedia ?? {
+      type: params.type, tmdbId: params.tmdbId, imdbId: null,
+      ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
+      title: '', year: '', overview: '', poster: null, backdrop: null, logo: null,
+    };
     const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
@@ -477,18 +467,12 @@ export class SourceRegistry {
     // tracks. Mixing those entries with provider/native tracks produced duplicate
     // languages and inconsistent labels. If OpenSubtitles is unavailable or has
     // no usable result, each option keeps its existing native subtitle fallback.
-    const shouldResolveOpenSubtitles =
-      Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
+    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
     if (shouldResolveOpenSubtitles && media.imdbId) {
-      const rawFallbackSubs =
-        (await earlyOpenSubsPromise) ??
-        (await fetchOpenSubtitlesFallback(this.cfg.subtitles, {
-          type: params.type,
-          imdbId: media.imdbId,
-          season: params.season,
-          episode: params.episode,
-        }));
+      // Never issue a serial second request or wait beyond the startup budget.
+      if (!subtitleState.value && remaining() > 0) await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
+      const rawFallbackSubs = subtitleState.value ?? [];
 
       if (rawFallbackSubs.length > 0) {
         const sealedFallbackSubs = rawFallbackSubs.map((s) => ({

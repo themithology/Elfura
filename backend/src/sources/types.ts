@@ -25,6 +25,8 @@ export interface SourceQuery {
   tmdbId: string;
   /** When present, adapters append lane-level diagnostics for /api/v1/diagnostics. */
   diag?: DiagEntry[];
+  /** Warm the adapter cache with lanes that finish after a fast initial result. */
+  onLateResult?: (result: RawSourceResult) => void;
   imdbId?: string | null;
   title?: string;
   year?: string;

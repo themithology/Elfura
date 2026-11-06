@@ -232,6 +232,22 @@ async function verifyChildHlsPlaylist(
   return 'alive';
 }
 
+// A caller with a shorter deadline must not wait for an existing shared
+// in-flight probe whose own network timeout is longer.
+function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): Promise<LivenessProbeOutcome> {
+  if (!signal) return task;
+  if (signal.aborted) return Promise.resolve({ alive: false, confirmedDead: false });
+  return new Promise((resolve) => {
+    const aborted = () => finish({ alive: false, confirmedDead: false });
+    const finish = (value: LivenessProbeOutcome) => {
+      signal.removeEventListener('abort', aborted);
+      resolve(value);
+    };
+    signal.addEventListener('abort', aborted, { once: true });
+    void task.then(finish, () => finish({ alive: false, confirmedDead: false }));
+  });
+}
+
 async function runSingleProbe(
   cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers'>,
   outerSignal?: AbortSignal,
@@ -245,7 +261,7 @@ async function runSingleProbe(
   if (cached) return cached;
 
   const inflight = livenessInFlight.get(key);
-  if (inflight) return inflight;
+  if (inflight) return awaitProbe(inflight, outerSignal);
 
   const task = (async (): Promise<LivenessProbeOutcome> => {
     const t0 = performance.now();
@@ -438,11 +454,10 @@ async function runSingleProbe(
   })();
 
   livenessInFlight.set(key, task);
-  try {
-    return await task;
-  } finally {
-    livenessInFlight.delete(key);
-  }
+  void task.finally(() => {
+    if (livenessInFlight.get(key) === task) livenessInFlight.delete(key);
+  });
+  return awaitProbe(task, outerSignal);
 }
 
 /**

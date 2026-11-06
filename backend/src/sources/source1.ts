@@ -1149,10 +1149,11 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
           releaseEarly?.();
           return;
         }
-        // Once at least two independent pipelines have produced candidates,
-        // start a short grace window instead of waiting for every slow lane.
-        if (liveSourcePipelines >= 2 && (group === 1 || (slots.rift && slots.sync)) && !graceTimer) {
-          graceTimer = setTimeout(() => releaseEarly?.(), 360);
+        // Start a short grace window once any pipeline returns candidates.
+        if (liveSourcePipelines >= 1 && !graceTimer) {
+          // Allow concurrent lanes a brief chance to finish, never wait for
+          // multiple providers just because one is slow or unavailable.
+          graceTimer = setTimeout(() => releaseEarly?.(), 700);
         }
       };
 
@@ -1202,6 +1203,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
       ]);
       if (graceTimer) clearTimeout(graceTimer);
 
+      const buildResult = (): RawSourceResult => {
       // Do NOT stamp upstream JSON-scraper RPC duration onto `latencyMs`: leave `latencyMs`
       // unset unless known so `liveness.ts` populates the true measured CDN manifest RTT!
       const withTiming = (list: RawStreamCandidate[], ms: number): RawStreamCandidate[] =>
@@ -1324,6 +1326,12 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         candidates,
         ...(metaHint ? { metaHint } : {}),
       };
+      };
+      const initial = buildResult();
+      if (!query.diag && settledCount < totalPipelines && query.onLateResult) {
+        void allLanes.then(() => { query.onLateResult?.(buildResult()); });
+      }
+      return initial;
     },
   };
 }
