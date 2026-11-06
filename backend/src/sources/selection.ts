@@ -1,3 +1,4 @@
+import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
@@ -6,7 +7,7 @@ export const MAX_SINGLE_TRACK_FALLBACKS = 2;
 
 /** Keep only manifest-proven multilingual streams, plus a tiny diverse fallback pool.
  * A manifest/child check is evidence of reachability, not proof of full playback. */
-export function selectPlaybackCandidates(entries: CandidateEntry[]): CandidateEntry[] {
+export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLang?: string): CandidateEntry[] {
   const unique = new Set<string>();
   const multi: CandidateEntry[] = [];
   const single: (CandidateEntry & { alive: boolean; latency: number; host: string; order: number })[] = [];
@@ -27,7 +28,10 @@ export function selectPlaybackCandidates(entries: CandidateEntry[]): CandidateEn
     single.push({adapter:entry.adapter,candidate:{...c,multiAudio:false,availableAudioLangs:langs.length===1?langs:undefined},
       alive:!!evidence?.alive,latency:evidence?.rttMs ?? c.latencyMs ?? Number.POSITIVE_INFINITY,host,order:single.length});
   }
-  single.sort((a,b)=>Number(b.alive)-Number(a.alive)||a.latency-b.latency||a.order-b.order);
+  const preferred = preferredLang ? normalizeLang(preferredLang).code : 'und';
+  const matches = (item: typeof single[number]) => preferred !== 'und' &&
+    !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
+  single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.latency-b.latency||a.order-b.order);
   const selected: typeof single = [];
   const hosts = new Set<string>();
   // A verified candidate always beats an unknown one. Within each confidence

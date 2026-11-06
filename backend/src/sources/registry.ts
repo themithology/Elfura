@@ -13,10 +13,9 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
-import { createSource4Adapter } from './source4.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
@@ -49,7 +48,6 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 1),
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
-      createSource4Adapter(cfg.source4?.enabled !== false),
     ];
   }
 
@@ -90,6 +88,10 @@ export class SourceRegistry {
             const { candidates: verified, verifiedAliveCount } =
               await verifyAndFilterCandidatesDetailed(raw);
             diagnosticCandidates.set(adapter.id, verified);
+            // Diagnostic-only retry, independent of the short startup budget.
+            // Bound work per adapter; never include URLs or headers in output.
+            const deep = new Map(await Promise.all(raw.filter(c => c.multiAudio && c.type === 'hls').slice(0, 2)
+              .map(async c => [c.url, await diagnoseMultiAudioCandidate(c)] as const)));
             return {
               id: adapter.id,
               ms: Date.now() - t0,
@@ -113,6 +115,7 @@ export class SourceRegistry {
                   verifiedMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
                   reachability: evidence?.alive ? 'verified' : evidence?.confirmedDead ? 'dead' : 'unknown',
                   claimedQuality: /^[a-z0-9 ._-]{1,32}$/i.test(candidate.quality) ? candidate.quality : 'unknown',
+                  deepProbe: deep.get(candidate.url) ?? null,
                   probe: evidence ? {
                     alive: evidence.alive,
                     confirmedDead: evidence.confirmedDead,
@@ -443,7 +446,7 @@ export class SourceRegistry {
     }
     const counts = new Map<string, Map<string, number>>();
     const sequences = new Map<string, number>();
-    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries)) {
+    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
       if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
       const seq = (sequences.get(adapter.id) ?? 0) + 1;
       sequences.set(adapter.id,seq);
@@ -464,10 +467,7 @@ export class SourceRegistry {
       return null;
     }
 
-    // OpenSubtitles is the single subtitle catalogue whenever it returns usable
-    // tracks. Mixing those entries with provider/native tracks produced duplicate
-    // languages and inconsistent labels. If OpenSubtitles is unavailable or has
-    // no usable result, each option keeps its existing native subtitle fallback.
+    // Only OpenSubtitles tracks are exposed. No provider subtitle fallback.
     const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
     if (shouldResolveOpenSubtitles && media.imdbId) {
@@ -610,17 +610,6 @@ export class SourceRegistry {
       )}`,
     }));
 
-    const subtitles = (cand.subtitles ?? []).map((s) => ({
-      lang: s.lang,
-      label: s.label,
-      url: `${streamBase}?t=${encodeURIComponent(
-        sealStreamTicket(this.cfg.secret, {
-          u: s.url,
-          ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
-          k: 's',
-        }),
-      )}`,
-    }));
 
     const latencyHintMs =
       typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
@@ -645,7 +634,7 @@ export class SourceRegistry {
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
-      subtitles,
+      subtitles: [],
     };
   }
 }

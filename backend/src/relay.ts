@@ -471,7 +471,14 @@ export function rewriteHlsManifest(
     dedupedHeaderLines.push(l);
   }
 
-  const lines = sanitizeExtXMediaLines(dedupedHeaderLines, hintAudioLang);
+  // Provider subtitle renditions must never be offered or fetched. Subtitle
+  // tracks are supplied exclusively by OpenSubtitles at the registry layer.
+  const noProviderSubs = dedupedHeaderLines
+    .filter(line => !/^\s*#EXT-X-MEDIA:.*\bTYPE=SUBTITLES\b/i.test(line))
+    .map(line => /^\s*#EXT-X-(?:I-FRAME-)?STREAM-INF:/i.test(line)
+      ? line.replace(/,SUBTITLES=(?:"[^"]*"|[^,]*)/gi, '').replace(/(:)SUBTITLES=(?:"[^"]*"|[^,]*),?/i, '$1')
+      : line);
+  const lines = sanitizeExtXMediaLines(noProviderSubs, hintAudioLang);
   let expectVariantUri = false;
 
   const rewritten = lines.map((line, lineIdx) => {

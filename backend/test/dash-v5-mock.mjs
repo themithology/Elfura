@@ -7,6 +7,7 @@ export function MediaPlayer() {
       settingsCalls: [], selections: [],
       on(event, fn) { handlers.set(event, fn); },
       initialize() { queueMicrotask(() => handlers.get(MediaPlayer.events.STREAM_INITIALIZED)?.({})); },
+      setTextTrack(index) { this.textTrack = index; },
       getTracksFor(type) { return type === 'audio' ? [{lang:'ko', labels:[]}] : []; },
       getRepresentationsByType() { return [
         {height:480,width:854,bandwidth:800000},

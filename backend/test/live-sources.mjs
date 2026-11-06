@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createBackendServer } from '../../dist/backend/index.js';
 
+const AUDIT_LANG = process.env.AUDIT_LANG || '';
+const EXPECT_LANG = process.env.AUDIT_EXPECT_LANG || '';
 const TMDB_ID = process.env.AUDIT_TMDB || '65942';
 const TYPE = (process.env.AUDIT_TYPE || 'tv').trim().toLowerCase() === 'movie' ? 'movie' : 'tv';
 const SEASON = process.env.AUDIT_SEASON || '1';
@@ -270,7 +272,7 @@ async function resolveSource(sourceId) {
   const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
   // 'combined' = the real user path: no source filter, both adapters race.
   const sourceQuery = sourceId === 'combined' ? '' : `&source=${sourceId}`;
-  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}${sourceQuery}`;
+  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}${sourceQuery}${AUDIT_LANG ? `&lang=${encodeURIComponent(AUDIT_LANG)}` : ''}`;
   const t0 = performance.now();
   const res = await fetchWithTimeout(playbackUrl);
   const resolveMs = Math.round(performance.now() - t0);
@@ -311,6 +313,7 @@ try {
     try {
       const options = await resolveSource(sourceId);
       console.log(`[audit] ${sourceId}: ${options.length} advertised option(s)`);
+      if (EXPECT_LANG && !options.some(o => o.audioLang === EXPECT_LANG || o.availableAudioLangs?.includes(EXPECT_LANG))) throw new Error(`expected ${EXPECT_LANG} option missing`);
       let manifestAudioTracks = 0;
       for (const option of options) {
         try {

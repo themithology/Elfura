@@ -655,3 +655,63 @@ export async function verifyAndFilterCandidatesDetailed(
 
   return { candidates: kept, verifiedAliveCount };
 }
+
+/** Slow, on-demand diagnostic only. No URLs, headers or upstream body are returned.
+ * This does not alter playback selection or the liveness cache. */
+export async function diagnoseMultiAudioCandidate(candidate: RawStreamCandidate) {
+  type Step = { stage: string; status: string; ms: number; httpStatus?: number; error?: string };
+  const steps: Step[] = [];
+  const headers = { 'User-Agent': DEFAULT_PROBE_UA, Accept: '*/*', ...(candidate.headers ?? {}) };
+  const read = async (stage: string, startUrl: string): Promise<{ text: string; url: string } | null> => {
+    const start = Date.now();
+    const signal = AbortSignal.timeout(8000);
+    try {
+      let url = startUrl;
+      for (let i = 0; i <= 3; i++) {
+        if (!isSafeUpstreamUrl(url)) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
+        const res = await fetch(url, {headers, signal, redirect:'manual'});
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get('location');
+          await res.body?.cancel();
+          if (!location || i === 3) { steps.push({stage,status:'redirect-error',httpStatus:res.status,ms:Date.now()-start});return null; }
+          url = new URL(location,url).href;
+          continue;
+        }
+        if (!res.ok) { await res.body?.cancel(); steps.push({stage,status:'http-error',httpStatus:res.status,ms:Date.now()-start});return null; }
+        const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
+        const valid = text.trimStart().startsWith('#EXTM3U') && (stage === 'master' || /#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text));
+        steps.push({stage,status:valid?'ok':'invalid-manifest',httpStatus:res.status,ms:Date.now()-start});
+        return valid ? {text,url} : null;
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.name : 'Error';
+      const cause = (err as {cause?:{code?:string}})?.cause?.code;
+      steps.push({stage,status:error === 'TimeoutError' || error === 'AbortError' ? 'timeout':'network-error',ms:Date.now()-start,
+        error:cause && /^[A-Z0-9_]{1,40}$/.test(cause) ? cause : error.replace(/[^a-zA-Z]/g,'').slice(0,40)});
+    }
+    return null;
+  };
+  if (candidate.type !== 'hls') return {status:'unsupported',manifestLanguages:[],steps};
+  const master = await read('master', candidate.url);
+  if (!master) return {status:'master-unavailable',manifestLanguages:[],steps};
+  const languages = extractManifestAudioLangs(master.text);
+  const lines = master.text.split(/\r?\n/);
+  let video = '', audio = '';
+  for (let i=0;i<lines.length;i++) {
+    const line=lines[i].trim();
+    if (!video && /^#EXT-X-STREAM-INF\b/i.test(line)) video=lines.slice(i+1).map(x=>x.trim()).find(x=>x && !x.startsWith('#')) || '';
+    if (/^#EXT-X-MEDIA:/i.test(line) && /TYPE=AUDIO\b/i.test(line)) {
+      const uri=line.match(/\bURI="([^"]+)"/i)?.[1] || '';
+      if (uri && (!audio || /DEFAULT=YES\b/i.test(line))) audio=uri;
+    }
+  }
+  const checks: Promise<unknown>[] = [];
+  for (const [stage, uri] of [['video-playlist',video],['audio-playlist',audio]]) {
+    if (!uri) { steps.push({stage,status:'not-listed',ms:0}); continue; }
+    try { checks.push(read(stage,resolveHlsChildUrl(uri,master.url))); }
+    catch { steps.push({stage,status:'invalid-url',ms:0}); }
+  }
+  await Promise.all(checks);
+  const childrenOk = steps.filter(x=>x.stage !== 'master').every(x=>x.status==='ok');
+  return {status:languages.length>1 && childrenOk?'manifest-and-playlists-reachable':'incomplete',manifestLanguages:languages,steps};
+}

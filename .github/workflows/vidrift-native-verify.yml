@@ -17,6 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - title: Jujutsu Kaisen S1E1 Hindi
+            tmdb: '95479'
+            lang: hi
           - title: Dead-End Job S1E1
             tmdb: '289517'
           - title: VisionQuest S1E1
@@ -35,6 +38,9 @@ jobs:
           NODE_ENV: production
           ELFURA_SECRET: live-audit-only-not-a-production-secret
           SOURCE1_VIDROCK_ORIGIN: https://disabled.invalid
+          SOURCE1_VIDBOLT_ORIGIN: https://disabled.invalid
+          AUDIT_LANG: ${{ matrix.lang || '' }}
+          AUDIT_EXPECT_LANG: ${{ matrix.lang || '' }}
           AUDIT_SOURCES: source-2
           AUDIT_TYPE: tv
           AUDIT_TMDB: ${{ matrix.tmdb }}

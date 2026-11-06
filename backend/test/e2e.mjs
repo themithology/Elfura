@@ -209,8 +209,8 @@ assert(!rewrittenDune.includes('MovieHubBD'));
 assert(rewrittenDune.includes('LANGUAGE="hi"'));
 assert(rewrittenDune.includes('NAME="Hindi"'));
 assert(rewrittenDune.includes('NAME="English"'));
-assert(rewrittenDune.includes('NAME="English #2"'));
-assert(rewrittenDune.includes('NAME="English #3"'));
+assert(!rewrittenDune.includes('TYPE=SUBTITLES'));
+assert(!rewrittenDune.includes('SUBTITLES="subs"'));
 
 const kaiManifest = [
   '#EXTM3U',
@@ -312,7 +312,8 @@ const rousavManifest = [
 const rewrittenRousav = rewriteHlsManifest(rousavManifest, 'https://cdn.example.com/media/abc/index.m3u8', undefined, secret);
 assert(rewrittenRousav.includes('LANGUAGE="en"'));
 assert(!rewrittenRousav.includes('en.[CC]'));
-assert(rewrittenRousav.includes('NAME="English (SDH)"'));
+assert(!rewrittenRousav.includes('TYPE=SUBTITLES'));
+assert(!rewrittenRousav.includes('SUBTITLES="subs"'));
 assert(rewrittenRousav.includes('NAME="English"'));
 assert(rewrittenRousav.includes('NAME="Hindi"'));
 assert(!rewrittenRousav.includes('1. English'));
@@ -770,7 +771,7 @@ const mockUpstream = http.createServer(async (req, res) => {
     }
     if (tail === 'master.m3u8') {
       res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
-      res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080\n/cdn/hub/v0.m3u8\n'); return;
+      res.end('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Hindi",LANGUAGE="hi",DEFAULT=YES,URI="/cdn/hub/a_hi.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",URI="/cdn/hub/a_en.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080,AUDIO="aud"\n/cdn/hub/v0.m3u8\n'); return;
     }
   }
   if (u.pathname === '/api/relay') {
@@ -1593,7 +1594,6 @@ try {
     { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
     { id: 'source-3', label: 'Source 3' },
-    { id: 'source-4', label: 'Source 4' },
   ]);
 
   // The public diagnostic reports observations, never upstream links or
@@ -1604,7 +1604,7 @@ try {
   const diag = await diagRes.json();
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
-  assert.equal(diag.sources.length, 4);
+  assert.equal(diag.sources.length, 3);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
@@ -1684,8 +1684,9 @@ try {
   const upstreamUrls = pb.sources.map((s) => openStreamTicket(secret, new URL(s.url, apiBase).searchParams.get('t')).u);
   assert.equal(new Set(upstreamUrls).size, upstreamUrls.length, 'identical upstream streams must be deduplicated across groups');
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
-  assert.deepEqual(pb.segments.intro, [52, 94]);
-  assert.deepEqual([...pb.primary.availableAudioLangs].sort(), ['en', 'hi']);
+  assert.equal(pb.segments, undefined, "TG skip endpoint must not be used");
+  assert.equal(skipSegmentRequestCount, 0, "removed TG service must not be contacted");
+  assert(pb.sources.length > 0, 'remaining providers should produce playable options');
   // A provider's quality catalogue is not proof that the selected manifest
   // actually contains multiple renditions; only measured ladders may rank so.
   // Hierarchy invariant: within the same multi-audio class, multi-quality
@@ -1991,20 +1992,20 @@ try {
     } finally { globalThis.fetch = oldFetch; }
   }
 
-  // A late multi-audio anime source must trigger the explicit Hindi preference,
+  // A late multi-audio source must trigger the explicit Hindi preference,
   // even when the track menu previously listed Hindi as an unplayed source hint.
   {
     const oldFetch=globalThis.fetch;
     let release; const gate=new Promise(r=>{release=r});
     const primary={...pb.primary,id:'anime-primary',sourceId:'source-1',audioLang:'en',multiAudio:false,availableAudioLangs:[],audioTracks:[],subtitles:[]};
-    const anime={...primary,id:'source-4:1',sourceId:'source-4',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
-    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-4'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
+    const anime={...primary,id:'source-2:1',sourceId:'source-2',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-2'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
     try{
       const p=new ElfuraPlayer({postMessage:false,api:'https://anime-recovery.example/api/v1/playback',tmdb:'95479',mediaType:'tv',season:1,episode:1,lang:'hi',pltoken:'token',nonce:'nonce'});
       p.activateSourceOption=async option=>{p.currentSource=option};let requested=[];p.setAudio=async lang=>{requested.push(lang);return true};
       await new Promise(r=>setTimeout(r,20));assert.equal(p.currentSource?.id,primary.id);
       p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
-      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-4'));assert.deepEqual(requested,['hi']);p.destroy();
+      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-2'));assert.deepEqual(requested,['hi']);p.destroy();
     }finally{globalThis.fetch=oldFetch}
   }
 

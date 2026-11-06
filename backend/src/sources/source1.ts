@@ -4,10 +4,11 @@
  * Multi-pipeline server-side stream resolver hardened against real-world
  * payloads verified across Hollywood blockbusters, K-dramas, TV anime, and
  * theatrical anime films:
- *   - Pipeline A: Scrambled `_serverFn` RPC (Seroval AST + 9-byte framed stream + XOR)
- *   - Pipeline B: Public JSON hub (`TG HUB v2`, `TG OUT`, `TGKAI` multi-audio HLS)
- *   - Pipeline C: Rift/Orion boot (`orionStreams` HLS + `mb.vidrift.net` MP4 + VTT subs)
- *   - Pipeline D: Direct multi-server HLS/DASH lanes and skip-segment RPC
+ *   - Pipeline C: VidRift/Orion boot
+ *   - Pipeline D: VidBolt
+ *   - Pipeline E: VidRock
+ *   - Pipeline F: VidLink
+ * Legacy TG helpers below are not registered or called.
  */
 
 import crypto from 'node:crypto';
@@ -630,56 +631,7 @@ async function fetchFromRiftBoot(
       (s) => typeof s?.url === 'string' && s.url.includes('/api/orion/'),
     );
 
-    // Fetch subtitles with a fast 950ms cap (direct Orion when playbackToken is present, else relay)
-    let sharedSubs: RawTrackRef[] = [];
-    const firstHash = orion[0]?.url?.split('/api/orion/')[1]?.split('/')[0];
-    if (firstHash) {
-      try {
-        const directSubUrl = `${cfg.riftOrigin}/api/orion/${firstHash}/subtitles.json`;
-        const relaySubUrl = wrapRelay(directSubUrl, false);
-        const subRes = riftPlaybackToken
-          ? await fetch(directSubUrl, {
-              headers: {
-                Referer: `${cfg.riftOrigin}/`,
-                Origin: cfg.riftOrigin,
-                'User-Agent': BROWSER_UA,
-                'X-Playback-Token': riftPlaybackToken,
-              },
-              signal: AbortSignal.timeout(950),
-            }).catch(() => null)
-          : await fetch(relaySubUrl, {
-              headers: { 'User-Agent': BROWSER_UA },
-              signal: AbortSignal.timeout(950),
-            }).catch(() => null);
-        if (subRes?.ok) {
-          const subBody = (await subRes.json()) as { tracks?: { label?: string; lang?: string; url?: string }[] };
-          if (Array.isArray(subBody?.tracks) && subBody.tracks.length > 0) {
-            const directHeaders = riftPlaybackToken
-              ? {
-                  Referer: `${cfg.riftOrigin}/`,
-                  Origin: cfg.riftOrigin,
-                  'User-Agent': BROWSER_UA,
-                  'X-Playback-Token': riftPlaybackToken,
-                }
-              : undefined;
-            sharedSubs = mapSubtitles(
-              subBody.tracks.map((t) => ({
-                label: t.label,
-                lang: t.lang,
-                url: t.url
-                  ? riftPlaybackToken
-                    ? `${cfg.riftOrigin}${t.url}`
-                    : wrapRelay(`${cfg.riftOrigin}${t.url}`, false)
-                  : undefined,
-              })),
-              directHeaders,
-            );
-          }
-        }
-      } catch {
-        /* ignore subtitle timeout */
-      }
-    }
+    // Provider subtitles are deliberately not requested.
 
     const out: RawStreamCandidate[] = [];
     for (let i = 0; i < orion.length; i++) {
@@ -730,15 +682,19 @@ async function fetchFromRiftBoot(
 
       if (!isSafeUpstreamUrl(finalUrl)) continue;
 
+      // Orion exposes separate single-language servers. Preserve only an
+      // explicit language label as a hint; never claim these are multi-audio.
+      const namedLanguage = typeof s.name === 'string' ? s.name.split('·').pop()?.trim() : undefined;
+      const language = namedLanguage ? normalizeLang(namedLanguage) : undefined;
       out.push({
         key: `orion:${hash}:${streamType}`,
+        ...(language && language.code !== 'und' ? { audioLang: language.code, audioLabel: language.label } : {}),
         type: streamType,
         url: finalUrl,
         headers,
         quality: maxHeight ? `${maxHeight}p` : 'auto',
         // Language must come from manifest evidence, not the provider's stream name.
         multiAudio: false,
-        subtitles: sharedSubs,
         ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
         rank: (streamType === 'hls' ? 15 : 35) + i,
       });
@@ -754,7 +710,6 @@ async function fetchFromRiftBoot(
           'User-Agent': BROWSER_UA,
         },
         quality: 'auto',
-        subtitles: sharedSubs,
         rank: 45,
       });
     }
@@ -1031,7 +986,7 @@ async function fetchFromVidLink(
   }
 }
 
-async function fetchSkipSegments(
+export async function fetchSkipSegments(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
   refererPath: string,
@@ -1100,24 +1055,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
     label: `Source ${group}`,
     enabled: () => cfg.enabled,
 
-    async resolveSegments(query: SourceQuery): Promise<SkipSegments | undefined> {
-      const refererPath =
-        query.type === 'movie'
-          ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
-          : `/embed/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
-      return group === 1 ? fetchSkipSegments(cfg, query, refererPath) : undefined;
-    },
-
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
-      const apiPath =
-        query.type === 'movie'
-          ? `/api/m/${encodeURIComponent(query.tmdbId)}`
-          : `/api/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
-      const refererPath =
-        query.type === 'movie'
-          ? `/embed/movie/${encodeURIComponent(query.tmdbId)}`
-          : `/embed/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
-
       const t0 = performance.now();
       const timed = <T>(p: Promise<T>): Promise<{ val: T; ms: number }> =>
         p.then((val) => ({ val, ms: Math.max(1, Math.round(performance.now() - t0)) }));
@@ -1157,13 +1095,13 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         }
       };
 
-      const pSecure = timed(group === 1 ? fetchFromSecureFn(cfg, apiPath, refererPath, query.signal) : Promise.resolve(null)).then((r) => {
+      const pSecure = timed(Promise.resolve(null as Awaited<ReturnType<typeof fetchFromSecureFn>>)).then((r) => {
         slots.secure = r;
         settledCount++;
         if (r.val?.links?.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pPublic = timed(group === 1 ? fetchFromPublicApi(cfg, apiPath, query.signal) : Promise.resolve(null)).then((r) => {
+      const pPublic = timed(Promise.resolve(null as Awaited<ReturnType<typeof fetchFromPublicApi>>)).then((r) => {
         slots.public = r;
         settledCount++;
         if (r.val?.links?.length) liveSourcePipelines++;
@@ -1303,8 +1241,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
             detail: !slot ? 'not-settled' : `candidates=${count}`,
           });
         if (group === 1) {
-          lane('A', slots.secure, secureCandidates.length);
-          lane('B', slots.public, publicCandidates.length);
           lane('F', slots.link, linkCandidates.length);
         } else {
           lane('C', slots.rift, riftCandidates.length);

@@ -107,8 +107,6 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
   const [origins, tmdbMeta, catalog, sources] = await Promise.all([
     Promise.all([
       probeOrigin('tmdb', tmdbBase),
-      probeOrigin('s1-app', cfg.source1.appOrigin),
-      probeOrigin('s1-api', cfg.source1.apiOrigin),
       probeOrigin('s1-rift', cfg.source1.riftOrigin),
       probeOrigin('s1-sync', cfg.source1.syncOrigin),
       probeOrigin('s1-link', cfg.source1.vidlinkOrigin),

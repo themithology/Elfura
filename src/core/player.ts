@@ -253,6 +253,10 @@ export class ElfuraPlayer {
     this.surface.className = 'elf-surface';
     this.video = document.createElement('video');
     this.video.className = 'elf-video';
+    // Disable native-provider captions, including Safari's native HLS tracks.
+    this.video.textTracks?.addEventListener('addtrack', (event) => {
+      if (event.track && (event.track.kind === 'subtitles' || event.track.kind === 'captions')) event.track.mode = 'disabled';
+    });
     this.video.playsInline = true;
     this.video.setAttribute('playsinline', '');
     this.video.preload = 'auto';
@@ -1099,7 +1103,6 @@ export class ElfuraPlayer {
       // add newly verified choices without restarting the active stream.
       const lateGroups = !cfg.source ? [
         ...(!this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio) ? ['source-2'] : []),
-        ...((cfg.mediaType || data.media?.type) === 'tv' && !this.sources.some((s) => s.sourceId === 'source-4') ? ['source-4'] : []),
       ] : [];
       for (const recoveryId of lateGroups) {
         const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
@@ -2382,16 +2385,11 @@ export class ElfuraPlayer {
       this.mergeNativeAudio(mapped);
     });
 
-    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_e, data) => {
-      this.subtitleTracks = (data.subtitleTracks ?? []).map((t) => ({
-        id: `native:${t.id}`,
-        kind: 'native' as const,
-        lang: canonLang(t.lang || t.name),
-        label: languageLabel(t.lang ?? 'und', t.name || undefined),
-        url: t.url,
-      }));
+    // Embedded provider subtitles are not exposed; only supplied OpenSubtitles tracks.
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+      hls.subtitleTrack = -1;
+      this.subtitleTracks = [];
       this.mergeExternalSubs();
-      this.emit('subtitleTracks', this.subtitleTracks);
     });
 
     hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -2492,14 +2490,9 @@ export class ElfuraPlayer {
       this.updateDashQualityLevels(player);
       this.applyQualityCap();
 
-      this.subtitleTracks = player.getTracksFor('text').map((t: MediaInfo, i: number) => ({
-        id: `native:text:${i}`,
-        kind: 'native' as const,
-        lang: canonLang(t.lang),
-        label: languageLabel(t.lang ?? 'und'),
-      }));
+      player.setTextTrack(-1);
+      this.subtitleTracks = [];
       this.mergeExternalSubs();
-      this.emit('subtitleTracks', this.subtitleTracks);
 
       const probe = this.activeProbe;
       if (probe && this.currentSource?.id === probe.opt.id) {
