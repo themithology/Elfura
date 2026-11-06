@@ -1,0 +1,19 @@
+name: Candidate player against production
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/startup-production-candidate.mjs, .github/workflows/startup-production-candidate.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:embed
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/startup-production-candidate.mjs
