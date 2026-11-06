@@ -3,7 +3,7 @@
 import { chromium } from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const base='https://embed.theogpiratebot.online';
-const cases=[{path:'movie/693134'},{path:'movie/872585'},{path:'tv/95479/1/1'}];
+const cases=[{path:'movie/807'},{path:'movie/693134'},{path:'movie/872585'},{path:'tv/95479/1/1'}];
 const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:chromiumBinary.args});
 for(const test of cases.filter(x=>!process.env.TEST_PATH||x.path===process.env.TEST_PATH)){ 
  const page=await browser.newPage({viewport:{width:393,height:873},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'});const events=[];const pending=[];let step='open';
