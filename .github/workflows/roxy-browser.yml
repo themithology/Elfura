@@ -6,6 +6,9 @@ on:
       - 'backend/src/**'
       - 'src/embed.ts'
       - 'backend/test/roxy*.mjs'
+      - 'backend/test/e2e.mjs'
+      - 'backend/test/selection.mjs'
+      - 'backend/test/startup-budget.mjs'
       - '.github/workflows/roxy-browser.yml'
 permissions:
   contents: read

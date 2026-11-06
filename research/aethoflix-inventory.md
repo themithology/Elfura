@@ -37,3 +37,7 @@ The older public client inspected in [42129677823](https://github.com/themitholo
 ## Integration rule
 
 Add a direct candidate only when there is credible evidence of separate selectable audio tracks, with Hindi prioritized, correct title identity, and real browser playback. Test recovery and startup impact; cap single-language fallbacks at 1–2. Preserve the earlier exclusions and no-Aethoflix/no-ZXC-mirror rule. No additional multilingual provider is established by this inventory alone.
+
+## Direct lane retest
+
+Run [42225986780](https://github.com/themithology/Elfura/actions/runs/42225986780) queried Vega, Sirius, Callisto, Quantum and Quasar for eight movie/TV cases, including TV `215072` S2E2 and movie `807`. Sirius returned the **Orion** family for five cases, Vega for two and Quantum for one; it is not evidence of a new independent provider. The sampled Vega and Quantum streams had no alternate audio renditions; Callisto and Quasar returned no candidates. The Orion results included Hindi-labelled renditions in five cases, but playback, audible language and title accuracy were not validated by this manifest-and-byte audit. Do not count provider fallbacks or separate single-track files as additional multi-audio sources.
