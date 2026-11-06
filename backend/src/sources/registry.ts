@@ -17,6 +17,7 @@ import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './li
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
+import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -77,6 +78,7 @@ export class SourceRegistry {
       resolveMetaFallback: () => fetchTmdbMetadata(this.cfg.tmdb, params),
       signal: AbortSignal.timeout(15_000),
     };
+    const diagnosticCandidates = new Map<string, RawStreamCandidate[]>();
     const adapters = await Promise.all(
       this.adapters
         .filter((a) => a.enabled())
@@ -87,13 +89,17 @@ export class SourceRegistry {
             const raw = result.candidates;
             const { candidates: verified, verifiedAliveCount } =
               await verifyAndFilterCandidatesDetailed(raw);
+            diagnosticCandidates.set(adapter.id, verified);
             return {
               id: adapter.id,
               ms: Date.now() - t0,
               raw: raw.length,
               verified: verified.length,
               verifiedAlive: verifiedAliveCount,
-              multiAudio: verified.filter((c) => c.multiAudio).length,
+              multiAudio: verified.filter((c) => {
+                const evidence = cachedCandidateEvidence(c);
+                return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
+              }).length,
               // Raw claims and independently measured manifest evidence are
               // intentionally separate. Never return URLs, headers or tokens.
               options: raw.slice(0, 20).map((candidate) => {
@@ -104,6 +110,8 @@ export class SourceRegistry {
                   type: candidate.type,
                   claimedAudio: candidate.audioLang ?? null,
                   claimedMultiAudio: !!candidate.multiAudio,
+                  verifiedMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
+                  reachability: evidence?.alive ? 'verified' : evidence?.confirmedDead ? 'dead' : 'unknown',
                   claimedQuality: /^[a-z0-9 ._-]{1,32}$/i.test(candidate.quality) ? candidate.quality : 'unknown',
                   probe: evidence ? {
                     alive: evidence.alive,
@@ -137,7 +145,16 @@ export class SourceRegistry {
           }
         }),
     );
-    return { adapters, lanes: diag };
+    const entries = this.adapters.flatMap(adapter =>
+      (diagnosticCandidates.get(adapter.id) ?? []).map(candidate => ({adapter,candidate})));
+    const selected = selectPlaybackCandidates(entries).map(({adapter,candidate}) => ({
+      sourceId:adapter.id,
+      fingerprint:crypto.createHmac('sha256',this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
+      multiAudio:!!candidate.multiAudio,
+      languages:candidate.availableAudioLangs ?? [],
+      verified:!!cachedCandidateEvidence(candidate)?.alive,
+    }));
+    return { adapters, lanes: diag, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Fresh diagnostic snapshot; a reachable manifest does not prove full playback or audible language.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -406,50 +423,31 @@ export class SourceRegistry {
     const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
-    // Identical upstream URLs exposed by different providers are one stream,
-    // not independent source choices. Keep the first verified occurrence.
-    const seenUpstreamUrls = new Set<string>();
     let mergedSegments: SkipSegments | undefined;
-    for (const segments of segmentResults) {
-      if (!mergedSegments && segments) mergedSegments = segments;
-    }
-
+    for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
+    const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
-      if (!mergedSegments && result.segments) {
-        mergedSegments = result.segments;
-      }
+      if (!mergedSegments && result.segments) mergedSegments = result.segments;
       if (!media.title && result.metaHint?.title) {
-        media.title =
-          params.type === 'tv' && params.season && params.episode
-            ? `${result.metaHint.title} · S${params.season}E${params.episode}`
-            : result.metaHint.title;
+        media.title = params.type === 'tv' && params.season && params.episode
+          ? `${result.metaHint.title} · S${params.season}E${params.episode}` : result.metaHint.title;
       }
       if (!media.year && result.metaHint?.year) media.year = result.metaHint.year;
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
-
-      const labelCounts = new Map<string, number>();
-      let optionSeq = 0;
-
       for (const cand of liveCandidates) {
-        if (seenUpstreamUrls.has(cand.url)) continue;
-        seenUpstreamUrls.add(cand.url);
-        const sealed = this.sealCandidate(adapter, cand, ++optionSeq, labelCounts, streamBase);
-        uniformOptions.push(sealed);
-
-        // If candidate includes a distinct healthy standby backup URL, expose as automatic failover slot
-        if (cand.standbyUrl && !seenUpstreamUrls.has(cand.standbyUrl)) {
-          seenUpstreamUrls.add(cand.standbyUrl);
-          const backupCand: RawStreamCandidate = {
-            ...cand,
-            key: `${cand.key}#standby`,
-            fingerprint: `${cand.fingerprint || cand.key}#standby`,
-            url: cand.standbyUrl,
-            headers: cand.standbyHeaders ?? cand.headers,
-            standbyUrl: undefined,
-          };
-          uniformOptions.push(this.sealCandidate(adapter, backupCand, ++optionSeq, labelCounts, streamBase));
+        candidateEntries.push({adapter,candidate:cand});
+        if (cand.standbyUrl && cachedCandidateEvidence({ ...cand, url:cand.standbyUrl, headers:cand.standbyHeaders ?? cand.headers })?.alive) {
+          candidateEntries.push({adapter,candidate:{...cand,key:`${cand.key}#standby`,fingerprint:`${cand.fingerprint || cand.key}#standby`,url:cand.standbyUrl,headers:cand.standbyHeaders ?? cand.headers,standbyUrl:undefined,standbyHeaders:undefined}});
         }
       }
+    }
+    const counts = new Map<string, Map<string, number>>();
+    const sequences = new Map<string, number>();
+    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries)) {
+      if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
+      const seq = (sequences.get(adapter.id) ?? 0) + 1;
+      sequences.set(adapter.id,seq);
+      uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
     }
 
     if (!uniformOptions.length) {

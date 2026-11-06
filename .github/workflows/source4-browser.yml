@@ -2,7 +2,7 @@ name: Multi-audio anime browser verification
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/src/sources/source4.ts, backend/test/source4-browser.mjs, .github/workflows/source4-browser.yml]
+    paths: [backend/src/sources/source4.ts, backend/src/sources/selection.ts, backend/src/sources/registry.ts, src/core/player.ts, backend/test/source4-browser.mjs, .github/workflows/source4-browser.yml]
 permissions:
   contents: read
 jobs:

@@ -183,6 +183,8 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
     origins,
     sources: sources.adapters,
     lanes: sources.lanes,
+    selected: sources.selected,
+    selectionPolicy: sources.policy,
     hints,
   };
 }

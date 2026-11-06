@@ -1122,7 +1122,7 @@ export class ElfuraPlayer {
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
             for (const candidate of recovered.sources ?? []) {
-              if (candidate.sourceId !== recoveryId || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
+              if (candidate.sourceId !== recoveryId || !candidate.multiAudio || (candidate.fingerprint && fingerprints.has(candidate.fingerprint))) continue;
               const option = resolveSource(candidate);
               if (ids.has(option.id)) {
                 let n = 1;

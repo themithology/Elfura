@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createBackendServer } from '../../dist/backend/index.js';
+import { ROXY_PAGE } from '../../dist/backend/roxy-page.js';
+new Function(ROXY_PAGE.match(/<script>([\s\S]*)<\/script>/)[1]);
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
 const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};
