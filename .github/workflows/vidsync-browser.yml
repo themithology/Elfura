@@ -15,8 +15,10 @@ jobs:
         include:
           - type: movie
             tmdb: '872585'
+            expect: hi
           - type: tv
             tmdb: '95479'
+            expect: unknown
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,3 +31,4 @@ jobs:
         env:
           SYNC_TYPE: ${{ matrix.type }}
           SYNC_TMDB: ${{ matrix.tmdb }}
+          SYNC_EXPECT: ${{ matrix.expect }}

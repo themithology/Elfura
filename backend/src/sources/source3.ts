@@ -151,7 +151,11 @@ export async function fetchFromVidSyncPro(
     const providerKey = (row.provider?.id || 'sync').toLowerCase();
 
     // Collapse Castle's 5 quality clones (`1080p`, `720p`, `480p`, `360p`, `Auto`) per language
-    const groupKey = `${providerKey}:${norm.code}:${(directCandidate || proxyCandidate).split('?')[0]}`;
+    const path = (directCandidate || proxyCandidate).split('?')[0];
+    // Castle's direct rendition paths differ only by the resolution directory.
+    // Collapse those clones so low-quality copies do not crowd out other dubs.
+    const groupPath = providerKey === 'castle' ? path.replace(/\/(?:1080|720|480|360)\/(?=index_[^/]+\.m3u8$)/i, '/{quality}/') : path;
+    const groupKey = `${providerKey}:${norm.code}:${groupPath}`;
     if (seenGroup.has(groupKey)) continue;
     seenGroup.add(groupKey);
 
@@ -206,7 +210,7 @@ export async function fetchFromVidSyncPro(
       // An unambiguous row label is a single-track hint, not evidence of
       // switchable audio or proof of spoken language. If the same direct URL
       // is labelled as multiple languages, do not assign any label to it.
-      ...(!sharedDirectAcrossLangs && norm.code !== 'und' ? {audioLang:norm.code, audioLabel:norm.label} : {}),
+      ...(!sharedDirectAcrossLangs && norm.code !== 'und' ? { audioLang: norm.code, audioLabel: norm.label } : {}),
       // These are catalogue-wide language labels, not playable audio tracks:
       // each row represents a separate dub. Manifest liveness may promote a
       // candidate to multi-audio when it actually contains multiple tracks.

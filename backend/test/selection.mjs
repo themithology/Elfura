@@ -36,9 +36,11 @@ try {
   {provider:{id:'castle'},url:'https://cdn.example/english.m3u8',directUrl:'https://cdn.example/english.m3u8',audioLanguage:'en',standbyUrl:'https://cdn.example/hindi.m3u8',quality:'720p'},
   {provider:{id:'castle'},url:'https://cdn.example/hindi.m3u8',directUrl:'https://cdn.example/hindi.m3u8',audioLanguage:'hi',standbyUrl:'https://cdn.example/english.m3u8',quality:'720p'},
   {provider:{id:'castle'},url:'https://cdn.example/english.m3u8',directUrl:'https://cdn.example/english.m3u8',audioLanguage:'ta',quality:'720p'},
+  {provider:{id:'castle'},url:'https://cdn.example/720/index_266.m3u8',audioLanguage:'hi',quality:'720p'},
+  {provider:{id:'castle'},url:'https://cdn.example/480/index_266.m3u8',audioLanguage:'hi',quality:'480p'},
  ];globalThis.fetch=async()=>Response.json({sources:vsRows});
  const vs=await fetchFromVidSyncPro('https://vidsync.example',{type:'movie',tmdbId:'872585'});const hi=vs.find(c=>c.url.endsWith('/hindi.m3u8')),shared=vs.find(c=>c.url.endsWith('/english.m3u8'));
- assert.equal(hi.audioLang,'hi');assert.equal(hi.multiAudio,false);assert.equal(hi.standbyUrl,undefined);assert.equal(shared.audioLang,undefined);assert(vs.every(c=>!c.subtitles));
+ assert.equal(hi.audioLang,'hi');assert.equal(hi.multiAudio,false);assert.equal(hi.standbyUrl,undefined);assert.equal(shared.audioLang,undefined);assert(vs.every(c=>!c.subtitles));assert.equal(vs.filter(c=>c.url.includes('index_266')).length,1,'quality clones must not crowd out other options');
  const cfg=loadBackendConfig({ELFURA_SECRET:'test'});cfg.source1.riftOrigin='https://rift.example';cfg.source1.vidrockOrigin='';cfg.source1.vidboltOrigin='https://bolt.example';
  let subtitleRequests=0;globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.endsWith('subtitles.json'))subtitleRequests++;if(u.hostname==='rift.example')return Response.json({meta:{playbackToken:'test-token',orionStreams:[{url:'/api/orion/a/master.m3u8',name:'Orion · Hindi'},{url:'/api/orion/b/master.m3u8',name:'Orion · English'},{url:'/api/orion/c/master.m3u8',name:'Orion · Original'}]}});return new Response('',{status:404})};
  const rift=await createSource1Adapter(cfg.source1,2).resolve({type:'tv',tmdbId:'123',season:1,episode:1,diag:[]});assert.deepEqual(rift.candidates.map(c=>c.audioLang),['hi','en',undefined]);assert(rift.candidates.every(c=>!c.multiAudio && !c.subtitles));assert.equal(subtitleRequests,0);
