@@ -20,7 +20,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run build
-      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: node backend/test/startup-recovery-browser.mjs
         env:
           RECOVERY_MODE: ${{ matrix.mode }}
