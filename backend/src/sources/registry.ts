@@ -14,7 +14,7 @@ import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
-import { createSource1Adapter } from './source1.js';
+import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
@@ -45,8 +45,20 @@ export class SourceRegistry {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      createSource1Adapter(cfg.source1, 2),
-      createSource3Adapter(cfg.source3),
+      // VidSync moves to Source 1. Source 2 retains VidRift and VidRock.
+      createSource3Adapter(cfg.source3, 1),
+      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      // VidBolt/Orion is a direct upstream used by Aethoflix. No Aethoflix
+      // or ZXC mirror requests are made by this group.
+      {
+        id: 'source-3', label: 'Source 3', enabled: () => cfg.source1.enabled,
+        resolve: async (query) => {
+          const start = Date.now();
+          const candidates = await fetchFromVidBolt(cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', query);
+          query.diag?.push({ adapter: 'source-3', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
+          return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) };
+        },
+      },
     ];
   }
 

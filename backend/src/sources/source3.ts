@@ -224,11 +224,11 @@ export async function fetchFromVidSyncPro(
   return out;
 }
 
-export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapter {
+export function createSource3Adapter(cfg: BackendConfig['source3'], group: 1 | 3 = 3): SourceAdapter {
   const origin = (cfg?.origin || 'https://vidsync.pro').replace(/\/+$/, '');
   return {
-    id: 'source-3',
-    label: 'Source 3',
+    id: `source-${group}`,
+    label: `Source ${group}`,
     enabled: () => !!cfg?.enabled && !!origin,
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
       let sync: RawStreamCandidate[] = [];
@@ -240,7 +240,7 @@ export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapt
         const result = await promise;
         sync = result;
         settled++;
-        query.diag?.push({adapter:'source-3', lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}`});
+        query.diag?.push({adapter:`source-${group}`, lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}`});
         if (result.length && !timer && !query.diag) timer = setTimeout(() => release?.(), 700);
       };
       const allLanes = Promise.allSettled([

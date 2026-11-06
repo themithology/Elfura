@@ -25,7 +25,7 @@ try {
  if(mode==='recover')await page.waitForFunction(()=>window.__elfura?.player?.currentSource?.sourceId==='source-2'&&window.__elfura.player.video.currentTime>1,null,{timeout:30000});
  else await page.waitForFunction(()=>document.querySelector('.elf-shell')?.dataset.unavailable==='true',null,{timeout:30000});
  const state=await page.evaluate(()=>({source:window.__elfura.player.currentSource?.sourceId,time:window.__elfura.player.video.currentTime,ready:window.__elfura.player.video.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable}));
- if(state.loading==='true'||!requests.includes('source-2')||!requests.includes('source-3'))throw new Error('missing bounded recovery');
+ if(state.loading==='true'||!requests.includes('source-2')||!requests.includes('source-3')||(mode==='unavailable'&&!requests.includes('source-1')))throw new Error('missing bounded recovery');
  console.log('::notice title=StartupRecovery::'+JSON.stringify({mode,ok:true,state,requests}));
 }catch(e){const state=await page?.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId,time:window.__elfura?.player?.video?.currentTime,ready:window.__elfura?.player?.video?.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable})).catch(()=>null);console.log('::notice title=StartupRecovery::'+JSON.stringify({mode,ok:false,error:e.name,state,requests}));process.exitCode=1;}
 finally{await browser?.close();await new Promise(r=>server.close(r));rmSync(tmp,{recursive:true,force:true});}

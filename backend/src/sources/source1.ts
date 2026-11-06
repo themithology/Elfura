@@ -413,7 +413,7 @@ async function fetchFromVidRock(
 /* Source 1 Adapter Factory                                            */
 /* ------------------------------------------------------------------ */
 
-export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2 = 1): SourceAdapter {
+export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2 = 1, options: { includeVidBolt?: boolean } = {}): SourceAdapter {
   const id = `source-${group}`;
   return {
     id,
@@ -460,7 +460,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const pSync = timed(group === 2 ? fetchFromVidBolt(cfg.vidboltOrigin || 'https://vidbolt.xyz', query) : Promise.resolve([] as RawStreamCandidate[])).then((r) => {
+      const pSync = timed(group === 2 && options.includeVidBolt !== false ? fetchFromVidBolt(cfg.vidboltOrigin || 'https://vidbolt.xyz', query) : Promise.resolve([] as RawStreamCandidate[])).then((r) => {
         slots.sync = r;
         settledCount++;
         if (r.val.length) liveSourcePipelines++;
@@ -573,7 +573,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
           });
         if (group === 2) {
           lane('C', slots.rift, riftCandidates.length);
-          lane('D', slots.sync, syncCandidates.length);
+          if (options.includeVidBolt !== false) lane('D', slots.sync, syncCandidates.length);
           lane('E', slots.rock, rockCandidates.length);
         }
       }
