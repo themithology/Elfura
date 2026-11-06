@@ -3,11 +3,12 @@ import {chromium} from 'playwright-core';import chromiumBinary from '@sparticuz/
 process.on('uncaughtException', e => console.log('::error title=NodeUncaught::'+String(e.stack||e).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,1600)));
 process.on('unhandledRejection', e => console.log('::error title=NodeUnhandled::'+String(e?.stack||e).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,1600)));
 const log=v=>console.log('::notice title=AnimeBrowser::'+JSON.stringify(v).replace(/%/g,'%25'));
-const {server}=createBackendServer({isProd:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;let browser;
+const {server,registry}=createBackendServer({isProd:false});
+if(process.env.TEST_EXPIRED==='1'){const seal=registry.sealCandidate.bind(registry);registry.sealCandidate=(adapter,candidate,...rest)=>seal(adapter,adapter.id==='source-4'?{...candidate,url:candidate.url.replace(/(\/p\/[^/]+\/)\d+\//,'$11/')}:candidate,...rest);}await new Promise(r=>server.listen(0,'127.0.0.1',r));const port=server.address().port;let browser;
 try{browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  for(const id of [process.env.ANIME_TEST_ID || '95479']){
  const page=await browser.newPage();const api=[];page.on('response',r=>{try{const u=new URL(r.url());if(u.pathname==='/api/v1/playback')api.push({source:u.searchParams.get('source')||'combined',status:r.status()})}catch{}});let step='open';let start=Date.now();
- try{await page.goto(`http://127.0.0.1:${port}/embed/tv/${id}/1/1?lang=hi`,{waitUntil:'domcontentloaded',timeout:25000});
+ try{await page.goto(`http://127.0.0.1:${port}/embed/tv/${id}/1/1?lang=hi${process.env.TEST_EXPIRED==='1'?'&source=source-4':''}`, {waitUntil:'domcontentloaded',timeout:25000});
  step='source';await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-4'&&s.multiAudio&&s.availableAudioLangs?.includes('hi')),null,{timeout:25000});
  step='tracks';await page.evaluate(async()=>{const p=window.__elfura.player;p.video.muted=true;const wanted=p.getSources().find(s=>s.sourceId==='source-4'&&s.multiAudio);if(p.currentSource?.sourceId!=='source-4')await p.setSource(wanted.id);await p.play()});await page.waitForFunction(()=>window.__elfura?.player?.hls?.audioTracks?.some(t=>t.lang==='hi'),null,{timeout:20000});
  step='playing';await page.waitForFunction(()=>window.__elfura.player.video.currentTime>0.4,null,{timeout:35000});const firstFrameMs=Date.now()-start;const initial=await page.evaluate(()=>({time:window.__elfura.player.video.currentTime,lang:window.__elfura.player.hls.audioTracks[window.__elfura.player.hls.audioTrack]?.lang,langs:window.__elfura.player.hls.audioTracks.map(t=>t.lang),title:window.__elfura.player.mediaInfo?.rawTitle}));

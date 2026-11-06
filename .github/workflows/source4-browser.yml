@@ -9,6 +9,10 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [normal, expired]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,3 +23,5 @@ jobs:
       - run: npm test
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/source4-browser.mjs
+        env:
+          TEST_EXPIRED: ${{ matrix.mode == 'expired' && '1' || '0' }}
