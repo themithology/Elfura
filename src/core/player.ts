@@ -226,6 +226,7 @@ export class ElfuraPlayer {
   bridge!: PostMessageBridge;
 
   private fatalCount = 0;
+  private engineLoadSeq = 0;
   private initialAudioApplied = false;
   private desiredAudioLang: string | null = null;
   private audioSearchSeq = 0;
@@ -1142,7 +1143,14 @@ export class ElfuraPlayer {
               // was unavailable, retry it only when the newly visible list
               // actually reports that language. Never relabel current audio.
               const wanted = this.desiredAudioLang;
-              if (wanted && wanted !== 'und' && matchScore(wanted, this.currentAudio?.lang ?? 'und') < 0 &&
+              // A discovered source-level language is not proof the current
+              // engine is actually playing it; only native tracks or a known
+              // single-dub current source can satisfy the preference.
+              const currentLanguageMatches = !!wanted && (
+                (this.currentAudio?.kind === 'native' && matchScore(wanted, this.currentAudio.lang) >= 0) ||
+                (!!this.currentSource && !this.currentSource.multiAudio &&
+                  matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
+              if (wanted && wanted !== 'und' && !currentLanguageMatches &&
                   this.sources.some((s) => s.sourceId === recoveryId &&
                     (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
                 void this.setAudio(wanted);
@@ -1233,6 +1241,7 @@ export class ElfuraPlayer {
           : sniff(url)
         : (mappedKind as EngineKind);
 
+    const loadSeq = ++this.engineLoadSeq;
     this.teardownEngine();
     this.engineKind = engine;
     this.fatalCount = 0;
@@ -1243,8 +1252,8 @@ export class ElfuraPlayer {
     }
     if ((this.input.config.subsrc?.length ?? 0) > 0) this.mergeExternalSubs();
 
-    if (engine === 'hls') void this.loadHls(url);
-    else if (engine === 'dash') void this.loadDash(url);
+    if (engine === 'hls') void this.loadHls(url, loadSeq);
+    else if (engine === 'dash') void this.loadDash(url, loadSeq);
     else this.loadNative(url);
 
     this.applyInitialPrefs();
@@ -2131,6 +2140,7 @@ export class ElfuraPlayer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.engineLoadSeq++;
     this.teardownEngine();
     this.externalAudio.destroy();
     this.renderer?.destroy();
@@ -2233,11 +2243,11 @@ export class ElfuraPlayer {
     );
   }
 
-  private async loadHls(url: string): Promise<void> {
+  private async loadHls(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
     const Hls = await getHls();
+    if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
     this.HlsClass = Hls;
-    if (this.destroyed) return;
 
     if (!Hls.isSupported()) {
       if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -2385,6 +2395,7 @@ export class ElfuraPlayer {
     });
 
     hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (this.hls !== hls || loadSeq !== this.engineLoadSeq) return;
       const details = String(data.details || '');
       const unrecoverableCodec =
         details === 'bufferAddCodecError' || details === 'manifestIncompatibleCodecsError';
@@ -2444,10 +2455,10 @@ export class ElfuraPlayer {
     this.emit('qualityLevels', this.qualityLevels);
   }
 
-  private async loadDash(url: string): Promise<void> {
+  private async loadDash(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
     const Dash = await getDash();
-    if (this.destroyed) return;
+    if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
     const player = Dash().create();
     this.dash = player;
     const extras = player as unknown as DashExtras;

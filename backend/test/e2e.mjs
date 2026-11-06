@@ -1991,6 +1991,23 @@ try {
     } finally { globalThis.fetch = oldFetch; }
   }
 
+  // A late multi-audio anime source must trigger the explicit Hindi preference,
+  // even when the track menu previously listed Hindi as an unplayed source hint.
+  {
+    const oldFetch=globalThis.fetch;
+    let release; const gate=new Promise(r=>{release=r});
+    const primary={...pb.primary,id:'anime-primary',sourceId:'source-1',audioLang:'en',multiAudio:false,availableAudioLangs:[],audioTracks:[],subtitles:[]};
+    const anime={...primary,id:'source-4:1',sourceId:'source-4',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-4'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
+    try{
+      const p=new ElfuraPlayer({postMessage:false,api:'https://anime-recovery.example/api/v1/playback',tmdb:'95479',mediaType:'tv',season:1,episode:1,lang:'hi',pltoken:'token',nonce:'nonce'});
+      p.activateSourceOption=async option=>{p.currentSource=option};let requested=[];p.setAudio=async lang=>{requested.push(lang);return true};
+      await new Promise(r=>setTimeout(r,20));assert.equal(p.currentSource?.id,primary.id);
+      p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
+      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-4'));assert.deepEqual(requested,['hi']);p.destroy();
+    }finally{globalThis.fetch=oldFetch}
+  }
+
   // Preferred Hindi must choose a known matching source without running the
   // exhaustive audio search before the first source is attached.
   {
