@@ -110,9 +110,6 @@ function tryResolveLocaleTag(raw: string): { code: string; label: string } | nul
     const baseResolved = tryResolveLocaleTag(basePart);
     if (baseResolved && baseResolved.code !== 'und') {
       const primaryLang = baseResolved.code.split('-')[0];
-      // Some HLS providers use "(MS)" as an encoder/source suffix, not
-      // Montserrat. Do not turn "Hindi (MS)" into "Hindi (Montserrat)".
-      if (regionPart.toLowerCase() === 'ms') return baseResolved;
       const regionSubtag = resolveRegionSubtag(regionPart);
       if (regionSubtag) {
         try {

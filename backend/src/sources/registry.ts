@@ -16,7 +16,6 @@ import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
-import { createVidaraAdapter } from './source5.js';
 import { selectPlaybackCandidates } from './selection.js';
 import type {
   RawSourceResult,
@@ -48,7 +47,6 @@ export class SourceRegistry {
     this.adapters = [
       createSource1Adapter(cfg.source1, 2),
       createSource3Adapter(cfg.source3),
-      createVidaraAdapter(cfg.source5?.enabled !== false),
     ];
   }
 
@@ -388,12 +386,8 @@ export class SourceRegistry {
           key: `${adapterIdx}::${cand.key}`,
         })),
       );
-      // The curated Source 5 requires a proven master and child playlists;
-      // give it a little longer only when it actually returned a candidate.
-      // Unsupported titles still get the normal short startup budget.
-      const verificationBudget = ready.some(e => e.adapter.id === 'source-5' && e.result.candidates.length > 0) ? 2500 : 1300;
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(verificationBudget, remaining()))));
+        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');

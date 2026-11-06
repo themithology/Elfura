@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {verifyAndFilterCandidatesDetailed, diagnoseMultiAudioCandidate, cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
 import {fetchFromVidSyncPro} from '../../dist/backend/sources/source3.js';
-import {createVidaraAdapter} from '../../dist/backend/sources/source5.js';
 import {createSource1Adapter} from '../../dist/backend/sources/source1.js';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
@@ -29,18 +28,6 @@ try {
  const slow=cand('slow-verify.example','late-multi',{multiAudio:true,availableAudioLangs:['hi','en']});
  globalThis.fetch=async input=>{if(String(input).includes('late-multi'))await new Promise(r=>setTimeout(r,250));return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');};
  await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));assert.equal(cachedCandidateEvidence(slow),null);await new Promise(r=>setTimeout(r,350));assert.equal(cachedCandidateEvidence(slow)?.alive,true,'shared probe should finish and warm cache after startup timeout');assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slow}])[0].candidate.multiAudio,true);
- // Vidara is deliberately restricted to an identity-checked file code and
- // may only be returned after its manifest proves multiple languages.
- let vaCalls=0; const vidara=createVidaraAdapter();
- globalThis.fetch=async (input,options)=>{vaCalls++;assert.equal(String(input),'https://vidara.to/api/stream');assert.equal(JSON.parse(options.body).filecode,'fea967f75055');return Response.json({title:'Nilakanta (2026)',streaming_url:'https://x.s1q2105.com/hls/id/master.m3u8?token=abc'});};
- assert.equal((await vidara.resolve({type:'movie',tmdbId:'807'})).candidates.length,0);assert.equal(vaCalls,0,'unsupported titles must not call upstream');
- assert.equal((await vidara.resolve({type:'tv',tmdbId:'1107009',season:1,episode:1})).candidates.length,0);
- const vidaraCandidate=(await vidara.resolve({type:'movie',tmdbId:'1107009'})).candidates[0];assert(vidaraCandidate?.requireVerifiedMultiAudio);
- assert.equal(selectPlaybackCandidates([{adapter:vidara,candidate:vidaraCandidate}]).length,0,'unverified video cannot become a single fallback');
- globalThis.fetch=async()=>Response.json({title:'Different film (2026)',streaming_url:'https://x.s1q2105.com/hls/id/master.m3u8'});assert.equal((await vidara.resolve({type:'movie',tmdbId:'1107009'})).candidates.length,0);
- globalThis.fetch=async()=>Response.json({title:'Nilakanta (2026)',streaming_url:'http://127.0.0.1/master.m3u8'});assert.equal((await vidara.resolve({type:'movie',tmdbId:'1107009'})).candidates.length,0);
- globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.endsWith('/child.m3u8'))return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hindi-(ms)",NAME="Hindi (MS)",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="telugu-(ms)",NAME="Telugu (MS)",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');};
- await verifyAndFilterCandidatesDetailed([vidaraCandidate]);const verifiedVidara=selectPlaybackCandidates([{adapter:vidara,candidate:vidaraCandidate}]);assert.equal(verifiedVidara.length,1);assert.equal(verifiedVidara[0].candidate.multiAudio,true);
  const unknown=selectPlaybackCandidates([{adapter:one,candidate:cand('e.example','unverified',{multiAudio:true,availableAudioLangs:['hi','en']})}]);assert.equal(unknown.length,1);assert.equal(unknown[0].candidate.multiAudio,false);assert.equal(unknown[0].candidate.availableAudioLangs,undefined);
  const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,three].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.equal(playback.sources.filter(x=>!x.multiAudio).length,2);assert.equal(playback.sources.filter(x=>x.multiAudio).length,2);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
  // VidSync can label the same file in multiple languages and its standby

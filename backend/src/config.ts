@@ -69,8 +69,7 @@ export interface BackendConfig {
     origin: string;
   };
 
-  /** Limited curated Vidara catalogue; only manifest-verified multi-audio. */
-  source5?: { enabled: boolean };
+  /** Optional anime-specific multi-audio source. */
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -200,7 +199,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         'https://vidsync.pro'
       ).replace(/\/+$/, ''),
     },
-    source5: { enabled: env.SOURCE5_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
