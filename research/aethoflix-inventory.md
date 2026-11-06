@@ -41,3 +41,7 @@ Add a direct candidate only when there is credible evidence of separate selectab
 ## Direct lane retest
 
 Run [42225986780](https://github.com/themithology/Elfura/actions/runs/42225986780) queried Vega, Sirius, Callisto, Quantum and Quasar for eight movie/TV cases, including TV `215072` S2E2 and movie `807`. Sirius returned the **Orion** family for five cases, Vega for two and Quantum for one; it is not evidence of a new independent provider. The sampled Vega and Quantum streams had no alternate audio renditions; Callisto and Quasar returned no candidates. The Orion results included Hindi-labelled renditions in five cases, but playback, audible language and title accuracy were not validated by this manifest-and-byte audit. Do not count provider fallbacks or separate single-track files as additional multi-audio sources.
+
+## Experimental additional HLS fallback
+
+Source 4 uses Bingr's watch-page API and may return HLS via shared upstreams or a third-party bridge; it is not an independent provider guarantee. Hindi-labelled separate streams are kept distinct from manifest-verified alternate audio. Set `ELFURA_BINGR_ENABLED=0` in the backend environment to disable it independently. It uses a bounded startup race, with late results cached for recovery. Upstream availability, title correctness and complete playback remain unverified by a manifest probe alone.

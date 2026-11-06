@@ -13,8 +13,13 @@ try {
  step='source'; await page.waitForFunction(()=>window.__elfura?.player?.getSources().length>0,null,{timeout:45000});
  step='play'; await page.evaluate(async()=>{const p=window.__elfura.player;p.video.muted=true;await p.play();});
  await page.waitForFunction(()=>window.__elfura?.player?.video?.currentTime>2,null,{timeout:45000});
+ step='hindi-track';
+ await page.waitForFunction(()=>window.__elfura?.player?.hls?.audioTracks?.some(t=>/^(hi|hin)(-|$)/i.test(t.lang||'')),null,{timeout:20000});
+ const switched=await page.evaluate(async()=>{const p=window.__elfura.player;window.__hiAudio=0;p.hls.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio' && d.frag.level===p.hls.audioTrack)window.__hiAudio++});const ok=await p.setAudio('hi');return {ok,lang:p.hls.audioTracks[p.hls.audioTrack]?.lang};});
+ if(!switched.ok || switched.lang !== 'hi') throw new Error('Hindi switch failed');
+ await page.waitForFunction(()=>window.__hiAudio>0,null,{timeout:35000});
  const state=await page.evaluate(()=>({time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,options:window.__elfura.player.getSources().map(s=>({lang:s.audioLang,multi:!!s.multiAudio,languages:s.availableAudioLangs}))}));
  if(state.source!=='source-4') throw new Error('unexpected source');
- console.log('::notice title=BingrBrowser::'+JSON.stringify({success:true,...state}));
+ console.log('::notice title=BingrBrowser::'+JSON.stringify({success:true,switched,...state}));
 } catch(e){console.log('::notice title=BingrBrowser::'+JSON.stringify({success:false,step,error:e.name}));process.exitCode=1;}
 finally {await browser?.close();await new Promise(r=>server.close(r));}

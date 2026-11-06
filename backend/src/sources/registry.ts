@@ -60,7 +60,7 @@ export class SourceRegistry {
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource3Adapter(cfg.source3),
-      createSource4Adapter(() => cfg.source1.enabled && process.env.ELFURA_BINGR_ENABLED !== '0'),
+      createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
     ];
   }
 

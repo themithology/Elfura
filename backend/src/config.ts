@@ -69,7 +69,8 @@ export interface BackendConfig {
     origin: string;
   };
 
-  /** Optional anime-specific multi-audio source. */
+  /** Optional experimental Source 4 HLS fallback. */
+  source4?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -199,6 +200,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         'https://vidsync.pro'
       ).replace(/\/+$/, ''),
     },
+    source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
