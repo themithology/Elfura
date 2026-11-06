@@ -256,6 +256,8 @@ export class PlayerUI {
   private loadingQuoteAuthor!: HTMLElement;
   private loadingQuoteTimer = 0;
   private loadingDeadlineTimer = 0;
+  private loadingHardStopTimer = 0;
+  private slowLoadingActive = false;
   private loadingQuoteIndex = 0;
   private loadingQuoteAbort: AbortController | null = null;
   private loadingQuoteSession = 0;
@@ -786,6 +788,7 @@ export class PlayerUI {
 
   private showInitialLoading(): void {
     this.loadingActive = true;
+    this.slowLoadingActive = false;
     const session = ++this.loadingQuoteSession;
     if (this.loadingQuoteHistory.size > 64) this.loadingQuoteHistory.clear();
     this.player.shell.dataset.initialLoading = 'true';
@@ -793,11 +796,22 @@ export class PlayerUI {
     this.loadingScreen.dataset.visible = 'true';
     this.unavailableScreen.dataset.visible = 'false';
     clearTimeout(this.loadingDeadlineTimer);
-    // One wall-clock budget across resolution, source switches, and recovery.
-    // A timeout is an honest unavailable state, not a claim of playback success.
+    clearTimeout(this.loadingHardStopTimer);
+    // Stop the indefinite spinner at nine seconds without killing a valid
+    // in-flight manifest/segment. Playback continues behind the retry screen.
     this.loadingDeadlineTimer = window.setTimeout(() => {
-      if (this.loadingActive) this.player.cancelStartup();
+      if (!this.loadingActive) return;
+      this.hideInitialLoading(true);
+      this.slowLoadingActive = true;
+      this.unavailableTitle.textContent = 'Taking longer than expected';
+      this.unavailableMessage.textContent = 'Still connecting. You can wait or try again.';
+      this.syncStateArtwork(this.resolveDisplayMedia());
+      this.unavailableScreen.dataset.visible = 'true';
     }, 9000);
+    // Bound genuine no-progress cases without calling a slow stream dead at 9s.
+    this.loadingHardStopTimer = window.setTimeout(() => {
+      if (this.loadingActive || this.slowLoadingActive) this.player.cancelStartup();
+    }, 45000);
     this.loadingStatus.textContent = 'Finding the best available source…';
     this.syncStateArtwork(this.resolveDisplayMedia());
     this.showNextFallbackQuote();
@@ -860,11 +874,12 @@ export class PlayerUI {
     }
   }
 
-  private hideInitialLoading(): void {
+  private hideInitialLoading(keepHardStop = false): void {
     this.loadingActive = false;
     this.loadingQuoteSession++;
     clearInterval(this.loadingQuoteTimer);
     clearTimeout(this.loadingDeadlineTimer);
+    if (!keepHardStop) { clearTimeout(this.loadingHardStopTimer); this.loadingHardStopTimer = 0; this.slowLoadingActive = false; }
     this.loadingDeadlineTimer = 0;
     this.loadingQuoteTimer = 0;
     this.loadingQuoteAbort?.abort();
@@ -880,6 +895,7 @@ export class PlayerUI {
     this.player.shell.dataset.pauseScreen = 'false';
     this.player.shell.dataset.buffering = 'false';
     this.player.shell.dataset.unavailable = 'true';
+    this.unavailableTitle.textContent = "Couldn't find this title";
     this.unavailableMessage.textContent =
       message || 'No playable sources are available right now. Please try again in a moment.';
     this.syncStateArtwork(this.resolveDisplayMedia());

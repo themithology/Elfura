@@ -2,13 +2,19 @@ name: Candidate player against production
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/test/startup-production-candidate.mjs, .github/workflows/startup-production-candidate.yml]
+    paths: [src/core/player.ts, src/ui/controls.ts, backend/test/startup-production-candidate.mjs, .github/workflows/startup-production-candidate.yml]
 permissions:
   contents: read
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {type: movie, id: '693134'}
+          - {type: tv, id: '93405'}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,3 +23,6 @@ jobs:
       - run: npm run build:embed
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/startup-production-candidate.mjs
+        env:
+          TRACE_TYPE: ${{ matrix.type }}
+          TRACE_ID: ${{ matrix.id }}

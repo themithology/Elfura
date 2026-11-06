@@ -347,7 +347,7 @@ export class ElfuraPlayer {
 
   /** Stop an initial attempt that exceeded its UI deadline. Invalidate every
    * in-flight resolver, probe and engine so late work cannot restart playback. */
-  cancelStartup(): void {
+  cancelStartup(silent = false): void {
     if (this.destroyed) return;
     this.resolveGeneration++;
     this.resolveAbort?.abort();
@@ -362,11 +362,12 @@ export class ElfuraPlayer {
     this.video.removeAttribute('src');
     this.video.load();
     this.shell.dataset.buffering = 'false';
-    this.emit('error', { code: 'all-sources-failed', message: 'Playback did not start in time' });
+    if (!silent) this.emit('error', { code: 'all-sources-failed', message: 'Playback did not start in time' });
   }
 
   /** Re-run resolution after a terminal unavailable state without reloading the host page. */
   async retrySources(): Promise<void> {
+    this.cancelStartup(true);
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
     if (this.input.config.tmdb) {
@@ -905,63 +906,6 @@ export class ElfuraPlayer {
     });
   }
 
-  private async selectFastestInitialSource(
-    allSources: SourceOption[],
-    fallbackPrimary: SourceOption,
-  ): Promise<SourceOption> {
-    const multiPool = allSources
-      .filter((s) => s.multiAudio && !this.isCandidateFailed(s))
-      .sort((a, b) => this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b));
-    if (multiPool.length > 0 && !multiPool.some((s) => this.canPreProbeViaFetch(s))) {
-      return multiPool[0];
-    }
-
-    const preferredPool = allSources.filter((s) => {
-      if (this.isCandidateFailed(s) || !this.canPreProbeViaFetch(s)) return false;
-      if (s.multiAudio) return true;
-      const lang = canonLang(s.audioLang);
-      return lang === 'und' || lang === 'en';
-    });
-    const pool = preferredPool.length > 0
-      ? preferredPool
-      : allSources.filter((s) => !this.isCandidateFailed(s) && this.canPreProbeViaFetch(s));
-
-    if (pool.length <= 1) {
-      return pool[0] ?? fallbackPrimary;
-    }
-
-    const sortedPool = [...pool].sort(
-      (a, b) =>
-        Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
-        this.qualityTier(a) - this.qualityTier(b) ||
-        this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
-        this.qualityRank(b) - this.qualityRank(a),
-    );
-
-    const seenFingerprints = new Set<string>();
-    const wave: SourceOption[] = [];
-    for (const s of sortedPool) {
-      const fp = s.fingerprint || s.id;
-      if (seenFingerprints.has(fp)) continue;
-      seenFingerprints.add(fp);
-      wave.push(s);
-      if (wave.length >= 6) break;
-    }
-
-    if (wave.length <= 1) return wave[0] ?? fallbackPrimary;
-
-    // Backend liveness has already verified these tickets. Keep the optional client ranking short.
-    const { winner, failed } = await this.raceCandidatesBatch(wave, null, 1600);
-    for (const f of failed) this.markCandidateFailed(f);
-    if (winner) {
-      this.reorderSourcesHierarchy(null);
-      return winner;
-    }
-
-    const nextAlive = allSources.find((s) => !this.isCandidateFailed(s));
-    return nextAlive ?? fallbackPrimary;
-  }
-
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
@@ -969,6 +913,7 @@ export class ElfuraPlayer {
     const controller = new AbortController();
     this.resolveAbort = controller;
     const generation = ++this.resolveGeneration;
+    const fetchForRecovery = globalThis.fetch.bind(globalThis);
     const isCurrent = () => !this.destroyed && this.resolveGeneration === generation && !controller.signal.aborted;
 
     this.shell.dataset.buffering = 'true';
@@ -1025,7 +970,7 @@ export class ElfuraPlayer {
         headers['X-Elfura-Envelope'] = '1';
       }
 
-      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
+      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
       if (!isCurrent()) return;
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
@@ -1145,11 +1090,14 @@ export class ElfuraPlayer {
         recoveryUrl.searchParams.set('source', recoveryId);
         void (async () => {
           try {
+            // Avoid competing with the initial manifest/segments on mobile.
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            if (!isCurrent()) return;
             // The first group result may precede a slower lane. Retry once
             // after it has had time to warm the shared adapter cache.
             for (let attempt = 0; attempt < 2; attempt++) {
             if (attempt) await new Promise((resolve) => setTimeout(resolve, 1400));
-            const response = await fetch(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
+            const response = await fetchForRecovery(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
             if (!response.ok) continue;
             const raw = (await response.json()) as PlaybackPayloadShape;
             const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
@@ -1229,10 +1177,11 @@ export class ElfuraPlayer {
         const initial = this.sources.find(matches) ?? data.primary ?? this.sources[0];
         await this.activateSourceOption(initial, false);
       } else {
-        const fallbackPrimary = data.primary ?? this.sources[0];
-        const fastest = await this.selectFastestInitialSource(this.sources, fallbackPrimary);
+        // The backend already ranked and checked the candidates. Attach its
+        // primary immediately rather than spending a second network race
+        // before hls.js gets the stream at all.
         if (!isCurrent()) return;
-        await this.activateSourceOption(fastest, false);
+        await this.activateSourceOption(data.primary ?? this.sources[0], false);
       }
     } catch (err) {
       if (isCurrent()) {
@@ -2223,7 +2172,7 @@ export class ElfuraPlayer {
     }
   }
 
-  private armStartupWatchdog(expectedSourceId: string | undefined): void {
+  private armStartupWatchdog(expectedSourceId: string | undefined, gaveProgressGrace = false): void {
     this.clearStartupWatchdog();
     if (!expectedSourceId || this.activeProbe) return;
     this.startupWatchdogTimer = setTimeout(() => {
@@ -2236,8 +2185,14 @@ export class ElfuraPlayer {
       ) {
         return;
       }
+      // A parsed manifest proves the stream made progress; let playlists and
+      // the first media fragment finish rather than aborting a healthy input.
+      if (!gaveProgressGrace && this.hls && this.hls.levels.length > 0) {
+        this.armStartupWatchdog(expectedSourceId, true);
+        return;
+      }
       this.failover();
-    }, 3000);
+    }, 10000);
   }
 
   private teardownEngine(): void {

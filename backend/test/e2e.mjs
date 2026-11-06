@@ -1867,7 +1867,7 @@ try {
   {
     const p=new ElfuraPlayer({postMessage:false}); const opt={...pb.primary,id:'only-option',sourceId:'source-3'};p.sources=[opt];p.currentSource=opt;p.video.readyState=0;
     const oldTimer=globalThis.setTimeout;let callback,delay,called=0;globalThis.setTimeout=(fn,ms)=>{callback=fn;delay=ms;return 1};p.failover=()=>{called++};
-    try {p.armStartupWatchdog(opt.id);assert.equal(delay,3000);callback();assert.equal(called,1);}finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
+    try {p.armStartupWatchdog(opt.id);assert.equal(delay,10000);callback();assert.equal(called,1);}finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
   }
 
   // A late multi-audio group must appear without interrupting or relabelling
@@ -1891,13 +1891,12 @@ try {
     };
     try {
       const p = new ElfuraPlayer({ postMessage: false, api: 'https://recovery.example/api/v1/playback', tmdb: '123456', mediaType: 'movie', pltoken: 'test-token', nonce: 'test-nonce' });
-      p.selectFastestInitialSource = async (_sources, fallback) => fallback;
       p.activateSourceOption = async (option) => { p.currentSource = option; };
       const updated = new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('late source recovery timed out')), 3000);
         p.bus.on('sourcesUpdated', () => { clearTimeout(timer); resolve(); });
       });
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 2100));
       assert.equal(recoveryCalls, 1);
       assert.equal(p.currentSource?.id, primary.id);
       p.mergeNativeAudio([{ id: 0, lang: 'ko', label: 'Korean', default: true }]);
@@ -1924,7 +1923,7 @@ try {
       p.activateSourceOption=async option=>{p.currentSource=option};let requested=[];p.setAudio=async lang=>{requested.push(lang);return true};
       await new Promise(r=>setTimeout(r,20));assert.equal(p.currentSource?.id,primary.id);
       p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
-      release();await new Promise(r=>setTimeout(r,30));assert(p.getSources().some(s=>s.sourceId==='source-1'));assert.deepEqual(requested,['hi']);p.destroy();
+      release();await new Promise(r=>setTimeout(r,2100));assert(p.getSources().some(s=>s.sourceId==='source-1'));assert.deepEqual(requested,['hi']);p.destroy();
     }finally{globalThis.fetch=oldFetch}
   }
 
@@ -1936,7 +1935,7 @@ try {
     const proven={...fallback,multiAudio:true,availableAudioLangs:['hi','en']};
     globalThis.fetch=async input=>{if(!String(input).includes('/api/v1/playback'))return new Response('',{status:404});calls++;if(calls===1)return Response.json({ok:true,primary:fallback,sources:[fallback]});await gate;return Response.json({ok:true,primary:proven,sources:[proven]});};
     try {const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'872585',mediaType:'movie',source:'source-1',pltoken:'token',nonce:'nonce'});
-      p.activateSourceOption=async opt=>{p.currentSource=opt};await new Promise(r=>setTimeout(r,20));assert.equal(calls,2);release();await new Promise(r=>setTimeout(r,30));assert.equal(p.getSources().length,1);assert.equal(p.getSources()[0].multiAudio,true);assert.deepEqual(p.getSources()[0].availableAudioLangs,['hi','en']);p.destroy();
+      p.activateSourceOption=async opt=>{p.currentSource=opt};await new Promise(r=>setTimeout(r,2100));assert.equal(calls,2);release();await new Promise(r=>setTimeout(r,30));assert.equal(p.getSources().length,1);assert.equal(p.getSources()[0].multiAudio,true);assert.deepEqual(p.getSources()[0].availableAudioLangs,['hi','en']);p.destroy();
     } finally {globalThis.fetch=oldFetch;}
   }
 

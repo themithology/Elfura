@@ -16,5 +16,5 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: node backend/test/startup-deadline-browser.mjs
