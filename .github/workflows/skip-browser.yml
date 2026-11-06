@@ -2,7 +2,7 @@ name: Skip and next episode browser regression
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [src/core/player.ts, src/ui/controls.ts, src/ui/styles.css, backend/src/segments.ts, backend/src/index.ts, backend/test/skip-browser.mjs, backend/test/segments.mjs, .github/workflows/skip-browser.yml]
+    paths: [src/core/player.ts, src/ui/controls.ts, src/ui/styles.css, backend/src/segments.ts, backend/src/index.ts, backend/test/skip-browser.mjs, backend/test/segments.mjs, backend/test/segments-live.mjs, .github/workflows/skip-browser.yml]
 permissions:
   contents: read
 jobs:
@@ -16,5 +16,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node backend/test/segments.mjs
+      - run: node backend/test/segments-live.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: node backend/test/skip-browser.mjs
