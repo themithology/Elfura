@@ -1908,6 +1908,15 @@ try {
     } finally { globalThis.fetch = oldFetch; }
   }
 
+  // The curated source can arrive after another group without restarting it.
+  {
+    const oldFetch=globalThis.fetch;let release;const gate=new Promise(r=>{release=r});let groups=[];
+    const primary={...pb.primary,id:'initial-multi',sourceId:'source-2',multiAudio:true,availableAudioLangs:['en','hi'],fingerprint:'initial-other',audioTracks:[],subtitles:[]};
+    const vidara={...primary,id:'source-5:1',sourceId:'source-5',fingerprint:'late-vidara',availableAudioLangs:['hi','te']};
+    globalThis.fetch=async input=>{const u=new URL(String(input)),g=u.searchParams.get('source');if(g){groups.push(g);if(g==='source-5'){await gate;return Response.json({ok:true,sources:[vidara]})}return new Response('',{status:404});}return Response.json({ok:true,primary,sources:[primary]})};
+    try{const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'1107009',mediaType:'movie',pltoken:'token',nonce:'nonce',ignoreUrlParams:true}, '');p.selectFastestInitialSource=async (_s,f)=>f;p.activateSourceOption=async o=>{p.currentSource=o};await new Promise(r=>setTimeout(r,20));assert.deepEqual(groups,['source-5']);assert.equal(p.currentSource?.id,primary.id);release();await new Promise(r=>setTimeout(r,40));assert(p.getSources().some(s=>s.sourceId==='source-5'&&s.multiAudio));assert.equal(p.currentSource?.id,primary.id);p.destroy();}finally{globalThis.fetch=oldFetch}
+  }
+
   // A late multi-audio source must trigger the explicit Hindi preference,
   // even when the track menu previously listed Hindi as an unplayed source hint.
   {

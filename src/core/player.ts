@@ -1104,9 +1104,13 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = (!cfg.source || cfg.source === 'source-2') ? [
-        ...(!this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio) ? ['source-2'] : []),
-      ] : [];
+      const lateGroups = [
+        ...((!cfg.source || cfg.source === 'source-2') && !this.sources.some((s) => s.sourceId === 'source-2' && s.multiAudio) ? ['source-2'] : []),
+        // Source 5 currently has exactly one curated mapping. Only issue its
+        // background lookup for that title; all other titles incur no request.
+        ...((!cfg.source || cfg.source === 'source-5') && cfg.mediaType !== 'tv' && String(cfg.tmdb) === '1107009' &&
+          !this.sources.some((s) => s.sourceId === 'source-5' && s.multiAudio) ? ['source-5'] : []),
+      ];
       for (const recoveryId of lateGroups) {
         const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
         const recoveryUrl = new URL(apiUrl);
