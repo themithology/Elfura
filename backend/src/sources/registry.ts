@@ -19,7 +19,7 @@ import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import { createSource6Adapter } from './source6.js';
-import { selectPlaybackCandidates } from './selection.js';
+import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -188,7 +188,7 @@ export class SourceRegistry {
         unknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
         verifiedMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Diagnostic selection is not the player response. Liveness observations may be cached; HLS checks playlists, not media segments, relay delivery or browser playback. Counts named verified include unverified retained candidates; verifiedAlive counts reachable observations.' } };
+    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, note: 'Diagnostic selection is not the player response. Liveness observations may be cached; HLS checks playlists, not media segments, relay delivery or browser playback. Counts named verified include unverified retained candidates; verifiedAlive counts reachable observations.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {

@@ -4,8 +4,10 @@ import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
 export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCandidate }
 export const MAX_SINGLE_TRACK_FALLBACKS = 2;
+export const MAX_SEPARATE_DUBS = 12;
 
-/** Keep only manifest-proven multilingual streams, plus a tiny diverse fallback pool.
+/** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
+ * separately labelled language streams (not claimed as multi-audio).
  * A manifest/child check is evidence of reachability, not proof of full playback. */
 export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLang?: string): CandidateEntry[] {
   const unique = new Set<string>();
@@ -47,6 +49,17 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
       if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
       if (!selected.includes(item)) selected.push(item);
     }
+  }
+  // Preserve individually labelled dubs like the older working build. They
+  // remain separate streams, never synthetic tracks in a multi-audio manifest.
+  const languages = new Set(selected.map(item => normalizeLang(item.candidate.audioLang || 'und').code).filter(lang => lang !== 'und'));
+  let dubsAdded = 0;
+  for (const item of single) {
+    if (!item.alive || selected.includes(item)) continue;
+    const lang = normalizeLang(item.candidate.audioLang || 'und').code;
+    if (lang === 'und' || languages.has(lang)) continue;
+    selected.push(item); languages.add(lang);
+    if (++dubsAdded >= MAX_SEPARATE_DUBS) break;
   }
   return [...multi,...selected].map(({adapter,candidate})=>({adapter,candidate}));
 }

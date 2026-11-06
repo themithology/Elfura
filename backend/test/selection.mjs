@@ -25,6 +25,12 @@ try {
  assert(!multi.some(x=>x.candidate.key==='single-b'),'single-track source must not be called multi-audio');
  assert.equal(new Set(single.map(x=>new URL(x.candidate.url).hostname)).size,2,'fallbacks should use different hosts');
  const preferred=selectPlaybackCandidates(entries.map(x=>x.candidate.key==='single-b'?{...x,candidate:{...x.candidate,audioLang:'hi'}}:x),'hi');assert(preferred.some(x=>x.candidate.key==='single-b'),'prefer a verified requested-language fallback');
+ // Individually labelled dubs must survive selection without pretending they
+ // are HLS alternate audio. Duplicate labels and unverified options stay bounded.
+ const dubEntries=['en','hi','ta','te','kn'].map(lang=>({adapter:three,candidate:cand('dub.example',`dub-${lang}`,{audioLang:lang})}));
+ await verifyAndFilterCandidatesDetailed(dubEntries.map(e=>e.candidate));
+ const dubSelected=selectPlaybackCandidates([...entries,...dubEntries]);
+ for (const lang of ['en','hi','ta','te','kn']) assert(dubSelected.some(x=>x.candidate.audioLang===lang&&!x.candidate.multiAudio),`missing separate ${lang} dub`);
  const slow=cand('slow-verify.example','late-multi',{multiAudio:true,availableAudioLangs:['hi','en']});
  globalThis.fetch=async input=>{if(String(input).includes('late-multi'))await new Promise(r=>setTimeout(r,250));return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');};
  await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));assert.equal(cachedCandidateEvidence(slow),null);await new Promise(r=>setTimeout(r,350));assert.equal(cachedCandidateEvidence(slow)?.alive,true,'shared probe should finish and warm cache after startup timeout');assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slow}])[0].candidate.multiAudio,true);
