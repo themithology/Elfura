@@ -13,7 +13,7 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
@@ -139,6 +139,10 @@ export class SourceRegistry {
                     alive: evidence.alive,
                     confirmedDead: evidence.confirmedDead,
                     ms: evidence.rttMs ?? null,
+                    observationAgeMs: cachedCandidateEvidenceAgeMs(candidate),
+                    scope: candidate.type === 'mp4' ? 'upstream-range-response' : 'upstream-manifest-and-selected-playlists',
+                    mediaSegmentsChecked: false,
+                    browserPlaybackChecked: false,
                     manifestKind: evidence.manifestKind ?? null,
                     audioRenditions: evidence.manifestAudioRenditions ?? null,
                     audioLanguages: evidence.discoveredAudioLangs ?? [],
@@ -184,7 +188,7 @@ export class SourceRegistry {
         unknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
         verifiedMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Fresh diagnostic snapshot; a reachable manifest does not prove full playback or audible language.' } };
+    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: 2, multiAudioRequiresManifestLanguages: 2, note: 'Diagnostic selection is not the player response. Liveness observations may be cached; HLS checks playlists, not media segments, relay delivery or browser playback. Counts named verified include unverified retained candidates; verifiedAlive counts reachable observations.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {

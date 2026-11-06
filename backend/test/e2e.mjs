@@ -1501,6 +1501,12 @@ try {
   assert.equal(diag.sources.length, 3);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
   assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
+  assert.match(diag.selectionPolicy.note, /not the player response/);
+  for (const s of diag.sources) for (const o of s.options ?? []) if (o.probe) {
+    assert.equal(o.probe.browserPlaybackChecked, false);
+    assert.equal(o.probe.mediaSegmentsChecked, false);
+    assert(o.probe.observationAgeMs >= 0);
+  }
   assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
   for (const source of diag.sources) {
     assert(source.options.length <= 20);

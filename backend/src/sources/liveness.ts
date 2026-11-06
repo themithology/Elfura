@@ -72,6 +72,7 @@ export function extractQualityLadder(text: string, isDash: boolean): { ladder: n
 }
 
 interface CachedLivenessEntry extends LivenessProbeOutcome {
+  observedAt: number;
   expiresAt: number;
 }
 
@@ -82,7 +83,7 @@ function cacheKeyFor(url: string, headers?: Record<string, string>): string {
   return `${url}|${JSON.stringify(headers ?? {})}`;
 }
 
-function getCachedLiveness(key: string): LivenessProbeOutcome | null {
+function getCachedLiveness(key: string): CachedLivenessEntry | null {
   const hit = livenessRamCache.get(key);
   if (!hit) return null;
   if (Date.now() > hit.expiresAt) {
@@ -92,6 +93,12 @@ function getCachedLiveness(key: string): LivenessProbeOutcome | null {
   livenessRamCache.delete(key);
   livenessRamCache.set(key, hit);
   return hit;
+}
+
+/** Age of the cached observation; this is not a fresh playback test. */
+export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): number | null {
+  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  return hit ? Math.max(0, Date.now() - hit.observedAt) : null;
 }
 
 /** Report only existing liveness evidence; does not initiate upstream requests. */
@@ -109,6 +116,7 @@ function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
   }
   livenessRamCache.set(key, {
     ...outcome,
+    observedAt: Date.now(),
     expiresAt: Date.now() + (outcome.alive ? ALIVE_TTL_MS : DEAD_TTL_MS),
   });
 }
