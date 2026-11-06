@@ -2644,3 +2644,7 @@
 .elf-next-ep-label { font-size: 11px; color: rgba(255,255,255,.74); }
 .elf-next-ep-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .elf-next-ep-details { color: rgba(255,255,255,.7); font-size: 11px; font-weight: 500; }
+
+/* Keep the next-episode card clear of the outro action. */
+.elf-next-ep-wrap[data-outro='true'] { bottom: 190px; }
+@media (max-width: 600px) { .elf-next-ep-wrap[data-outro='true'] { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); } }

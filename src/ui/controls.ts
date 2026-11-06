@@ -2022,8 +2022,10 @@ export class PlayerUI {
         if (this.skipLabelEl.textContent !== skipTxt) this.skipLabelEl.textContent = skipTxt;
         this.skipBtn.onclick = () => this.player.seek(hit.end);
       }
-      if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
-      return;
+      if (hit.kind !== 'outro' || !nextTarget) {
+        if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
+        return;
+      }
     }
 
     // End-of-episode pre-warmed Next Episode prompt during final 15s (TV only)
@@ -2033,9 +2035,10 @@ export class PlayerUI {
       nextTarget &&
       d > 45 &&
       rem > 0 &&
-      rem <= 15 &&
+      (rem <= 15 || hit?.kind === 'outro') &&
       this.nextEpDismissedKey !== epKey
     ) {
+      this.nextEpWrap.dataset.outro = String(hit?.kind === 'outro');
       const countdown = Math.max(1, Math.ceil(rem));
       const nextPct = Math.max(0, Math.min(100, ((15 - rem) / 15) * 100)).toFixed(1);
       this.nextEpBtn.style.setProperty('--elf-next-pct', `${nextPct}%`);
