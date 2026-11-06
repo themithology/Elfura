@@ -12,7 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [direct, iframe]
+        include:
+          - {mode: direct, run: 1}
+          - {mode: direct, run: 2}
+          - {mode: direct, run: 3}
+          - {mode: iframe, run: 1}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
