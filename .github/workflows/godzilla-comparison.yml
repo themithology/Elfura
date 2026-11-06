@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [baseline, candidate]
+        mode: [baseline, test]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
