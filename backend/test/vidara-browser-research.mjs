@@ -12,7 +12,9 @@ function ticket(url){const u=new URL(url);if(u.protocol!=='https:' || !/(^|\.)(s
 const master=ticket(data.streaming_url);
 try{
  await page.route('https://fixture.invalid/**',async route=>{try{
-  const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><video muted playsinline></video>'});
+  const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><script type="importmap">{"imports":{"hls.js":"/hls.mjs"}}</script><div id="root"></div>'});
+  if(u.pathname==='/hls.mjs')return route.fulfill({status:200,contentType:'text/javascript',body:await readFile('node_modules/hls.js/dist/hls.mjs')});
+  if(u.pathname==='/elfura.js')return route.fulfill({status:200,contentType:'text/javascript',body:await readFile('dist/lib/elfura.js')});
   const target=urls.get(u.pathname.split('/').pop());if(!target)return route.fulfill({status:404});
   const res=await fetch(target,{headers:{...headers,...(route.request().headers().range?{Range:route.request().headers().range}:{})},signal:AbortSignal.timeout(12000)});
   statuses.push(res.status);if(!res.ok)return route.fulfill({status:res.status});
@@ -24,13 +26,14 @@ try{
   }
   return route.fulfill({status:res.status,contentType:ct,body:bytes});
  }catch{statuses.push('proxy-error');return route.abort().catch(()=>{});}});
- await page.goto('https://fixture.invalid/');await page.addScriptTag({content:await readFile('node_modules/hls.js/dist/hls.min.js','utf8')});
- await page.evaluate(src=>{const v=document.querySelector('video'),h=new window.Hls();window.testHls=h;h.loadSource(src);h.attachMedia(v);void v.play().catch(()=>{});},master);
- await page.waitForFunction(()=>document.querySelector('video').currentTime>2,null,{timeout:30000});
- const before=await page.evaluate(()=>({time:document.querySelector('video').currentTime,tracks:window.testHls.audioTracks.map(x=>({lang:x.lang,name:x.name})),current:window.testHls.audioTrack}));
- const switched=await page.evaluate(()=>{const h=window.testHls;const idx=h.audioTracks.findIndex(x=>/telugu/i.test(x.lang||x.name||''));if(idx<0)return false;h.audioTrack=idx;return true;});
+ await page.goto('https://fixture.invalid/');
+ await page.evaluate(async src=>{const {ElfuraPlayer}=await import('/elfura.js');const p=new ElfuraPlayer({root:document.querySelector('#root'),src,type:'hls',muted:true});window.testPlayer=p;p.video.muted=true;void p.play();},master);
+ await page.waitForFunction(()=>window.testPlayer.video.currentTime>2,null,{timeout:30000});
+ const before=await page.evaluate(()=>({time:window.testPlayer.video.currentTime,tracks:window.testPlayer.getAudioTracks().filter(t=>t.kind==='native').map(t=>({lang:t.lang,label:t.label})),current:window.testPlayer.getState().audioLang}));
+ const switched=await page.evaluate(()=>window.testPlayer.setAudio('te'));
  await page.waitForTimeout(6000);
- const after=await page.evaluate(()=>({time:document.querySelector('video').currentTime,ready:document.querySelector('video').readyState,current:window.testHls.audioTrack}));
+ const after=await page.evaluate(()=>({time:window.testPlayer.video.currentTime,ready:window.testPlayer.video.readyState,current:window.testPlayer.getState().audioLang}));
+ if(!switched||after.current!=='te'||after.time-before.time<2||!before.tracks.some(t=>t.lang==='hi'))throw new Error('Elfura audio switch failed');
  console.log('::notice title=VidaraBrowser::'+JSON.stringify({title:data.title,before,after,switched,progress:after.time-before.time,statuses:[...new Set(statuses)]}));
 }catch(e){console.log('::notice title=VidaraBrowser::'+JSON.stringify({error:e.name,statuses:[...new Set(statuses)]}));process.exitCode=1;}
 finally{await browser.close();}

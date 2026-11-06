@@ -15,5 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: node backend/test/research-vidara.mjs
-      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium hls.js
+      - run: npm ci
+      - run: npm run build:lib
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/vidara-browser-research.mjs
