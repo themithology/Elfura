@@ -119,6 +119,8 @@ assert.equal(normalizeLang('Brazilian Portuguese').code, 'pt-br');
 assert.equal(normalizeLang('Portuguese (BR)').code, 'pt-br');
 assert.equal(normalizeLang('1. English').code, 'en');
 assert.equal(normalizeLang('en.[CC]').code, 'en');
+assert.equal(normalizeLang('hindi-(ms)', 'Hindi (MS)').code, 'hi');
+assert.equal(normalizeLang('telugu-(ms)', 'Telugu (MS)').code, 'te');
 assert.equal(canonLang('hin'), 'hi');
 assert.equal(canonLang('jpn'), 'ja');
 assert.equal(canonLang('kan'), 'kn');
