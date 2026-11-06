@@ -13,9 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {type: movie, id: '693134', source: 'source-1'}
+          - {type: movie, id: '693134', source: 'auto'}
           - {type: movie, id: '693134', source: 'source-2'}
-          - {type: tv, id: '93405', source: 'source-1'}
+          - {type: tv, id: '93405', source: 'auto'}
           - {type: tv, id: '93405', source: 'source-2'}
     steps:
       - uses: actions/checkout@v4
