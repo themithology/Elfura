@@ -220,3 +220,11 @@ backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
 backend/src/sources/      isolated SourceAdapter registry + Source 1, Source 2 & Source 3 adapters
 ```
+
+## Roxy operator dashboard
+
+Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET` from `.env`. Configure a strong, non-placeholder secret and use HTTPS. The secret is not copied into the deployment ZIP. The dashboard shows actual embed playback starts, approximate active viewers (last heartbeat within 60 seconds), reported terminal playback failures, embedding origins, and an on-demand, title-specific source resolution/liveness test. Counts start from installation, not historical data; SDK and direct API playback are not included. Titles fall back to TMDB IDs when metadata is unavailable. A returned candidate or manifest liveness is not proof of complete playback. Test times include upstream fetches and liveness, not viewer startup latency.
+
+Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
+
+Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.

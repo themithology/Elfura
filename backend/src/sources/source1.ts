@@ -1192,11 +1192,13 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      await Promise.race([
-        Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]),
-        new Promise<void>((r) => {
-          releaseEarly = r;
-        }),
+      const allLanes = Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]);
+      // A diagnostic must measure every lane, even those skipped by the fast
+      // playback race. Normal playback retains its short grace window.
+      if (query.diag) await allLanes;
+      else await Promise.race([
+        allLanes,
+        new Promise<void>((r) => { releaseEarly = r; }),
       ]);
       if (graceTimer) clearTimeout(graceTimer);
 

@@ -10,10 +10,13 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadBackendConfig, type BackendConfig } from './config.js';
+import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
+import { RoxyStore, siteOrigin } from './roxy-store.js';
+import { ROXY_PAGE } from './roxy-page.js';
 import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
 import {
   applyCorsHeaders,
@@ -112,6 +115,29 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  const roxy = new RoxyStore(cfg.secret);
+  const loginLimiter = new SlidingWindowLimiter(5);
+  const roxyTestLimiter = new SlidingWindowLimiter(6);
+  const sameOrigin = (req: http.IncomingMessage) => {
+    const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+    try { return !!origin && new URL(origin).host.toLowerCase() === host; } catch { return false; }
+  };
+  const adminCookie = (exp: number) => {
+    const data = String(exp);
+    return data + '.' + crypto.createHmac('sha256', cfg.secret).update('roxy-session:' + data).digest('base64url');
+  };
+  const authenticated = (req: http.IncomingMessage) => {
+    const cookie = String(req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith('roxy_session='))?.slice(13) || '';
+    const [expiry, sig, extra] = cookie.split('.');
+    if (!expiry || !sig || extra || !/^\d{10,16}$/.test(expiry) || Number(expiry) < Date.now()) return false;
+    const a = Buffer.from(cookie), b = Buffer.from(adminCookie(Number(expiry)));
+    return a.length === b.length && crypto.timingSafeEqual(a,b);
+  };
+  const cookieFlags = (req: http.IncomingMessage) => {
+    const secure = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https' || !!(req.socket as {encrypted?: boolean}).encrypted;
+    return `Path=/roxy; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`;
+  };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
 
@@ -150,6 +176,41 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
+
+    // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
+    if (pathname === '/roxy' || pathname === '/roxy/') {
+      if (method !== 'GET' && method !== 'HEAD') { res.writeHead(405); res.end(); return; }
+      res.writeHead(200, {'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer'});
+      res.end(method === 'HEAD' ? undefined : ROXY_PAGE); return;
+    }
+    if (pathname.startsWith('/roxy/api/')) {
+      const reply = (status: number, data: unknown) => { const b=Buffer.from(JSON.stringify(data)); res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(b); };
+      if (method === 'POST' && !sameOrigin(req)) { reply(403,{error:'Same-origin request required'}); return; }
+      if (pathname === '/roxy/api/login' && method === 'POST') {
+        if (!loginLimiter.allow(`roxy-login:${getClientIp(req)}`)) { reply(429,{error:'Too many login attempts'}); return; }
+        let body: Record<string,unknown>; try { body=await readJsonBody(req,4096); } catch { reply(400,{error:'Invalid request'}); return; }
+        if (!hasConfiguredSecret() || typeof body.password !== 'string' || body.password.length > 1024) { reply(401,{error:'Invalid credentials or ELFURA_SECRET is not configured'}); return; }
+        const hash=crypto.createHash('sha256').update(body.password.trim()).digest();
+        if (!crypto.timingSafeEqual(hash,cfg.secret)) { reply(401,{error:'Invalid credentials'}); return; }
+        res.setHeader('Set-Cookie',`roxy_session=${adminCookie(Date.now()+8*60*60_000)}; ${cookieFlags(req)}; Max-Age=28800`);reply(200,{ok:true}); return;
+      }
+      if (!authenticated(req)) { reply(401,{error:'Sign in required'}); return; }
+      if (pathname === '/roxy/api/logout' && method === 'POST') { res.setHeader('Set-Cookie',`roxy_session=; ${cookieFlags(req)}; Max-Age=0`); reply(200,{ok:true}); return; }
+      if (pathname === '/roxy/api/overview' && method === 'GET') { reply(200,roxy.snapshot()); return; }
+      if (pathname === '/roxy/api/clear' && method === 'POST') { roxy.clear(); const ok=await roxy.flush(); reply(ok?200:500,ok?{ok:true}:{error:'Could not persist deletion'}); return; }
+      if (pathname === '/roxy/api/ban' && method === 'POST') {
+        try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
+      }
+      if (pathname === '/roxy/api/test' && method === 'POST') {
+        if (!roxyTestLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
+        try { const b=await readJsonBody(req,4096);const tmdb=String(b.tmdb||'');if(!/^\d{1,12}$/.test(tmdb)){reply(400,{error:'Enter a numeric TMDB ID'});return;}const num=(v:unknown)=>Math.min(999,Math.max(1,Number(v)||1));const result=await registry.diagnosePlayback({type:b.type==='tv'?'tv':'movie',tmdbId:tmdb,season:num(b.season),episode:num(b.episode)});reply(200,result); } catch {reply(500,{error:'Source test failed'});}return;
+      }
+      reply(404,{error:'Not found'}); return;
+    }
+    if (pathname === '/api/v1/analytics' && method === 'POST') {
+      if (!rateLimiter.allow(`analytics:${getClientIp(req)}`)) {sendJson(res,429,{ok:false});return;}
+      try {const body=await readJsonBody(req,4096);const ok=roxy.record(body.ticket,body.event,body.title);sendJson(res,ok?200:400,{ok});}catch{sendJson(res,400,{ok:false});}return;
+    }
 
     // 1. CORS preflight
     if (method === 'OPTIONS' && pathname.startsWith('/api/')) {
@@ -436,6 +497,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       // 7. Embed HTML routes (built Part 1 player + pre-minted session token)
       const embedMatch = matchEmbedPath(pathname);
       if (embedMatch) {
+        const parentSite = siteOrigin(req.headers.referer);
+        if (roxy.isBanned(parentSite)) { sendJson(res, 403, {ok:false,error:'Embedding site is banned'}); return; }
         const tpl = await getEmbedTemplate();
         if (!tpl) {
           sendJson(res, 503, {
@@ -463,6 +526,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           ...(embedMatch.episode ? { episode: embedMatch.episode } : {}),
           pltoken: minted.pltoken,
           nonce: minted.nonce,
+          ...((qMediaType === 'movie' || qMediaType === 'tv') && /^[A-Za-z0-9_-]{1,24}$/.test(qTmdb) ? { analyticsTicket: roxy.ticket(parentSite, qMediaType, qTmdb) } : {}),
         };
 
         // Escape `<` inside JSON to prevent script breakout
@@ -514,6 +578,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     sendJson(res, 404, { ok: false, error: 'not found' });
   });
 
+  server.on('close', () => roxy.close());
   return { server, cfg, registry };
 }
 

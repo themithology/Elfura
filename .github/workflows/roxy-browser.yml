@@ -1,0 +1,25 @@
+name: Roxy dashboard browser test
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths:
+      - 'backend/src/**'
+      - 'src/embed.ts'
+      - 'backend/test/roxy*.mjs'
+      - '.github/workflows/roxy-browser.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/roxy-browser.mjs

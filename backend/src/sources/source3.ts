@@ -300,17 +300,16 @@ export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapt
     label: 'Source 3',
     enabled: () => !!cfg?.enabled && !!origin,
     async resolve(query: SourceQuery): Promise<RawSourceResult> {
-      const startedAt = Date.now();
+      const measure = async (lane: string, promise: Promise<RawStreamCandidate[]>) => {
+        const startedAt = Date.now();
+        const result = await promise;
+        query.diag?.push({adapter:'source-3', lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}`});
+        return result;
+      };
       const [sync, vix] = await Promise.all([
-        fetchFromVidSyncPro(origin, query),
-        cfg.vixOrigin ? fetchFromVixSrc(cfg.vixOrigin, query) : Promise.resolve([] as RawStreamCandidate[]),
+        measure('stream', fetchFromVidSyncPro(origin, query)),
+        measure('vix', cfg.vixOrigin ? fetchFromVixSrc(cfg.vixOrigin, query) : Promise.resolve([] as RawStreamCandidate[])),
       ]);
-      for (const [lane, result] of [['stream', sync], ['vix', vix]] as const) {
-        query.diag?.push({
-          adapter: 'source-3', lane, ok: result.length > 0,
-          ms: Date.now() - startedAt, detail: `candidates=${result.length}`,
-        });
-      }
       return { candidates: [...sync, ...vix] };
     },
   };
