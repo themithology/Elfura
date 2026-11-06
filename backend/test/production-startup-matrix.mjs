@@ -26,6 +26,8 @@ try {
  if(first&&last?.multi&&new Set(last.native.map(t=>t.lang)).size>=2&&last.native.some(t=>t.lang==='hi')){
   hindi=await page.evaluate(async()=>{const p=window.__elfura.player,before=p.video.currentTime,id=p.currentSource?.id;const result=await Promise.race([p.setAudio('hi'),new Promise(r=>setTimeout(()=>r('timeout'),10000))]);await new Promise(r=>setTimeout(r,3000));return {result,sameSource:p.currentSource?.id===id,language:p.getState().audioLang,advance:p.video.currentTime-before,ready:p.video.readyState};});
  }
- console.log('::notice title=ProductionMatrix::'+JSON.stringify({type,id,firstFrameMs:first?.ms??null,sustained:!!first&&last.time>=first.time+5,state:last,hindi}));
+ const sustained=!!first&&last.time>=first.time+5;
+ console.log('::notice title=ProductionMatrix::'+JSON.stringify({type,id,firstFrameMs:first?.ms??null,sustained,state:last,hindi}));
+ if(!sustained)process.exitCode=1;
 }catch(e){console.log('::notice title=ProductionMatrix::'+JSON.stringify({type,id,error:e.name,elapsedMs:Date.now()-start}));process.exitCode=1;}
 finally{await browser?.close();}
