@@ -3088,9 +3088,12 @@ try {
       { Referer: 'https://nxsha.space/' },
       pCfgA.secret,
     );
+    // Opaque encrypted ticket bytes can coincidentally spell a watermark;
+    // inspect only manifest labels, not random URI token contents.
+    const nitroLabelsOnly = rewrittenNitroManifest.replace(/URI="[^"]*"/g, 'URI="[ticket]"');
     assert(
-      !rewrittenNitroManifest.toLowerCase().includes('hguider') &&
-        !rewrittenNitroManifest.toLowerCase().includes('sply'),
+      !nitroLabelsOnly.toLowerCase().includes('hguider') &&
+        !nitroLabelsOnly.toLowerCase().includes('sply'),
       'Expected hguider/SPLY release watermarks to be stripped from #EXT-X-MEDIA',
     );
     assert(
