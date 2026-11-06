@@ -49,8 +49,6 @@ export interface BackendConfig {
   /** Source 1 configurable endpoints (kept purely server-side). */
   source1: {
     enabled: boolean;
-    appOrigin: string;
-    apiOrigin: string;
     riftOrigin: string;
     vidboltOrigin?: string;
     riftRelay: string;
@@ -71,11 +69,9 @@ export interface BackendConfig {
   source3: {
     enabled: boolean;
     origin: string;
-    vixOrigin?: string;
   };
 
   /** Optional anime-specific multi-audio source. */
-  source4: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -179,8 +175,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source1: {
       enabled: env.SOURCE1_ENABLED !== '0',
-      appOrigin: (env.SOURCE1_APP_ORIGIN || 'https://tgvid.lovable.app').replace(/\/+$/, ''),
-      apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
       vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
@@ -208,9 +202,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         env.SOURCE1_SYNC_ORIGIN ||
         'https://vidsync.pro'
       ).replace(/\/+$/, ''),
-      vixOrigin: (env.SOURCE3_VIX_ORIGIN || 'https://vixsrc.to').replace(/\/+$/, ''),
     },
-    source4: { enabled: env.SOURCE4_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

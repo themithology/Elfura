@@ -63,8 +63,6 @@ export interface RawStreamCandidate {
   key: string;
   /** Internal canonical stream identity (hashed into an opaque digest at the registry boundary). */
   fingerprint?: string;
-  /** Refresh short-lived direct NekoMux HLS signatures through its episode endpoint. */
-  refreshNekoEpisode?: string;
   /** Upstream-reported or adapter-measured edge latency in milliseconds. */
   latencyMs?: number;
   type: 'hls' | 'dash' | 'mp4';

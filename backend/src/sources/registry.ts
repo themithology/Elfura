@@ -595,7 +595,6 @@ export class SourceRegistry {
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
       ...(singleDubHint ? { l: singleDubHint } : {}),
-      ...(cand.refreshNekoEpisode ? { nr: cand.refreshNekoEpisode, fp: 1 as const } : {}),
     });
 
     const audioTracks = (cand.audioTracks ?? []).map((t) => ({

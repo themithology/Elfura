@@ -412,7 +412,6 @@ export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
   /** Private signed-ticket context for refreshing this provider's HLS paths. */
-  nekoEpisode?: string;
   /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
   canOffloadSegment?: (absUrl: string) => boolean;
 }
@@ -454,7 +453,6 @@ export function rewriteHlsManifest(
       ...(headers && Object.keys(headers).length ? { h: headers } : {}),
       k: kind,
       ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
-      ...(options?.nekoEpisode && new URL(abs).hostname === 'play.nekomux.com' ? { nr: options.nekoEpisode } : {}),
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
   };
@@ -829,8 +827,7 @@ async function sendRewrittenManifest(
     relayMode: 'hybrid' | 'full';
     forceProxy: boolean;
     requireHttpsOffload: boolean;
-    nekoEpisode?: string;
-  },
+    },
 ): Promise<void> {
   const allowedBuckets = new Set<string>();
   if (
@@ -856,7 +853,6 @@ async function sendRewrittenManifest(
 
   const rewriteOptions: RewriteManifestOptions = {
     forceProxy: relayOpts.forceProxy,
-    ...(relayOpts.nekoEpisode ? { nekoEpisode: relayOpts.nekoEpisode } : {}),
     ...(allowedBuckets.size > 0
       ? {
           canOffloadSegment: (absUrl: string) =>
@@ -891,51 +887,6 @@ async function sendRewrittenManifest(
   res.end(buf);
 }
 
-// NekoMux signs its media paths for about 20 minutes, shorter than an
-// episode. Refresh through the fixed provider origin and only replace the
-// signature prefix when the returned stream identity matches the old path.
-const nekoRefreshCache = new Map<string, { prefix: string; root: string; exp: number }>();
-const nekoRefreshInFlight = new Map<string, Promise<{ prefix: string; root: string; exp: number } | null>>();
-export async function refreshNekoSignedUrl(raw: string, episode: string): Promise<string> {
-  if (!/^\d{1,10}$/.test(episode)) return raw;
-  let url: URL;
-  try { url = new URL(raw); } catch { return raw; }
-  if (url.protocol !== 'https:' || url.hostname !== 'play.nekomux.com') return raw;
-  const old = url.pathname.match(/^\/p\/[^/]+\/(\d+)\/(\d+\/hls\/[0-9A-Z]{26}\/.*)$/i);
-  if (!old || Number(old[1]) > Date.now()/1000 + 90) return raw;
-  let fresh = nekoRefreshCache.get(episode);
-  if (!fresh || fresh.exp <= Date.now()/1000 + 90) {
-    let pending = nekoRefreshInFlight.get(episode);
-    if (!pending) {
-      pending = (async () => {
-        try {
-          const r = await fetch(`https://player.nekomux.com/episode/${episode}/source`, {
-            headers: {Referer:`https://player.nekomux.com/episode/${episode}`, 'User-Agent':DEFAULT_RELAY_UA},
-            signal:AbortSignal.timeout(3500), redirect:'error',
-          });
-          if (!r.ok) return null;
-          const d = await r.json() as {ok?:unknown;type?:unknown;url?:unknown};
-          if (!d.ok || d.type !== 'hls' || typeof d.url !== 'string') return null;
-          const u = new URL(d.url);
-          if (u.protocol !== 'https:' || u.hostname !== 'play.nekomux.com') return null;
-          const m = u.pathname.match(/^(\/p\/[^/]+\/(\d+)\/)(\d+\/hls\/[0-9A-Z]{26}\/)master\.m3u8$/i);
-          if (!m || Number(m[2]) <= Date.now()/1000 + 90) return null;
-          const value = {prefix:m[1],root:m[3],exp:Number(m[2])};
-          if (nekoRefreshCache.size >= 128) nekoRefreshCache.delete(nekoRefreshCache.keys().next().value!);
-          nekoRefreshCache.set(episode,value);
-          return value;
-        } catch { return null; }
-      })();
-      nekoRefreshInFlight.set(episode, pending);
-      void pending.then(() => { if (nekoRefreshInFlight.get(episode) === pending) nekoRefreshInFlight.delete(episode); });
-    }
-    fresh = (await pending) ?? undefined;
-  }
-  if (!fresh || !old[2].startsWith(fresh.root)) return raw;
-  url.pathname = fresh.prefix + old[2];
-  return url.href;
-}
-
 export async function handleStreamRelay(
   req: IncomingMessage,
   res: ServerResponse,
@@ -968,12 +919,11 @@ export async function handleStreamRelay(
     return;
   }
 
-  if (ticket.nr) ticket.u = await refreshNekoSignedUrl(ticket.u, ticket.nr);
   const streamPath = opts.streamPath || '/api/v1/stream';
   const relayMode = opts.relayMode ?? 'hybrid';
   const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1;
   const requireHttpsOffload = opts.requireHttpsOffload ?? true;
-  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload, ...(ticket.nr ? { nekoEpisode: ticket.nr } : {}) };
+  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload };
 
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
@@ -1127,31 +1077,8 @@ export async function handleStreamRelay(
       return;
     }
 
-    // VixSrc serves AES-encrypted transport streams with a text/html MIME type.
-    // Peek before forwarding, and still reject actual HTML challenge/error pages.
-    let sniffedStream: Readable | undefined;
-    const vixMedia = ticket.k === 'a' && /^https?:\/\/(?:[a-z0-9-]+\.)*vixsrc\.to(?::\d+)?(?:\/|$)/i.test(ticket.h?.Referer || ticket.h?.referer || '');
-    if (vixMedia && ct.includes('text/html') && req.method !== 'HEAD' && upstreamRes.body) {
-      const reader = upstreamRes.body.getReader();
-      const first = await reader.read();
-      const lead = Buffer.from(first.value || []).toString('utf8').trimStart();
-      if (first.done || /^<!doctype\s+html\b|^<html\b/i.test(lead)) {
-        await reader.cancel().catch(() => {});
-        setCloudflareCache(res, 'no-store');
-        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
-        return;
-      }
-      sniffedStream = Readable.from((async function* () {
-        try {
-          if (first.value) yield first.value;
-          for (;;) { const part = await reader.read(); if (part.done) break; yield part.value; }
-        } finally { await reader.cancel().catch(() => {}); }
-      })());
-    }
-
     // Never pipe HTML error/redirect pages as binary media segments, encryption keys, or MP4 byte ranges
-    if (!sniffedStream && (ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+    if ((ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
       try {
         await upstreamRes.body?.cancel();
       } catch {
@@ -1194,7 +1121,7 @@ export async function handleStreamRelay(
       return;
     }
 
-    let outContentType = sniffedStream ? 'application/octet-stream' : upstreamRes.headers.get('content-type') || 'application/octet-stream';
+    let outContentType = upstreamRes.headers.get('content-type') || 'application/octet-stream';
     if (ticket.k === 's') {
       if (/\.vtt(?:[?#]|$)/i.test(finalUrl)) outContentType = 'text/vtt; charset=utf-8';
       else if (/\.(?:srt|ass|ssa)(?:[?#]|$)/i.test(finalUrl)) outContentType = 'text/plain; charset=utf-8';
@@ -1218,7 +1145,7 @@ export async function handleStreamRelay(
       return;
     }
 
-    const nodeStream = sniffedStream || Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
+    const nodeStream = Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
     await pipeline(nodeStream, res);
   } catch (err) {
     if (!res.headersSent) {

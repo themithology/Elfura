@@ -256,43 +256,6 @@ export async function fetchFromVidSyncPro(
   return out;
 }
 
-/** Original VixSrc API and its own playlist; language and quality come from HLS. */
-export async function fetchFromVixSrc(origin: string, query: SourceQuery): Promise<RawStreamCandidate[]> {
-  try {
-    const base = new URL(origin);
-    if (!isSafeUpstreamUrl(base.href)) return [];
-    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
-    const path = query.type === 'tv'
-      ? `/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`
-      : `/movie/${encodeURIComponent(query.tmdbId)}`;
-    const headers = { Accept: '*/*', Referer: `${base.origin}/`, Origin: base.origin, 'User-Agent': BROWSER_UA };
-    const response = await fetch(`${base.origin}/api${path}`, { headers, signal, redirect: 'manual' });
-    if (!response.ok) return [];
-    const json = await response.json() as { src?: unknown };
-    if (typeof json.src !== 'string') return [];
-    const pageUrl = new URL(json.src, base.origin);
-    if (pageUrl.origin !== base.origin || !isSafeUpstreamUrl(pageUrl.href)) return [];
-    const page = await fetch(pageUrl, { headers, signal, redirect: 'manual' });
-    if (!page.ok) return [];
-    const html = await page.text();
-    const token = html.match(/token["']\s*:\s*["']([^"']+)/)?.[1];
-    const expires = html.match(/expires["']\s*:\s*["']([^"']+)/)?.[1];
-    const playlist = html.match(/url\s*:\s*["']([^"']+)/)?.[1];
-    if (!token || !expires || !playlist || !/^\d+$/.test(expires) || Number(expires) * 1000 <= Date.now()) return [];
-    const url = new URL(playlist, pageUrl);
-    if (url.origin !== base.origin || !isSafeUpstreamUrl(url.href)) return [];
-    url.searchParams.set('token', token);
-    url.searchParams.set('expires', expires);
-    url.searchParams.set('h', '1');
-    // Movie renditions have not yet passed rendered-height verification.
-    // Keep adaptive playback but avoid advertising potentially misleading labels.
-    return [{ key: url.href, url: url.href, type: 'hls', quality: 'auto', headers, rank: 4,
-      ...(query.type === 'movie' ? { qualityLabelsUnreliable: true } : {}) }];
-  } catch {
-    return [];
-  }
-}
-
 export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapter {
   const origin = (cfg?.origin || 'https://vidsync.pro').replace(/\/+$/, '');
   return {
@@ -314,7 +277,6 @@ export function createSource3Adapter(cfg: BackendConfig['source3']): SourceAdapt
       };
       const allLanes = Promise.allSettled([
         measure('stream', fetchFromVidSyncPro(origin, query)),
-        // VixSrc disabled: its API is protected by Cloudflare Turnstile.
       ]);
       if (query.diag) await allLanes;
       else await Promise.race([allLanes, new Promise<void>((resolve) => { release = resolve; })]);

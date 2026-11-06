@@ -8,7 +8,6 @@
  *   - Pipeline D: VidBolt
  *   - Pipeline E: VidRock
  *   - Pipeline F: VidLink
- * Legacy TG helpers below are not registered or called.
  */
 
 import crypto from 'node:crypto';
@@ -19,7 +18,6 @@ import type {
   RawSourceResult,
   RawStreamCandidate,
   RawTrackRef,
-  SkipSegments,
   SourceAdapter,
   SourceQuery,
 } from './types.js';
@@ -29,9 +27,6 @@ export { normalizeLang } from './lang.js';
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
-const SECURE_SOURCES_FN_ID = 'ff183e1ad6d02c4c08e8e73151c60e5dcc23f8f4c9db53eac9d271b87a56e121';
-const SKIP_SEGMENTS_FN_ID = '6b4f5d109b0ac5ecf27e114e441f6d776f5dc04af5eae9828d98adf707782e7c';
-const SCRAMBLE_KEY = 'tGfL1x#9vQ';
 const VROCK_KEY = Buffer.from(
   '7f3e9c2a8b5d1f4e6a9c3b7d2e5f8a1c4b6d9e2f5a8c1b4d7e9f2a5c8b1d4e7f',
   'hex',
@@ -68,285 +63,6 @@ function tripSubOriginCooldown(origin?: string): void {
   deadSubOriginUntil.set(origin, Date.now() + SUB_ORIGIN_COOLDOWN_MS);
 }
 
-function pickBestQualityLabel(primary?: string, list?: string[]): string {
-  const candidates = [primary, ...(Array.isArray(list) ? list : [])].filter(
-    (x): x is string => typeof x === 'string' && x.trim().length > 0,
-  );
-  let bestHeight = 0;
-  for (const q of candidates) {
-    if (/4k|2160/i.test(q)) bestHeight = Math.max(bestHeight, 2160);
-    else {
-      const m = q.match(/(\d{3,4})p/i);
-      if (m) bestHeight = Math.max(bestHeight, Number(m[1]));
-    }
-  }
-  if (bestHeight >= 2160) return '2160p';
-  if (bestHeight > 0) return `${bestHeight}p`;
-  return (primary || 'auto').toLowerCase();
-}
-
-/* ------------------------------------------------------------------ */
-/* XOR payload unscrambler (`tGfL1x#9vQ`)                              */
-/* ------------------------------------------------------------------ */
-
-export function unscramblePayload(scrambled: string): string {
-  const reversed = scrambled.split('').reverse().join('');
-  const raw = Buffer.from(reversed, 'base64');
-  const out = Buffer.allocUnsafe(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    out[i] = raw[i] ^ SCRAMBLE_KEY.charCodeAt(i % 10) ^ (i & 0xff);
-  }
-  return out.toString('utf8');
-}
-
-/* ------------------------------------------------------------------ */
-/* Minimal zero-dependency Seroval + TanStack Start framed RPC client  */
-/* ------------------------------------------------------------------ */
-
-interface SerovalNode {
-  t: number;
-  i?: number;
-  s?: unknown;
-  a?: SerovalNode[];
-  p?: { k: string[]; v: SerovalNode[] };
-  o?: number;
-}
-
-function escapeSerovalString(str: string): string {
-  let out = '';
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i];
-    switch (ch) {
-      case '"': out += '\\"'; break;
-      case '\\': out += '\\\\'; break;
-      case '\n': out += '\\n'; break;
-      case '\r': out += '\\r'; break;
-      case '\b': out += '\\b'; break;
-      case '\t': out += '\\t'; break;
-      case '\f': out += '\\f'; break;
-      case '<': out += '\\x3C'; break;
-      case '\u2028': out += '\\u2028'; break;
-      case '\u2029': out += '\\u2029'; break;
-      default: out += ch;
-    }
-  }
-  return out;
-}
-
-function unescapeSerovalString(str: string): string {
-  if (!str.includes('\\')) return str;
-  return str.replace(/(\\\\|\\"|\\n|\\r|\\b|\\t|\\f|\\u2028|\\u2029|\\x3C)/g, (m) => {
-    switch (m) {
-      case '\\\\': return '\\';
-      case '\\"': return '"';
-      case '\\n': return '\n';
-      case '\\r': return '\r';
-      case '\\b': return '\b';
-      case '\\t': return '\t';
-      case '\\f': return '\f';
-      case '\\x3C': return '<';
-      case '\\u2028': return '\u2028';
-      case '\\u2029': return '\u2029';
-      default: return m;
-    }
-  });
-}
-
-export function serializeSerovalEnvelope(input: unknown): string {
-  let nextRef = 0;
-  const encode = (val: unknown): SerovalNode => {
-    if (val === null) return { t: 2, s: 0 };
-    if (val === undefined) return { t: 2, s: 1 };
-    if (val === true) return { t: 2, s: 2 };
-    if (val === false) return { t: 2, s: 3 };
-    if (typeof val === 'number') return { t: 0, s: val };
-    if (typeof val === 'string') return { t: 1, s: escapeSerovalString(val) };
-    if (Array.isArray(val)) {
-      const id = nextRef++;
-      return { t: 9, i: id, a: val.map(encode), o: 0 };
-    }
-    if (typeof val === 'object') {
-      const id = nextRef++;
-      const entries = Object.entries(val as Record<string, unknown>);
-      return {
-        t: 10,
-        i: id,
-        p: {
-          k: entries.map(([k]) => escapeSerovalString(k)),
-          v: entries.map(([, v]) => encode(v)),
-        },
-        o: 0,
-      };
-    }
-    return { t: 2, s: 1 };
-  };
-
-  return JSON.stringify({ t: encode(input), f: 127, m: [] });
-}
-
-export function deserializeSerovalNode(raw: unknown): unknown {
-  const refs = new Map<number, unknown>();
-  const CONSTS: Record<number, unknown> = {
-    0: null,
-    1: undefined,
-    2: true,
-    3: false,
-    4: -0,
-    5: Infinity,
-    6: -Infinity,
-    7: NaN,
-  };
-
-  const decode = (node: unknown): unknown => {
-    if (!node || typeof node !== 'object') return node;
-    const n = node as SerovalNode & { t?: unknown };
-    if (typeof n.t === 'object' && n.t !== null && !('i' in n)) {
-      return decode(n.t);
-    }
-    if (typeof n.t !== 'number') return node;
-    switch (n.t) {
-      case 0:
-        return Number(n.s);
-      case 1:
-        return unescapeSerovalString(String(n.s ?? ''));
-      case 2:
-        return CONSTS[Number(n.s)];
-      case 4:
-        return n.i !== undefined ? refs.get(n.i) : undefined;
-      case 9: {
-        const arr: unknown[] = [];
-        if (n.i !== undefined) refs.set(n.i, arr);
-        for (const item of n.a ?? []) arr.push(decode(item));
-        return arr;
-      }
-      case 10:
-      case 11: {
-        const obj: Record<string, unknown> = n.t === 11 ? Object.create(null) : {};
-        if (n.i !== undefined) refs.set(n.i, obj);
-        const keys = n.p?.k ?? [];
-        const vals = n.p?.v ?? [];
-        for (let idx = 0; idx < keys.length; idx++) {
-          const key = unescapeSerovalString(String(keys[idx]));
-          if (key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
-            obj[key] = decode(vals[idx]);
-          }
-        }
-        return obj;
-      }
-      default:
-        return undefined;
-    }
-  };
-
-  return decode(raw);
-}
-
-function decodeTssFramedBuffer(buf: Buffer): unknown {
-  let offset = 0;
-  while (offset + 9 <= buf.length) {
-    const frameType = buf[offset];
-    const streamId = buf.readUInt32BE(offset + 1);
-    const frameLen = buf.readUInt32BE(offset + 5);
-    offset += 9;
-    if (offset + frameLen > buf.length) break;
-    const slice = buf.subarray(offset, offset + frameLen);
-    offset += frameLen;
-    if (frameType === 0 && streamId === 0) {
-      const parsed = JSON.parse(slice.toString('utf8'));
-      return deserializeSerovalNode(parsed);
-    }
-  }
-  return null;
-}
-
-async function callServerFn<T = unknown>(opts: {
-  appOrigin: string;
-  fnId: string;
-  method: 'GET' | 'POST';
-  data: unknown;
-  refererPath: string;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}): Promise<T | null> {
-  const serialized = serializeSerovalEnvelope({ data: opts.data });
-  let url = `${opts.appOrigin}/_serverFn/${opts.fnId}`;
-  if (opts.method === 'GET') {
-    url += `?payload=${encodeURIComponent(serialized)}`;
-  }
-
-  const headers: Record<string, string> = {
-    'x-tsr-serverFn': 'true',
-    accept: 'application/x-tss-framed, application/x-ndjson, application/json',
-    origin: opts.appOrigin,
-    referer: `${opts.appOrigin}${opts.refererPath}`,
-    'user-agent': BROWSER_UA,
-  };
-  if (opts.method === 'POST') headers['content-type'] = 'application/json';
-
-  const signal = opts.signal
-    ? AbortSignal.any([opts.signal, AbortSignal.timeout(opts.timeoutMs)])
-    : AbortSignal.timeout(opts.timeoutMs);
-
-  const res = await fetch(url, {
-    method: opts.method,
-    headers,
-    body: opts.method === 'POST' ? serialized : undefined,
-    signal,
-  });
-  if (!res.ok) {
-    console.warn(`[elfura-source1] serverFn HTTP ${res.status} fn=${opts.fnId.slice(0, 8)}`);
-    return null;
-  }
-
-  const ct = (res.headers.get('content-type') || '').toLowerCase();
-  const isSerialized = !!res.headers.get('x-tss-serialized');
-
-  if (ct.includes('application/x-tss-framed')) {
-    const buf = Buffer.from(await res.arrayBuffer());
-    return (decodeTssFramedBuffer(buf) as T) ?? null;
-  }
-
-  if (ct.includes('application/json')) {
-    const json = await res.json();
-    if (isSerialized) return deserializeSerovalNode(json) as T;
-    if (json && typeof json === 'object' && 'result' in (json as Record<string, unknown>)) {
-      return (json as { result: T }).result;
-    }
-    return json as T;
-  }
-
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
-/* Helpers to normalize upstream payloads                              */
-/* ------------------------------------------------------------------ */
-
-interface UpstreamLink {
-  server?: string;
-  label?: string;
-  quality?: string;
-  qualities?: string[];
-  type?: string;
-  url?: string;
-  mirrors?: string[];
-  subtitles?: { label?: string; lang?: string; url?: string }[];
-  audios?: string[];
-  audioLang?: string;
-  audio_tracks?: { label?: string; lang?: string; url?: string }[];
-  audioFiles?: { label?: string; lang?: string; url?: string; kind?: string }[];
-  multi_audio?: boolean;
-  headers?: Record<string, string>;
-}
-
-interface UpstreamApiPayload {
-  ok?: boolean;
-  imdb_id?: string | null;
-  title?: string | null;
-  year?: string | number | null;
-  links?: UpstreamLink[];
-}
-
 function inferStreamType(rawType?: string, url = ''): 'hls' | 'dash' | 'mp4' {
   const t = (rawType || '').toLowerCase();
   if (t === 'dash' || /\.mpd(?:[?#]|$)/i.test(url)) return 'dash';
@@ -378,173 +94,6 @@ function mapSubtitles(
   return out;
 }
 
-function mapDirectAudioFiles(
-  files: { label?: string; lang?: string; url?: string; kind?: string }[] | undefined,
-  baseHeaders?: Record<string, string>,
-): RawTrackRef[] {
-  if (!Array.isArray(files)) return [];
-  const out: RawTrackRef[] = [];
-  for (const f of files) {
-    if (!f?.url || !isSafeUpstreamUrl(f.url)) continue;
-    if (/\.m3u8(?:[?#]|$)/i.test(f.url)) continue;
-    if (f.kind && f.kind !== 'file') continue;
-    const norm = normalizeLang(f.lang || f.label, f.label);
-    out.push({
-      lang: norm.code,
-      label: norm.label,
-      url: f.url,
-      ...(baseHeaders ? { headers: baseHeaders } : {}),
-    });
-  }
-  return out;
-}
-
-function detectLinkLanguage(link: UpstreamLink): {
-  code?: string;
-  label?: string;
-  availableAudioLangs?: string[];
-  multiAudio: boolean;
-} {
-  const discovered = new Set<string>();
-  if (Array.isArray(link.audios)) {
-    for (const raw of link.audios) {
-      const n = normalizeLang(raw, raw);
-      if (n.code && n.code !== 'und') discovered.add(n.code);
-    }
-  }
-  if (Array.isArray(link.audio_tracks)) {
-    for (const t of link.audio_tracks) {
-      const n = normalizeLang(t?.lang || t?.label, t?.label);
-      if (n.code && n.code !== 'und') discovered.add(n.code);
-    }
-  }
-
-  const multi =
-    !!link.multi_audio ||
-    (Array.isArray(link.audios) && link.audios.length > 1) ||
-    (Array.isArray(link.audio_tracks) && link.audio_tracks.length > 1) ||
-    discovered.size > 1;
-
-  const availableAudioLangs = discovered.size > 0 ? [...discovered] : undefined;
-
-  if (link.audioLang) {
-    const n = normalizeLang(link.audioLang, link.audioLang);
-    return { code: n.code, label: n.label, availableAudioLangs, multiAudio: multi };
-  }
-  if (!multi && discovered.size === 1) {
-    const only = [...discovered][0];
-    const n = normalizeLang(only, only);
-    return { code: n.code, label: n.label, availableAudioLangs, multiAudio: false };
-  }
-  return { availableAudioLangs, multiAudio: multi };
-}
-
-function mapApiLinksToCandidates(
-  links: UpstreamLink[],
-  defaultReferer: string,
-  baseRank: number,
-): RawStreamCandidate[] {
-  const out: RawStreamCandidate[] = [];
-  for (let idx = 0; idx < links.length; idx++) {
-    const link = links[idx];
-    if (!link?.url || !isSafeUpstreamUrl(link.url)) continue;
-
-    const headers: Record<string, string> = {
-      'User-Agent': BROWSER_UA,
-      Referer: defaultReferer,
-      ...(link.headers ?? {}),
-    };
-
-    const langInfo = detectLinkLanguage(link);
-    const streamType = inferStreamType(link.type, link.url);
-    const quality = pickBestQualityLabel(link.quality, link.qualities);
-    const mirrorUrl = (link.mirrors ?? []).find((m) => typeof m === 'string' && isSafeUpstreamUrl(m));
-
-    out.push({
-      key: link.url,
-      type: streamType,
-      url: link.url,
-      headers,
-      quality,
-      audioLang: langInfo.code,
-      audioLabel: langInfo.label,
-      ...(langInfo.availableAudioLangs ? { availableAudioLangs: langInfo.availableAudioLangs } : {}),
-      multiAudio: langInfo.multiAudio,
-      audioTracks: mapDirectAudioFiles(link.audioFiles, headers),
-      subtitles: mapSubtitles(link.subtitles),
-      ...(mirrorUrl ? { standbyUrl: mirrorUrl, standbyHeaders: headers } : {}),
-      rank: baseRank + idx,
-    });
-  }
-  return out;
-}
-
-/* ------------------------------------------------------------------ */
-/* Sub-Pipelines                                                       */
-/* ------------------------------------------------------------------ */
-
-async function fetchFromSecureFn(
-  cfg: BackendConfig['source1'],
-  apiPath: string,
-  refererPath: string,
-  signal?: AbortSignal,
-): Promise<UpstreamApiPayload | null> {
-  if (isSubOriginCoolingDown(cfg.appOrigin)) return null;
-  try {
-    const res = await callServerFn<{ p?: string }>({
-      appOrigin: cfg.appOrigin,
-      fnId: SECURE_SOURCES_FN_ID,
-      method: 'POST',
-      data: { path: apiPath },
-      refererPath,
-      timeoutMs: 3800,
-      signal,
-    });
-    if (!res?.p || typeof res.p !== 'string') {
-      if (!res) tripSubOriginCooldown(cfg.appOrigin);
-      return null;
-    }
-    const jsonText = unscramblePayload(res.p);
-    return JSON.parse(jsonText) as UpstreamApiPayload;
-  } catch {
-    tripSubOriginCooldown(cfg.appOrigin);
-    return null;
-  }
-}
-
-async function fetchFromPublicApi(
-  cfg: BackendConfig['source1'],
-  apiPath: string,
-  signal?: AbortSignal,
-): Promise<UpstreamApiPayload | null> {
-  if (isSubOriginCoolingDown(cfg.apiOrigin)) return null;
-  try {
-    const sig = signal ? AbortSignal.any([signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
-    const res = await fetch(`${cfg.apiOrigin}${apiPath}`, {
-      headers: {
-        Accept: 'application/json',
-        Origin: cfg.appOrigin || cfg.apiOrigin,
-        Referer: `${cfg.appOrigin || cfg.apiOrigin}/`,
-        'User-Agent': BROWSER_UA,
-      },
-      signal: sig,
-    });
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (!res.ok || !ct.includes('application/json')) {
-      if (res.status >= 500 || res.url.includes('/blocked') || ct.includes('text/html')) {
-        tripSubOriginCooldown(cfg.apiOrigin);
-      }
-      return null;
-    }
-    const data = (await res.json()) as UpstreamApiPayload;
-    return data?.ok ? data : null;
-  } catch {
-    tripSubOriginCooldown(cfg.apiOrigin);
-    return null;
-  }
-}
-
-/** Resolve the original provider's Orion lane; media is fetched from its CDN, not Aethoflix. */
 export async function fetchFromVidBolt(
   origin: string,
   query: SourceQuery,
@@ -986,64 +535,6 @@ async function fetchFromVidLink(
   }
 }
 
-export async function fetchSkipSegments(
-  cfg: BackendConfig['source1'],
-  query: SourceQuery,
-  refererPath: string,
-): Promise<SkipSegments | undefined> {
-  if (isSubOriginCoolingDown(cfg.appOrigin)) return undefined;
-  try {
-    // TMDB supplies the canonical IMDb id used by the metadata endpoint. It is
-    // already resolving concurrently for the playback response, so await that
-    // shared promise instead of issuing a duplicate metadata request.
-    let imdbId = query.imdbId;
-    if (!imdbId && query.resolveMetaFallback) {
-      try {
-        imdbId = (await query.resolveMetaFallback()).imdbId ?? undefined;
-      } catch {
-        // TMDB metadata is optional; the endpoint can still resolve by TMDB id.
-      }
-    }
-    const res = await callServerFn<{
-      intro?: { start?: number; end?: number } | null;
-      outro?: { start?: number; end?: number } | null;
-      recap?: { start?: number; end?: number } | null;
-    }>({
-      appOrigin: cfg.appOrigin,
-      fnId: SKIP_SEGMENTS_FN_ID,
-      method: 'GET',
-      data: {
-        type: query.type,
-        tmdbId: String(query.tmdbId),
-        imdbId: imdbId ?? null,
-        ...(query.type === 'tv' ? { season: query.season ?? 1, episode: query.episode ?? 1 } : {}),
-      },
-      refererPath,
-      timeoutMs: 2500,
-      signal: query.signal,
-    });
-    if (!res) return undefined;
-
-    const range = (r?: { start?: number; end?: number } | null): [number, number] | undefined => {
-      const s = Number(r?.start);
-      const e = Number(r?.end);
-      return Number.isFinite(s) && Number.isFinite(e) && e > s && s >= 0 ? [s, e] : undefined;
-    };
-
-    const intro = range(res.intro);
-    const outro = range(res.outro);
-    const recap = range(res.recap);
-    if (!intro && !outro && !recap) return undefined;
-    return {
-      ...(intro ? { intro } : {}),
-      ...(outro ? { outro } : {}),
-      ...(recap ? { recap } : {}),
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Source 1 Adapter Factory                                            */
 /* ------------------------------------------------------------------ */
@@ -1061,22 +552,18 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         p.then((val) => ({ val, ms: Math.max(1, Math.round(performance.now() - t0)) }));
 
       const slots: {
-        secure: { val: Awaited<ReturnType<typeof fetchFromSecureFn>>; ms: number } | null;
-        public: { val: Awaited<ReturnType<typeof fetchFromPublicApi>>; ms: number } | null;
         rift: { val: RawStreamCandidate[]; ms: number } | null;
         sync: { val: RawStreamCandidate[]; ms: number } | null;
         rock: { val: RawStreamCandidate[]; ms: number } | null;
         link: { val: RawStreamCandidate[]; ms: number } | null;
       } = {
-        secure: null,
-        public: null,
         rift: null,
         sync: null,
         rock: null,
         link: null,
       };
 
-      const totalPipelines = 6;
+      const totalPipelines = 4;
       let settledCount = 0;
       let liveSourcePipelines = 0;
       let releaseEarly: (() => void) | null = null;
@@ -1095,18 +582,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         }
       };
 
-      const pSecure = timed(Promise.resolve(null as Awaited<ReturnType<typeof fetchFromSecureFn>>)).then((r) => {
-        slots.secure = r;
-        settledCount++;
-        if (r.val?.links?.length) liveSourcePipelines++;
-        checkFastSettle();
-      });
-      const pPublic = timed(Promise.resolve(null as Awaited<ReturnType<typeof fetchFromPublicApi>>)).then((r) => {
-        slots.public = r;
-        settledCount++;
-        if (r.val?.links?.length) liveSourcePipelines++;
-        checkFastSettle();
-      });
       const pRift = timed(group === 2 ? fetchFromRiftBoot(cfg, query) : Promise.resolve([])).then((r) => {
         slots.rift = r;
         settledCount++;
@@ -1131,7 +606,7 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const allLanes = Promise.allSettled([pSecure, pPublic, pRift, pSync, pRock, pLink]);
+      const allLanes = Promise.allSettled([pRift, pSync, pRock, pLink]);
       // A diagnostic must measure every lane, even those skipped by the fast
       // playback race. Normal playback retains its short grace window.
       if (query.diag) await allLanes;
@@ -1152,12 +627,6 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
           rank: c.rank + Math.min(ms, 5000) / 1000,
         }));
 
-      const secureCandidates = slots.secure?.val?.links
-        ? withTiming(mapApiLinksToCandidates(slots.secure.val.links, `${cfg.appOrigin}/`, 1), slots.secure.ms)
-        : [];
-      const publicCandidates = slots.public?.val?.links
-        ? withTiming(mapApiLinksToCandidates(slots.public.val.links, `${cfg.apiOrigin}/`, 10), slots.public.ms)
-        : [];
       const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms) : [];
       const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms) : [];
       const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms) : [];
@@ -1165,12 +634,10 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
 
       const byUrl = new Map<string, RawStreamCandidate>();
       for (const c of [
-        ...secureCandidates,
         ...syncCandidates,
         ...rockCandidates,
         ...linkCandidates,
         ...riftCandidates,
-        ...publicCandidates,
       ]) {
         const existing = byUrl.get(c.key);
         if (!existing) {
@@ -1249,18 +716,8 @@ export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2
         }
       }
 
-      const metaSource = slots.secure?.val ?? slots.public?.val;
-      const metaHint = metaSource
-        ? {
-            title: metaSource.title ? String(metaSource.title) : undefined,
-            year: metaSource.year ? String(metaSource.year) : undefined,
-            imdbId: metaSource.imdb_id ?? null,
-          }
-        : undefined;
-
       return {
         candidates,
-        ...(metaHint ? { metaHint } : {}),
       };
       };
       const initial = buildResult();

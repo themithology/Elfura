@@ -26,9 +26,6 @@ import {
 } from '../../dist/backend/security.js';
 import {
   normalizeLang,
-  unscramblePayload,
-  serializeSerovalEnvelope,
-  deserializeSerovalNode,
   fetchFromVidBolt,
 } from '../../dist/backend/sources/source1.js';
 import {
@@ -40,7 +37,6 @@ import {
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
-import { fetchFromVixSrc } from '../../dist/backend/sources/source3.js';
 import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
@@ -85,28 +81,6 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   } finally { globalThis.fetch = originalFetch; }
 }
 
-// The broad catalog lane never trusts a foreign API subpage or playlist URL,
-// and does not fabricate audio tracks or quality labels.
-{
-  const originalFetch = globalThis.fetch;
-  try {
-    const expires = String(Math.floor(Date.now() / 1000) + 3600);
-    globalThis.fetch = async url => {
-      const u = new URL(url);
-      if (u.pathname === '/api/tv/93405/2/3') return Response.json({ src: '/playlist/test' });
-      if (u.pathname === '/playlist/test') return new Response(`url: "https://vixsrc.to/master", "token": "fixture", "expires": "${expires}"`);
-      throw new Error('unexpected fetch');
-    };
-    const result = await fetchFromVixSrc('https://vixsrc.to', { type:'tv',tmdbId:'93405',season:2,episode:3 });
-    assert.equal(result.length, 1);
-    assert.equal(new URL(result[0].url).searchParams.get('h'), '1');
-    assert.equal(result[0].multiAudio, undefined);
-    assert.equal(result[0].quality, 'auto');
-    globalThis.fetch = async () => Response.json({src:'https://evil.example/playlist'});
-    assert.deepEqual(await fetchFromVixSrc('https://vixsrc.to', {type:'movie',tmdbId:'693134'}), []);
-  } finally { globalThis.fetch = originalFetch; }
-}
-
 // 2. Embed route matcher
 assert.deepEqual(matchEmbedPath('/embed/movie/278'), { mediaType: 'movie', tmdbId: '278' });
 assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {
@@ -114,25 +88,6 @@ assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {
   tmdbId: '94605',
   season: 1,
   episode: 3,
-});
-
-// 3. XOR scramble/unscramble cipher
-function scrambleForTest(plain) {
-  const key = 'tGfL1x#9vQ';
-  const raw = Buffer.from(plain, 'utf8');
-  const xored = Buffer.allocUnsafe(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    xored[i] = raw[i] ^ key.charCodeAt(i % 10) ^ (i & 0xff);
-  }
-  return xored.toString('base64').split('').reverse().join('');
-}
-const sampleJson = JSON.stringify({ ok: true, title: 'Arcane', links: [{ url: 'https://cdn.example/master.m3u8' }] });
-assert.equal(unscramblePayload(scrambleForTest(sampleJson)), sampleJson);
-
-// 4. Seroval AST codec
-const ser = serializeSerovalEnvelope({ data: { path: '/api/tv/94605/1/1', n: 42, ok: true } });
-assert.deepEqual(deserializeSerovalNode(JSON.parse(ser)), {
-  data: { path: '/api/tv/94605/1/1', n: 42, ok: true },
 });
 
 // 5. AES-256-GCM stateless stream tickets
@@ -658,80 +613,9 @@ const mockUpstream = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && u.pathname.startsWith('/_serverFn/ff183e')) {
-    assert.equal(req.headers['x-tsr-serverfn'], 'true');
-    const reqChunks = [];
-    for await (const ch of req) reqChunks.push(ch);
-    const reqBodyStr = Buffer.concat(reqChunks).toString('utf8');
-    if (reqBodyStr.includes('1218925')) {
-      const inner1218925 = JSON.stringify({
-        ok: true,
-        imdb_id: 'tt30472557',
-        title: 'Chainsaw Man - The Movie: Reze Arc',
-        links: [
-          {
-            server: 'MHBD Dead Child',
-            label: 'Multi-Audio [HIN + ENG]',
-            quality: '1080p',
-            type: 'hls',
-            multi_audio: true,
-            audios: ['hin', 'eng'],
-            url: `${origin}/dead-child-stream/master.m3u8?v=1`,
-          },
-        ],
-      });
-      const ser1218925 = Buffer.from(serializeSerovalEnvelope({ p: scrambleForTest(inner1218925) }), 'utf8');
-      const fh = Buffer.alloc(9);
-      fh[0] = 0;
-      fh.writeUInt32BE(0, 1);
-      fh.writeUInt32BE(ser1218925.length, 5);
-      res.writeHead(200, { 'Content-Type': 'application/x-tss-framed', 'X-Tss-Serialized': 'true' });
-      res.end(Buffer.concat([fh, ser1218925]));
-      return;
-    }
-    const inner = JSON.stringify({
-      ok: true,
-      imdb_id: 'tt11126994',
-      title: 'Arcane',
-      links: [
-        {
-          server: 'TG HUB v2',
-          label: 'TG HUB v2 · Multi-Audio [HIN + ENG]',
-          quality: '1080p',
-          type: 'hls',
-          multi_audio: true,
-          audios: ['hin', 'eng'],
-          url: `${origin}/cdn/hub/master.m3u8`,
-        },
-      ],
-    });
-    const serResp = Buffer.from(serializeSerovalEnvelope({ p: scrambleForTest(inner) }), 'utf8');
-    const frameHeader = Buffer.alloc(9);
-    frameHeader[0] = 0;
-    frameHeader.writeUInt32BE(0, 1);
-    frameHeader.writeUInt32BE(serResp.length, 5);
-    res.writeHead(200, {
-      'Content-Type': 'application/x-tss-framed',
-      'X-Tss-Serialized': 'true',
-    });
-    res.end(Buffer.concat([frameHeader, serResp]));
-    return;
-  }
-
-  if (req.method === 'GET' && u.pathname.startsWith('/_serverFn/6b4f5d')) {
-    const respond = () => {
-      const serResp = serializeSerovalEnvelope({
-        intro: { start: 52, end: 94 },
-        outro: { start: 2310, end: 2420 },
-      });
-      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Tss-Serialized': 'true' });
-      res.end(serResp);
-    };
-    // Regression: the old 180ms post-discovery grace period discarded this
-    // perfectly valid response before it could reach playback.segments.
-    if (skipSegmentRequestCount++ === 0) setTimeout(respond, 1200);
-    else respond();
-    return;
+  if (u.pathname.startsWith('/_serverFn/')) {
+    skipSegmentRequestCount++;
+    res.writeHead(410); res.end(); return;
   }
 
   if (u.pathname === '/api/tv/94605/1/1') {
@@ -2348,15 +2232,7 @@ try {
     headers: browserHeaders,
   });
   assert.equal(htmlSegRes.status, 502, 'Relay must reject HTML masquerading as a binary media segment with 502');
-  const vixHeaders = { Referer: 'https://vixsrc.to/' };
-  const vixBinaryTicket = sealStreamTicket(secret, { u: `${upBase}/vix-encrypted-segment.ts`, k: 'a', h: vixHeaders });
-  const vixBinary = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(vixBinaryTicket)}`, { headers: browserHeaders });
-  assert.equal(vixBinary.status, 200);
-  assert.equal(vixBinary.headers.get('content-type'), 'application/octet-stream');
-  assert.deepEqual(Buffer.from(await vixBinary.arrayBuffer()), Buffer.from([0xff, 0x81, 0x00, 0x94, 0xac, 0x30, 0xc3, 0x88]));
-  const vixHtmlTicket = sealStreamTicket(secret, { u: `${upBase}/dead-html-segment.ts`, k: 'a', h: vixHeaders });
-  const vixHtml = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(vixHtmlTicket)}`, { headers: browserHeaders });
-  assert.equal(vixHtml.status, 502, 'Provider-specific MIME exception must still reject HTML');
+
 
   // Verify single-dub native audio inheritance in ElfuraPlayer produces zero ghost "Original" track
   const singleDubPlayer = new ElfuraPlayer({ postMessage: false });
@@ -3108,7 +2984,7 @@ try {
       pCfgB.secret.toString('hex'),
       'Placeholder ELFURA_SECRET must generate fresh ephemeral secrets instead of hashing static text',
     );
-    assert.equal(pCfgA.source1.apiOrigin, '', 'Dead tgvidapi default must be cleared when unset');
+    assert(!('apiOrigin' in pCfgA.source1), 'removed TG configuration must not be registered');
     assert.equal(pCfgA.source2.embedOrigin, '', 'Dead aethoflix default must be cleared when unset');
     assert.equal(pCfgA.source2.enabled, false);
     assert.equal(pCfgA.source2.nxshaOrigin, '');
