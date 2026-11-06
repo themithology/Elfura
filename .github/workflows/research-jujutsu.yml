@@ -2,7 +2,7 @@ name: Jujutsu multilingual investigation
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/test/research-jujutsu.mjs, .github/workflows/research-jujutsu.yml]
+    paths: [backend/test/research-jujutsu.mjs, backend/test/research-nekomux.mjs, .github/workflows/research-jujutsu.yml]
 permissions:
   contents: read
 jobs:
@@ -16,4 +16,4 @@ jobs:
           node-version: '22'
       - run: npm ci
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
-      - run: node backend/test/research-jujutsu.mjs
+      - run: node backend/test/research-nekomux.mjs
