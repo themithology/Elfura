@@ -2,7 +2,7 @@ name: Bingr HLS adapter verification
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/src/sources/source4.ts, backend/test/bingr-adapter.mjs, backend/test/bingr-live-adapter.mjs, .github/workflows/bingr-adapter.yml]
+    paths: [backend/src/sources/source4.ts, backend/test/bingr-adapter.mjs, backend/test/bingr-live-adapter.mjs, backend/test/bingr-elfura-browser.mjs, .github/workflows/bingr-adapter.yml]
 permissions:
   contents: read
 jobs:
@@ -17,3 +17,6 @@ jobs:
       - run: npm run build:backend
       - run: node backend/test/bingr-adapter.mjs
       - run: node backend/test/bingr-live-adapter.mjs
+      - run: npm run build:embed
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/bingr-elfura-browser.mjs
