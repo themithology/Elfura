@@ -40,3 +40,5 @@ for(const term of ['provider:`sniper`','upstreamServer:`download`','/api/extract
 notice({details});
 
 // Recheck the deployed public client and endpoint availability.
+
+notice({audit: "fresh-client-definitions"});
