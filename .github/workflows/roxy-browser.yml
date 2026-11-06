@@ -20,6 +20,16 @@ jobs:
           node-version: '22'
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      - name: Run regression suite
+        shell: bash
+        run: |
+          if npm test > /tmp/elfura-test.log 2>&1; then
+            cat /tmp/elfura-test.log
+          else
+            tail -n 50 /tmp/elfura-test.log
+            report=$(tail -n 35 /tmp/elfura-test.log | sed 's/%/%25/g' | tr '\n' ' ' | cut -c1-3000)
+            echo "::error title=Regression suite::$report"
+            exit 1
+          fi
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/roxy-browser.mjs
