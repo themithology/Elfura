@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [normal, expired]
+        mode: [normal, expired, titan]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,3 +25,4 @@ jobs:
       - run: node backend/test/source4-browser.mjs
         env:
           TEST_EXPIRED: ${{ matrix.mode == 'expired' && '1' || '0' }}
+          ANIME_TEST_ID: ${{ matrix.mode == 'titan' && '1429' || '95479' }}
