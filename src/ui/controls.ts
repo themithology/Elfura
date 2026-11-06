@@ -255,6 +255,7 @@ export class PlayerUI {
   private loadingQuote!: HTMLElement;
   private loadingQuoteAuthor!: HTMLElement;
   private loadingQuoteTimer = 0;
+  private loadingDeadlineTimer = 0;
   private loadingQuoteIndex = 0;
   private loadingQuoteAbort: AbortController | null = null;
   private loadingQuoteSession = 0;
@@ -791,6 +792,12 @@ export class PlayerUI {
     this.player.shell.dataset.unavailable = 'false';
     this.loadingScreen.dataset.visible = 'true';
     this.unavailableScreen.dataset.visible = 'false';
+    clearTimeout(this.loadingDeadlineTimer);
+    // One wall-clock budget across resolution, source switches, and recovery.
+    // A timeout is an honest unavailable state, not a claim of playback success.
+    this.loadingDeadlineTimer = window.setTimeout(() => {
+      if (this.loadingActive) this.player.cancelStartup();
+    }, 9000);
     this.loadingStatus.textContent = 'Finding the best available source…';
     this.syncStateArtwork(this.resolveDisplayMedia());
     this.showNextFallbackQuote();
@@ -857,6 +864,8 @@ export class PlayerUI {
     this.loadingActive = false;
     this.loadingQuoteSession++;
     clearInterval(this.loadingQuoteTimer);
+    clearTimeout(this.loadingDeadlineTimer);
+    this.loadingDeadlineTimer = 0;
     this.loadingQuoteTimer = 0;
     this.loadingQuoteAbort?.abort();
     this.loadingQuoteAbort = null;
@@ -1214,6 +1223,8 @@ export class PlayerUI {
 
     v.addEventListener('waiting', () => (shell.dataset.buffering = 'true'));
     const markPlaybackReady = () => {
+      // Ignore late media events from an attempt already declared unavailable.
+      if (shell.dataset.unavailable === 'true') return;
       shell.dataset.buffering = 'false';
       shell.dataset.unavailable = 'false';
       this.unavailableScreen.dataset.visible = 'false';

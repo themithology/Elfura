@@ -237,6 +237,8 @@ export class ElfuraPlayer {
     settle: (res: { ok: boolean; loadFailed?: boolean }) => void;
   } | null = null;
   private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private resolveGeneration = 0;
+  private resolveAbort: AbortController | null = null;
   private exhaustedRecoveryAttempted = false;
   private exhaustedRecoveryInFlight = false;
   private hevcSupportedCache: boolean | null = null;
@@ -341,6 +343,26 @@ export class ElfuraPlayer {
 
   getSources(): SourceOption[] {
     return this.sources;
+  }
+
+  /** Stop an initial attempt that exceeded its UI deadline. Invalidate every
+   * in-flight resolver, probe and engine so late work cannot restart playback. */
+  cancelStartup(): void {
+    if (this.destroyed) return;
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: true });
+    this.activeProbe = null;
+    this.engineLoadSeq++;
+    this.teardownEngine();
+    this.exhaustedRecoveryInFlight = false;
+    this.video.pause();
+    this.video.removeAttribute('src');
+    this.video.load();
+    this.shell.dataset.buffering = 'false';
+    this.emit('error', { code: 'all-sources-failed', message: 'Playback did not start in time' });
   }
 
   /** Re-run resolution after a terminal unavailable state without reloading the host page. */
@@ -943,6 +965,11 @@ export class ElfuraPlayer {
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
+    this.resolveAbort?.abort();
+    const controller = new AbortController();
+    this.resolveAbort = controller;
+    const generation = ++this.resolveGeneration;
+    const isCurrent = () => !this.destroyed && this.resolveGeneration === generation && !controller.signal.aborted;
 
     this.shell.dataset.buffering = 'true';
     this.emit('buffering', {});
@@ -962,9 +989,11 @@ export class ElfuraPlayer {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: cfg.mediaType || 'movie', tmdb: String(cfg.tmdb) }),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3500)]),
           });
           if (sessRes.ok) {
             const sessJson = (await sessRes.json()) as { pltoken?: string; nonce?: string };
+            if (!isCurrent()) return;
             if (sessJson.pltoken) cfg.pltoken = sessJson.pltoken;
             if (sessJson.nonce) cfg.nonce = sessJson.nonce;
           }
@@ -973,6 +1002,7 @@ export class ElfuraPlayer {
         }
       }
 
+      if (!isCurrent()) return;
       const storedLang = !cfg.lang ? loadPreferredAudio() : null;
       const bootLang = cfg.lang ? String(cfg.lang) : storedLang;
 
@@ -995,11 +1025,12 @@ export class ElfuraPlayer {
         headers['X-Elfura-Envelope'] = '1';
       }
 
-      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.timeout(15000) });
-      if (this.destroyed) return;
+      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]) });
+      if (!isCurrent()) return;
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
         const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!isCurrent()) return;
         this.emit('error', {
           code: `resolve-${res.status}`,
           message: errBody.error || `Playback resolution returned ${res.status}`,
@@ -1017,7 +1048,7 @@ export class ElfuraPlayer {
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
-      if (this.destroyed) return;
+      if (!isCurrent()) return;
 
       const data: PlaybackPayloadShape =
         rawJson?.s === 1 && typeof rawJson.p === 'string' && cfg.pltoken && cfg.nonce
@@ -1027,7 +1058,7 @@ export class ElfuraPlayer {
               String(cfg.nonce),
             )
           : rawJson;
-      if (this.destroyed) return;
+      if (!isCurrent()) return;
 
       if (!data?.ok || !data.sources?.length) {
         this.shell.dataset.buffering = 'false';
@@ -1104,7 +1135,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = ['source-1', 'source-2'].filter((id) =>
+      const lateGroups = ['source-1', 'source-2', 'source-4', 'source-5'].filter((id) =>
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
@@ -1124,7 +1155,7 @@ export class ElfuraPlayer {
             const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
               ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
               : raw;
-            if (this.destroyed || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
+            if (!isCurrent() || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
             const fingerprints = new Set(this.sources.map((s) => s.fingerprint).filter(Boolean));
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
@@ -1200,11 +1231,11 @@ export class ElfuraPlayer {
       } else {
         const fallbackPrimary = data.primary ?? this.sources[0];
         const fastest = await this.selectFastestInitialSource(this.sources, fallbackPrimary);
-        if (this.destroyed) return;
+        if (!isCurrent()) return;
         await this.activateSourceOption(fastest, false);
       }
     } catch (err) {
-      if (!this.destroyed) {
+      if (isCurrent()) {
         this.shell.dataset.buffering = 'false';
         this.emit('error', { code: 'resolve-failed', message: String(err) });
       }
@@ -2165,6 +2196,9 @@ export class ElfuraPlayer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
     this.engineLoadSeq++;
     this.teardownEngine();
     this.externalAudio.destroy();
@@ -2203,7 +2237,7 @@ export class ElfuraPlayer {
         return;
       }
       this.failover();
-    }, 10000);
+    }, 3000);
   }
 
   private teardownEngine(): void {
@@ -2665,7 +2699,8 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
     if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';
     void (async () => {
-      const results = await Promise.all(groups.map(async group => {
+      let activated = false;
+      await Promise.all(groups.map(async group => {
         try {
           const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
           url.searchParams.set('type', cfg.mediaType || 'movie');
@@ -2679,15 +2714,13 @@ export class ElfuraPlayer {
           const raw = await res.json() as { s?: number; p?: string; sources?: SourceOption[] };
           const data = raw.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
             ? await openSealedEnvelope<{ sources?: SourceOption[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce)) : raw;
-          return (data.sources ?? []).filter(c => c.sourceId === group);
-        } catch { return []; }
-      }));
-      this.exhaustedRecoveryInFlight = false;
-      if (this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+          const candidates = (data.sources ?? []).filter(c => c.sourceId === group);
+          if (activated || this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+
       const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
       const ids = new Set(this.sources.map(s => s.id));
       const recovered: SourceOption[] = [];
-      for (const candidate of results.flat()) {
+      for (const candidate of candidates) {
         if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
         let id = candidate.id, n = 0;
         while (ids.has(id) || this.failedSourceIds.has(id)) id = `${candidate.id}:recovery-${++n}`;
@@ -2698,12 +2731,20 @@ export class ElfuraPlayer {
         if (option.fingerprint) fingerprints.add(option.fingerprint);
         this.sources.push(option); recovered.push(option);
       }
-      if (!recovered.length) { terminal(); return; }
+      if (!recovered.length) return;
       this.reorderSourcesHierarchy(this.desiredAudioLang);
       this.emit('sourcesUpdated', this.sources);
       const next = this.sources.find(s => !this.isCandidateFailed(s));
-      if (!next) { terminal(); return; }
+      if (!next) return;
+      activated = true;
+      this.exhaustedRecoveryInFlight = false;
       void this.activateSourceOption(next, true);
+        } catch { /* another provider may still succeed */ }
+      }));
+      if (!activated && !this.destroyed && recoveryLoadSeq === this.engineLoadSeq && snapshot === `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) {
+        this.exhaustedRecoveryInFlight = false;
+        terminal();
+      }
     })();
   }
 

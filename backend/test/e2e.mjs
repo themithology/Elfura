@@ -1867,7 +1867,7 @@ try {
   {
     const p=new ElfuraPlayer({postMessage:false}); const opt={...pb.primary,id:'only-option',sourceId:'source-3'};p.sources=[opt];p.currentSource=opt;p.video.readyState=0;
     const oldTimer=globalThis.setTimeout;let callback,delay,called=0;globalThis.setTimeout=(fn,ms)=>{callback=fn;delay=ms;return 1};p.failover=()=>{called++};
-    try {p.armStartupWatchdog(opt.id);assert.equal(delay,10000);callback();assert.equal(called,1);}finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
+    try {p.armStartupWatchdog(opt.id);assert.equal(delay,3000);callback();assert.equal(called,1);}finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
   }
 
   // A late multi-audio group must appear without interrupting or relabelling
