@@ -13,6 +13,8 @@ keytool -genkeypair -keystore "$D/test.keystore" -storepass android -keypass and
 adb install -r "$D/signed.apk"
 adb shell mkdir -p /sdcard/Android/data/online.theogpiratebot.mediatest/files
 adb push "$RUNNER_TEMP/fragmented.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/fragmented.mp4 >/dev/null
+adb push "$RUNNER_TEMP/patched-movie.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/patched-movie.mp4 >/dev/null
+adb push "$RUNNER_TEMP/patched-all.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/patched-all.mp4 >/dev/null
 adb push "$RUNNER_TEMP/standard.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/standard.mp4 >/dev/null
 adb logcat -c
 adb shell am start -n online.theogpiratebot.mediatest/.Main >/dev/null
