@@ -231,6 +231,4 @@ Website attribution and banning use the browser's `Referer` origin on embed requ
 
 ## Download pages (experimental)
 
-The separate `/dl/` interface accepts a numeric TMDB ID and offers language and quality choices. Direct entry routes are `/dl/movie/{tmdb}` and `/dl/tv/{tmdb}/{season}/{episode}`. It queries the TG Fetcher API as an external provider, which can return no results or become unavailable; it is independent of player source selection. M3U8/DASH playlists and unrecognized download hosts are excluded. File language labels are inferred from filenames and may be wrong; a multi-audio file is not split into separate files.
-
-The final page can be shared for 30 minutes. It uses encrypted, purpose-scoped tickets, per-IP/global rate limits, and a concurrent lookup cap. Download links ultimately redirect to the external file host, which becomes visible to the recipient; this avoids streaming large files through the Elfura server but is not a guarantee against scraping or sharing. Configure a persistent `ELFURA_SECRET` to keep tickets valid across restarts, and use HTTPS in production. Upstream signed links may expire sooner than the page ticket. Do not add a generic URL proxy.
+The `/dl/` page and landing-page documentation are included, but download API routes are temporarily disabled in this build. No TG Fetcher integration or working HLS-to-file converter is included. Playback routes remain separate. A future HLS download implementation requires a supported FFmpeg build, security review and end-to-end media tests before it can be enabled.

@@ -21,8 +21,8 @@ function render(){
   }
 }
 form.addEventListener('submit',async event=>{
-  event.preventDefault();if(!form.reportValidity())return;results.hidden=true;items=[];selected='';statusText('Finding available files…');const button=form.querySelector<HTMLButtonElement>('button[type=submit]')!;button.disabled=true;
-  try{const params=new URLSearchParams({type:kind.value,tmdb:tmdb.value});if(kind.value==='tv'){params.set('season',season.value);params.set('episode',episode.value);}const res=await fetch(`/dl/api/resolve?${params}`);const data=await res.json() as {ok:boolean;items?:Item[];error?:string};if(!res.ok||!data.ok)throw Error(data.error||'Could not find files right now.');items=data.items||[];if(!items.length){statusText('No download files found right now. Try again later.',true);return;}statusText('Choose a language to see available files.');results.hidden=false;render();}catch(e){statusText(e instanceof Error?e.message:'Could not find files right now.',true);}finally{button.disabled=false;}
+  event.preventDefault();if(!form.reportValidity())return;results.hidden=true;items=[];selected='';statusText('Finding available streams…');const button=form.querySelector<HTMLButtonElement>('button[type=submit]')!;button.disabled=true;
+  try{const params=new URLSearchParams({type:kind.value,tmdb:tmdb.value});if(kind.value==='tv'){params.set('season',season.value);params.set('episode',episode.value);}const res=await fetch(`/dl/api/resolve?${params}`);const data=await res.json() as {ok:boolean;items?:Item[];error?:string};if(!res.ok||!data.ok)throw Error(data.error||'Could not find files right now.');items=data.items||[];if(!items.length){statusText('No downloadable HLS streams found right now. Try again later.',true);return;}statusText('Choose a language to see available qualities.');results.hidden=false;render();}catch(e){statusText(e instanceof Error?e.message:'Could not find files right now.',true);}finally{button.disabled=false;}
 });
 const parts=location.pathname.replace(/\/+$/,'').split('/');
 if(parts[2]==='file'){
