@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
             const qs = req.url?.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
             if (url === '/' || url === '/docs' || url === '/demo' || url === '/status') {
               req.url = `/landing.html${qs}`;
+            } else if (url === '/dl' || url.startsWith('/dl/')) {
+              req.url = `/download.html${qs}`;
             } else if (url === '/embed' || /^(?:\/embed)?\/(?:movie|tv)\//.test(url)) {
               req.url = `/embed.html${qs}`;
             }
@@ -31,6 +33,8 @@ export default defineConfig(({ mode }) => {
       // The preview is served from https://{port}-{sandbox}.e2b.app — accept any host.
       allowedHosts: true,
       proxy: {
+        '/dl/api': { target: `http://127.0.0.1:${backendPort}`, changeOrigin: false },
+        '/dl/go': { target: `http://127.0.0.1:${backendPort}`, changeOrigin: false },
         '/api': {
           target: `http://127.0.0.1:${backendPort}`,
           changeOrigin: false,
@@ -46,6 +50,7 @@ export default defineConfig(({ mode }) => {
         input: {
           landing: 'landing.html',
           embed: 'embed.html',
+          download: 'download.html',
         },
       },
     },

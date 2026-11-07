@@ -2432,7 +2432,7 @@ try {
   assert.equal(pb.media.logo, 'https://image.tmdb.org/t/p/w780/arcaneTitleLogo.png');
 
   const cssAssetsDir = new URL('../../dist/assets/', import.meta.url);
-  const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.endsWith('.css'));
+  const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.startsWith('embed-') && f.endsWith('.css'));
   assert(cssFile, 'Expected built player CSS asset in dist/assets/');
   const builtCss = fs.readFileSync(new URL(cssFile, cssAssetsDir), 'utf8');
 

@@ -33,6 +33,7 @@ import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
+import { resolveDownloads, issueDownloadTicket, openDownloadTicket } from './downloads.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -472,6 +473,33 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       return;
     }
 
+    // Download catalogue and tickets are isolated from playback/stream endpoints.
+    if (method === 'GET' && pathname === '/dl/api/resolve') {
+      if (!rateLimiter.allow(`dl-resolve:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false, error: 'Too many requests. Please try again shortly.' }); return; }
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false, error: 'Request not permitted' }); return; }
+      const type = url.searchParams.get('type'); const tmdb = url.searchParams.get('tmdb') || '';
+      const season = Number(url.searchParams.get('season')); const episode = Number(url.searchParams.get('episode'));
+      if ((type !== 'movie' && type !== 'tv') || !/^\d{1,12}$/.test(tmdb) || (type === 'tv' && (!Number.isInteger(season) || season < 1 || season > 100 || !Number.isInteger(episode) || episode < 1 || episode > 1000))) {
+        sendJson(res, 400, { ok: false, error: 'Enter a valid TMDB ID, season and episode.' }); return;
+      }
+      const items = await resolveDownloads({ type, tmdb, ...(type === 'tv' ? { season, episode } : {}) });
+      sendJson(res, 200, { ok: true, items: items.map(item => ({ name: item.name, quality: item.quality, size: item.size, languages: item.languages, kind: item.kind, ticket: issueDownloadTicket(cfg.secret, item) })) });
+      return;
+    }
+    if (method === 'GET' && pathname === '/dl/api/file') {
+      if (!rateLimiter.allow(`dl-file:${getClientIp(req)}`)) { sendJson(res, 429, {ok:false,error:'Too many requests'}); return; }
+      const item = openDownloadTicket(cfg.secret, url.searchParams.get('t') || '');
+      if (!item) { sendJson(res, 410, { ok:false, error:'This link has expired. Please generate a new one.' }); return; }
+      const { url: _url, ...metadata } = item; sendJson(res, 200, { ok:true, ...metadata }); return;
+    }
+    if (method === 'GET' && pathname === '/dl/go') {
+      if (!rateLimiter.allow(`dl-go:${getClientIp(req)}`)) { sendJson(res, 429, {ok:false,error:'Too many requests'}); return; }
+      const item = openDownloadTicket(cfg.secret, url.searchParams.get('t') || '');
+      if (!item) { sendJson(res, 410, {ok:false,error:'This link has expired. Please generate a new one.'}); return; }
+      setCloudflareCache(res, 'no-store');
+      res.writeHead(302, { Location: item.url, 'Referrer-Policy':'no-referrer', 'X-Content-Type-Options':'nosniff' }); res.end(); return;
+    }
+
     // 5. Uniform Stream Ingress / Egress Relay
     if ((method === 'GET' || method === 'HEAD') && pathname === '/api/v1/stream') {
       if (isLikelyAutomatedScraper(req, cfg.isProd)) {
@@ -520,6 +548,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         });
         res.end(method === 'HEAD' ? undefined : buf);
         return;
+      }
+
+      // Standalone download UI (never changes the embed player).
+      if (cleanPath === '/dl' || /^\/dl\/(?:movie\/\d{1,12}|tv\/\d{1,12}\/\d{1,3}\/\d{1,4}|file)$/.test(cleanPath)) {
+        try {
+          const html = await fs.readFile(path.join(DIST_ROOT, 'download.html'));
+          setCloudflareCache(res, 'no-store');
+          res.writeHead(200, { 'Content-Type':'text/html; charset=utf-8', 'Content-Length':String(html.length), 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer' });
+          res.end(method === 'HEAD' ? undefined : html); return;
+        } catch { sendJson(res, 503, {ok:false,error:'Download UI is not built'}); return; }
       }
 
       // 7. Embed HTML routes (built Part 1 player + pre-minted session token)
