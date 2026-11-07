@@ -8,6 +8,7 @@ import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import java.io.File;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main extends Activity {
   private final Handler handler=new Handler();
@@ -20,9 +21,9 @@ public class Main extends Activity {
     final String name=files[idx++];final File f=new File(getExternalFilesDir(null),name);
     try{
       MediaMetadataRetriever m=new MediaMetadataRetriever();m.setDataSource(f.toString());String duration=m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);m.release();
-      final MediaPlayer player=new MediaPlayer();player.setDisplay(holder);player.setDataSource(f.toString());
-      player.setOnErrorListener((p,what,extra)->{Log.i("ElfuraTest","RESULT "+name+" ERROR "+what+" "+extra);player.release();runNext();return true;});
-      player.setOnPreparedListener(p->{int d=p.getDuration();p.start();handler.postDelayed(()->{int position=p.getCurrentPosition();boolean playing=p.isPlaying();p.seekTo(6000);handler.postDelayed(()->{int seekPosition=p.getCurrentPosition();Log.i("ElfuraTest","RESULT "+name+" metadata="+duration+" duration="+d+" position="+position+" playing="+playing+" seek="+seekPosition+" size="+p.getVideoWidth()+"x"+p.getVideoHeight());p.release();runNext();},1200);},3000);});
+      final AtomicBoolean done=new AtomicBoolean(false);final MediaPlayer player=new MediaPlayer();player.setDisplay(holder);player.setDataSource(f.toString());
+      player.setOnErrorListener((p,what,extra)->{Log.i("ElfuraTest","RESULT "+name+" ERROR "+what+" "+extra);if(done.compareAndSet(false,true)){player.release();runNext();}return true;});
+      player.setOnPreparedListener(p->{int d=p.getDuration();p.start();handler.postDelayed(()->{if(done.get())return;try{int position=p.getCurrentPosition();boolean playing=p.isPlaying();p.seekTo(6000);handler.postDelayed(()->{if(done.get())return;try{int seekPosition=p.getCurrentPosition();Log.i("ElfuraTest","RESULT "+name+" metadata="+duration+" duration="+d+" position="+position+" playing="+playing+" seek="+seekPosition+" size="+p.getVideoWidth()+"x"+p.getVideoHeight());}catch(Exception ex){Log.i("ElfuraTest","RESULT "+name+" seek exception="+ex.getClass().getSimpleName());}if(done.compareAndSet(false,true)){p.release();runNext();}},1200);}catch(Exception ex){Log.i("ElfuraTest","RESULT "+name+" exception="+ex.getClass().getSimpleName());if(done.compareAndSet(false,true)){p.release();runNext();}}},3000);});
       player.prepareAsync();
     }catch(Exception e){Log.i("ElfuraTest","RESULT "+name+" EXCEPTION "+e.getClass().getSimpleName());runNext();}
   }

@@ -24,5 +24,5 @@ for i in $(seq 1 30); do
 done
 LOG=$(adb logcat -d -s ElfuraTest:I '*:S')
 echo "$LOG"
+while IFS= read -r line; do echo "::notice title=AndroidMP4::$line"; done < <(echo "$LOG" | grep 'RESULT' || true)
 echo "$LOG" | grep -q DONE
-while IFS= read -r line; do echo "::notice title=AndroidMP4::$line"; done < <(echo "$LOG" | grep 'RESULT')
