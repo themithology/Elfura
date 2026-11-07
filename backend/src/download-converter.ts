@@ -22,6 +22,19 @@ async function feed(base:string,urls:string[],stream:Writable,signal:AbortSignal
   }
   stream.end();
 }
+/** Build a safe filename from available metadata, never inventing codec or release details. */
+export function downloadFilename(item:HlsChoice):string {
+  const clean=(value:string)=>value.normalize('NFC').replace(/[\x00-\x1f\x7f/\\:*?"<>|]/g,' ').replace(/\s+/g,' ').trim();
+  const title=Array.from(clean(item.name)).slice(0,80).join('')||'Download';
+  const quality=/^\d{2,4}p$/i.test(item.quality)?item.quality:'';
+  const language=item.languages.filter(x=>x && !/^(?:unknown|und)$/i.test(x)).map(x=>Array.from(clean(x)).slice(0,25).join('')).filter(Boolean).join(' + ');
+  return [title,quality,language,'TheOGPirateBot.online'].filter(Boolean).join(' - ')+'.mkv';
+}
+function contentDisposition(name:string):string {
+  const ascii=name.normalize('NFKD').replace(/[^\x20-\x7e]/g,'').replace(/["\\]/g,'').trim()||'Download - TheOGPirateBot.online.mkv';
+  const encoded=encodeURIComponent(name).replace(/['()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase());
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
 export async function convertDownload(res:ServerResponse, item:HlsChoice, base:string, secret:Buffer, ffmpeg:string):Promise<void>{
   const controller=new AbortController();let child:ChildProcess|undefined;let completed=false;
   const timer=setTimeout(()=>controller.abort(),2*60*60*1000);timer.unref();
@@ -44,8 +57,8 @@ export async function convertDownload(res:ServerResponse, item:HlsChoice, base:s
     let started=false;
     child.stdout!.once('data',chunk=>{
       if(res.destroyed||controller.signal.aborted)return;
-      started=true;const filename=(item.name||'download').replace(/[^a-zA-Z0-9._ -]/g,'').slice(0,100).trim()||'download';
-      res.writeHead(200,{'Content-Type':'video/x-matroska','Content-Disposition':`attachment; filename="${filename}.mkv"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
+      started=true;const filename=downloadFilename(item);
+      res.writeHead(200,{'Content-Type':'video/x-matroska','Content-Disposition':contentDisposition(filename),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});
       res.write(chunk);child!.stdout!.pipe(res,{end:false});
     });
     const [code]=await Promise.all([done,feeding]);

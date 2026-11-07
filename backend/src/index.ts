@@ -491,7 +491,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         if(dlResolving>=4){sendJson(res,503,{ok:false,error:'Download search is busy.'});return;}dlResolving++;
         try {
           const result=await registry.resolvePlayback({type,tmdbId:tmdb,...(type==='tv'?{season,episode}:{})});
-          const options=(result?.sources||[]).filter(x=>x.type==='hls').slice(0,8);const title=result?.media?.title||`${type==='tv'?'Episode':'Movie'} ${tmdb}`;
+          const options=(result?.sources||[]).filter(x=>x.type==='hls').slice(0,8);const media=result?.media;const titleParts=[media?.title||`${type==='tv'?'Episode':'Movie'} ${tmdb}`];
+          if (/^\d{4}$/.test(media?.year||'')) titleParts.push(media!.year);
+          if (type==='tv') titleParts.push(`S${String(season).padStart(2,'0')}E${String(episode).padStart(2,'0')}`);
+          const title=titleParts.join(' ');
           const batches=await Promise.all(options.map(async opt=>{try{const u=localRelay(opt.url,base,cfg.secret,'m');const text=await relayText(base,u,AbortSignal.timeout(8000));return choicesFromManifest(text,new URL(u,base).toString(),opt,title,cfg.secret);}catch{return [];}}));
           const choices=batches.flat().slice(0,100);
           sendJson(res,200,{ok:true,items:choices.map(c=>({name:c.name,quality:c.quality,size:c.size,languages:c.languages,kind:c.kind,ticket:issueChoice(cfg.secret,c)}))});
