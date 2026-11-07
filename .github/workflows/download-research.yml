@@ -1,0 +1,27 @@
+name: Download source research
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [research/download-source-probe.mjs, .github/workflows/download-research.yml]
+permissions: {contents: read}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {title: 'Godzilla Minus One', kind: movie}
+          - {title: 'Jawan', kind: movie}
+          - {title: 'Squid Game', kind: tv}
+          - {title: 'Dune', kind: movie}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: git clone --depth 1 https://github.com/kelvinodgar-tech/Moviebox-API.git /tmp/moviebox-research
+      - run: node research/download-source-probe.mjs
+        env:
+          TITLE: ${{ matrix.title }}
+          KIND: ${{ matrix.kind }}
