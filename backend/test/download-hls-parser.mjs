@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { parseDownloadMediaPlaylist as parse } from '../../dist/backend/download-hls.js';
+const base='http://127.0.0.1:8787/api/v1/stream?t=playlist';
+const playlist=uri=>`#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\n${uri}\n#EXT-X-ENDLIST\n`;
+assert.deepEqual(parse(playlist('/api/v1/stream?t=segment'),base).segments,['/api/v1/stream?t=segment']);
+for(const unsafe of ['http://169.254.169.254/latest/meta-data','http://evil.example/api/v1/stream?t=x','/api/v1/other?t=x','/api/v1/stream','file:///etc/passwd']) assert.throws(()=>parse(playlist(unsafe),base));
+for(const tag of ['#EXT-X-KEY:METHOD=AES-128,URI="x"','#EXT-X-MAP:URI="x"','#EXT-X-BYTERANGE:4@0','#EXT-X-DISCONTINUITY']) assert.throws(()=>parse(playlist('/api/v1/stream?t=x').replace('#EXTINF:',tag+'\n#EXTINF:'),base));
+assert.throws(()=>parse(playlist('/api/v1/stream?t=x').replace('#EXT-X-ENDLIST',''),base));
+assert.throws(()=>parse(playlist('/api/v1/stream?t=x'),'http://evil.example/api/v1/stream?t=x'));
+console.log('✓ Experimental VOD parser rejects external URLs and unsupported HLS features.');

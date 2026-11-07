@@ -12,6 +12,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
@@ -33,6 +34,8 @@ import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
+import { choicesFromManifest, issueChoice, readChoice, relayText, localRelay } from './download-hls.js';
+import { convertDownload } from './download-converter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -141,6 +144,9 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  const dlLimiter = new SlidingWindowLimiter(20);
+  let dlResolving = 0;
+  let dlJobs = 0;
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -472,9 +478,35 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       return;
     }
 
-    // Downloads are temporarily unavailable; playback and the landing page remain independent.
+    // Explicitly opt-in test feature. Never impacts normal playback routes.
     if (pathname.startsWith('/dl/api/') || pathname === '/dl/go') {
-      sendJson(res, 503, { ok: false, error: 'Downloads are temporarily unavailable.' }); return;
+      if (process.env.ELFURA_EXPERIMENTAL_HLS_DOWNLOADS !== '1') { sendJson(res, 503, {ok:false,error:'Downloads are temporarily unavailable.'}); return; }
+      if (method !== 'GET') { sendJson(res, 405, {ok:false,error:'Method not allowed'}); return; }
+      if (isLikelyAutomatedScraper(req,cfg.isProd)) { sendJson(res,403,{ok:false,error:'Request not permitted'}); return; }
+      if (!dlLimiter.allow(`${pathname}:${getClientIp(req)}`)) { sendJson(res,429,{ok:false,error:'Too many requests'}); return; }
+      const address=server.address();const port=typeof address==='object'&&address?address.port:cfg.port;const base=`http://127.0.0.1:${port}`;
+      if (pathname === '/dl/api/resolve') {
+        const type=url.searchParams.get('type');const tmdb=url.searchParams.get('tmdb')||'';const season=Number(url.searchParams.get('season'));const episode=Number(url.searchParams.get('episode'));
+        if((type!=='movie'&&type!=='tv')||!/^\d{1,12}$/.test(tmdb)||(type==='tv'&&(!Number.isInteger(season)||season<1||season>100||!Number.isInteger(episode)||episode<1||episode>1000))){sendJson(res,400,{ok:false,error:'Enter a valid TMDB ID, season and episode.'});return;}
+        if(dlResolving>=4){sendJson(res,503,{ok:false,error:'Download search is busy.'});return;}dlResolving++;
+        try {
+          const result=await registry.resolvePlayback({type,tmdbId:tmdb,...(type==='tv'?{season,episode}:{})});
+          const options=(result?.sources||[]).filter(x=>x.type==='hls').slice(0,8);const title=result?.media?.title||`${type==='tv'?'Episode':'Movie'} ${tmdb}`;
+          const batches=await Promise.all(options.map(async opt=>{try{const u=localRelay(opt.url,base,cfg.secret,'m');const text=await relayText(base,u,AbortSignal.timeout(8000));return choicesFromManifest(text,new URL(u,base).toString(),opt,title,cfg.secret);}catch{return [];}}));
+          const choices=batches.flat().slice(0,100);
+          sendJson(res,200,{ok:true,items:choices.map(c=>({name:c.name,quality:c.quality,size:c.size,languages:c.languages,kind:c.kind,ticket:issueChoice(cfg.secret,c)}))});
+        } catch {sendJson(res,502,{ok:false,error:'Could not find streams right now.'});} finally {dlResolving--;}
+        return;
+      }
+      if(pathname==='/dl/api/file'||pathname==='/dl/go'){
+        const item=readChoice(cfg.secret,url.searchParams.get('t')||'',base);
+        if(!item){sendJson(res,410,{ok:false,error:'This link has expired. Please generate a new one.'});return;}
+        if(pathname==='/dl/api/file'){sendJson(res,200,{ok:true,name:item.name,quality:item.quality,languages:item.languages.join(', '),size:item.size,kind:item.kind});return;}
+        if(dlJobs>=2){sendJson(res,503,{ok:false,error:'Download slots are busy.'});return;}dlJobs++;
+        try{const executable=process.env.ELFURA_FFMPEG_PATH||path.resolve(__dirname,'../../vendor/ffmpeg/ffmpeg');await fs.access(executable,fsConstants.X_OK);await convertDownload(res,item,base,cfg.secret,executable);}catch{if(!res.headersSent&&!res.destroyed)sendJson(res,503,{ok:false,error:'The download converter is not available.'});}finally{dlJobs--;}
+        return;
+      }
+      sendJson(res,404,{ok:false,error:'Not found'});return;
     }
 
     // 5. Uniform Stream Ingress / Egress Relay
