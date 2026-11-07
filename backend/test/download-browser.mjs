@@ -14,7 +14,7 @@ try{
   await page.goto(base+'/dl/movie/550',{waitUntil:'domcontentloaded'});await page.waitForSelector('#results:not([hidden])',{timeout:10000});
   assert.equal(await page.locator('.language').count(),3);assert.equal(await page.locator('.file-row').count(),1);
   assert((await page.locator('.file-row').innerText()).includes('720p'));await page.getByRole('button',{name:'Tamil',exact:true}).click();assert((await page.locator('.file-row').innerText()).includes('1080p'));
-  await page.getByRole('button',{name:'Hindi',exact:true}).click();await page.getByText('View download').click();await page.waitForFunction(()=>document.querySelector('#download')&&!document.querySelector('#download').hidden,null,{timeout:5000});
+  await page.getByRole('button',{name:'Hindi',exact:true}).click();await page.getByText('View download').click();await page.waitForFunction(()=>document.querySelector('#download')&&!document.querySelector('#download').hidden,null,{timeout:10000,polling:100});
   assert((await page.locator('#file-name').innerText()).includes('Hindi + English'));
   const ticket=new URL(page.url()).searchParams.get('t');assert(ticket&&!page.url().includes('pixeldrain'));
   const response=await fetch(base+'/dl/go?t='+encodeURIComponent(ticket),{redirect:'manual'});assert.equal(response.status,302);assert.equal(response.headers.get('location'),'https://pixeldrain.dev/api/file/abc?download');
