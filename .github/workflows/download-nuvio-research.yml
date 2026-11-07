@@ -12,8 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {title: 'Godzilla Minus One', year: '2023'}
-          - {title: 'Jawan', year: '2023'}
+          - {title: 'Godzilla Minus One', year: '2023', tmdb: '940721'}
+          - {title: 'Jawan', year: '2023', tmdb: '872585'}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,3 +25,4 @@ jobs:
         env:
           TITLE: ${{ matrix.title }}
           YEAR: ${{ matrix.year }}
+          TMDB: ${{ matrix.tmdb }}
