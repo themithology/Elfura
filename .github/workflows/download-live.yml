@@ -1,0 +1,17 @@
+name: Download live source research
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/download-live.mjs, .github/workflows/download-live.yml]
+permissions: {contents: read}
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/download-live.mjs
