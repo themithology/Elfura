@@ -6,11 +6,11 @@ import assert from 'node:assert/strict';
 const wrap=u=>'https://tgdl.lovable.app/dl?u='+Buffer.from(u).toString('base64url');
 const orig=globalThis.fetch;
 globalThis.fetch=async (url,opts)=>String(url).startsWith('https://tgdl.lovable.app/api/')?new Response(JSON.stringify({success:true,type:'movie',tmdb_id:550,downloads:[{name:'Fight Club Hindi + English.mkv',quality:'720p',size:'850 MB',download_url:wrap('https://pixeldrain.dev/api/file/abc?download')},{name:'Fight Club Tamil.mkv',quality:'1080p',size:'2 GB',download_url:wrap('https://pixeldrain.dev/api/file/def?download')},{name:'Playlist',quality:'1080p',download_url:wrap('https://hdhub.thevolecitor.qzz.io/x.m3u8')}]}),{status:200,headers:{'content-type':'application/json'}}):orig(url,opts);
-const {server}=createBackendServer({...loadBackendConfig(),isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser;
+const {server}=createBackendServer({...loadBackendConfig(),isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser, currentPage;
 try{
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:chromiumBinary.args});
  for(const mobile of [true,false]){
-  const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1360,height:900},isMobile:mobile,hasTouch:mobile});
+  const page=currentPage=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1360,height:900},isMobile:mobile,hasTouch:mobile});
   await page.goto(base+'/dl/movie/550',{waitUntil:'domcontentloaded'});await page.waitForSelector('#results:not([hidden])',{timeout:10000});
   assert.equal(await page.locator('.language').count(),3);assert.equal(await page.locator('.file-row').count(),1);
   assert((await page.locator('.file-row').innerText()).includes('720p'));await page.getByRole('button',{name:'Tamil',exact:true}).click();assert((await page.locator('.file-row').innerText()).includes('1080p'));
@@ -22,4 +22,4 @@ try{
   console.log('::notice title=DownloadBrowser::'+JSON.stringify({mobile,ok:true,languageCount:3,width}));
  }
  const bad=await fetch(base+'/dl/api/file?t=invalid');assert.equal(bad.status,410);
-}catch(e){console.log('::notice title=DownloadBrowser::'+JSON.stringify({ok:false,error:String(e)}));process.exitCode=1;}finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
+}catch(e){const state=await currentPage?.evaluate(()=>({path:location.pathname,name:document.querySelector('#file-name')?.textContent,error:document.querySelector('#file-error')?.textContent,downloadHidden:document.querySelector('#download')?.hidden})).catch(()=>null);console.log('::notice title=DownloadBrowser::'+JSON.stringify({ok:false,error:String(e),state}));process.exitCode=1;}finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
