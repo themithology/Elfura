@@ -8,11 +8,16 @@ try {
  for(const [type,id,extra] of [['movie','693134',''],['movie','940721',''],['tv','93405','&season=1&episode=1']]) {
   try {
    const res=await fetch(`${base}/dl/api/resolve?type=${type}&tmdb=${id}${extra}`,{signal:AbortSignal.timeout(45000)});const data=await res.json();const items=data.items||[];
-   let observed='no options';
-   for(const item of items.slice(0,3)) {
-    try {const r=await fetch(`${base}/dl/go?t=${encodeURIComponent(item.ticket)}`,{signal:AbortSignal.timeout(20000)});if(!r.ok){observed=`HTTP ${r.status}`;continue;}const reader=r.body.getReader();let count=0;while(count<65536){const x=await reader.read();if(x.done)break;count+=x.value.length;}await reader.cancel();observed=`started (${count} bytes, ${item.quality}, ${item.languages.join('/')})`;if(count)break;}catch{observed='timeout or stream failure';}
+   const result={};
+   for(const language of ['Hindi','English']) {
+    const selected=items.filter(i=>i.languages.includes(language)).slice(0,2);let observed=selected.length?'failed':'not offered';
+    for(const item of selected) {
+     try {const r=await fetch(`${base}/dl/go?t=${encodeURIComponent(item.ticket)}`,{signal:AbortSignal.timeout(12000)});if(!r.ok){observed=`HTTP ${r.status}`;continue;}const reader=r.body.getReader();let count=0;while(count<65536){const x=await reader.read();if(x.done)break;count+=x.value.length;}await reader.cancel();observed=`started (${count} bytes, ${item.quality})`;if(count)break;}catch{observed='timeout or stream failure';}
+    }
+    result[language]=observed;
    }
-   console.log(`::notice title=HLSLive::${JSON.stringify({type,id,options:items.length,observed})}`);
+   const languages=[...new Set(items.flatMap(i=>i.languages))];
+   console.log(`::notice title=HLSLive::${JSON.stringify({type,id,options:items.length,languages,result})}`);
   }catch(e){console.log(`::notice title=HLSLive::${JSON.stringify({type,id,error:String(e).slice(0,120)})}`);}
  }
 } finally {server.closeAllConnections();await new Promise(r=>server.close(r));}
