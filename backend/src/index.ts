@@ -35,7 +35,7 @@ import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
 import { choicesFromManifest, issueChoice, readChoice, relayText, localRelay } from './download-hls.js';
-import { convertDownload } from './download-converter.js';
+import { convertDownload, probeDownload } from './download-converter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -504,7 +504,14 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if(pathname==='/dl/api/file'||pathname==='/dl/go'){
         const item=readChoice(cfg.secret,url.searchParams.get('t')||'',base);
         if(!item){sendJson(res,410,{ok:false,error:'This link has expired. Please generate a new one.'});return;}
-        if(pathname==='/dl/api/file'){sendJson(res,200,{ok:true,name:item.name,quality:item.quality,languages:item.languages.join(', '),size:item.size,kind:item.kind});return;}
+        if(pathname==='/dl/api/file'){
+          if(dlJobs>=2){sendJson(res,503,{ok:false,error:'Download verification is busy. Try again shortly.'});return;}dlJobs++;
+          try {const executable=process.env.ELFURA_FFMPEG_PATH||path.resolve(__dirname,'../../vendor/ffmpeg/ffmpeg');await fs.access(executable,fsConstants.X_OK);
+            if(!await probeDownload(res,item,base,cfg.secret,executable)){if(!res.destroyed)sendJson(res,502,{ok:false,error:'This stream failed its download check. Please select another source.'});return;}
+            if(!res.destroyed)sendJson(res,200,{ok:true,name:item.name,quality:item.quality,languages:item.languages.join(', '),size:item.size,kind:item.kind});
+          } catch {if(!res.destroyed)sendJson(res,503,{ok:false,error:'The download converter is not available.'});} finally {dlJobs--;}
+          return;
+        }
         if(dlJobs>=2){sendJson(res,503,{ok:false,error:'Download slots are busy.'});return;}dlJobs++;
         try{const executable=process.env.ELFURA_FFMPEG_PATH||path.resolve(__dirname,'../../vendor/ffmpeg/ffmpeg');await fs.access(executable,fsConstants.X_OK);await convertDownload(res,item,base,cfg.secret,executable);}catch{if(!res.headersSent&&!res.destroyed)sendJson(res,503,{ok:false,error:'The download converter is not available.'});}finally{dlJobs--;}
         return;

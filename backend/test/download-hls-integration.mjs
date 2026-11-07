@@ -24,20 +24,21 @@ try {
  for(const [lang,quality,freq] of [['Hindi','90p',440],['English','180p',880]]){
   const item=search.items.find(x=>x.languages.includes(lang)&&x.quality===quality);assert(item);requests=[];
   const meta=await fetch(base+'/dl/api/file?t='+encodeURIComponent(item.ticket)).then(r=>r.json());assert.equal(meta.quality,quality);
-  const response=await fetch(base+'/dl/go?t='+encodeURIComponent(item.ticket));assert.equal(response.status,200);const disposition=response.headers.get('content-disposition');assert(disposition.includes(`Fixture 2024 - ${quality} - ${lang} - TheOGPirateBot.online.mkv`),disposition);const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.subarray(0,4).toString('hex'),'1a45dfa3');assert(requests.includes(lang==='Hindi'?'/hi.ts':'/en.ts'));assert(requests.includes(quality==='90p'?'/v90.ts':'/v180.ts'));
-  const file=path.join(tmp,lang+'.mkv');writeFileSync(file,bytes);const pcm=gen(['-i',file,'-map','0:a:0','-f','s16le','-ac','1','-ar','44100','pipe:1']);assert(pcm.length>44100*2*3);
+  const response=await fetch(base+'/dl/go?t='+encodeURIComponent(item.ticket));assert.equal(response.status,200);const disposition=response.headers.get('content-disposition');assert(disposition.includes(`Fixture 2024 - ${quality} - ${lang} - TheOGPirateBot.online.mp4`),disposition);const bytes=Buffer.from(await response.arrayBuffer());assert.equal(bytes.subarray(4,8).toString(),'ftyp');assert(requests.includes(lang==='Hindi'?'/hi.ts':'/en.ts'));assert(requests.includes(quality==='90p'?'/v90.ts':'/v180.ts'));
+  const file=path.join(tmp,lang+'.mp4');writeFileSync(file,bytes);const pcm=gen(['-i',file,'-map','0:a:0','-f','s16le','-ac','1','-ar','44100','pipe:1']);assert(pcm.length>44100*2*3);
   let crossings=0,prev=0;for(let i=44100;i<88200;i++){const cur=pcm.readInt16LE(i*2);if(prev<=0&&cur>0)crossings++;prev=cur;}assert(Math.abs(crossings-freq)<15,`${lang}: ${crossings} Hz`);
   let probe='';try{execFileSync(ff,['-hide_banner','-i',file],{encoding:'utf8',stdio:['ignore','pipe','pipe']});}catch(e){probe=String(e.stderr);}assert(probe.includes(quality==='90p'?'160x90':'320x180'),probe);
-  console.log(`✓ ${lang} ${quality}: ${bytes.length} bytes, valid decode and ${crossings}Hz selected audio`);
+  console.log(`✓ ${lang} ${quality}: ${bytes.length} bytes, valid MP4 decode and ${crossings}Hz selected audio`);
  }
  const tvSearch=await fetch(base+'/dl/api/resolve?type=tv&tmdb=550&season=3&episode=2').then(r=>r.json());
  const tvItem=tvSearch.items.find(x=>x.languages.includes('Hindi')&&x.quality==='90p');assert(tvItem);
  const tvDownload=await fetch(base+'/dl/go?t='+encodeURIComponent(tvItem.ticket));assert.equal(tvDownload.status,200);
- assert(tvDownload.headers.get('content-disposition').includes('Fixture 2024 S03E02 - 90p - Hindi - TheOGPirateBot.online.mkv'));await tvDownload.arrayBuffer();
+ assert(tvDownload.headers.get('content-disposition').includes('Fixture 2024 S03E02 - 90p - Hindi - TheOGPirateBot.online.mp4'));await tvDownload.arrayBuffer();
  console.log('✓ TV filenames include the requested season and episode.');
  const invalid=await fetch(base+'/dl/go?t=invalid');assert.equal(invalid.status,410);
  const encrypted=`/api/v1/stream?t=${sealStreamTicket(cfg.secret,{u:`http://127.0.0.1:${upstream.address().port}/encrypted.m3u8`,k:'m'})}`;
  const encryptedTicket=issueChoice(cfg.secret,{name:'Fixture',quality:'Auto',size:'',languages:['Unknown'],kind:'HLS',video:encrypted});
+ assert.equal((await fetch(base+'/dl/api/file?t='+encodeURIComponent(encryptedTicket))).status,502,'encrypted HLS should not show the download button');
  assert.equal((await fetch(base+'/dl/go?t='+encodeURIComponent(encryptedTicket))).status,502,'encrypted HLS should fail closed');
  const valid=search.items[0].ticket;process.env.ELFURA_FFMPEG_PATH='/bin/false';
  assert.equal((await fetch(base+'/dl/go?t='+encodeURIComponent(valid))).status,502,'converter exit must not report a valid download');

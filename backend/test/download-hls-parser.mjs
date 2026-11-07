@@ -10,7 +10,7 @@ assert.throws(()=>parse(playlist('/api/v1/stream?t=x'),'http://evil.example/api/
 console.log('✓ Experimental VOD parser rejects external URLs and unsupported HLS features.');
 const {downloadFilename}=await import('../../dist/backend/download-converter.js');
 const baseItem={name:'चित्रपट / Title',quality:'1080p',languages:['Hindi'],size:'',kind:'HLS',video:''};
-assert.equal(downloadFilename(baseItem),'चित्रपट Title - 1080p - Hindi - TheOGPirateBot.online.mkv');
-assert.equal(downloadFilename({...baseItem,name:'Show S01E03',quality:'Auto',languages:['Unknown']}),'Show S01E03 - TheOGPirateBot.online.mkv');
-assert(downloadFilename({...baseItem,name:'x'.repeat(300)}).endsWith(' - 1080p - Hindi - TheOGPirateBot.online.mkv'));
+assert.equal(downloadFilename(baseItem),'चित्रपट Title - 1080p - Hindi - TheOGPirateBot.online.mp4');
+assert.equal(downloadFilename({...baseItem,name:'Show S01E03',quality:'Auto',languages:['Unknown']}),'Show S01E03 - TheOGPirateBot.online.mp4');
+assert(downloadFilename({...baseItem,name:'x'.repeat(300)}).endsWith(' - 1080p - Hindi - TheOGPirateBot.online.mp4'));
 console.log('✓ Filename uses known metadata and preserves the brand suffix.');

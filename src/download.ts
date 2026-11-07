@@ -28,7 +28,7 @@ const parts=location.pathname.replace(/\/+$/,'').split('/');
 if(parts[2]==='file'){
   $('.intro').hidden=true;$('.workspace:not(.file-page)').hidden=true;const page=$<HTMLElement>('#file-page');page.hidden=false;
   const ticket=new URLSearchParams(location.search).get('t')||'';const error=$<HTMLElement>('#file-error');const dl=$<HTMLAnchorElement>('#download');
-  dl.hidden=true;$('#file-name').textContent='Checking your link…';
+  dl.hidden=true;$('#file-name').textContent='Checking this stream…';
   void fetch(`/dl/api/file?t=${encodeURIComponent(ticket)}`).then(async r=>{const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'This link is unavailable.');$('#file-name').textContent=d.name;$('#file-meta').textContent=[d.quality,d.size,d.languages,d.kind].filter(Boolean).join('  ·  ');dl.href=`/dl/go?t=${encodeURIComponent(ticket)}`;dl.hidden=false;}).catch(e=>{error.textContent=e.message;$('#file-name').textContent='Link unavailable';});
   $('#copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.href);error.textContent='Page link copied.';}catch{error.textContent='Copy the page address from your browser.';}});
 }else if(parts[2]==='movie'&&/^\d+$/.test(parts[3]||'')){kind.value='movie';tmdb.value=parts[3];syncType();form.requestSubmit();}

@@ -66,11 +66,11 @@ export function choicesFromManifest(text:string, base:string, opt:UniformStreamO
   for(let i=0;i<lines.length;i++){if(!lines[i].startsWith('#EXT-X-STREAM-INF:'))continue;const a=attrs(lines[i].slice(18));let j=i+1;while(j<lines.length&&(!lines[j]||lines[j].startsWith('#')))j++;try{variants.push({url:localRelay(lines[j]||'',base,secret,'m'),quality:a.RESOLUTION?.match(/^\d+x(\d+)$/)?.[1] ? `${a.RESOLUTION.split('x')[1]}p` : 'Auto',group:a.AUDIO||''});}catch{}}
   if(!variants.length){if(lines.some(l=>l.startsWith('#EXT-X-STREAM-INF:')))return [];try{parseDownloadMediaPlaylist(text,base);variants.push({url:localRelay(base,base,secret,'m'),quality:opt.quality&&opt.quality!=='auto'?opt.quality:'Auto',group:''});}catch{return [];}}
   const out:HlsChoice[]=[];
-  for(const v of variants){const tracks=audio.filter(a=>a.group===v.group);if(tracks.length)for(const a of tracks)out.push({name:title,quality:v.quality,size:'',languages:[a.language],kind:'HLS → MKV',video:v.url,audio:a.url});else out.push({name:title,quality:v.quality,size:'',languages:[label(opt.audioLang)],kind:'HLS → MKV',video:v.url});}
+  for(const v of variants){const tracks=audio.filter(a=>a.group===v.group);if(tracks.length)for(const a of tracks)out.push({name:title,quality:v.quality,size:'',languages:[a.language],kind:'HLS → MP4',video:v.url,audio:a.url});else out.push({name:title,quality:v.quality,size:'',languages:[label(opt.audioLang)],kind:'HLS → MP4',video:v.url});}
   return out.slice(0,60);
 }
 export function issueChoice(secret:Buffer,c:HlsChoice):string{return sealStreamTicket(secret,{u:c.video,h:{purpose:'hls-download-v3',name:c.name,quality:c.quality,languages:c.languages.join(', '),audio:c.audio||''}},1800);}
 export function readChoice(secret:Buffer,token:string,base:string):HlsChoice|null {
   if(token.length>12000)return null;const t=openStreamTicket(secret,token);if(!t||t.h?.purpose!=='hls-download-v3')return null;
-  try{return {name:(t.h.name||'Download').slice(0,200),quality:t.h.quality||'Auto',languages:[t.h.languages||'Unknown'],size:'',kind:'HLS → MKV',video:localRelay(t.u,base,secret,'m'),...(t.h.audio?{audio:localRelay(t.h.audio,base,secret,'m')}:{})};}catch{return null;}
+  try{return {name:(t.h.name||'Download').slice(0,200),quality:t.h.quality||'Auto',languages:[t.h.languages||'Unknown'],size:'',kind:'HLS → MP4',video:localRelay(t.u,base,secret,'m'),...(t.h.audio?{audio:localRelay(t.h.audio,base,secret,'m')}:{})};}catch{return null;}
 }
