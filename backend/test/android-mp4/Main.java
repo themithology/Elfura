@@ -22,7 +22,7 @@ public class Main extends Activity {
       MediaMetadataRetriever m=new MediaMetadataRetriever();m.setDataSource(f.toString());String duration=m.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);m.release();
       final MediaPlayer player=new MediaPlayer();player.setDisplay(holder);player.setDataSource(f.toString());
       player.setOnErrorListener((p,what,extra)->{Log.i("ElfuraTest","RESULT "+name+" ERROR "+what+" "+extra);player.release();runNext();return true;});
-      player.setOnPreparedListener(p->{int d=p.getDuration();p.start();handler.postDelayed(()->{int position=p.getCurrentPosition();boolean playing=p.isPlaying();Log.i("ElfuraTest","RESULT "+name+" metadata="+duration+" duration="+d+" position="+position+" playing="+playing+" size="+p.getVideoWidth()+"x"+p.getVideoHeight());p.release();runNext();},3000);});
+      player.setOnPreparedListener(p->{int d=p.getDuration();p.start();handler.postDelayed(()->{int position=p.getCurrentPosition();boolean playing=p.isPlaying();p.seekTo(6000);handler.postDelayed(()->{int seekPosition=p.getCurrentPosition();Log.i("ElfuraTest","RESULT "+name+" metadata="+duration+" duration="+d+" position="+position+" playing="+playing+" seek="+seekPosition+" size="+p.getVideoWidth()+"x"+p.getVideoHeight());p.release();runNext();},1200);},3000);});
       player.prepareAsync();
     }catch(Exception e){Log.i("ElfuraTest","RESULT "+name+" EXCEPTION "+e.getClass().getSimpleName());runNext();}
   }
