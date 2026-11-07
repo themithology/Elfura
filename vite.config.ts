@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
             const qs = req.url?.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
             if (url === '/' || url === '/docs' || url === '/demo' || url === '/status') {
               req.url = `/landing.html${qs}`;
-            } else if (url === '/dl' || url.startsWith('/dl/')) {
+            } else if ((url === '/dl' || url.startsWith('/dl/')) && !url.startsWith('/dl/api/') && url !== '/dl/go') {
               req.url = `/download.html${qs}`;
             } else if (url === '/embed' || /^(?:\/embed)?\/(?:movie|tv)\//.test(url)) {
               req.url = `/embed.html${qs}`;

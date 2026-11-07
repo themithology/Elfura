@@ -142,6 +142,9 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  const downloadLimiter = new SlidingWindowLimiter(20);
+  const downloadGlobalLimiter = new SlidingWindowLimiter(240);
+  let downloadResolvesActive = 0;
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -475,15 +478,19 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
     // Download catalogue and tickets are isolated from playback/stream endpoints.
     if (method === 'GET' && pathname === '/dl/api/resolve') {
-      if (!rateLimiter.allow(`dl-resolve:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false, error: 'Too many requests. Please try again shortly.' }); return; }
+      if (!downloadLimiter.allow(`dl-resolve:${getClientIp(req)}`) || !downloadGlobalLimiter.allow('dl-resolve')) { sendJson(res, 429, { ok: false, error: 'Too many requests. Please try again shortly.' }); return; }
       if (isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false, error: 'Request not permitted' }); return; }
       const type = url.searchParams.get('type'); const tmdb = url.searchParams.get('tmdb') || '';
       const season = Number(url.searchParams.get('season')); const episode = Number(url.searchParams.get('episode'));
       if ((type !== 'movie' && type !== 'tv') || !/^\d{1,12}$/.test(tmdb) || (type === 'tv' && (!Number.isInteger(season) || season < 1 || season > 100 || !Number.isInteger(episode) || episode < 1 || episode > 1000))) {
         sendJson(res, 400, { ok: false, error: 'Enter a valid TMDB ID, season and episode.' }); return;
       }
-      const items = await resolveDownloads({ type, tmdb, ...(type === 'tv' ? { season, episode } : {}) });
-      sendJson(res, 200, { ok: true, items: items.map(item => ({ name: item.name, quality: item.quality, size: item.size, languages: item.languages, kind: item.kind, ticket: issueDownloadTicket(cfg.secret, item) })) });
+      if (downloadResolvesActive >= 8) { sendJson(res, 503, {ok:false,error:'Download search is busy. Please try again shortly.'}); return; }
+      downloadResolvesActive++;
+      try {
+        const items = await resolveDownloads({ type, tmdb, ...(type === 'tv' ? { season, episode } : {}) });
+        sendJson(res, 200, { ok: true, items: items.map(item => ({ name: item.name, quality: item.quality, size: item.size, languages: item.languages, kind: item.kind, ticket: issueDownloadTicket(cfg.secret, item) })) });
+      } finally { downloadResolvesActive--; }
       return;
     }
     if (method === 'GET' && pathname === '/dl/api/file') {
