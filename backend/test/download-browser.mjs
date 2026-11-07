@@ -9,6 +9,7 @@ globalThis.fetch=async (url,opts)=>String(url).startsWith('https://tgdl.lovable.
 const {server}=createBackendServer({...loadBackendConfig(),isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser;
 try{
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:chromiumBinary.args});
+ const keepAlive=await browser.newPage();
  for(const mobile of [true,false]){
   const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1360,height:900},isMobile:mobile,hasTouch:mobile});
   await page.goto(base+'/dl/movie/550',{waitUntil:'domcontentloaded'});await page.waitForSelector('#results:not([hidden])',{timeout:10000});
@@ -21,5 +22,6 @@ try{
   const width=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,viewport:innerWidth}));assert(width.doc<=width.viewport,'horizontal overflow');
   console.log('::notice title=DownloadBrowser::'+JSON.stringify({mobile,ok:true,languageCount:3,width}));await page.close();
  }
+ await keepAlive.close();
  const bad=await fetch(base+'/dl/api/file?t=invalid');assert.equal(bad.status,410);
 }catch(e){console.log('::notice title=DownloadBrowser::'+JSON.stringify({ok:false,error:String(e)}));process.exitCode=1;}finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
