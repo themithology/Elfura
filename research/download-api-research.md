@@ -38,3 +38,9 @@ Other candidate Nuvio file resolvers (4KHDHub, MoviesDrive) and official operato
 1. Which intended movie/TV route shapes and whether public share pages should be reusable or expire?
 2. Direct upstream downloads (low bandwidth, final host visible) versus first-party proxy (origin private, potentially massive bandwidth)?
 3. Is there an authorized file/CDN provider or a sample direct download link to test? No researched public provider is verified working from the hosting region yet.
+
+### TG Fetcher (user-provided)
+
+The user shared https://tgdl.lovable.app/ as the site behind the screenshot, **not as a UI design to copy**. Elfura's new download UI should follow the existing black landing-page theme. Its [documentation](https://tgdl.lovable.app/docs) describes `/api/movie/{tmdb}`, `/api/tv/{tmdb}/{season}/{episode}` and `/api/v2/...` with download names, quality, size, and URLs. The site is an upstream service, not a source of proven individual-language tracks. Names can indicate dual/multi audio but do not prove the actual contents.
+
+[Run 42341625954](https://github.com/themithology/Elfura/actions/runs/42341625954) tested ten calls from GitHub Actions. Every one returned HTTP 404 and `Download link not found`, including both v1 and v2 for Godzilla Minus One (940721), Shawshank Redemption (278), and the screenshot's apparent series Dead-End Job S1E1 (289517). The documentation's example TV IDs also returned 404. This does not establish that the service never works or explain the screenshot; it means it is not confirmed working from the runner. Further testing requires a known successful API request (or a shareable page URL corresponding to that screenshot) and an actual bounded file byte/range check. Respect the upstream's limits and do not use a generic arbitrary URL proxy.
