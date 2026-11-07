@@ -2,7 +2,7 @@
  * Experimental VOD-only HLS segment parser for a future offline converter.
  * It never passes a manifest to FFmpeg. No production endpoint imports it.
  */
-export interface DownloadMediaPlaylist { segments: string[] }
+export interface DownloadMediaPlaylist { segments: string[]; duration: number }
 
 export function parseDownloadMediaPlaylist(text: string, relayBase: string): DownloadMediaPlaylist {
   if (Buffer.byteLength(text, 'utf8') > 2_000_000) throw new Error('Playlist is too large');
@@ -12,6 +12,7 @@ export function parseDownloadMediaPlaylist(text: string, relayBase: string): Dow
   if (base.hostname !== '127.0.0.1' || base.protocol !== 'http:') throw new Error('Expected the local relay');
   const segments: string[] = [];
   let expectSegment = false;
+  let duration = 0;
   for (const line of lines.slice(1)) {
     if (!line) continue;
     if (line.startsWith('#')) {
@@ -21,6 +22,10 @@ export function parseDownloadMediaPlaylist(text: string, relayBase: string): Dow
       }
       if (/^#EXTINF:/i.test(line)) {
         if (expectSegment) throw new Error('Missing segment');
+        const value = Number(line.slice(8).split(',')[0]);
+        if (!Number.isFinite(value) || value <= 0 || value > 3600) throw new Error('Invalid segment duration');
+        duration += value;
+        if (duration > 21600) throw new Error('Playlist duration too long');
         expectSegment = true;
       }
       continue;
@@ -35,7 +40,7 @@ export function parseDownloadMediaPlaylist(text: string, relayBase: string): Dow
     expectSegment = false;
   }
   if (expectSegment || !segments.length) throw new Error('Incomplete media playlist');
-  return { segments };
+  return { segments, duration };
 }
 
 import { openStreamTicket, sealStreamTicket } from './security.js';

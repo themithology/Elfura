@@ -507,7 +507,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         if(pathname==='/dl/api/file'){
           if(dlJobs>=2){sendJson(res,503,{ok:false,error:'Download verification is busy. Try again shortly.'});return;}dlJobs++;
           try {const executable=process.env.ELFURA_FFMPEG_PATH||path.resolve(__dirname,'../../vendor/ffmpeg/ffmpeg');await fs.access(executable,fsConstants.X_OK);
-            if(!await probeDownload(res,item,base,cfg.secret,executable)){if(!res.destroyed)sendJson(res,502,{ok:false,error:'This stream failed its download check. Please select another source.'});return;}
+            if(!await probeDownload(res,item,base,cfg.secret,executable)){if(!res.destroyed)sendJson(res,502,{ok:false,error:'This stream failed its conversion or audio/video alignment check. Please select another source.'});return;}
             if(!res.destroyed)sendJson(res,200,{ok:true,name:item.name,quality:item.quality,languages:item.languages.join(', '),size:item.size,kind:item.kind});
           } catch {if(!res.destroyed)sendJson(res,503,{ok:false,error:'The download converter is not available.'});} finally {dlJobs--;}
           return;
