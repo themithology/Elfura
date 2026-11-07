@@ -1,0 +1,38 @@
+name: Android downloaded MP4 compatibility
+on:
+  push:
+    branches: ['arena/dcf86284-elfura']
+    paths: ['backend/test/android-mp4/**','.github/workflows/download-android-compat.yml']
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Build exact MP4 fixtures
+        shell: bash
+        run: |
+          npm pack @backendsuraj/offline-ffmpeg-linux-x64@8.0.2 --pack-destination "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/backendsuraj-offline-ffmpeg-linux-x64-8.0.2.tgz" -C "$RUNNER_TEMP"
+          chmod +x "$RUNNER_TEMP/package/bin/ffmpeg"
+          F="$RUNNER_TEMP/package/bin/ffmpeg"
+          "$F" -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=320x180:rate=25' -t 8 -c:v libx264 -threads 1 -f mpegts "$RUNNER_TEMP/v.ts"
+          "$F" -hide_banner -loglevel error -f lavfi -i 'sine=frequency=440:sample_rate=44100' -t 8 -c:a aac -f mpegts "$RUNNER_TEMP/a.ts"
+          "$F" -hide_banner -loglevel error -copyts -f mpegts -i "$RUNNER_TEMP/v.ts" -f mpegts -i "$RUNNER_TEMP/a.ts" -map 0:v -map 1:a -c copy -bsf:a aac_adtstoasc -movflags frag_keyframe+delay_moov+default_base_moof -f mp4 pipe:1 > "$RUNNER_TEMP/fragmented.mp4"
+          "$F" -hide_banner -loglevel error -i "$RUNNER_TEMP/fragmented.mp4" -c copy -movflags +faststart "$RUNNER_TEMP/standard.mp4"
+      - name: Setup Android build tools
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' >/dev/null || true
+      - name: Enable hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash backend/test/android-mp4/run.sh
