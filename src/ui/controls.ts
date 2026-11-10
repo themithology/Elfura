@@ -1217,6 +1217,10 @@ export class PlayerUI {
         else this.scheduleHide();
       }
     });
+    shell.addEventListener('focusin', () => this.showUI());
+    shell.addEventListener('focusout', () => {
+      window.setTimeout(() => this.scheduleHide(), 0);
+    });
 
     v.addEventListener('play', () => {
       const firstStart = !this.hasStartedPlayback;
@@ -2089,7 +2093,8 @@ export class PlayerUI {
     const step = Number(this.player.config.skipStep ?? 10);
     document.addEventListener('keydown', (e) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable) return;
+      const rangeControl = t instanceof HTMLInputElement && t.type === 'range' && shell.contains(t);
+      if ((t.tagName === 'INPUT' && !rangeControl) || t.tagName === 'SELECT' || t.isContentEditable) return;
       if (this.locked) {
         if (e.key === 'Escape') {
           this.setLocked(false);
@@ -2098,6 +2103,35 @@ export class PlayerUI {
           this.peekUnlockPill();
         }
         return;
+      }
+      const key = e.key.toLowerCase();
+      if (
+        ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'enter', 'select', 'tab', ' ', 'mediaplaypause'].includes(key)
+      ) {
+        this.showUI();
+      }
+      if (key === 'mediaplaypause') {
+        e.preventDefault();
+        this.player.toggle();
+        return;
+      }
+      if (rangeControl && key.startsWith('arrow')) return;
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        const controls = Array.from(
+          shell.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [role="button"], [role="slider"], input[type="range"]',
+          ),
+        ).filter((control) => !control.hidden && !control.closest('[hidden]'));
+        if (controls.length) {
+          const current = controls.indexOf(document.activeElement as HTMLElement);
+          const forward = key === 'arrowright' || key === 'arrowdown';
+          const next = current < 0
+            ? (forward ? 0 : controls.length - 1)
+            : (current + (forward ? 1 : -1) + controls.length) % controls.length;
+          controls[next].focus();
+          e.preventDefault();
+          return;
+        }
       }
       const v = this.player.video;
       const d = Number.isFinite(v.duration) ? v.duration : 0;
@@ -2931,7 +2965,8 @@ export class PlayerUI {
         this.player.video.paused ||
         this.panel.dataset.open === 'true' ||
         this.epWheelOpen ||
-        this.locked
+        this.locked ||
+        this.player.shell.contains(document.activeElement) && document.activeElement !== this.player.shell
       ) {
         return;
       }
