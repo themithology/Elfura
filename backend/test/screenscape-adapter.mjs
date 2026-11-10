@@ -38,11 +38,13 @@ try {
   const diag = [];
   const result = await createSource7Adapter(() => true).resolve({type:'movie',tmdbId:'693134',diag});
   assert.deepEqual(asked.sort(), ['bdxs','mbox']);
-  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates.length, 2);
+  assert.equal(result.candidates[1].audioLang, 'en');
+  assert.notEqual(result.candidates[1].multiAudio, true);
   assert.deepEqual(result.candidates[0].availableAudioLangs, ['hi','en']);
   assert.equal(result.candidates[0].multiAudio, true);
   assert.equal(result.candidates[0].diagnosticLane,'S');
   assert.equal(diag[0].ok,true);
   assert.deepEqual((await createSource7Adapter(()=>true).resolve({type:'movie',tmdbId:'bad'})).candidates,[]);
-  console.log('✓ ScreenScape opt-in, bounded lanes, unsafe/embed rejection and manifest-proven multi-audio');
+  console.log('✓ ScreenScape opt-in, bounded lanes, unsafe/embed rejection and verified manifest audio');
 } finally { globalThis.fetch = old; }

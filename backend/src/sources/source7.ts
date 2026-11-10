@@ -1,5 +1,5 @@
 /** Experimental ScreenScape lanes, separate from the existing Nxsha source.
- * Only manifest-proven multilingual HLS candidates leave this adapter. */
+ * Retains manifest-proven multi-audio and reachable, explicitly labelled dubs. */
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { fetchFromNxsha } from './source5.js';
 import type { SourceAdapter } from './types.js';
@@ -17,12 +17,12 @@ export function createSource7Adapter(enabled: () => boolean): SourceAdapter {
       : AbortSignal.timeout(4000);
     const candidates = await fetchFromNxsha({ ...query, signal: discoverySignal, diag: [], onLateResult: undefined }, LANES);
     const verified = await verifyAndFilterCandidatesDetailed(candidates, query.signal);
-    const multi = verified.candidates.filter(candidate => {
+    const usable = verified.candidates.filter(candidate => {
       const evidence = cachedCandidateEvidence(candidate);
-      return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
+      return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!candidate.audioLang && candidate.audioLang !== 'und');
     });
-    query.diag?.push({ adapter: 'source-7', lane: 'S', ok: multi.length > 0, ms: Date.now() - start,
-      detail: `candidates=${candidates.length},multi=${multi.length}` });
-    return { candidates: multi.map(candidate => query.diag ? { ...candidate, diagnosticLane: 'S' } : candidate) };
+    query.diag?.push({ adapter: 'source-7', lane: 'S', ok: usable.length > 0, ms: Date.now() - start,
+      detail: `candidates=${candidates.length},usable=${usable.length}` });
+    return { candidates: usable.map(candidate => query.diag ? { ...candidate, diagnosticLane: 'S' } : candidate) };
   } };
 }

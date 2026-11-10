@@ -11,6 +11,7 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     { id: 'bingr', name: 'Bingr', source: 'Source 4', url: 'https://bingr.one', enabled: cfg.source4?.enabled ?? true },
     { id: 'nxsha', name: 'Nxsha', source: 'Source 5', url: 'https://nxsha.space', enabled: cfg.source5?.enabled ?? true },
     ...(cfg.source7?.enabled ? [{ id: 'screenscape', name: 'ScreenScape', source: 'Source 7', url: 'https://screenscape.me', enabled: true }] : []),
+    ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
   ];
 }
 
