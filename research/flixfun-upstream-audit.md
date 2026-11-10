@@ -160,3 +160,41 @@ The other 27 choices have insufficient audio-specific evidence in this audit. Th
 ### MovieBox lead
 
 [CinePro VidNest adapter](https://github.com/cinepro-org/core/blob/98ba005f75d2675877774f5a676b3bc1c4150c27/src/providers/vidnest/vidnest.ts) defines a `moviebox` lane and maps `url[].lang`, `link`, and `type` into stream candidates. This is static code, not proof of current MovieBox origin, playable links, or Hindi. ScreenScape lists an `mbox` lane but its identity is unconfirmed. Include both in later checks; do not equate them without evidence.
+
+## Ordered reverse-engineering log
+
+Work through the 40 choices in the inventory order. An unresolved entry stays open rather than blocking the rest; no title is marked playable or multilingual without actual tests.
+
+### 1. VIP (No ADS) — unresolved
+
+- **First layer:** label only. The accessible [FlixFun watch page](https://flixfun.st/watch/movie/1423191) now returns a JavaScript/cookie human-check rather than the player markup. Public searches for this label with FlixFun did not identify an origin. Generic VIPEmbed/SuperEmbed search matches are not evidence that FlixFun uses them.
+- **Extraction / underlying media:** unknown; no target URL or protocol to reverse engineer yet.
+- **Audio and playback:** unknown. No live source was tested. The check response is not evidence that the player is offline.
+- **Status / next step:** keep open and revisit if the button destination becomes observable; continue to #2 rather than inventing a mapping.
+
+### 2. vidsrc.mov — embed responds, extraction unresolved
+
+- [Provider documentation](https://vidsrc.mov/) specifies `/embed/movie/{id}` and `/embed/tv/{id}/{season}/{episode}` using TMDB/IMDb IDs. This is an iframe interface, not a media URL.
+- Page retrieval of [TMDB 693134](https://vidsrc.mov/embed/movie/693134) returned the Dune: Part Two title three times, but no player requests, media URL, manifest, tracks, or playback evidence. Exact FlixFun mapping still unobserved.
+- Search results surfaced extractors for other VidSrc domains; no .mov-specific direct extraction was established. The CinePro `vsembed.ru` implementation must not be assumed to apply here. Hindi and playback unknown.
+- Next: observe this embed's network/JS on a reachable environment and trace its own server selection, then validate manifest/audio. Continue to #3 meanwhile.
+
+### Ordered checks 3–11 and cross-checks (one test title)
+
+On 2026-11-04, page-reader inspection of TMDB movie 693134 gave the following. Rendered UI, loading timers and HTTP responses do not establish actual audio, direct extraction, stream reliability, or FlixFun's exact button mapping. A rendered player may have executed remote JavaScript; the reader does not expose its network traffic.
+
+3. **VidSrc.fyi:** embed rendered the movie name; no tracks or sources exposed. Unknown.
+4. **VidFast:** four displayed server labels said original audio. This title/UI does not show multi-audio, but other titles may differ; not sufficient to exclude provider entirely.
+5. **VidUp:** two displayed server labels said original audio for this title. No multi-audio verified.
+6. **VidRock:** displayed title and player only. Existing lane retained; no multi-audio evidence from this page.
+7. **VidNest:** MovieBox endpoint without nonce returned `missing or invalid nonce`; a valid-shaped nonce returned a large encrypted `d` payload. No authenticated decode or playback, so no audio conclusions. Never save URL as playable media.
+8. **VidLink:** rendered an Audio setting but no audio choices; Hindi appeared under captions/subtitles, which is not Hindi audio. Unverified.
+9. **111Movies.net:** movie test redirected to `player.vidmario.net` and displayed player/timing; no audio evidence and no attribution to actual FlixFun route.
+10. **MultiEmbed:** no new direct extraction or language result; remains open.
+11. **Mapple:** rendered three server names but no track details; the operator claims multiple audio, still unverified.
+
+Other bounded page checks to inform later numbered entries: **VidSrc.sh/su/buzz**, **NontonGo**, **VidAPI.ru**, **VidCore.org/io**, **VidLux**, **VidSpark**, **VidZen** and **YapGrid** rendered some form of player/title without sufficient multilingual-audio evidence. VidCore.io labels for this title said original audio. MoviesAPI's tested URL returned VidSpark; do not infer common hosting or current playback solely from redirect. A guessed VidZee path returned 404 and guessed VidAPI.xyz path returned 'No input file specified'; those are route observations, not proof of outage. **VixSrc**'s rendered page included Italian and English in player UI adjacent to subtitle settings, a useful lead but insufficient to establish that they are playable audio renditions. **Cinextream** displayed a `Timora [Multi]` server and an unavailable error; the label is not proof of audio or playback. These remain unverified. No application change or source registration made.
+
+### Experimental ScreenScape implementation
+
+Source 7 is an **opt-in experiment**, not a live-verified provider: `ELFURA_SCREENSCAPE_ENABLED=1` enables it, default is disabled. It calls the existing Nxsha protocol on six additional bounded ScreenScape plugin lanes, retains Source 5 unchanged, and only returns HLS candidates with reachable manifests reporting at least two different audio languages. The test suite uses mocked manifests; it does not prove real provider availability, correct episode, spoken language, media segment access or end-to-end playback. It doesn't add every plugin lane, and the current client background-recovery list does not include Source 7, so a slow result may only be available on later requests or an explicit source selection. This requires real deployment validation before promoting it. No other new provider is implemented.

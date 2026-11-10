@@ -44,7 +44,7 @@ function headerHints(h: Record<string, unknown> | undefined): Record<string, str
   }
   return headers;
 }
-export async function fetchFromNxsha(query: SourceQuery): Promise<RawStreamCandidate[]> {
+export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string[]): Promise<RawStreamCandidate[]> {
   if (!/^\d{1,12}$/.test(query.tmdbId)) return [];
   const season = query.type === 'tv' ? query.season ?? 1 : 0, episode = query.type === 'tv' ? query.episode ?? 1 : 0;
   if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 0 || (query.type === 'tv' && episode < 1)) return [];
@@ -67,7 +67,7 @@ export async function fetchFromNxsha(query: SourceQuery): Promise<RawStreamCandi
     const available = Array.isArray(root.servers) ? root.servers : [];
     // Restricted to Nitro and Indian-dub HLS lanes; avoid rejected providers,
     // season packs, embed-only hosts and unbounded request fan-out.
-    const allowed = ['nitro', 'mhbox', 'awsind', 'rive-citadel', 'rive-primevids', 'rive-flowcast', 'rive-quasar', 'streamflix', 'vidapi', 'stvv'];
+    const allowed = lanes ?? ['nitro', 'mhbox', 'awsind', 'rive-citadel', 'rive-primevids', 'rive-flowcast', 'rive-quasar', 'streamflix', 'vidapi', 'stvv'];
     const ids = [...new Set(available.map(s => s.scraper).filter((x): x is string => !!x && allowed.includes(x)))].sort((a,b) => allowed.indexOf(a) - allowed.indexOf(b));
     const rows: Stream[] = []; let finished = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
     const all = Promise.all(ids.map(async provider => {

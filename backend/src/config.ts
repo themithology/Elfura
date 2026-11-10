@@ -72,6 +72,8 @@ export interface BackendConfig {
   /** Optional experimental Source 4 HLS fallback. */
   source4?: { enabled: boolean };
   source5?: { enabled: boolean };
+  /** ScreenScape experimental additional lanes; opt-in until live verified. */
+  source7?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -203,6 +205,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
