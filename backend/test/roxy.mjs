@@ -34,8 +34,9 @@ try {
  assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:true},cookie)).status,200);
  assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/another'}})).status,403);
  assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'heartbeat'})).status,400);
- app.registry.diagnosePlayback=async()=>({adapters:[{id:'source-2',ms:123,raw:1,verifiedAlive:1}],lanes:[{adapter:'source-2',lane:'D',ms:65,ok:true}]});
- res=await post('/roxy/api/test',{type:'movie',tmdb:'872585'},cookie);d=await res.json();assert.equal(d.adapters[0].ms,123);assert.equal(d.lanes[0].lane,'D');
+ res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.ok(d.sites.length > 0);assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
+ assert.equal((await post('/roxy/api/source-websites/request',{id:'unknown'},cookie)).status,400);
+ assert.equal((await post('/roxy/api/test',{type:'movie',tmdb:'872585'},cookie)).status,404);
  assert.equal((await post('/roxy/api/clear',{},cookie)).status,200);
  const stored=JSON.parse(await fs.readFile(path.join(tmp,'roxy.json'),'utf8'));assert.equal(stored.events.length,0);assert.deepEqual(stored.bans,['https://example.com']);
  await stop(app);app=await start();assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/'}})).status,403);

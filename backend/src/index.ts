@@ -122,7 +122,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
   const roxy = new RoxyStore(cfg.secret);
   const loginLimiter = new SlidingWindowLimiter(5);
-  const roxyTestLimiter = new SlidingWindowLimiter(6);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
@@ -221,10 +220,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           reply(200,{results: await Promise.all(selected.map(requestSourceWebsite))});
         } catch { reply(400,{error:'Invalid request'}); }
         return;
-      }
-      if (pathname === '/roxy/api/test' && method === 'POST') {
-        if (!roxyTestLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
-        try { const b=await readJsonBody(req,4096);const tmdb=String(b.tmdb||'');if(!/^\d{1,12}$/.test(tmdb)){reply(400,{error:'Enter a numeric TMDB ID'});return;}const num=(v:unknown)=>Math.min(999,Math.max(1,Number(v)||1));const result=await registry.diagnosePlayback({type:b.type==='tv'?'tv':'movie',tmdbId:tmdb,season:num(b.season),episode:num(b.episode)});reply(200,result); } catch {reply(500,{error:'Source test failed'});}return;
       }
       reply(404,{error:'Not found'}); return;
     }
