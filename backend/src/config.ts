@@ -78,6 +78,7 @@ export interface BackendConfig {
   source9?: { enabled: boolean };
   source10?: { enabled: boolean };
   source11?: { enabled: boolean };
+  source12?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -214,6 +215,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
     source11: { enabled: env.ELFURA_VAPLAYER_ENABLED !== '0' },
+    source12: { enabled: env.ELFURA_VIDZEN_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

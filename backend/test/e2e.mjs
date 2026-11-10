@@ -1,3 +1,4 @@
+process.env.ELFURA_VIDZEN_ENABLED = '0';
 process.env.ELFURA_VAPLAYER_ENABLED = '0';
 process.env.ELFURA_VIDNEST_ENABLED = '0';
 process.env.ELFURA_SCREENSCAPE_ENABLED = '0';

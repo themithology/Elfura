@@ -23,6 +23,7 @@ import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
 import { createSource10Adapter } from './source10.js';
 import { createSource11Adapter } from './source11.js';
+import { createSource12Adapter } from './source12.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -73,6 +74,7 @@ export class SourceRegistry {
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),
       createSource11Adapter(() => cfg.source11?.enabled ?? false),
+      createSource12Adapter(() => cfg.source12?.enabled ?? false),
     ];
   }
 
