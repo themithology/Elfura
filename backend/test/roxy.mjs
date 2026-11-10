@@ -1,5 +1,4 @@
 process.env.ELFURA_NXSHA_ENABLED = '0';
-process.env.ELFURA_VIDMODY_ENABLED = '0';
 process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -18,7 +17,8 @@ try {
  app=await start();
  const call=(p,opts={})=>fetch(app.base+p,opts);
  const post=(p,data,cookie,org=app.base)=>call(p,{method:'POST',headers:{'Content-Type':'application/json',Origin:org,...cookie?{Cookie:cookie}:{}},body:JSON.stringify(data)});
- let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);
+ let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);assert.ok(!health.sources.some(s=>s.id==='source-6'));
+ assert.equal((await call('/dl/')).status,404);assert.equal((await call('/dl/api/resolve?type=movie&tmdb=550')).status,404);
  let res=await call('/roxy');assert.equal(res.status,200);assert.equal(res.headers.get('x-frame-options'),'DENY');assert.match(await res.text(),/Playback, at a glance/);
  res=await call('/roxy/api/overview');assert.equal(res.status,401);assert.equal(res.headers.get('access-control-allow-origin'),null);
  assert.equal((await post('/roxy/api/login',{password:'wrong'})).status,401);
@@ -34,7 +34,7 @@ try {
  assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:true},cookie)).status,200);
  assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/another'}})).status,403);
  assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'heartbeat'})).status,400);
- res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.ok(d.sites.length > 0);assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
+ res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.ok(d.sites.length > 0);assert.ok(!d.sites.some(s=>s.id==='vidmody'));assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
  assert.equal((await post('/roxy/api/source-websites/request',{id:'unknown'},cookie)).status,400);
  assert.equal((await post('/roxy/api/test',{type:'movie',tmdb:'872585'},cookie)).status,404);
  assert.equal((await post('/roxy/api/clear',{},cookie)).status,200);

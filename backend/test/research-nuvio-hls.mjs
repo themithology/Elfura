@@ -1,9 +1,5 @@
 // Research-only probes of endpoints documented in public Nuvio provider implementations.
 const cases=[
- ['vidmody Dune','https://vidmody.com/vs/tt15239678','https://vidmody.com/'],
- ['vidmody Oppenheimer','https://vidmody.com/vs/tt15398776','https://vidmody.com/'],
- ['vidmody Interstellar','https://vidmody.com/vs/tt0816692','https://vidmody.com/'],
- ['vidmody Breaking Bad S1E1','https://vidmody.com/vs/tt0903747/s1/e01','https://vidmody.com/'],
  ['vidlove Dune ipcloud','https://api.vidlove.cc/movie?id=693134&mode=json&sources=ipcloud','https://player.vidlove.cc/'],
  ['vidlove TV warden','https://api.vidlove.cc/tv?id=93405&season=1&episode=1&mode=json&sources=warden','https://player.vidlove.cc/'],
 ];

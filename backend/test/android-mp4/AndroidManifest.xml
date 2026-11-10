@@ -1,6 +1,0 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="online.theogpiratebot.mediatest">
- <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="28" />
- <application android:label="Elfura media test" android:theme="@android:style/Theme.Material.Light.NoActionBar">
-  <activity android:name=".Main" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
- </application>
-</manifest>

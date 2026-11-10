@@ -1081,7 +1081,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5', 'source-6'].filter((id) =>
+      const lateGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'].filter((id) =>
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
@@ -2650,7 +2650,7 @@ export class ElfuraPlayer {
     this.exhaustedRecoveryInFlight = true;
     const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     const recoveryLoadSeq = this.engineLoadSeq;
-    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4', 'source-5', 'source-6'];
+    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
     if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';
