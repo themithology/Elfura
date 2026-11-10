@@ -811,8 +811,9 @@ export class PlayerUI {
     this.unavailableScreen.dataset.visible = 'false';
     clearTimeout(this.loadingDeadlineTimer);
     clearTimeout(this.loadingHardStopTimer);
-    // Stop the indefinite spinner at nine seconds without killing a valid
-    // in-flight manifest/segment. Playback continues behind the retry screen.
+    // Give mobile startup and the first media segment time to arrive before
+    // warning. The slow-connect notice is intentionally later than a brief
+    // source/manifest delay; playback continues if it eventually succeeds.
     this.loadingDeadlineTimer = window.setTimeout(() => {
       if (!this.loadingActive) return;
       if (!this.claimSlowNotice()) {
@@ -827,8 +828,8 @@ export class PlayerUI {
       this.unavailableMessage.textContent = 'Still connecting. You can wait or try again.';
       this.syncStateArtwork(this.resolveDisplayMedia());
       this.unavailableScreen.dataset.visible = 'true';
-    }, 9000);
-    // Bound genuine no-progress cases without calling a slow stream dead at 9s.
+    }, 20_000);
+    // Bound genuine no-progress cases without calling a slow stream dead early.
     this.loadingHardStopTimer = window.setTimeout(() => {
       if (this.loadingActive || this.slowLoadingActive) this.player.cancelStartup();
     }, 45000);
