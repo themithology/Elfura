@@ -143,7 +143,7 @@ export class SourceRegistry {
                   fingerprint: crypto.createHmac('sha256', this.cfg.secret)
                     .update(candidate.url).digest('hex').slice(0, 12),
                   type: candidate.type,
-                  claimedAudio: candidate.audioLang ?? null,
+                  claimedAudio: candidate.claimedAudioLang ?? candidate.audioLang ?? null,
                   claimedMultiAudio: !!candidate.multiAudio,
                   manifestMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
                   manifestStatus: evidence?.alive ? 'reachable' : evidence?.confirmedDead ? 'failed' : 'unknown',
@@ -217,7 +217,7 @@ export class SourceRegistry {
         sourceId: adapter.id,
         fingerprint: crypto.createHmac('sha256', this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
         type: candidate.type,
-        claimedAudio: candidate.audioLang ?? null,
+        claimedAudio: candidate.claimedAudioLang ?? candidate.audioLang ?? null,
         check: await diagnoseCandidatePlayback(candidate, this.cfg.relayMode),
       })));
       playbackChecks.push(...batch);

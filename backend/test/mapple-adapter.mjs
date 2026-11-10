@@ -8,6 +8,10 @@ const requests = [];
 let streamUrl = 'https://cdn.example.org/mapple/master.m3u8?sig=signed';
 const watchHtml = '<script>window.__REQUEST_TOKEN__ = "mapple-request-token-123";</script>';
 const hls = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n';
+const animeMaster = '#EXTM3U\n' +
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Hindi",LANGUAGE="hi",DEFAULT=YES,AUTOSELECT=YES,URI="hindi.m3u8"\n' +
+  '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Japanese",LANGUAGE="ja",DEFAULT=NO,AUTOSELECT=YES,URI="japanese.m3u8"\n' +
+  '#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=1280x720,AUDIO="audio"\nvideo.m3u8\n';
 
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
@@ -17,7 +21,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.pathname === '/api/playback-init') return Response.json({ token: 'fixture-stream-token-123' });
   if (url.pathname === '/api/encrypt') return Response.json({ encrypted: 'fixture-encrypted-value' });
   if (url.pathname === '/api/stream-encrypted') return Response.json({ success: true, data: { stream_url: streamUrl } });
-  if (url.hostname === 'cdn.example.org') return new Response(hls, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
+  if (url.hostname === 'cdn.example.org') return new Response(streamUrl.includes('anime') ? animeMaster : hls, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
   throw new Error(`Unexpected Mapple request: ${url.href}`);
 };
 
@@ -52,6 +56,15 @@ try {
   const resolved = await adapter.resolve({ type: 'movie', tmdbId: '693134', diag: [] });
   assert.equal(resolved.candidates.length, 1, 'retain a manifest-reachable HLS result');
   assert.equal(resolved.candidates[0].diagnosticLane, 'M');
+
+  // Anime capability check: Mapple's TMDB TV route accepts an anime ID, and
+  // independently observed HLS audio rendition metadata is surfaced as true
+  // multi-audio. This fixture is not evidence of live-site availability.
+  streamUrl = 'https://cdn.example.org/anime/master.m3u8?sig=signed';
+  const animeAdapter = await adapter.resolve({ type: 'tv', tmdbId: '635302', season: 1, episode: 1, diag: [] });
+  assert.equal(animeAdapter.candidates.length, 1);
+  assert.equal(animeAdapter.candidates[0].multiAudio, true);
+  assert.deepEqual(new Set(animeAdapter.candidates[0].availableAudioLangs), new Set(['hi', 'ja']));
 
   const enabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'mapple-test-secret', ELFURA_MAPPLE_ENABLED: '1' }));
   const disabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'mapple-test-secret', ELFURA_MAPPLE_ENABLED: '0' }));

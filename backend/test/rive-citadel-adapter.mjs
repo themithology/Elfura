@@ -27,12 +27,18 @@ const rows = [
 const apiBody = { data: { sources: rows, captions: [
   { language: 'Hindi', type: 'vtt', file: 'https://captions.example/hindi.vtt' },
 ] } };
+const animeApiBody = { data: { sources: [
+  { source: 'Citadel', format: 'hls', quality: '720p | Hindi', url: makeUrl('/myhls_mps/2023_10yue/DemonSlayer/index_287.m3u8', 'img1.hscow.com') },
+  { source: 'Citadel', format: 'hls', quality: '720p | Japanese', url: makeUrl('/hls_mps/012ba344fd31134a913b4ace2a5f4a64/720/index_287.m3u8', 'img1.hscow.com') },
+  { source: 'Citadel', format: 'hls', quality: '480p | Hindi', url: makeUrl('/hls_mps/653c6bb3deb03e1cbb02f896/480/index_287.m3u8', 'img1.hscow.com') },
+  { source: 'Citadel', format: 'hls', quality: '480p | Japanese', url: makeUrl('/hls_mps/b5aaa8a49ea8165e423a05c372f492e8/480/index_287.m3u8', 'img1.hscow.com') },
+], captions: [{ language: 'English', type: 'vtt', file: 'https://captions.example/english.vtt' }] } };
 const hls = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n';
 
 globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input));
   requests.push({ url, headers: new Headers(init.headers), redirect: init.redirect });
-  if (url.hostname === 'scrapper.rivestream.app') return Response.json(apiBody);
+  if (url.hostname === 'scrapper.rivestream.app') return Response.json(url.searchParams.get('id') === '635302' ? animeApiBody : apiBody);
   if (/\/(?:my)?hls_mps\//.test(url.pathname)) {
     return new Response(hls, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
   }
@@ -42,8 +48,9 @@ globalThis.fetch = async (input, init = {}) => {
 try {
   const parsed = citadelCandidates(apiBody);
   assert.equal(parsed.length, 2, 'keep distinct Hindi/Tamil streams, drop conflicting mirrored labels and captions');
-  assert.deepEqual(new Set(parsed.map(candidate => candidate.audioLang)), new Set(['hi', 'ta']));
-  assert(parsed.every(candidate => candidate.audioLabel.endsWith('Citadel label')));
+  assert.deepEqual(new Set(parsed.map(candidate => candidate.claimedAudioLang)), new Set(['hi', 'ta']));
+  assert(parsed.every(candidate => candidate.audioLang === undefined), 'provider language labels are not verified audio tracks');
+  assert(parsed.every(candidate => candidate.audioLabel.includes('Citadel label (unverified)')));
   assert(parsed.every(candidate => !JSON.stringify(candidate).includes('hindi.vtt')));
 
   const movie = await fetchFromCitadel({ type: 'movie', tmdbId: '693134' });
@@ -56,6 +63,23 @@ try {
   assert.equal(tv.length, 2);
   assert.equal(requests[0].url.searchParams.get('season'), '2');
   assert.equal(requests[0].url.searchParams.get('episode'), '3');
+
+  // Anime fixture: Citadel returns separate provider-labeled Hindi/Japanese
+  // HLS rows for a TMDB anime id. The mock manifests below contain no audio
+  // renditions, so this proves discovery/label separation only—not audio or playback.
+  requests.length = 0;
+  const anime = await fetchFromCitadel({ type: 'tv', tmdbId: '635302', season: 1, episode: 1 });
+  assert.equal(anime.length, 4);
+  assert.deepEqual(new Set(anime.map(candidate => candidate.claimedAudioLang)), new Set(['hi', 'ja']));
+  assert(anime.every(candidate => candidate.audioLang === undefined), 'the fixture manifests expose no audio language evidence');
+  assert(requests[0].url.searchParams.get('id') === '635302');
+  assert(requests[0].url.searchParams.get('season') === '1');
+  assert(requests[0].url.searchParams.get('episode') === '1');
+  const animeAdapter = createSource14Adapter(() => true);
+  const animeResolved = await animeAdapter.resolve({ type: 'tv', tmdbId: '635302', season: 1, episode: 1, diag: [] });
+  assert.equal(animeResolved.candidates.length, 4, 'retain reachable anime candidates without promoting source labels to verified audio');
+  assert(animeResolved.candidates.every(candidate => candidate.claimedAudioLang && !candidate.audioLang));
+  assert(animeResolved.candidates.every(candidate => candidate.audioLabel.includes('(unverified)')));
 
   requests.length = 0;
   const adapter = createSource14Adapter(() => true);

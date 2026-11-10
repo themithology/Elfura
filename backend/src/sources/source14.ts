@@ -1,4 +1,8 @@
-/** Direct RiveStream Citadel HLS discovery. Captions are deliberately ignored. */
+/**
+ * Direct RiveStream Citadel HLS discovery, including TV-anime TMDB IDs when
+ * indexed upstream. Provider-declared language rows remain claims until the
+ * HLS manifest exposes language evidence. Captions are deliberately ignored.
+ */
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
@@ -64,8 +68,8 @@ function parseCitadelRow(row: unknown, rank: number): (RawStreamCandidate & { id
       url: url.href,
       type: 'hls',
       quality,
-      audioLang: lang.code,
-      audioLabel: `${lang.label} · Citadel label`,
+      claimedAudioLang: lang.code,
+      audioLabel: `${lang.label} · Citadel label (unverified)`,
       headers: { 'User-Agent': UA, Referer: `${ORIGIN}/`, Origin: ORIGIN },
       rank: 20 + rank,
       identity,

@@ -1,7 +1,8 @@
 /**
- * Mapple direct HLS adapter. Stream/server labels are never interpreted as
- * audio languages; languages are attached only when liveness reads them from
- * the returned HLS manifest.
+ * Mapple direct HLS adapter, including TMDB-addressed TV anime episodes when
+ * indexed upstream. Stream/server labels are never interpreted as audio
+ * languages; languages are attached only when liveness reads them from the
+ * returned HLS manifest.
  */
 import { createHash } from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';

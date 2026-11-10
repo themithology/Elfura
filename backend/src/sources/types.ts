@@ -77,8 +77,10 @@ export interface RawStreamCandidate {
   qualityOptions?: number;
   /** Manifest rendition heights are known to be unreliable; keep ABR but hide manual labels. */
   qualityLabelsUnreliable?: boolean;
-  /** Primary BCP-47 language if single-dub stream (e.g. 'hi', 'en'). */
+  /** Primary BCP-47 language if single-dub stream, verified from manifest evidence. */
   audioLang?: string;
+  /** Provider-declared language only; never use as verified audio or for language selection. */
+  claimedAudioLang?: string;
   audioLabel?: string;
   /** Dynamically discovered BCP-47 language codes carried inside a multi-audio stream. */
   availableAudioLangs?: string[];
