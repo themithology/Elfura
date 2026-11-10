@@ -88,7 +88,20 @@ try {
   assert.equal(mp4.delivery.route, 'backend-relay');
   assert(mp4Calls.some(call => call.range === 'bytes=0-1023'));
 
-  console.log('✓ Playback diagnostics test actual manifests, child playlists, media byte-ranges, and relay route policy');
+  globalThis.fetch = async (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    return new Response(media, { status: headers.has('range') ? 206 : 200, headers: {
+      'Content-Type': 'image/jpeg', 'Access-Control-Allow-Origin': '*',
+    } });
+  };
+  const imageResponse = await diagnoseCandidatePlayback({
+    key: 'image-fixture', url: 'https://cdn.example.com/not-a-stream.mp4', type: 'mp4', quality: 'auto', rank: 0,
+  }, 'hybrid');
+  assert.equal(imageResponse.media.status, 'unexpected-content-type');
+  assert.equal(imageResponse.delivery.route, 'backend-relay', 'image responses must not be accepted for browser offload');
+  assert(imageResponse.checks.some(step => step.status === 'unexpected-content-type' && step.contentType === 'image/jpeg'));
+
+  console.log('✓ Playback diagnostics test actual manifests, child playlists, media byte-ranges, relay policy, and rejects image payloads');
 } finally {
   globalThis.fetch = originalFetch;
 }

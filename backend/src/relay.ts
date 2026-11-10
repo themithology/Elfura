@@ -187,9 +187,10 @@ export async function verifyDirectSegmentOffload(
       // wildcard; reflected/specific origins must remain on the backend relay.
       const corsOk = acao === '*';
       const bodyOk =
-        !ct.includes('text/html') &&
-        !ct.includes('application/xhtml') &&
-        !ct.includes('application/json');
+        !ct.startsWith('image/') &&
+        !ct.startsWith('text/') &&
+        !ct.startsWith('font/') &&
+        !/(?:html|json|xml)/i.test(ct);
       const anonOk = isAnonymousSegmentUrl(finalUrl, requireHttps);
 
       const allow = statusOk && corsOk && bodyOk && anonOk;

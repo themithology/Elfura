@@ -770,9 +770,12 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
         return rangeProbe(stage, target, redirectDepth + 1);
       }
       const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-      if (!(res.status === 200 || res.status === 206) || contentType.includes('text/html') || contentType.includes('application/json')) {
+      const clearlyNotMedia = contentType.startsWith('image/') || contentType.startsWith('text/') ||
+        contentType.startsWith('font/') || /(?:html|json|xml)/i.test(contentType);
+      if (!(res.status === 200 || res.status === 206) || clearlyNotMedia) {
         await res.body?.cancel().catch(() => {});
-        checks.push({ stage, status: 'media-http-error', httpStatus: res.status, ms: Date.now() - t0,
+        checks.push({ stage, status: clearlyNotMedia ? 'unexpected-content-type' : 'media-http-error',
+          httpStatus: res.status, ms: Date.now() - t0,
           ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
         return null;
       }
