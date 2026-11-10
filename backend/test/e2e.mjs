@@ -45,7 +45,7 @@ import {
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
 import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
-import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
+import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer, PlayerUI } from '../../dist/lib/elfura.js';
 
 // 1. SSRF guard (production mode: loopback/RFC1918/metadata strictly rejected)
 assert.equal(isSafeUpstreamUrl('http://127.0.0.1:8080/a.m3u8'), false);
@@ -1744,6 +1744,19 @@ try {
   globalThis.ResizeObserver = class { observe() {} disconnect() {} };
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
+
+  const toastProbe = {
+    toastWarnUntil: 0,
+    recentToastMessages: new Map(),
+    toastEl: makeEl('div'),
+    toastTimer: 0,
+  };
+  PlayerUI.prototype.showToast.call(toastProbe, 'Repeated warning fixture', 6000, 'warn');
+  const firstToastTimer = toastProbe.toastTimer;
+  PlayerUI.prototype.showToast.call(toastProbe, 'Repeated warning fixture', 6000, 'warn');
+  assert.equal(toastProbe.toastEl.textContent, 'Repeated warning fixture');
+  assert.equal(toastProbe.toastTimer, firstToastTimer, 'identical toast repeats must not restart or reshow during cooldown');
+  clearTimeout(toastProbe.toastTimer);
 
   const player = new ElfuraPlayer({ postMessage: false });
   // Seed 4 raw sources: 1 English default, 1 DEAD Tamil raw source, 1 WORKING Tamil raw source, 1 DEAD Korean raw source

@@ -310,6 +310,7 @@ export class PlayerUI {
   private hideTimer = 0;
   private toastTimer = 0;
   private toastWarnUntil = 0;
+  private recentToastMessages = new Map<string, number>();
   private searchingTimer = 0;
   private hasRenderedAudioSelection = false;
   private flashTimer = 0;
@@ -2923,9 +2924,27 @@ export class PlayerUI {
   }
 
   showToast(msg: string, ms = 2200, kind: 'info' | 'warn' = 'info'): void {
-    if (kind === 'info' && Date.now() < this.toastWarnUntil) return;
-    if (kind === 'warn') this.toastWarnUntil = Date.now() + ms;
-    this.toastEl.textContent = msg;
+    const now = Date.now();
+    const message = msg.trim();
+    if (!message) return;
+    if (kind === 'info' && now < this.toastWarnUntil) return;
+
+    // Several failure/recovery paths can emit the same event repeatedly while
+    // a source is still failing over. Show that identical notice once per
+    // cooldown, rather than restarting the toast timer and nagging the viewer.
+    const lastShownAt = this.recentToastMessages.get(`${kind}:${message}`);
+    if (lastShownAt !== undefined && now - lastShownAt < 30_000) return;
+    this.recentToastMessages.set(`${kind}:${message}`, now);
+    if (this.recentToastMessages.size > 64) {
+      for (const [key, shownAt] of this.recentToastMessages) {
+        if (now - shownAt >= 30_000 || this.recentToastMessages.size > 64) {
+          this.recentToastMessages.delete(key);
+        }
+      }
+    }
+
+    if (kind === 'warn') this.toastWarnUntil = now + ms;
+    this.toastEl.textContent = message;
     this.toastEl.dataset.kind = kind;
     this.toastEl.dataset.show = 'true';
     clearTimeout(this.toastTimer);
