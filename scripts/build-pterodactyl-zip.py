@@ -234,6 +234,16 @@ ZIP_TIMESTAMP = datetime.now().timetuple()[:6]
 
 
 def write_entry(zf: zipfile.ZipFile, arcname: str, data: bytes) -> None:
+    # Include explicit directory records: some hosting panels' ZIP browsers
+    # and extractors do not infer directories from file paths alone.
+    parts = arcname.split('/')[:-1]
+    for index in range(1, len(parts) + 1):
+        directory = '/'.join(parts[:index]) + '/'
+        if directory not in zf.NameToInfo:
+            dir_info = zipfile.ZipInfo(directory, date_time=ZIP_TIMESTAMP)
+            dir_info.create_system = 3
+            dir_info.external_attr = (0o40755 << 16) | 0x10
+            zf.writestr(dir_info, b'')
     info = zipfile.ZipInfo(arcname, date_time=ZIP_TIMESTAMP)
     info.compress_type = zipfile.ZIP_DEFLATED
     info.create_system = 3  # Unix
