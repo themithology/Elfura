@@ -12,12 +12,10 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use((req, _res, next) => {
             const url = req.url?.split('?')[0] ?? '';
-            if (
-              url === '/' ||
-              url === '/embed' ||
-              /^(?:\/embed)?\/(?:movie|tv)\//.test(url)
-            ) {
-              const qs = req.url?.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+            const qs = req.url?.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+            if (url === '/' || url === '/docs' || url === '/demo' || url === '/status') {
+              req.url = `/landing.html${qs}`;
+            } else if (url === '/embed' || /^(?:\/embed)?\/(?:movie|tv)\//.test(url)) {
               req.url = `/embed.html${qs}`;
             }
             next();
@@ -44,8 +42,11 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       sourcemap: false,
       rollupOptions: {
-        // The embed page is the only HTML entry; everything else is library code.
-        input: 'embed.html',
+        // Public landing site + the isolated embeddable player document.
+        input: {
+          landing: 'landing.html',
+          embed: 'embed.html',
+        },
       },
     },
   };

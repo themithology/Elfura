@@ -1,0 +1,48 @@
+name: Live site probe
+
+on:
+  # Manual only: every run resolves real titles through the deployed panel,
+  # which loads upstream providers from the panel's IP. Never auto-run.
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: probe (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: dune-movie
+            type: movie
+            tmdb: "693134"
+          - name: rezero-tv
+            type: tv
+            tmdb: "65942"
+          - name: interstellar-movie
+            type: movie
+            tmdb: "157336"
+          - name: breaking-bad-tv
+            type: tv
+            tmdb: "1396"
+          - name: avengers-endgame-movie
+            type: movie
+            tmdb: "299534"
+          - name: frieren-tv
+            type: tv
+            tmdb: "209867"
+          - name: resident-evil-movie
+            type: movie
+            tmdb: "1423191"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe deployed site end to end
+        run: node backend/test/live-site-probe.mjs
+        env:
+          SITE_ORIGIN: https://embed.theogpiratebot.online
+          PROBE_TYPE: ${{ matrix.type }}
+          PROBE_TMDB: ${{ matrix.tmdb }}

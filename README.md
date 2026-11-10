@@ -14,6 +14,20 @@ npm start          # zero-dep Node production server on 0.0.0.0:${SERVER_PORT||P
 npm test           # end-to-end security, TMDB, Source 1 & HLS/Range relay test suite
 ```
 
+### Public landing site
+
+The production server serves a complete public product site at `/`, with direct
+entry points for `/demo`, `/docs`, and `/status`. It includes a live embed
+builder, movie/series demo, copyable iframe/SDK/PostMessage examples, playback
+telemetry, and health-driven infrastructure status.
+
+All catalog artwork and title selections are dynamic. `GET /api/v1/catalog`
+resolves trending movies, trending series, and popular Japanese animation from
+TMDB, sanitizes the response, builds TMDB poster/backdrop URLs server-side, and
+uses a bounded ten-minute RAM cache. The hero, poster filters, clickable poster
+rail, and builder quick picks all consume that single response; there is no
+hardcoded poster list or generated artwork fallback.
+
 ---
 
 ## 1. How the player takes input
@@ -137,6 +151,12 @@ video — and the same changes apply to real cues immediately.
   resolution the ABR is actually serving (`LEVEL_SWITCHED` / `QUALITY_CHANGE_RENDERED`).
 - Centre state flash on play/pause/seek; buffering spinner; auto-hide after 2.6 s.
 - Intro/outro render as coloured segments inside the scrubber plus a skip pill.
+  Segment metadata is resolved independently of stream racing, and the ranges
+  refresh on initial UI creation and `loadedmetadata`. Intro/outro clicks seek
+  past the range; an outro opens the next episode instead when one is available.
+- When OpenSubtitles returns usable tracks, every stream exposes that same
+  deduplicated one-track-per-language catalogue. Native subtitles are retained
+  only as the fallback when OpenSubtitles has no usable result.
 
 ### Nothing is hardcoded
 Quality rows come from the manifest; tabs, buttons and segments derive from
@@ -198,5 +218,14 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1 & Source 2 adapters
+backend/src/sources/      isolated SourceAdapter registry + Source 1, Source 2 & Source 3 adapters
 ```
+
+## Roxy operator dashboard
+
+Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET` from `.env`. Configure a strong, non-placeholder secret and use HTTPS. The secret is not copied into the deployment ZIP. The dashboard shows actual embed playback starts, approximate active viewers (last heartbeat within 60 seconds), reported terminal playback failures, embedding origins, and on-demand HTTP checks of source websites. Counts start from installation, not historical data; SDK and direct API playback are not included. Titles fall back to TMDB IDs when metadata is unavailable. An HTTP response does not guarantee playback.
+
+Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
+
+Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
+

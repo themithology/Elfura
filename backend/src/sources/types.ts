@@ -11,9 +11,22 @@
 
 import type { MediaMetadata } from '../tmdb.js';
 
+/** Operator diagnostics entry collected during a single resolution (never sent to player clients). */
+export interface DiagEntry {
+  adapter: string;
+  lane: string;
+  ok: boolean;
+  ms: number;
+  detail: string;
+}
+
 export interface SourceQuery {
   type: 'movie' | 'tv';
   tmdbId: string;
+  /** When present, adapters append lane-level diagnostics for /api/v1/diagnostics. */
+  diag?: DiagEntry[];
+  /** Warm the adapter cache with lanes that finish after a fast initial result. */
+  onLateResult?: (result: RawSourceResult) => void;
   imdbId?: string | null;
   title?: string;
   year?: string;
@@ -50,12 +63,20 @@ export interface RawStreamCandidate {
   key: string;
   /** Internal canonical stream identity (hashed into an opaque digest at the registry boundary). */
   fingerprint?: string;
+  /** Internal lane attribution, populated only during operator diagnostics. */
+  diagnosticLane?: string;
   /** Upstream-reported or adapter-measured edge latency in milliseconds. */
   latencyMs?: number;
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   headers?: Record<string, string>;
   quality: string;
+  /** Distinct rendition heights (desc) when the stream is a multi-quality ABR ladder. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (1 = single fixed quality). */
+  qualityOptions?: number;
+  /** Manifest rendition heights are known to be unreliable; keep ABR but hide manual labels. */
+  qualityLabelsUnreliable?: boolean;
   /** Primary BCP-47 language if single-dub stream (e.g. 'hi', 'en'). */
   audioLang?: string;
   audioLabel?: string;
@@ -97,6 +118,12 @@ export interface SourceAdapter {
   readonly label: string;
   enabled(): boolean;
   resolve(query: SourceQuery): Promise<RawSourceResult>;
+  /**
+   * Resolve time-range metadata independently from stream racing. This keeps a
+   * fast adapter from finalizing playback before another adapter's intro/outro
+   * metadata has arrived.
+   */
+  resolveSegments?(query: SourceQuery): Promise<SkipSegments | undefined>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +141,11 @@ export interface UniformStreamOption {
   /** Uniform relay URL (`/api/v1/stream?t=...`) — never raw upstream URL */
   url: string;
   quality: string;
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (>1 ranks above single/unknown). */
+  qualityOptions?: number;
+  qualityLabelsUnreliable?: boolean;
   /** Opaque 12-char HMAC digest identifying shared upstream streams without leaking URLs */
   fingerprint?: string;
   /** Optional edge latency hint in ms for initial candidate ordering */

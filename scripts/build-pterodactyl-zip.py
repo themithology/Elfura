@@ -7,8 +7,10 @@ Node 22/24 Egg even when global typescript@7+ TSGo is installed).
 """
 
 import json
+from datetime import datetime
 import os
 from pathlib import Path
+import subprocess
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -225,8 +227,24 @@ module.exports = {
 '''
 
 
+# ZIP tools using "update if newer" must see this deployment as newer than
+# older installed files. A fixed historical timestamp can silently leave an
+# old backend in place while copying a new build-info.json.
+ZIP_TIMESTAMP = datetime.now().timetuple()[:6]
+
+
 def write_entry(zf: zipfile.ZipFile, arcname: str, data: bytes) -> None:
-    info = zipfile.ZipInfo(arcname, date_time=(2026, 11, 2, 0, 0, 0))
+    # Include explicit directory records: some hosting panels' ZIP browsers
+    # and extractors do not infer directories from file paths alone.
+    parts = arcname.split('/')[:-1]
+    for index in range(1, len(parts) + 1):
+        directory = '/'.join(parts[:index]) + '/'
+        if directory not in zf.NameToInfo:
+            dir_info = zipfile.ZipInfo(directory, date_time=ZIP_TIMESTAMP)
+            dir_info.create_system = 3
+            dir_info.external_attr = (0o40755 << 16) | 0x10
+            zf.writestr(dir_info, b'')
+    info = zipfile.ZipInfo(arcname, date_time=ZIP_TIMESTAMP)
     info.compress_type = zipfile.ZIP_DEFLATED
     info.create_system = 3  # Unix
     info.external_attr = 0o100644 << 16
@@ -238,6 +256,17 @@ def main() -> None:
     with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         # Ship `.env.example` ONLY — never write `.env` at the archive root so
         # unarchiving on Pterodactyl preserves any existing `/home/container/.env`.
+        # Build stamp so the running server can report exactly which commit
+        # it booted from (health + diagnostics) — ends stale-deploy confusion.
+        try:
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True
+            ).strip()
+        except Exception:
+            commit = "unknown"
+        build_info = json.dumps({"commit": commit}) + "\n"
+        write_entry(zf, "build-info.json", build_info.encode("utf-8"))
+
         write_entry(zf, ".env.example", (ROOT / ".env.example").read_bytes())
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))
@@ -257,6 +286,10 @@ def main() -> None:
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():
                 rel = file_path.relative_to(ROOT).as_posix()
+                # Legacy VidStuck/Nxsha adapter remains in the repo only for
+                # historical unit tests; it is not part of the runtime bundle.
+                if rel in ("dist/backend/sources/source2.js", "dist/backend/sources/source2.js.map"):
+                    continue
                 write_entry(zf, rel, file_path.read_bytes())
 
     os.replace(tmp_zip, OUT_ZIP)

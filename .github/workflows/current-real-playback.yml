@@ -1,0 +1,29 @@
+name: Candidate end-to-end live playback
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/src/sources/selection.ts, backend/test/current-real-playback.mjs, .github/workflows/current-real-playback.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {type: movie, id: '693134', group: 'source-3'}
+          - {type: tv, id: '93405', group: 'source-5'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/current-real-playback.mjs
+        env:
+          TEST_TYPE: ${{ matrix.type }}
+          TEST_ID: ${{ matrix.id }}
+          TEST_GROUP: ${{ matrix.group }}

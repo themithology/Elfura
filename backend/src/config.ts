@@ -49,13 +49,10 @@ export interface BackendConfig {
   /** Source 1 configurable endpoints (kept purely server-side). */
   source1: {
     enabled: boolean;
-    appOrigin: string;
-    apiOrigin: string;
     riftOrigin: string;
+    vidboltOrigin?: string;
     riftRelay: string;
     syncOrigin: string;
-    vidlinkOrigin?: string;
-    encDecOrigin?: string;
     vidrockOrigin?: string;
   };
   /** Source 2 configurable endpoints (kept purely server-side). */
@@ -66,6 +63,16 @@ export interface BackendConfig {
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
   };
+  /** Source 3 configurable endpoint (kept purely server-side). */
+  source3: {
+    enabled: boolean;
+    origin: string;
+  };
+
+  /** Optional experimental Source 4 HLS fallback. */
+  source4?: { enabled: boolean };
+  source5?: { enabled: boolean };
+
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
     enabled: boolean;
@@ -83,6 +90,12 @@ function parseOrigins(raw?: string): string[] {
 }
 
 const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
+
+/** True when a real (non-placeholder) ELFURA_SECRET is set via env or .env. */
+export function hasConfiguredSecret(): boolean {
+  const merged = { ...readDotEnvOverlay(), ...process.env };
+  return isConfiguredSecret(merged.ELFURA_SECRET);
+}
 
 function isConfiguredSecret(raw?: string): boolean {
   const trimmed = raw?.trim() || '';
@@ -162,22 +175,34 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source1: {
       enabled: env.SOURCE1_ENABLED !== '0',
-      appOrigin: (env.SOURCE1_APP_ORIGIN || 'https://tgvid.lovable.app').replace(/\/+$/, ''),
-      apiOrigin: (env.SOURCE1_API_ORIGIN || '').replace(/\/+$/, ''),
-      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || '').replace(/\/+$/, ''),
+      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
+      vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
       syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
-      vidlinkOrigin: (env.SOURCE1_VIDLINK_ORIGIN || 'https://vidlink.pro').replace(/\/+$/, ''),
-      encDecOrigin: (env.SOURCE1_ENCDEC_ORIGIN || 'https://enc-dec.app').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
+    // Legacy Source 2 configuration is retained in the type only; old panel
+    // environment variables must never reactivate the removed providers.
     source2: {
-      enabled: env.SOURCE2_ENABLED !== '0',
-      embedOrigin: (env.SOURCE2_EMBED_ORIGIN || '').replace(/\/+$/, ''),
-      defaultServer: (env.SOURCE2_DEFAULT_SERVER || 'orion').trim() || 'orion',
-      nxshaOrigin: (env.SOURCE2_NXSHA_ORIGIN || 'https://nxsha.space').replace(/\/+$/, ''),
-      vidstuckOrigin: (env.SOURCE2_VIDSTUCK_ORIGIN || 'https://vidstuck.cc').replace(/\/+$/, ''),
+      enabled: false,
+      embedOrigin: '',
+      defaultServer: 'orion',
+      nxshaOrigin: '',
+      vidstuckOrigin: '',
     },
+    source3: {
+      enabled: env.SOURCE3_ENABLED !== '0',
+      // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
+      // used to be an internal Source 1 lane before becoming Source 3.
+      origin: (
+        env.SOURCE3_ORIGIN ||
+        env.VIDSYNC_ORIGIN ||
+        env.SOURCE1_SYNC_ORIGIN ||
+        'https://vidsync.pro'
+      ).replace(/\/+$/, ''),
+    },
+    source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
+    source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

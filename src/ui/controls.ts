@@ -16,8 +16,8 @@
  *   - Cinema Paused Screen when paused: dark vignette, large Title Logo (or
  *     cartoony title fallback), `PAUSED`, italic `"Tagline"`, `Year • ★ Rating`,
  *     and synopsis paragraph.
- *   - Top-right `Quality`, unified side-by-side `Audio & Subtitles`, and
- *     `Screen Lock`; Hotstar-style 5-second bottom language selector; inline
+ *   - Top-right `Quality` and `Screen Lock`; bottom-navigation Episodes with
+ *     thumbnail drawer; integrated current-language Audio & Subtitles; inline
  *     capsule-thumb seekbar; animated Play/Pause & 4-corner Fullscreen; left/
  *     right double-tap 10s skip; press-and-hold for 2× speed; zero center skip
  *     clutter.
@@ -28,7 +28,7 @@
 import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
-import type { AudioTrack } from '../core/audio';
+import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
 
 /* ---------------------------------------------------------------------- */
@@ -109,6 +109,8 @@ const I = {
     '<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4" width="17" height="16" rx="3.2" stroke="currentColor" stroke-width="2"/><path d="M3.8 14h4.7a1.5 1.5 0 0 1 1.3.8l.4.8a1.5 1.5 0 0 0 1.3.8h1a1.5 1.5 0 0 0 1.3-.8l.4-.8a1.5 1.5 0 0 1 1.3-.8h4.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   playingScreen:
     '<svg viewBox="0 0 20 20" fill="none"><rect x="2.2" y="3.5" width="15.6" height="10.8" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.8 17.2h6.4M10 14.3v2.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 7v3.8l3.3-1.9L8.5 7z" fill="currentColor"/></svg>',
+  info:
+    '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.2v.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   nextEp:
     '<svg viewBox="0 0 20 20" fill="none"><path d="M4.5 4.6c0-.8.8-1.3 1.5-.8l7.5 5.4c.6.4.6 1.2 0 1.6L6 16.2c-.7.5-1.5 0-1.5-.8V4.6z" fill="currentColor"/><path d="M15.5 4.8v10.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>',
 };
@@ -133,6 +135,34 @@ const esc = (s: string) =>
 
 type PanelMode = 'audiosubs' | 'quality' | 'sources' | 'speed' | 'style';
 
+const FALLBACK_LOADING_QUOTES: { quote: string; author: string }[] = [
+  { quote: 'Every great story begins with a single scene.', author: '' },
+  { quote: 'The best seat in the house is wherever you are.', author: '' },
+  { quote: 'A little escape, one episode at a time.', author: '' },
+  { quote: 'Stories stay with us long after the screen goes dark.', author: '' },
+  { quote: 'Another world is only a play button away.', author: '' },
+  { quote: 'Some stories deserve just one more episode.', author: '' },
+  { quote: 'Every frame opens a door to somewhere new.', author: '' },
+  { quote: 'A quiet moment can hold an extraordinary adventure.', author: '' },
+  { quote: 'The next chapter is already waiting for you.', author: '' },
+  { quote: 'Great characters make even unfamiliar worlds feel like home.', author: '' },
+  { quote: 'Let the rest of the day wait while the story unfolds.', author: '' },
+  { quote: 'There is always more beyond the opening scene.', author: '' },
+  { quote: 'A good story turns spare minutes into memorable journeys.', author: '' },
+  { quote: 'New voices, new worlds, and a fresh perspective await.', author: '' },
+  { quote: 'The screen is small, but the adventure does not have to be.', author: '' },
+  { quote: 'Settle in. Something remarkable is about to begin.', author: '' },
+];
+
+/** Presentation only: available tracks still come exclusively from runtime sources. */
+const audioBadgeLabel = (lang?: string | null): string => {
+  const canon = canonLang(lang);
+  if (canon === 'und' || canon === 'mul') return 'A';
+  const base = canon.split('-')[0];
+  if (base === 'hi') return 'हिं';
+  return base.toUpperCase();
+};
+
 interface DisplayMedia {
   mediaType: 'movie' | 'tv';
   mainTitle: string;
@@ -145,6 +175,7 @@ interface DisplayMedia {
   genres: string[];
   overview: string;
   logo: string | null;
+  backdrop: string;
 }
 
 export class PlayerUI {
@@ -160,10 +191,12 @@ export class PlayerUI {
 
   /* Top-right chrome (visible only when UI is on) */
   private topEl!: HTMLElement;
-  private episodesTopBtn!: HTMLButtonElement;
+  private episodesBtn!: HTMLButtonElement;
   private qualityTopBtn!: HTMLButtonElement;
   private qualitySubText!: HTMLElement;
-  private audioSubsTopBtn!: HTMLButtonElement;
+  private audioSubsBtn!: HTMLButtonElement;
+  private audioCurrentLabel!: HTMLElement;
+  private audioCurrentBadge!: HTMLElement;
   private lockBtn!: HTMLButtonElement;
 
   /* Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV only) */
@@ -205,6 +238,10 @@ export class PlayerUI {
   private nextEpWrap!: HTMLElement;
   private nextEpBtn!: HTMLButtonElement;
   private nextEpLabelEl!: HTMLElement;
+  private nextEpTitleEl!: HTMLElement;
+  private nextEpDetailsEl!: HTMLElement;
+  private nextEpThumb!: HTMLImageElement;
+  private nextSeasonRequested = 0;
   private nextEpDismissBtn!: HTMLButtonElement;
   private nextEpDismissedKey = '';
 
@@ -214,12 +251,26 @@ export class PlayerUI {
   private dockSubmetaEl!: HTMLElement;
   private sourceSwitchWrap!: HTMLElement;
 
-  /* Hotstar-style bottom language selector (shows in first 5 seconds) */
-  private hotstarBar!: HTMLElement;
-  private hotstarPills!: HTMLElement;
-  private hotstarTimer = 0;
-  private hotstarShownForTitle = false;
-  private hotstarDismissed = false;
+  /* Branded startup / unavailable states */
+  private loadingScreen!: HTMLElement;
+  private loadingBackdrop!: HTMLImageElement;
+  private loadingLogoSlot!: HTMLElement;
+  private loadingStatus!: HTMLElement;
+  private loadingQuote!: HTMLElement;
+  private loadingQuoteAuthor!: HTMLElement;
+  private loadingQuoteTimer = 0;
+  private loadingDeadlineTimer = 0;
+  private loadingHardStopTimer = 0;
+  private slowLoadingActive = false;
+  private loadingQuoteIndex = 0;
+  private loadingQuoteAbort: AbortController | null = null;
+  private loadingQuoteSession = 0;
+  private loadingQuoteHistory = new Set<string>();
+  private loadingActive = false;
+  private unavailableScreen!: HTMLElement;
+  private unavailableBackdrop!: HTMLImageElement;
+  private unavailableTitle!: HTMLElement;
+  private unavailableMessage!: HTMLElement;
 
   /* Inline timeline row (`0:09 [====|----] 1:33:49`) */
   private timelineRow!: HTMLElement;
@@ -301,8 +352,12 @@ export class PlayerUI {
     this.player = player;
     this.build();
     this.wire();
+    // Initial intro/outro configuration can predate UI construction. Render it
+    // immediately; loadedmetadata/durationchange will refine it once known.
+    this.renderSegments();
     this.syncMediaMetadata();
     this.syncCapabilities();
+    if (this.player.config.tmdb && !this.player.config.src) this.showInitialLoading();
     this.showUI();
     this.startLoop();
   }
@@ -357,19 +412,19 @@ export class PlayerUI {
     this.topBrandCluster.append(this.backPillBtn, this.brandPill, this.topEpisodeEl);
     shell.appendChild(this.topBrandCluster);
 
-    /* 1B. Top-Right Chrome Bar (`Episodes` [TV] + `Quality` + `Audio & Subtitles` + `Screen Lock`) */
+    /* 1B. Top-right chrome stays intentionally small; primary navigation lives below. */
     this.topEl = el('div', 'elf-top');
     const topSpacer = el('div', 'elf-top-spacer');
     const topRight = el('div', 'elf-top-actions');
 
-    this.episodesTopBtn = el('button', 'elf-top-btn elf-episodes-trigger') as HTMLButtonElement;
-    this.episodesTopBtn.title = 'Episodes';
-    this.episodesTopBtn.setAttribute('aria-label', 'Episodes');
-    this.episodesTopBtn.hidden = true;
-    this.episodesTopBtn.append(
-      el('span', 'elf-top-icon', I.episodesTray),
-      el('span', 'elf-top-label', 'Episodes'),
-    );
+    this.episodesBtn = el('button', 'elf-btn elf-episodes-btn') as HTMLButtonElement;
+    this.episodesBtn.type = 'button';
+    this.episodesBtn.title = 'Episodes';
+    this.episodesBtn.setAttribute('aria-label', 'Open episodes');
+    this.episodesBtn.setAttribute('aria-haspopup', 'dialog');
+    this.episodesBtn.hidden = true;
+    this.episodesBtn.innerHTML = `<span class="elf-episodes-icon">${I.episodesTray}<svg class="elf-episodes-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6"/></svg></span><span class="elf-episodes-label">Episodes</span>`;
+    this.episodesBtn.onclick = () => this.toggleEpisodeWheel();
 
     this.qualityTopBtn = el('button', 'elf-top-btn elf-quality-trigger') as HTMLButtonElement;
     this.qualityTopBtn.setAttribute('aria-label', 'Quality');
@@ -378,19 +433,22 @@ export class PlayerUI {
     this.qualitySubText = el('span', 'elf-top-meta', 'Auto');
     this.qualityTopBtn.append(qIcon, qLabel, this.qualitySubText);
 
-    this.audioSubsTopBtn = el('button', 'elf-top-btn elf-audiosubs-trigger') as HTMLButtonElement;
-    this.audioSubsTopBtn.setAttribute('aria-label', 'Audio and Subtitles');
-    this.audioSubsTopBtn.append(
-      el('span', 'elf-top-icon', I.audioSubsBox),
-      el('span', 'elf-top-label', 'Audio & Subtitles'),
-    );
+    this.audioSubsBtn = el('button', 'elf-btn elf-audio-quick') as HTMLButtonElement;
+    this.audioSubsBtn.type = 'button';
+    this.audioSubsBtn.title = 'Audio & subtitles';
+    this.audioSubsBtn.setAttribute('aria-label', 'Change audio and subtitles');
+    this.audioSubsBtn.setAttribute('aria-haspopup', 'dialog');
+    this.audioSubsBtn.innerHTML = `<span class="elf-audio-badge" aria-hidden="true">A</span><span class="elf-audio-current">Audio</span>`;
+    this.audioCurrentLabel = this.audioSubsBtn.querySelector('.elf-audio-current') as HTMLElement;
+    this.audioCurrentBadge = this.audioSubsBtn.querySelector('.elf-audio-badge') as HTMLElement;
+    this.audioSubsBtn.onclick = () => this.togglePanel('audiosubs');
 
     this.lockBtn = el('button', 'elf-top-btn elf-lock-trigger') as HTMLButtonElement;
     this.lockBtn.title = 'Lock screen';
     this.lockBtn.setAttribute('aria-label', 'Lock controls');
     this.lockBtn.appendChild(el('span', 'elf-top-icon', I.lockOpen));
 
-    topRight.append(this.episodesTopBtn, this.qualityTopBtn, this.audioSubsTopBtn, this.lockBtn);
+    topRight.append(this.qualityTopBtn, this.lockBtn);
     this.topEl.append(topSpacer, topRight);
     shell.appendChild(this.topEl);
 
@@ -475,27 +533,21 @@ export class PlayerUI {
     this.nextEpBtn = el('button', 'elf-next-ep-btn') as HTMLButtonElement;
     const nextProg = el('span', 'elf-next-ep-prog');
     const nextIco = el('span', 'elf-next-ep-ico', I.nextEp);
+    this.nextEpThumb = el('img', 'elf-next-ep-thumb') as HTMLImageElement;
+    this.nextEpThumb.alt = '';
+    this.nextEpThumb.hidden = true;
+    this.nextEpThumb.onerror = () => { this.nextEpThumb.hidden = true; };
+    const nextText = el('span', 'elf-next-ep-text');
     this.nextEpLabelEl = el('span', 'elf-next-ep-label', 'Next Episode');
-    this.nextEpBtn.append(nextProg, nextIco, this.nextEpLabelEl);
+    this.nextEpTitleEl = el('span', 'elf-next-ep-title');
+    this.nextEpDetailsEl = el('span', 'elf-next-ep-details');
+    nextText.append(this.nextEpLabelEl, this.nextEpTitleEl, this.nextEpDetailsEl);
+    this.nextEpBtn.append(nextProg, this.nextEpThumb, nextIco, nextText);
     this.nextEpDismissBtn = el('button', 'elf-next-ep-dismiss', I.close) as HTMLButtonElement;
     this.nextEpDismissBtn.title = 'Dismiss';
     this.nextEpDismissBtn.setAttribute('aria-label', 'Dismiss next episode');
     this.nextEpWrap.append(this.nextEpBtn, this.nextEpDismissBtn);
     shell.appendChild(this.nextEpWrap);
-
-    /* 8. Hotstar-style bottom language selector pill bar (first 5 seconds) */
-    this.hotstarBar = el('div', 'elf-hotstar-lang');
-    this.hotstarBar.dataset.show = 'false';
-    const hsTag = el('span', 'elf-hotstar-tag', `${I.langSpark}<span>Audio</span>`);
-    this.hotstarPills = el('div', 'elf-hotstar-pills');
-    const hsClose = el('button', 'elf-hotstar-close', I.close) as HTMLButtonElement;
-    hsClose.setAttribute('aria-label', 'Dismiss language bar');
-    hsClose.onclick = (e) => {
-      e.stopPropagation();
-      this.dismissHotstarBar(true);
-    };
-    this.hotstarBar.append(hsTag, this.hotstarPills, hsClose);
-    shell.appendChild(this.hotstarBar);
 
     /* 9. Bottom dock: [Title Logo / Cartoony Title + Submeta | Source Pill] + Inline Timeline + Control Bar */
     const bottomDock = el('div', 'elf-bottom-dock');
@@ -575,18 +627,18 @@ export class PlayerUI {
     this.fsBtn.title = 'Fullscreen';
     this.fsBtn.setAttribute('aria-label', 'Fullscreen');
 
-    this.bar.append(
-      this.back10,
-      this.playBtn,
-      this.fwd10,
-      this.volBtn,
-      volWrap,
-      el('div', 'elf-spacer'),
+    const barStart = el('div', 'elf-bar-start');
+    barStart.append(this.back10, this.playBtn, this.fwd10, this.volBtn, volWrap);
+    const barEnd = el('div', 'elf-bar-end');
+    barEnd.append(
       this.endsAtBtn,
+      this.episodesBtn,
+      this.audioSubsBtn,
       this.speedBtn,
       this.pipBtn,
       this.fsBtn,
     );
+    this.bar.append(barStart, el('div', 'elf-spacer'), barEnd);
     bottomDock.appendChild(this.bar);
     shell.appendChild(bottomDock);
 
@@ -596,7 +648,13 @@ export class PlayerUI {
     const epWheelStage = el('div', 'elf-ep-wheel-stage');
     this.epWheelSeasonsEl = el('div', 'elf-ep-wheel-seasons');
     this.epWheelList = el('div', 'elf-ep-wheel-list');
-    epWheelStage.append(this.epWheelSeasonsEl, this.epWheelList);
+    const epWheelHead = el('div', 'elf-ep-wheel-head');
+    const epWheelHeading = el('div', 'elf-ep-wheel-heading', 'Episodes');
+    const epWheelClose = this.iconBtn(I.close, 'Close episodes');
+    epWheelClose.classList.add('elf-ep-wheel-close');
+    epWheelClose.onclick = () => this.closeEpisodeWheel();
+    epWheelHead.append(epWheelHeading, epWheelClose);
+    epWheelStage.append(epWheelHead, this.epWheelSeasonsEl, this.epWheelList);
     this.epWheelOverlay.appendChild(epWheelStage);
     shell.appendChild(this.epWheelOverlay);
 
@@ -618,6 +676,53 @@ export class PlayerUI {
     this.panelBody = el('div', 'elf-panel-body');
     this.panel.append(panelHead, this.panelBody);
     shell.append(this.panelBackdrop, this.panel);
+
+    /* 11. Startup artwork + useful progress and a real terminal unavailable state. */
+    this.loadingScreen = el('div', 'elf-loading-screen');
+    this.loadingScreen.dataset.visible = 'false';
+    this.loadingScreen.setAttribute('role', 'status');
+    this.loadingScreen.setAttribute('aria-live', 'polite');
+    this.loadingBackdrop = document.createElement('img');
+    this.loadingBackdrop.className = 'elf-state-backdrop';
+    this.loadingBackdrop.alt = '';
+    this.loadingBackdrop.decoding = 'async';
+    const loadingShade = el('div', 'elf-state-shade');
+    const loadingContent = el('div', 'elf-loading-content');
+    this.loadingLogoSlot = el('div', 'elf-loading-logo');
+    const loadingRule = el('div', 'elf-loading-rule', '<span></span>');
+    this.loadingStatus = el('div', 'elf-loading-status', 'Finding the best available source…');
+    const quoteCard = el('figure', 'elf-loading-quote-card');
+    this.loadingQuote = el('blockquote', 'elf-loading-quote');
+    this.loadingQuoteAuthor = el('figcaption', 'elf-loading-quote-author');
+    quoteCard.append(this.loadingQuote, this.loadingQuoteAuthor);
+    loadingContent.append(this.loadingLogoSlot, loadingRule, this.loadingStatus, quoteCard);
+    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingContent);
+
+    this.unavailableScreen = el('div', 'elf-unavailable-screen');
+    this.unavailableScreen.dataset.visible = 'false';
+    this.unavailableScreen.setAttribute('role', 'alert');
+    this.unavailableBackdrop = document.createElement('img');
+    this.unavailableBackdrop.className = 'elf-state-backdrop';
+    this.unavailableBackdrop.alt = '';
+    const unavailableShade = el('div', 'elf-state-shade');
+    const unavailableCard = el('div', 'elf-unavailable-card');
+    const unavailableIcon = el('div', 'elf-unavailable-icon', I.info);
+    this.unavailableTitle = el('h2', 'elf-unavailable-title', "Couldn't find this title");
+    this.unavailableMessage = el(
+      'p',
+      'elf-unavailable-message',
+      'No playable sources are available right now. Please try again in a moment.',
+    );
+    const retryBtn = el('button', 'elf-state-retry', 'Try again') as HTMLButtonElement;
+    retryBtn.type = 'button';
+    retryBtn.onclick = () => {
+      this.unavailableScreen.dataset.visible = 'false';
+      this.showInitialLoading();
+      void this.player.retrySources();
+    };
+    unavailableCard.append(unavailableIcon, this.unavailableTitle, this.unavailableMessage, retryBtn);
+    this.unavailableScreen.append(this.unavailableBackdrop, unavailableShade, unavailableCard);
+    shell.append(this.loadingScreen, this.unavailableScreen);
   }
 
   private iconBtn(icon: string, label: string): HTMLButtonElement {
@@ -672,7 +777,141 @@ export class PlayerUI {
       genres,
       overview,
       logo,
+      backdrop: String(m?.backdrop || m?.poster || cfg.poster || '').trim(),
     };
+  }
+
+  private syncStateArtwork(dm: DisplayMedia): void {
+    const backdrop = dm.backdrop;
+    for (const img of [this.loadingBackdrop, this.unavailableBackdrop]) {
+      if (backdrop) {
+        if (img.getAttribute('src') !== backdrop) img.src = backdrop;
+        img.hidden = false;
+      } else {
+        img.removeAttribute('src');
+        img.hidden = true;
+      }
+    }
+    this.loadingLogoSlot.replaceChildren();
+    const visual = this.createTitleVisual(dm, 'pause');
+    if (visual) this.loadingLogoSlot.appendChild(visual);
+    this.loadingLogoSlot.hidden = !visual;
+  }
+
+  private showInitialLoading(): void {
+    this.loadingActive = true;
+    this.slowLoadingActive = false;
+    const session = ++this.loadingQuoteSession;
+    if (this.loadingQuoteHistory.size > 64) this.loadingQuoteHistory.clear();
+    this.player.shell.dataset.initialLoading = 'true';
+    this.player.shell.dataset.unavailable = 'false';
+    this.loadingScreen.dataset.visible = 'true';
+    this.unavailableScreen.dataset.visible = 'false';
+    clearTimeout(this.loadingDeadlineTimer);
+    clearTimeout(this.loadingHardStopTimer);
+    // Stop the indefinite spinner at nine seconds without killing a valid
+    // in-flight manifest/segment. Playback continues behind the retry screen.
+    this.loadingDeadlineTimer = window.setTimeout(() => {
+      if (!this.loadingActive) return;
+      this.hideInitialLoading(true);
+      this.slowLoadingActive = true;
+      this.unavailableTitle.textContent = 'Taking longer than expected';
+      this.unavailableMessage.textContent = 'Still connecting. You can wait or try again.';
+      this.syncStateArtwork(this.resolveDisplayMedia());
+      this.unavailableScreen.dataset.visible = 'true';
+    }, 9000);
+    // Bound genuine no-progress cases without calling a slow stream dead at 9s.
+    this.loadingHardStopTimer = window.setTimeout(() => {
+      if (this.loadingActive || this.slowLoadingActive) this.player.cancelStartup();
+    }, 45000);
+    this.loadingStatus.textContent = 'Finding the best available source…';
+    this.syncStateArtwork(this.resolveDisplayMedia());
+    this.showNextFallbackQuote();
+    clearInterval(this.loadingQuoteTimer);
+    void this.fetchLoadingQuote(session);
+    this.loadingQuoteTimer = window.setInterval(() => {
+      if (!this.loadingActive || session !== this.loadingQuoteSession) return;
+      // Keep something fresh on screen immediately, then replace it with a new
+      // live quote as soon as the request resolves. No repeated four-quote loop.
+      this.showNextFallbackQuote();
+      void this.fetchLoadingQuote(session);
+    }, 6500);
+  }
+
+  private showNextFallbackQuote(): void {
+    let item = FALLBACK_LOADING_QUOTES[this.loadingQuoteIndex % FALLBACK_LOADING_QUOTES.length];
+    for (let i = 0; i < FALLBACK_LOADING_QUOTES.length; i++) {
+      const candidate = FALLBACK_LOADING_QUOTES[(this.loadingQuoteIndex + i) % FALLBACK_LOADING_QUOTES.length];
+      if (!this.loadingQuoteHistory.has(candidate.quote)) {
+        item = candidate;
+        this.loadingQuoteIndex = (this.loadingQuoteIndex + i + 1) % FALLBACK_LOADING_QUOTES.length;
+        break;
+      }
+    }
+    this.setLoadingQuote(item);
+  }
+
+  private setLoadingQuote(item: { quote: string; author: string }): void {
+    this.loadingQuoteHistory.add(item.quote);
+    this.loadingQuote.textContent = `“${item.quote}”`;
+    this.loadingQuoteAuthor.textContent = item.author ? `— ${item.author}` : '';
+  }
+
+  private async fetchLoadingQuote(session: number, allowDuplicateRetry = true): Promise<void> {
+    this.loadingQuoteAbort?.abort();
+    const controller = new AbortController();
+    this.loadingQuoteAbort = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 2600);
+    try {
+      const res = await fetch('https://zenquotes.io/api/random', {
+        signal: controller.signal,
+        credentials: 'omit',
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { q?: unknown; a?: unknown }[] | null;
+      const quote = String(data?.[0]?.q ?? '').trim();
+      const author = String(data?.[0]?.a ?? '').trim();
+      if (!this.loadingActive || session !== this.loadingQuoteSession || !quote || quote.length > 280) return;
+      if (this.loadingQuoteHistory.has(quote)) {
+        if (allowDuplicateRetry) void this.fetchLoadingQuote(session, false);
+        return;
+      }
+      this.setLoadingQuote({ quote, author: author.slice(0, 90) });
+    } catch {
+      /* Offline/CORS failures retain the larger, non-repeating local fallback set. */
+    } finally {
+      clearTimeout(timeout);
+      if (this.loadingQuoteAbort === controller) this.loadingQuoteAbort = null;
+    }
+  }
+
+  private hideInitialLoading(keepHardStop = false): void {
+    this.loadingActive = false;
+    this.loadingQuoteSession++;
+    clearInterval(this.loadingQuoteTimer);
+    clearTimeout(this.loadingDeadlineTimer);
+    if (!keepHardStop) { clearTimeout(this.loadingHardStopTimer); this.loadingHardStopTimer = 0; this.slowLoadingActive = false; }
+    this.loadingDeadlineTimer = 0;
+    this.loadingQuoteTimer = 0;
+    this.loadingQuoteAbort?.abort();
+    this.loadingQuoteAbort = null;
+    this.player.shell.dataset.initialLoading = 'false';
+    this.loadingScreen.dataset.visible = 'false';
+  }
+
+  private showUnavailable(message?: string): void {
+    this.hideInitialLoading();
+    this.closePanel();
+    if (this.epWheelOpen) this.closeEpisodeWheel();
+    this.player.shell.dataset.pauseScreen = 'false';
+    this.player.shell.dataset.buffering = 'false';
+    this.player.shell.dataset.unavailable = 'true';
+    this.unavailableTitle.textContent = "Couldn't find this title";
+    this.unavailableMessage.textContent =
+      message || 'No playable sources are available right now. Please try again in a moment.';
+    this.syncStateArtwork(this.resolveDisplayMedia());
+    this.unavailableScreen.dataset.visible = 'true';
   }
 
   private createTitleVisual(dm: DisplayMedia, variant: 'dock' | 'pause'): HTMLElement | null {
@@ -708,9 +947,10 @@ export class PlayerUI {
     const sig = JSON.stringify(dm);
     if (sig === this.lastMediaSig) return;
     this.lastMediaSig = sig;
+    this.syncStateArtwork(dm);
 
-    /* A. Top bar TV Episode indicator + Top-right Episode Wheel trigger */
-    this.episodesTopBtn.hidden = dm.mediaType !== 'tv';
+    /* A. Top bar TV Episode indicator + Bottom-navigation Episode trigger */
+    this.episodesBtn.hidden = dm.mediaType !== 'tv';
     if (dm.mediaType === 'tv' && dm.season && dm.episode) {
       const epCode = `S${dm.season} · E${dm.episode}`;
       this.topEpisodeEl.textContent = dm.episodeName ? `${epCode} — ${dm.episodeName}` : epCode;
@@ -856,9 +1096,9 @@ export class PlayerUI {
     };
     this.volSlider.oninput = () => this.player.setVolume(Number(this.volSlider.value));
 
-    this.episodesTopBtn.onclick = () => this.toggleEpisodeWheel();
+    this.episodesBtn.onclick = () => this.toggleEpisodeWheel();
     this.qualityTopBtn.onclick = () => this.togglePanel('quality');
-    this.audioSubsTopBtn.onclick = () => this.togglePanel('audiosubs');
+    this.audioSubsBtn.onclick = () => this.togglePanel('audiosubs');
     this.speedBtn.onclick = () => this.togglePanel('speed');
 
     const toggleRemTime = (e: Event) => {
@@ -948,13 +1188,6 @@ export class PlayerUI {
 
     this.panelBackdrop.onclick = () => this.closePanel();
 
-    // Pause Hotstar bar auto-hide while pointer is interacting with it
-    this.hotstarBar.addEventListener('pointerenter', () => clearTimeout(this.hotstarTimer));
-    this.hotstarBar.addEventListener('pointerdown', () => clearTimeout(this.hotstarTimer));
-    this.hotstarBar.addEventListener('pointerleave', () => {
-      if (this.hotstarBar.dataset.show === 'true') this.armHotstarHide(2500);
-    });
-
     this.wireSurfaceGestures(step);
 
     shell.addEventListener('pointermove', (e) => {
@@ -993,7 +1226,6 @@ export class PlayerUI {
       }
 
       this.flashIcon(I.playSolid);
-      this.maybeTriggerHotstarBar();
       this.scheduleHide();
     });
 
@@ -1018,14 +1250,16 @@ export class PlayerUI {
     });
 
     v.addEventListener('waiting', () => (shell.dataset.buffering = 'true'));
-    v.addEventListener('playing', () => {
+    const markPlaybackReady = () => {
+      // Ignore late media events from an attempt already declared unavailable.
+      if (shell.dataset.unavailable === 'true') return;
       shell.dataset.buffering = 'false';
-      this.maybeTriggerHotstarBar();
-    });
-    v.addEventListener('loadeddata', () => {
-      shell.dataset.buffering = 'false';
-      this.maybeTriggerHotstarBar();
-    });
+      shell.dataset.unavailable = 'false';
+      this.unavailableScreen.dataset.visible = 'false';
+      this.hideInitialLoading();
+    };
+    v.addEventListener('playing', markPlaybackReady);
+    v.addEventListener('loadeddata', markPlaybackReady);
 
     bus.on('media', () => {
       this.failedLogoUrl = '';
@@ -1036,8 +1270,6 @@ export class PlayerUI {
       this.renderSegments();
     });
     bus.on('sources', () => {
-      this.hotstarShownForTitle = false;
-      this.hotstarDismissed = false;
       this.hasStartedPlayback = false;
       shell.dataset.pauseScreen = 'false';
       shell.dataset.brandFull = 'true';
@@ -1045,7 +1277,12 @@ export class PlayerUI {
       this.syncCapabilities();
       this.rebuildPanelIfOpen();
     });
+    bus.on('sourcesUpdated', () => {
+      this.syncCapabilities();
+      this.rebuildPanelIfOpen();
+    });
     bus.on('sourceChange', (d) => {
+      if (this.loadingActive) this.loadingStatus.textContent = 'Preparing your stream…';
       this.syncCapabilities();
       this.rebuildPanelIfOpen();
       const ev = d as { label?: string; manual?: boolean } | undefined;
@@ -1059,13 +1296,12 @@ export class PlayerUI {
     bus.on('qualityChange', (d) => this.syncQualityBadge(d as { mode?: string; height?: number }));
     bus.on('audioTracks', () => {
       this.syncCapabilities();
-      this.renderHotstarPills();
-      this.maybeTriggerHotstarBar();
       this.rebuildPanelIfOpen();
     });
     bus.on('audioChange', (d) => {
       clearTimeout(this.searchingTimer);
-      this.renderHotstarPills();
+      this.audioSubsBtn.dataset.switching = 'false';
+      this.syncAudioQuickLabel();
       this.rebuildPanelIfOpen();
       const label = (d as { label?: string })?.label ?? '';
       if (this.hasRenderedAudioSelection && label) {
@@ -1075,6 +1311,7 @@ export class PlayerUI {
     });
     bus.on('audio:searching', (d) => {
       clearTimeout(this.searchingTimer);
+      this.audioSubsBtn.dataset.switching = 'true';
       const label = (d as { label?: string })?.label ?? '';
       this.searchingTimer = window.setTimeout(() => {
         if (label) this.showToast(`Switching to ${label}…`, 3500);
@@ -1082,10 +1319,11 @@ export class PlayerUI {
     });
     bus.on('audio:unavailable', (d) => {
       clearTimeout(this.searchingTimer);
+      this.audioSubsBtn.dataset.switching = 'false';
+      this.syncAudioQuickLabel();
       const msg =
         (d as { message?: string })?.message ??
         `Sorry, we searched all sources yet didn't find it in "${(d as { label?: string })?.label ?? 'that language'}"`;
-      this.renderHotstarPills();
       this.rebuildPanelIfOpen();
       this.showToast(msg, 6000, 'warn');
     });
@@ -1111,11 +1349,17 @@ export class PlayerUI {
       this.syncCapabilities();
       this.renderSegments();
     });
+    v.addEventListener('loadedmetadata', () => this.renderSegments());
     bus.on('autoplay:blocked', () => this.showToast('Tap to play with sound'));
     bus.on('error', (d) => {
       const code = (d as { code?: string })?.code ?? '';
-      if (code === 'no-sources' || code.startsWith('resolve-')) {
-        this.showToast('Stream currently unavailable', 4500, 'warn');
+      if (code === 'no-sources' || code === 'all-sources-failed' || code.startsWith('resolve-')) {
+        const message = code.startsWith('resolve-')
+          ? 'We couldn’t reach this title’s sources. Check your connection and try again.'
+          : code === 'all-sources-failed'
+            ? 'None of the available sources could start playback. Please try again.'
+            : 'We couldn’t find a playable stream for this title. Please try again later.';
+        this.showUnavailable(message);
       }
     });
     v.addEventListener('ended', () => {
@@ -1144,7 +1388,9 @@ export class PlayerUI {
     });
     bus.on('episodeChange', (d) => {
       const ev = d as { season?: number; episode?: number } | undefined;
+      this.showInitialLoading();
       this.nextEpDismissedKey = '';
+      this.nextSeasonRequested = 0;
       this.nextEpWrap.dataset.visible = 'false';
       this.lastMediaSig = '';
       this.syncMediaMetadata();
@@ -1173,10 +1419,12 @@ export class PlayerUI {
   /* ------------------------------------------------------------------ */
 
   private isInteractiveChrome(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
+    // SVG icons inside controls are Element targets, not HTMLElement targets.
+    // Treating them as the video surface caused delayed accidental play/panel-close taps.
+    if (!(target instanceof Element)) return false;
     return Boolean(
       target.closest(
-        '.elf-brand-cluster, .elf-top-actions, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-ep-wheel-overlay, .elf-hotstar-lang, .elf-skip, .elf-next-ep-wrap, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
+        '.elf-brand-cluster, .elf-top-actions, .elf-bottom-dock, .elf-panel, .elf-panel-backdrop, .elf-ep-wheel-overlay, .elf-loading-screen, .elf-unavailable-screen, .elf-skip, .elf-next-ep-wrap, .elf-unlock-pill, .elf-bigplay, .elf-sub-box',
       ),
     );
   }
@@ -1416,7 +1664,6 @@ export class PlayerUI {
       this.stopHold2x();
       this.closePanel();
       this.closeEpisodeWheel();
-      this.dismissHotstarBar(false);
       this.nextEpWrap.dataset.visible = 'false';
       shell.dataset.pauseScreen = 'false';
       shell.dataset.ui = 'hidden';
@@ -1440,75 +1687,27 @@ export class PlayerUI {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Hotstar-Style Bottom Language Selector (First 5 Seconds!)           */
+  /* Integrated current-audio navigation (no floating language pills)          */
   /* ------------------------------------------------------------------ */
 
-  private renderHotstarPills(): void {
-    const tracks: AudioTrack[] = this.player.getAudioTracks();
-    this.hotstarPills.replaceChildren();
-    if (tracks.length < 2) {
-      this.dismissHotstarBar(false);
-      return;
-    }
-
+  private syncAudioQuickLabel(): void {
     const st = this.player.getState();
-    for (const t of tracks) {
-      const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-      const pill = el('button', 'elf-hotstar-pill') as HTMLButtonElement;
-      pill.dataset.selected = String(selected);
-      pill.innerHTML = selected
-        ? `<span class="elf-hs-dot">${I.check}</span><span>${esc(t.label)}</span>`
-        : `<span>${esc(t.label)}</span>`;
-      pill.onclick = (e) => {
-        e.stopPropagation();
-        this.hasRenderedAudioSelection = true;
-        void this.player.setAudio(t.id);
-        this.armHotstarHide(1600);
-      };
-      this.hotstarPills.appendChild(pill);
-    }
-  }
-
-  private maybeTriggerHotstarBar(): void {
-    if (this.locked || this.hotstarDismissed) return;
     const tracks = this.player.getAudioTracks();
-    if (tracks.length < 2) return;
-    const v = this.player.video;
-
-    if (this.hotstarShownForTitle) {
-      if (this.hotstarBar.dataset.show === 'true' && !v.paused && !this.hotstarTimer) {
-        this.armHotstarHide(5000);
-      }
-      return;
-    }
-
-    if (v.currentTime > 8 && !v.paused) return;
-
-    this.hotstarShownForTitle = true;
-    this.renderHotstarPills();
-    this.hotstarBar.dataset.show = 'true';
-    if (!v.paused) {
-      this.armHotstarHide(5000);
-    }
-  }
-
-  private armHotstarHide(ms: number): void {
-    clearTimeout(this.hotstarTimer);
-    this.hotstarTimer = window.setTimeout(() => {
-      this.hotstarTimer = 0;
-      this.dismissHotstarBar(false);
-    }, ms);
-  }
-
-  private dismissHotstarBar(manual: boolean): void {
-    clearTimeout(this.hotstarTimer);
-    this.hotstarTimer = 0;
-    if (manual) this.hotstarDismissed = true;
-    this.hotstarBar.dataset.show = 'false';
+    const selected = tracks.find((t) => (st.audioId ? t.id === st.audioId : t.lang === st.audioLang));
+    const source = this.player.getSources().find((s) => s.id === st.source);
+    const lang = selected?.lang ?? st.audioLang ?? source?.audioLang ?? null;
+    const label = selected?.label ?? (lang && lang !== 'und' ? languageLabel(lang) : 'Audio');
+    this.audioCurrentLabel.textContent = label;
+    this.audioCurrentBadge.textContent = audioBadgeLabel(lang);
+    this.audioSubsBtn.setAttribute(
+      'aria-label',
+      lang && lang !== 'und' ? `Audio: ${label}. Change audio and subtitles` : 'Change audio and subtitles',
+    );
+    this.audioSubsBtn.title = lang && lang !== 'und' ? `Audio: ${label}` : 'Audio & subtitles';
   }
 
   /* ------------------------------------------------------------------ */
-  /* Capability Sync & Branded Source Toggle                             */
+    /* Capability Sync & Branded Source Toggle                             */
   /* ------------------------------------------------------------------ */
 
   private syncCapabilities(): void {
@@ -1519,7 +1718,8 @@ export class PlayerUI {
     this.pipBtn.hidden = !st.canPip;
     this.fsBtn.hidden = !st.canFullscreen;
     this.qualityTopBtn.hidden = ql.length === 0 && sources.length < 2;
-    this.audioSubsTopBtn.hidden = false;
+    this.audioSubsBtn.hidden = false;
+    this.syncAudioQuickLabel();
 
     const d = st.duration;
     this.endsAtBtn.hidden = !(Number.isFinite(d) && d > 0);
@@ -1800,6 +2000,10 @@ export class PlayerUI {
 
     const dm = this.resolveDisplayMedia();
     const nextTarget = dm.mediaType === 'tv' ? this.player.getNextEpisodeTarget() : null;
+    if (nextTarget && nextTarget.season !== Number(dm.season ?? 1) && !this.player.getSeasonCatalog(nextTarget.season) && this.nextSeasonRequested !== nextTarget.season) {
+      this.nextSeasonRequested = nextTarget.season;
+      void this.player.fetchSeasonEpisodes(nextTarget.season);
+    }
 
     if (hit) {
       const span = Math.max(0.1, hit.end - hit.start);
@@ -1818,8 +2022,10 @@ export class PlayerUI {
         if (this.skipLabelEl.textContent !== skipTxt) this.skipLabelEl.textContent = skipTxt;
         this.skipBtn.onclick = () => this.player.seek(hit.end);
       }
-      if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
-      return;
+      if (hit.kind !== 'outro' || !nextTarget) {
+        if (this.nextEpWrap.dataset.visible !== 'false') this.nextEpWrap.dataset.visible = 'false';
+        return;
+      }
     }
 
     // End-of-episode pre-warmed Next Episode prompt during final 15s (TV only)
@@ -1829,14 +2035,27 @@ export class PlayerUI {
       nextTarget &&
       d > 45 &&
       rem > 0 &&
-      rem <= 15 &&
+      (rem <= 15 || hit?.kind === 'outro') &&
       this.nextEpDismissedKey !== epKey
     ) {
+      this.nextEpWrap.dataset.outro = String(hit?.kind === 'outro');
       const countdown = Math.max(1, Math.ceil(rem));
       const nextPct = Math.max(0, Math.min(100, ((15 - rem) / 15) * 100)).toFixed(1);
       this.nextEpBtn.style.setProperty('--elf-next-pct', `${nextPct}%`);
       const lbl = `Next Episode · E${nextTarget.episode} (${countdown}s)`;
       if (this.nextEpLabelEl.textContent !== lbl) this.nextEpLabelEl.textContent = lbl;
+      const catalog = this.player.getSeasonCatalog(nextTarget.season);
+      const ep = catalog?.episodes.find(item => item.episodeNumber === nextTarget.episode);
+      const title = ep?.name || nextTarget.name || `Episode ${nextTarget.episode}`;
+      if (this.nextEpTitleEl.textContent !== title) this.nextEpTitleEl.textContent = title;
+      const details = `S${nextTarget.season} · E${nextTarget.episode}` + (ep?.runtime && ep.runtime > 0 ? ` · ${ep.runtime} min` : '');
+      if (this.nextEpDetailsEl.textContent !== details) this.nextEpDetailsEl.textContent = details;
+      const still = ep?.still || '';
+      if (this.nextEpThumb.dataset.src !== still) {
+        this.nextEpThumb.dataset.src = still;
+        this.nextEpThumb.hidden = !still;
+        if (still) this.nextEpThumb.src = still; else this.nextEpThumb.removeAttribute('src');
+      }
       if (this.nextEpWrap.dataset.visible !== 'true') this.nextEpWrap.dataset.visible = 'true';
     } else if (this.nextEpWrap.dataset.visible !== 'false') {
       this.nextEpWrap.dataset.visible = 'false';
@@ -1965,14 +2184,13 @@ export class PlayerUI {
     const modes = this.availableModes();
     this.panelMode =
       mode === 'style' || modes.some((m) => m.id === mode) ? mode : (modes[0]?.id ?? 'speed');
-    this.dismissHotstarBar(false);
     clearTimeout(this.pauseIdleTimer);
     this.player.shell.dataset.pauseScreen = 'false';
     this.panel.dataset.open = 'true';
     this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
     this.panelBackdrop.dataset.open = 'true';
     this.qualityTopBtn.dataset.active = String(this.panelMode === 'quality');
-    this.audioSubsTopBtn.dataset.active = String(this.panelMode === 'audiosubs' || this.panelMode === 'style');
+    this.audioSubsBtn.dataset.active = String(this.panelMode === 'audiosubs' || this.panelMode === 'style');
     this.buildPanelHeader();
     this.renderPanelBody();
     this.showUI();
@@ -1982,7 +2200,7 @@ export class PlayerUI {
     this.panel.dataset.open = 'false';
     this.panelBackdrop.dataset.open = 'false';
     this.qualityTopBtn.dataset.active = 'false';
-    this.audioSubsTopBtn.dataset.active = 'false';
+    this.audioSubsBtn.dataset.active = 'false';
     this.previewRenderer?.destroy();
     this.previewRenderer = null;
     if (this.player.video.paused && this.hasStartedPlayback) {
@@ -2022,7 +2240,7 @@ export class PlayerUI {
         this.panelMode = m.id;
         this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
         this.qualityTopBtn.dataset.active = String(this.panelMode === 'quality');
-        this.audioSubsTopBtn.dataset.active = String(this.panelMode === 'audiosubs');
+        this.audioSubsBtn.dataset.active = String(this.panelMode === 'audiosubs');
         this.buildPanelHeader();
         this.renderPanelBody();
       };
@@ -2070,13 +2288,13 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        listAudio.appendChild(
-          this.row(t.label, '', selected, () => {
-            this.hasRenderedAudioSelection = true;
-            void this.player.setAudio(t.id);
-            this.renderPanelBody();
-          }),
-        );
+        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
+          this.hasRenderedAudioSelection = true;
+          void this.player.setAudio(t.id);
+          this.renderPanelBody();
+        }, audioBadgeLabel(t.lang));
+        row.classList.add('elf-audio-option');
+        listAudio.appendChild(row);
       }
     } else {
       listAudio.appendChild(this.row('Original', '', true, () => {}));
@@ -2206,9 +2424,14 @@ export class PlayerUI {
         this.renderPanelBody();
       }),
     );
+    // Only real, selectable renditions get a row: height-less levels are a
+    // single fixed rendition already covered by "Auto" (never a "0k" row).
+    const seenHeights = new Set<number>();
     for (const l of this.player.getQualityLevels()) {
+      if (!l.height || l.height <= 0 || seenHeights.has(l.height)) continue;
+      seenHeights.add(l.height);
       this.panelBody.appendChild(
-        this.row(l.label, '', st.qualityMode === String(l.height), () => {
+        this.row(l.label || `${l.height}p`, '', st.qualityMode === String(l.height), () => {
           this.player.setQuality(l.height);
           this.renderPanelBody();
         }),
@@ -2220,8 +2443,18 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
+      // Only the active engine knows which manifest representations the
+      // current browser can actually select. Do not promise a ladder for an
+      // unloaded source based solely on backend manifest metadata.
+      const optionCount = s.id === st.source
+        ? new Set(this.player.getQualityLevels().map((level) => level.height).filter((height) => height > 0)).size
+        : 0;
+      const badge =
+        optionCount > 1
+          ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
+          : qualityBadge;
       this.panelBody.appendChild(
-        this.row(s.label, qualityBadge, s.id === st.source, () => {
+        this.row(s.label, badge, s.id === st.source, () => {
           void this.player.setSource(s.id);
           this.renderPanelBody();
         }),
@@ -2241,10 +2474,11 @@ export class PlayerUI {
     }
   }
 
-  private row(label: string, sub: string, selected: boolean, onClick: () => void) {
+  private row(label: string, sub: string, selected: boolean, onClick: () => void, badge?: string) {
     const b = el('button', 'elf-menu-item') as HTMLButtonElement;
     b.dataset.selected = String(selected);
-    b.innerHTML = `<span class="elf-mi-check">${I.check}</span><span class="elf-mi-label">${esc(label)}${
+    b.setAttribute('aria-pressed', String(selected));
+    b.innerHTML = `${badge ? `<span class="elf-mi-lang" aria-hidden="true">${esc(badge)}</span>` : ''}<span class="elf-mi-check">${I.check}</span><span class="elf-mi-label">${esc(label)}${
       sub ? `<span class="elf-mi-sub"> · ${esc(sub)}</span>` : ''
     }</span>`;
     b.onclick = onClick;
@@ -2481,14 +2715,15 @@ export class PlayerUI {
     if (dm.mediaType !== 'tv') return;
 
     if (this.panel.dataset.open === 'true') this.closePanel();
-    this.dismissHotstarBar(false);
     clearTimeout(this.hideTimer);
     clearTimeout(this.pauseIdleTimer);
 
     this.epWheelOpen = true;
+    this.triggerBtnPop(this.episodesBtn);
     this.epWheelSeason = Math.max(1, targetSeason ?? dm.season ?? this.player.config.season ?? 1);
     this.epWheelOverlay.dataset.open = 'true';
-    this.episodesTopBtn.dataset.active = 'true';
+    this.episodesBtn.dataset.active = 'true';
+    this.episodesBtn.setAttribute('aria-expanded', 'true');
     this.player.shell.dataset.pauseScreen = 'false';
     this.player.shell.dataset.epWheel = 'true';
 
@@ -2511,7 +2746,8 @@ export class PlayerUI {
     if (!this.epWheelOpen && this.epWheelOverlay.dataset.open !== 'true') return;
     this.epWheelOpen = false;
     this.epWheelOverlay.dataset.open = 'false';
-    this.episodesTopBtn.dataset.active = 'false';
+    this.episodesBtn.dataset.active = 'false';
+    this.episodesBtn.setAttribute('aria-expanded', 'false');
     this.player.shell.dataset.epWheel = 'false';
     if (this.player.video.paused && this.hasStartedPlayback) {
       this.schedulePauseScreen(2600);
@@ -2559,24 +2795,43 @@ export class PlayerUI {
       item.dataset.playing = String(isPlaying);
       item.dataset.ep = String(ep.episodeNumber);
 
-      const titleLine = el('div', 'elf-epw-title', `Episode ${ep.episodeNumber}`);
+      const thumb = el('span', 'elf-epw-thumb');
+      const thumbFallback = el('span', 'elf-epw-thumb-fallback', String(ep.episodeNumber));
+      thumb.appendChild(thumbFallback);
+      if (ep.still) {
+        const image = document.createElement('img');
+        image.src = ep.still;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.onerror = () => {
+          image.remove();
+          thumb.dataset.missing = 'true';
+        };
+        thumb.appendChild(image);
+      } else {
+        thumb.dataset.missing = 'true';
+      }
+      const copy = el('span', 'elf-epw-copy');
+      const titleLine = el('span', 'elf-epw-title', `Episode ${ep.episodeNumber}`);
       const cleanName =
         ep.name && !/^episode\s+\d+$/i.test(ep.name.trim())
           ? ep.name.trim()
           : ep.runtime
             ? `${ep.runtime} min`
             : `Season ${this.epWheelSeason}`;
-      const subLine = el('div', 'elf-epw-sub', esc(cleanName));
+      const subLine = el('span', 'elf-epw-sub', esc(cleanName));
 
       const statusLine = el(
-        'div',
+        'span',
         'elf-epw-status',
         isPlaying
           ? `<span class="elf-epw-live">Playing</span><span class="elf-epw-ico">${I.playingScreen}</span>`
           : `<span class="elf-epw-queue">Queue</span><span class="elf-epw-dash">—</span>`,
       );
 
-      item.append(titleLine, subLine, statusLine);
+      copy.append(titleLine, subLine, statusLine);
+      item.append(thumb, copy);
       item.onclick = (e) => {
         e.stopPropagation();
         if (isPlaying) {
@@ -2688,13 +2943,13 @@ export class PlayerUI {
     clearTimeout(this.toastTimer);
     clearTimeout(this.searchingTimer);
     clearTimeout(this.flashTimer);
-    clearTimeout(this.hotstarTimer);
     clearTimeout(this.singleTapTimer);
     clearTimeout(this.dtapResetTimer);
     clearTimeout(this.dtapHideLeftTimer);
     clearTimeout(this.dtapHideRightTimer);
     clearTimeout(this.holdTimer);
     clearTimeout(this.lockPeekTimer);
+    this.hideInitialLoading();
     this.previewRenderer?.destroy();
   }
 }

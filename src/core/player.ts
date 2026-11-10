@@ -74,6 +74,11 @@ export interface SourceOption {
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   quality: string;
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (>1 ranks above single/unknown). */
+  qualityOptions?: number;
+  qualityLabelsUnreliable?: boolean;
   fingerprint?: string;
   latencyHintMs?: number;
   audioLang?: string;
@@ -167,9 +172,6 @@ type EngineKind = 'hls' | 'dash' | 'native';
 
 /** Methods dash.js ships but its .d.ts omits. Kept tiny and cast once. */
 interface DashExtras {
-  getBitrateInfoListFor(type: 'video' | 'audio'): { bitrate: number; height: number; width: number; qualityIndex: number }[];
-  setQualityFor(type: 'video' | 'audio', quality: number): void;
-  getQualityFor(type: 'video' | 'audio'): number;
   updateSettings?(settings: Record<string, unknown>): void;
   extend?(name: string, factory: () => unknown, override?: boolean): void;
 }
@@ -211,6 +213,7 @@ export class ElfuraPlayer {
   private seasonCatalogCache = new Map<number, SeasonCatalogInfo>();
   private nextEpisodeTarget: NextEpisodeTarget | null = null;
   private prewarmedKeyTriggered = '';
+  private skipLookupKey = '';
   private prewarmedNext: {
     season: number;
     episode: number;
@@ -224,6 +227,7 @@ export class ElfuraPlayer {
   bridge!: PostMessageBridge;
 
   private fatalCount = 0;
+  private engineLoadSeq = 0;
   private initialAudioApplied = false;
   private desiredAudioLang: string | null = null;
   private audioSearchSeq = 0;
@@ -234,6 +238,10 @@ export class ElfuraPlayer {
     settle: (res: { ok: boolean; loadFailed?: boolean }) => void;
   } | null = null;
   private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private resolveGeneration = 0;
+  private resolveAbort: AbortController | null = null;
+  private exhaustedRecoveryAttempted = false;
+  private exhaustedRecoveryInFlight = false;
   private hevcSupportedCache: boolean | null = null;
   private destroyed = false;
 
@@ -250,6 +258,10 @@ export class ElfuraPlayer {
     this.surface.className = 'elf-surface';
     this.video = document.createElement('video');
     this.video.className = 'elf-video';
+    // Disable native-provider captions, including Safari's native HLS tracks.
+    this.video.textTracks?.addEventListener('addtrack', (event) => {
+      if (event.track && (event.track.kind === 'subtitles' || event.track.kind === 'captions')) event.track.mode = 'disabled';
+    });
     this.video.playsInline = true;
     this.video.setAttribute('playsinline', '');
     this.video.preload = 'auto';
@@ -332,6 +344,38 @@ export class ElfuraPlayer {
 
   getSources(): SourceOption[] {
     return this.sources;
+  }
+
+  /** Stop an initial attempt that exceeded its UI deadline. Invalidate every
+   * in-flight resolver, probe and engine so late work cannot restart playback. */
+  cancelStartup(silent = false): void {
+    if (this.destroyed) return;
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: true });
+    this.activeProbe = null;
+    this.engineLoadSeq++;
+    this.teardownEngine();
+    this.exhaustedRecoveryInFlight = false;
+    this.video.pause();
+    this.video.removeAttribute('src');
+    this.video.load();
+    this.shell.dataset.buffering = 'false';
+    if (!silent) this.emit('error', { code: 'all-sources-failed', message: 'Playback did not start in time' });
+  }
+
+  /** Re-run resolution after a terminal unavailable state without reloading the host page. */
+  async retrySources(): Promise<void> {
+    this.cancelStartup(true);
+    this.failedSourceIds.clear();
+    this.failedFingerprints.clear();
+    if (this.input.config.tmdb) {
+      await this.resolveFromBackend();
+    } else if (this.input.config.src) {
+      await this.load(String(this.input.config.src));
+    }
   }
   getAudioTracks(): AudioTrack[] {
     return this.audioTracks;
@@ -420,9 +464,9 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Dynamically re-ranks `this.sources` so whichever server is fastest for the
-   * currently selected language (explicitly including Multi-Audio servers alongside
-   * direct language servers) sits at #1 on top of the hierarchy.
+   * Dynamically re-ranks sources for the selected language. Compatible
+   * multi-audio sources are a strict tier above direct single-language sources;
+   * measured speed and quality rank candidates within each tier.
    */
   reorderSourcesHierarchy(preferredLang?: string | null): void {
     if (this.sources.length <= 1) return;
@@ -433,6 +477,7 @@ export class ElfuraPlayer {
     const tierFor = (s: SourceOption): number => {
       if (this.isCandidateFailed(s)) return 9;
       if (lang && lang !== 'und') {
+        if (this.currentSource?.id === s.id && this.desiredAudioLang === lang) return -1;
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
@@ -440,7 +485,7 @@ export class ElfuraPlayer {
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         // Keep Multi-Audio streams whose internal tracks haven't been ruled out right in Tier 0
         // so fast Multi-Audio servers rank by true speed alongside direct language servers!
-        if (hasConfirmedMatch || (s.multiAudio && !s.availableAudioLangs?.length)) return 0;
+        if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
       if (s.multiAudio) return 0;
@@ -452,6 +497,10 @@ export class ElfuraPlayer {
     this.sources.sort((a, b) => {
       const tDiff = tierFor(a) - tierFor(b);
       if (tDiff !== 0) return tDiff;
+      const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
+      if (multiDiff !== 0) return multiDiff;
+      const qDiff = this.qualityTier(a) - this.qualityTier(b);
+      if (qDiff !== 0) return qDiff;
       const sDiff = this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b);
       if (Math.abs(sDiff) > 4) return sDiff;
       return this.qualityRank(b) - this.qualityRank(a);
@@ -471,12 +520,28 @@ export class ElfuraPlayer {
     if (opt.fingerprint) this.failedFingerprints.add(opt.fingerprint);
   }
 
+  /**
+   * Playback responses intentionally use root-relative `/api/v1/stream` tickets.
+   * When an SDK consumer resolves through an absolute cross-origin `api` URL,
+   * those tickets belong to that API origin, not to the site hosting the player.
+   */
+  private resolveBackendMediaUrl(rawUrl: string): string {
+    if (!/^\/(?!\/)/.test(rawUrl.trim())) return rawUrl;
+    try {
+      const apiUrl = new URL(this.input.config.api || '/api/v1/playback', window.location.href);
+      return new URL(rawUrl, apiUrl).toString();
+    } catch {
+      return rawUrl;
+    }
+  }
+
   private canPreProbeViaFetch(opt: SourceOption): boolean {
     if (typeof fetch !== 'function') return false;
     try {
       const base = new URL(window.location.href);
       const target = new URL(opt.url, base);
-      return (target.protocol === 'http:' || target.protocol === 'https:') && target.origin === base.origin;
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') return false;
+      return target.origin === base.origin || this.isBackendOwnedUrl(target.toString());
     } catch {
       return false;
     }
@@ -535,6 +600,15 @@ export class ElfuraPlayer {
     return true;
   }
 
+  /** 0 = multi-quality ABR ladder, 1 = known single quality, 2 = unknown quality. */
+  private qualityTier(opt: SourceOption): number {
+    // A declared ladder's real height count wins over any options counter.
+    const n = opt.qualityLadder?.length ?? opt.qualityOptions ?? 0;
+    if (n > 1) return 0;
+    if (n === 1 || (opt.quality && opt.quality !== 'auto')) return 1;
+    return 2;
+  }
+
   private qualityRank(opt: SourceOption): number {
     const q = (opt.quality || '').toLowerCase();
     let res = 720;
@@ -545,7 +619,8 @@ export class ElfuraPlayer {
     else if (q.includes('480')) res = 480;
     else if (q.includes('360')) res = 360;
     else if (q === 'auto') res = 960;
-    return res + (opt.multiAudio ? 250 : 0);
+    // A real multi-quality ladder outranks any fixed rendition at the same tier.
+    return res + (opt.multiAudio ? 250 : 0) + (this.qualityTier(opt) === 0 ? 180 : 0);
   }
 
   /**
@@ -558,7 +633,8 @@ export class ElfuraPlayer {
     opt: SourceOption,
     targetLang: string | null,
     signal: AbortSignal,
-  ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number }> {
+    timeoutMs = 3200,
+  ): Promise<{ ok: boolean; loadFailed: boolean; rttMs: number; languageRejected?: boolean }> {
     const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
 
@@ -570,7 +646,7 @@ export class ElfuraPlayer {
     const isBackendTicket = resolvedUrl.includes('/api/v1/stream');
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-        ? AbortSignal.any([signal, AbortSignal.timeout(3200)])
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
         : signal;
 
     try {
@@ -594,7 +670,7 @@ export class ElfuraPlayer {
             matchScore(targetLang, opt.audioLang ?? 'und') >= 0 ||
             (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0) ||
             !!opt.multiAudio;
-          if (!matches) return { ok: false, loadFailed: false, rttMs: rtt };
+          if (!matches) return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
         }
         return { ok: true, loadFailed: false, rttMs: rtt };
       }
@@ -671,11 +747,12 @@ export class ElfuraPlayer {
               }
             }
             if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
-              return { ok: false, loadFailed: false, rttMs: rtt };
+              return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
-          } else if (opt.multiAudio && !opt.availableAudioLangs?.length && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
-            return { ok: false, loadFailed: false, rttMs: rtt };
           }
+          // No EXT-X-MEDIA language/name is inconclusive, not an explicit
+          // rejection. Keep this candidate eligible for the real HLS/DASH
+          // engine probe, which can discover tracks after parsing the manifest.
         }
       }
 
@@ -721,24 +798,28 @@ export class ElfuraPlayer {
 
       return { ok: true, loadFailed: false, rttMs: nowMs() };
     } catch {
-      if (signal.aborted) return { ok: false, loadFailed: false, rttMs: nowMs() };
+      // A ranking timeout is not proof that a backend-verified source is dead.
+      // Keep slow/mobile candidates eligible for startup fallback and language failover.
+      if (signal.aborted || timeoutSig.aborted) return { ok: false, loadFailed: false, rttMs: nowMs() };
       return { ok: false, loadFailed: true, rttMs: nowMs() };
     }
   }
 
   /**
-   * Concurrently races a batch of candidate servers (both Multi-Audio and Direct!)
-   * and settles immediately when a fast HD / Multi-Audio server answers (with only
-   * a 25ms tie-breaker if an SD stream finishes just ahead of an HD stream).
+   * Concurrently races candidates. Multi-audio responses win their class first;
+   * direct streams cannot abort an unanswered multi-audio probe merely by being
+   * faster. Quality receives only a short 25ms tie-break inside each class.
    */
   private async raceCandidatesBatch(
     batch: SourceOption[],
     targetLang: string | null,
-  ): Promise<{ winner: SourceOption | null; winners: SourceOption[]; failed: SourceOption[] }> {
-    if (batch.length === 0) return { winner: null, winners: [], failed: [] };
+    probeTimeoutMs = 3200,
+  ): Promise<{ winner: SourceOption | null; winners: SourceOption[]; failed: SourceOption[]; rejected: SourceOption[] }> {
+    if (batch.length === 0) return { winner: null, winners: [], failed: [], rejected: [] };
 
     const controllers = batch.map(() => new AbortController());
     const failed: SourceOption[] = [];
+    const rejected: SourceOption[] = [];
     const successes: { opt: SourceOption; rttMs: number; rank: number }[] = [];
     let pending = batch.length;
     let settled = false;
@@ -748,7 +829,9 @@ export class ElfuraPlayer {
       const rankSuccesses = (): SourceOption[] => {
         if (!successes.length) return [];
         successes.sort((a, b) => {
-          // Whichever server responded genuinely faster wins; break near-ties (<=30ms) by quality/Multi-Audio
+          // Multi-audio is a strict product priority; speed ranks candidates within each class.
+          const multiDiff = Number(Boolean(b.opt.multiAudio)) - Number(Boolean(a.opt.multiAudio));
+          if (multiDiff !== 0) return multiDiff;
           const rttGap = a.rttMs - b.rttMs;
           if (Math.abs(rttGap) > 30) return rttGap;
           return b.rank - a.rank || rttGap;
@@ -768,12 +851,12 @@ export class ElfuraPlayer {
           }
         }
         const winners = rankSuccesses();
-        resolve({ winner: winners[0] ?? null, winners, failed });
+        resolve({ winner: winners[0] ?? null, winners, failed, rejected });
       };
 
       batch.forEach((opt, idx) => {
         const optRank = this.qualityRank(opt);
-        void this.probeCandidateViaFetch(opt, targetLang, controllers[idx].signal).then((res) => {
+        void this.probeCandidateViaFetch(opt, targetLang, controllers[idx].signal, probeTimeoutMs).then((res) => {
           pending--;
           if (settled) return;
 
@@ -782,6 +865,17 @@ export class ElfuraPlayer {
             // If this winner is already >= 960 rank (1080p / Auto / Multi-Audio), settle in 0ms!
             // Only wait 25ms if a low-res (<720p) stream beat a still-in-flight HD/Multi-Audio stream.
             const isFastHdOrMulti = optRank >= 960;
+            const hasMultiInFlight =
+              !opt.multiAudio &&
+              batch.some(
+                (other, j) =>
+                  j !== idx &&
+                  other.multiAudio &&
+                  !controllers[j].signal.aborted &&
+                  !failed.includes(other) &&
+                  !rejected.includes(other) &&
+                  !successes.some((s) => s.opt.id === other.id),
+              );
             const hasHigherInFlight =
               !isFastHdOrMulti &&
               batch.some(
@@ -792,15 +886,18 @@ export class ElfuraPlayer {
                   !failed.includes(other) &&
                   !successes.some((s) => s.opt.id === other.id),
               );
-            if (!hasHigherInFlight || pending === 0) {
+            // Never let a single-language result abort a compatible multi-audio
+            // probe merely because the single-language manifest answered first.
+            if (pending === 0 || (!hasMultiInFlight && !hasHigherInFlight)) {
               finish();
               return;
             }
-            if (!graceTimer) {
+            if (!hasMultiInFlight && !graceTimer) {
               graceTimer = setTimeout(() => finish(), 25);
             }
           } else {
             if (res.loadFailed) failed.push(opt);
+            else if (res.languageRejected) rejected.push(opt);
             if (pending === 0) {
               finish();
             }
@@ -810,56 +907,15 @@ export class ElfuraPlayer {
     });
   }
 
-  private async selectFastestInitialSource(
-    allSources: SourceOption[],
-    fallbackPrimary: SourceOption,
-  ): Promise<SourceOption> {
-    const preferredPool = allSources.filter((s) => {
-      if (this.isCandidateFailed(s) || !this.canPreProbeViaFetch(s)) return false;
-      if (s.multiAudio) return true;
-      const lang = canonLang(s.audioLang);
-      return lang === 'und' || lang === 'en';
-    });
-    const pool = preferredPool.length > 0
-      ? preferredPool
-      : allSources.filter((s) => !this.isCandidateFailed(s) && this.canPreProbeViaFetch(s));
-
-    if (pool.length <= 1) {
-      return pool[0] ?? fallbackPrimary;
-    }
-
-    const sortedPool = [...pool].sort(
-      (a, b) =>
-        this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
-        this.qualityRank(b) - this.qualityRank(a),
-    );
-
-    const seenFingerprints = new Set<string>();
-    const wave: SourceOption[] = [];
-    for (const s of sortedPool) {
-      const fp = s.fingerprint || s.id;
-      if (seenFingerprints.has(fp)) continue;
-      seenFingerprints.add(fp);
-      wave.push(s);
-      if (wave.length >= 6) break;
-    }
-
-    if (wave.length <= 1) return wave[0] ?? fallbackPrimary;
-
-    const { winner, failed } = await this.raceCandidatesBatch(wave, null);
-    for (const f of failed) this.markCandidateFailed(f);
-    if (winner) {
-      this.reorderSourcesHierarchy(null);
-      return winner;
-    }
-
-    const nextAlive = allSources.find((s) => !this.isCandidateFailed(s));
-    return nextAlive ?? fallbackPrimary;
-  }
-
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
+    this.resolveAbort?.abort();
+    const controller = new AbortController();
+    this.resolveAbort = controller;
+    const generation = ++this.resolveGeneration;
+    const fetchForRecovery = globalThis.fetch.bind(globalThis);
+    const isCurrent = () => !this.destroyed && this.resolveGeneration === generation && !controller.signal.aborted;
 
     this.shell.dataset.buffering = 'true';
     this.emit('buffering', {});
@@ -879,9 +935,11 @@ export class ElfuraPlayer {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: cfg.mediaType || 'movie', tmdb: String(cfg.tmdb) }),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3500)]),
           });
           if (sessRes.ok) {
             const sessJson = (await sessRes.json()) as { pltoken?: string; nonce?: string };
+            if (!isCurrent()) return;
             if (sessJson.pltoken) cfg.pltoken = sessJson.pltoken;
             if (sessJson.nonce) cfg.nonce = sessJson.nonce;
           }
@@ -890,6 +948,7 @@ export class ElfuraPlayer {
         }
       }
 
+      if (!isCurrent()) return;
       const storedLang = !cfg.lang ? loadPreferredAudio() : null;
       const bootLang = cfg.lang ? String(cfg.lang) : storedLang;
 
@@ -912,11 +971,12 @@ export class ElfuraPlayer {
         headers['X-Elfura-Envelope'] = '1';
       }
 
-      const res = await fetch(apiUrl.toString(), { headers });
-      if (this.destroyed) return;
+      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+      if (!isCurrent()) return;
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
         const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!isCurrent()) return;
         this.emit('error', {
           code: `resolve-${res.status}`,
           message: errBody.error || `Playback resolution returned ${res.status}`,
@@ -934,7 +994,7 @@ export class ElfuraPlayer {
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
-      if (this.destroyed) return;
+      if (!isCurrent()) return;
 
       const data: PlaybackPayloadShape =
         rawJson?.s === 1 && typeof rawJson.p === 'string' && cfg.pltoken && cfg.nonce
@@ -944,7 +1004,7 @@ export class ElfuraPlayer {
               String(cfg.nonce),
             )
           : rawJson;
-      if (this.destroyed) return;
+      if (!isCurrent()) return;
 
       if (!data?.ok || !data.sources?.length) {
         this.shell.dataset.buffering = 'false';
@@ -974,11 +1034,25 @@ export class ElfuraPlayer {
         this.emit('segments:invalidate', {});
       }
 
-      this.sources = data.sources;
+      const resolveSource = (opt: SourceOption): SourceOption => ({
+        ...opt,
+        url: this.resolveBackendMediaUrl(opt.url),
+        audioTracks: opt.audioTracks?.map((track) => ({
+          ...track,
+          url: this.resolveBackendMediaUrl(track.url),
+        })),
+        subtitles: opt.subtitles?.map((track) => ({
+          ...track,
+          url: this.resolveBackendMediaUrl(track.url),
+        })),
+      });
+      if (data.primary) data.primary = resolveSource(data.primary);
+      this.sources = data.sources.map(resolveSource);
       this.failedSourceIds.clear();
       this.failedFingerprints.clear();
       this.measuredRttByFp.clear();
       this.initialAudioApplied = false;
+      this.exhaustedRecoveryAttempted = false;
       if (this.mediaInfo) this.emit('media', this.mediaInfo);
       this.emit('config', redacted(cfg as unknown as Record<string, unknown>));
 
@@ -1004,20 +1078,114 @@ export class ElfuraPlayer {
           : null;
       this.reorderSourcesHierarchy(effectiveBootLang);
 
-      if (cfg.lang) {
+      // A slow provider can miss the initial bounded backend race. Fetch its
+      // source group once in the background so playback need not wait, then
+      // add newly verified choices without restarting the active stream.
+      const lateGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'].filter((id) =>
+        (!cfg.source || cfg.source === id) &&
+        !this.sources.some((s) => s.sourceId === id && s.multiAudio),
+      );
+      for (const recoveryId of lateGroups) {
+        const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+        const recoveryUrl = new URL(apiUrl);
+        recoveryUrl.searchParams.set('source', recoveryId);
+        void (async () => {
+          try {
+            // Avoid competing with the initial manifest/segments on mobile.
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            if (!isCurrent()) return;
+            // The first group result may precede a slower lane. Retry once
+            // after it has had time to warm the shared adapter cache.
+            for (let attempt = 0; attempt < 2; attempt++) {
+            if (attempt) await new Promise((resolve) => setTimeout(resolve, 1400));
+            const response = await fetchForRecovery(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) continue;
+            const raw = (await response.json()) as PlaybackPayloadShape;
+            const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+              ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
+              : raw;
+            if (!isCurrent() || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
+            const fingerprints = new Set(this.sources.map((s) => s.fingerprint).filter(Boolean));
+            const ids = new Set(this.sources.map((s) => s.id));
+            let added = false;
+            for (const candidate of recovered.sources ?? []) {
+              if (candidate.sourceId !== recoveryId) continue;
+              if (candidate.fingerprint && fingerprints.has(candidate.fingerprint)) {
+                // A timed-out first probe may have returned this exact stream
+                // as an unknown single fallback. Upgrade it in place once the
+                // independently checked manifest is available.
+                const existing = this.sources.find(s => s.fingerprint === candidate.fingerprint);
+                if (existing && candidate.multiAudio && !existing.multiAudio) {
+                  existing.multiAudio = true;
+                  existing.availableAudioLangs = candidate.availableAudioLangs;
+                  existing.audioLang = undefined;
+                  existing.label = candidate.label;
+                  added = true;
+                }
+                continue;
+              }
+              const option = resolveSource(candidate);
+              if (ids.has(option.id)) {
+                let n = 1;
+                while (ids.has(`${option.id}:late-${n}`)) n++;
+                option.id = `${option.id}:late-${n}`;
+              }
+              ids.add(option.id);
+              if (option.fingerprint) fingerprints.add(option.fingerprint);
+              this.sources.push(option);
+              added = true;
+            }
+            if (added) {
+              const native = this.audioTracks.filter((t) => t.kind === 'native' && typeof t.ref === 'number')
+                .map((t) => ({ id: t.ref as number, lang: t.lang, label: t.label, default: t.default }));
+              this.mergeNativeAudio(native);
+              this.emit('sourcesUpdated', this.sources);
+              // If the user explicitly requested a language while the group
+              // was unavailable, retry it only when the newly visible list
+              // actually reports that language. Never relabel current audio.
+              const wanted = this.desiredAudioLang;
+              // A discovered source-level language is not proof the current
+              // engine is actually playing it; only native tracks or a known
+              // single-dub current source can satisfy the preference.
+              const currentLanguageMatches = !!wanted && (
+                (this.currentAudio?.kind === 'native' && matchScore(wanted, this.currentAudio.lang) >= 0) ||
+                (!!this.currentSource && !this.currentSource.multiAudio &&
+                  matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
+              if (wanted && wanted !== 'und' && !currentLanguageMatches &&
+                  this.sources.some((s) => s.sourceId === recoveryId &&
+                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
+                void this.setAudio(wanted);
+              }
+            }
+            if ((recovered.sources ?? []).some((s) => s.sourceId === recoveryId && s.multiAudio)) break;
+            }
+          } catch {
+            // Recovery is optional; current playback must keep going.
+          }
+        })();
+      }
+
+      if (effectiveBootLang) {
+        // Start a known matching source immediately instead of exhaustively
+        // probing every audio candidate before anything can play. Native HLS
+        // and DASH select the desired rendition when their tracks arrive.
         this.initialAudioApplied = true;
-        await this.setAudio(String(cfg.lang));
-      } else if (storedLang && storedMatchesAny) {
-        this.initialAudioApplied = true;
-        await this.setAudio(storedLang);
+        this.desiredAudioLang = canonLang(effectiveBootLang);
+        const matches = (s: SourceOption) =>
+          (s.audioLang && matchScore(effectiveBootLang, s.audioLang) >= 0) ||
+          (s.availableAudioLangs ?? []).some((lang) => matchScore(effectiveBootLang, lang) >= 0) ||
+          (s.audioTracks ?? []).some((track) => matchScore(effectiveBootLang, track.lang) >= 0);
+        const initial = this.sources.find(matches) ?? data.primary ?? this.sources[0];
+        await this.activateSourceOption(initial, false);
       } else {
-        const fallbackPrimary = data.primary ?? this.sources[0];
-        const fastest = await this.selectFastestInitialSource(this.sources, fallbackPrimary);
-        if (this.destroyed) return;
-        await this.activateSourceOption(fastest, false);
+        // The backend already ranked and checked the candidates. Attach its
+        // primary immediately rather than spending a second network race
+        // before hls.js gets the stream at all.
+        if (!isCurrent()) return;
+        await this.activateSourceOption(data.primary ?? this.sources[0], false);
       }
     } catch (err) {
-      if (!this.destroyed) {
+      if (isCurrent()) {
         this.shell.dataset.buffering = 'false';
         this.emit('error', { code: 'resolve-failed', message: String(err) });
       }
@@ -1075,6 +1243,7 @@ export class ElfuraPlayer {
           : sniff(url)
         : (mappedKind as EngineKind);
 
+    const loadSeq = ++this.engineLoadSeq;
     this.teardownEngine();
     this.engineKind = engine;
     this.fatalCount = 0;
@@ -1085,8 +1254,12 @@ export class ElfuraPlayer {
     }
     if ((this.input.config.subsrc?.length ?? 0) > 0) this.mergeExternalSubs();
 
-    if (engine === 'hls') void this.loadHls(url);
-    else if (engine === 'dash') void this.loadDash(url);
+    this.armStartupWatchdog(this.currentSource?.id);
+    const onEngineError = () => {
+      if (!this.destroyed && loadSeq === this.engineLoadSeq) this.handleFatal('engine-load', url, true);
+    };
+    if (engine === 'hls') void this.loadHls(url, loadSeq).catch(onEngineError);
+    else if (engine === 'dash') void this.loadDash(url, loadSeq).catch(onEngineError);
     else this.loadNative(url);
 
     this.applyInitialPrefs();
@@ -1132,9 +1305,14 @@ export class ElfuraPlayer {
     this.desiredAudioLang = targetLang;
 
     const currentHealthy = !!this.currentSource && !this.isCandidateFailed(this.currentSource);
+    const mustPrioritizeMulti =
+      targetLang !== 'und' &&
+      !this.currentSource?.multiAudio &&
+      this.sources.some((s) => s.multiAudio && !this.isCandidateFailed(s));
 
-    // 1) Try instant in-band native track on the currently active healthy stream
-    if (currentHealthy || (!this.sources.length && this.audioTracks.length > 0)) {
+    // A direct stream must not short-circuit the search when multi-audio is available.
+    // Otherwise selecting the same direct language would permanently pin the lower-priority source.
+    if (!mustPrioritizeMulti && (currentHealthy || (!this.sources.length && this.audioTracks.length > 0))) {
       const nativeMatch =
         exactTrack?.kind === 'native'
           ? exactTrack
@@ -1245,17 +1423,18 @@ export class ElfuraPlayer {
       if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
       if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
       if ((s.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0)) return true;
-      // Include Multi-Audio streams whose internal tracks haven't been inspected yet RIGHT IN
-      // the primary speed race (never bury fast Multi-Audio Hindi behind slow direct Hindi dubs!).
-      if (s.multiAudio && !s.availableAudioLangs?.length) return true;
+      // Provider language summaries can be incomplete. Every multi-audio source
+      // remains eligible until its real manifest/engine rejects the target language.
+      if (s.multiAudio) return true;
       return false;
     };
 
-    // Unify Multi-Audio Hindi + Untagged Multi-Audio + Direct Hindi into ONE dynamic speed-ranked pool!
+    // Multi-audio candidates always precede direct single-language streams.
     const candidates = this.sources
       .filter((s) => !this.isCandidateFailed(s) && !excludeIds.has(s.id) && matchesOrCanCarryLang(s))
       .sort(
         (a, b) =>
+          Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
           this.qualityRank(b) - this.qualityRank(a),
       );
@@ -1289,8 +1468,14 @@ export class ElfuraPlayer {
         void this.play();
       }
 
+      const realTrack = this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0);
+      // Never announce a language the engine did not actually expose: when
+      // the current engine enumerated native tracks and none matches, a
+      // multi-audio candidate did not switch, whatever its metadata claims.
+      const nativeTracks = this.audioTracks.filter((t) => t.kind === 'native');
+      if (!realTrack && cand.multiAudio && nativeTracks.length > 0) return false;
       const matchedTrack =
-        this.audioTracks.find((t) => matchScore(targetLang, t.lang) >= 0) ?? {
+        realTrack ?? {
           id: `source:${targetLang}`,
           kind: 'source' as const,
           lang: targetLang,
@@ -1339,10 +1524,14 @@ export class ElfuraPlayer {
       }
       if (!wave.length) continue;
 
-      const { winners, failed } = await this.raceCandidatesBatch(wave, targetLang);
+      const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
       if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
       for (const f of failed) this.markCandidateFailed(f);
+      for (const r of rejected) {
+        triedEngineIds.add(r.id);
+        if (r.fingerprint) rejectedFingerprints.add(r.fingerprint);
+      }
 
       if (winners.length > 0) {
         for (const w of winners) {
@@ -1355,23 +1544,16 @@ export class ElfuraPlayer {
           const attachRes = await this.probeRawCandidateForLanguage(w, targetLang, seq);
           if (this.destroyed || this.audioSearchSeq !== seq) return false;
           if (attachRes.ok) {
-            return finalizeChosenCandidate(w);
+            if (finalizeChosenCandidate(w)) return true;
+            if (fp) rejectedFingerprints.add(fp);
+            continue;
           }
           if (attachRes.loadFailed) this.markCandidateFailed(w);
           if (fp) rejectedFingerprints.add(fp);
         }
-        // Mark any remaining wave entries that answered negatively as language-rejected
-        for (const w of wave) {
-          if (!winners.some((okW) => okW.id === w.id)) {
-            if (w.fingerprint) rejectedFingerprints.add(w.fingerprint);
-            triedEngineIds.add(w.id);
-          }
-        }
-      } else {
-        for (const w of wave) {
-          if (w.fingerprint) rejectedFingerprints.add(w.fingerprint);
-          triedEngineIds.add(w.id);
-        }
+        // Do NOT reject the other wave entries here. raceCandidatesBatch may
+        // have aborted them before their manifests answered. Phase B below must
+        // still give every untried candidate a real engine-level opportunity.
       }
     }
 
@@ -1385,7 +1567,9 @@ export class ElfuraPlayer {
       if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
       if (probeResult.ok) {
-        return finalizeChosenCandidate(cand);
+        if (finalizeChosenCandidate(cand)) return true;
+        if (cand.fingerprint) rejectedFingerprints.add(cand.fingerprint);
+        continue;
       }
 
       if (probeResult.loadFailed) {
@@ -1405,10 +1589,14 @@ export class ElfuraPlayer {
     // Restore playable video so the player does not remain on a dead/unloaded screen
     const fallbackOpt =
       prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
+    if (!fallbackOpt) {
+      this.recoverExhaustedSources();
+    }
+
     if (fallbackOpt && (this.currentSource?.id !== fallbackOpt.id || (this.currentSource && this.isCandidateFailed(this.currentSource)))) {
       await this.activateSourceOption(fallbackOpt, savedTime > 0.5);
       if (savedTime > 0.5 && wasPlaying) void this.play();
-    } else {
+    } else if (fallbackOpt) {
       this.shell.dataset.buffering = 'false';
     }
 
@@ -1496,7 +1684,7 @@ export class ElfuraPlayer {
     if (want === 'auto' || want === '-1') {
       this.qualityMode = 'auto';
       if (this.hls) this.hls.currentLevel = -1;
-      else if (this.dash) (this.dash as unknown as DashExtras).setQualityFor('video', -1);
+      else if (this.dash) this.dash.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: true } } } });
       this.emit('qualityChange', { mode: 'auto', effectiveHeight: this.effectiveHeight });
       return;
     }
@@ -1507,10 +1695,15 @@ export class ElfuraPlayer {
       [...this.qualityLevels].sort((a, b) => Math.abs(a.height - height) - Math.abs(b.height - height))[0];
     if (!level) return;
     if (this.hls) this.hls.currentLevel = level.id;
-    else if (this.dash) (this.dash as unknown as DashExtras).setQualityFor('video', level.id);
+    else if (this.dash) {
+      this.dash.updateSettings({ streaming: { abr: { autoSwitchBitrate: { video: false } } } });
+      // Replace buffered video as well; otherwise a short title may finish
+      // before a manually selected representation is ever rendered.
+      this.dash.setRepresentationForTypeByIndex('video', level.id, true);
+    }
     this.qualityMode = String(level.height);
-    this.effectiveHeight = level.height;
-    this.emit('qualityChange', { mode: this.qualityMode, effectiveHeight: level.height });
+    // The rendered height is updated by the engine switch event, not by the click.
+    this.emit('qualityChange', { mode: this.qualityMode, effectiveHeight: this.effectiveHeight });
   }
 
   async togglePip(): Promise<boolean> {
@@ -1953,6 +2146,10 @@ export class ElfuraPlayer {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
+    this.engineLoadSeq++;
     this.teardownEngine();
     this.externalAudio.destroy();
     this.renderer?.destroy();
@@ -1976,21 +2173,27 @@ export class ElfuraPlayer {
     }
   }
 
-  private armStartupWatchdog(expectedSourceId: string | undefined): void {
+  private armStartupWatchdog(expectedSourceId: string | undefined, gaveProgressGrace = false): void {
     this.clearStartupWatchdog();
-    if (!expectedSourceId || this.sources.length < 2 || this.activeProbe) return;
+    if (!expectedSourceId || this.activeProbe) return;
     this.startupWatchdogTimer = setTimeout(() => {
       this.startupWatchdogTimer = null;
       if (
         this.destroyed ||
         this.activeProbe ||
         this.currentSource?.id !== expectedSourceId ||
-        this.video.readyState >= 1
+        this.video.readyState >= 2
       ) {
         return;
       }
+      // A parsed manifest proves the stream made progress; let playlists and
+      // the first media fragment finish rather than aborting a healthy input.
+      if (!gaveProgressGrace && this.hls && this.hls.levels.length > 0) {
+        this.armStartupWatchdog(expectedSourceId, true);
+        return;
+      }
       this.failover();
-    }, 4500);
+    }, 10000);
   }
 
   private teardownEngine(): void {
@@ -2012,11 +2215,54 @@ export class ElfuraPlayer {
     this.effectiveHeight = 0;
   }
 
-  private async loadHls(url: string): Promise<void> {
+  /**
+   * Select from the incoming manifest, never from `this.audioTracks` (which may
+   * still belong to the previously playing source during a language probe).
+   * Returns true only when the requested language is confirmed by the manifest
+   * or by explicit source metadata; an empty manifest alone is not treated as
+   * proof that a language is absent during the earlier fetch-probe phase.
+   */
+  private applyHlsProbeAudioSelection(
+    probe: { targetLang: string; opt: SourceOption },
+    manifestAudioTracks: { id: number; lang?: string; name?: string }[],
+    hls: { audioTrack: number },
+  ): boolean {
+    const hit = manifestAudioTracks.find((track) => {
+      const langCode = canonLang(track.lang);
+      const nameCode = canonLang(track.name);
+      return (
+        (langCode !== 'und' && matchScore(probe.targetLang, langCode) >= 0) ||
+        (nameCode !== 'und' && matchScore(probe.targetLang, nameCode) >= 0)
+      );
+    });
+    if (hit) {
+      hls.audioTrack = hit.id;
+      return true;
+    }
+
+    // Manifest truth beats provider metadata. If the manifest exposes audio
+    // renditions, only their real languages can match (handled by `hit`).
+    // With zero or one untagged rendition, accept ONLY a direct single-dub
+    // claim (candidate's own audioLang): a candidate claiming several
+    // languages whose manifest exposes at most one track cannot actually
+    // switch — accepting it fakes a language change in the UI.
+    const hasSidecarMatch = (probe.opt.audioTracks ?? []).some(
+      (track) => matchScore(probe.targetLang, track.lang) >= 0,
+    );
+    const claimsMulti =
+      !!probe.opt.multiAudio || (probe.opt.availableAudioLangs?.length ?? 0) > 1;
+    if (claimsMulti && !hasSidecarMatch) return false;
+    return (
+      manifestAudioTracks.length <= 1 &&
+      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0)
+    );
+  }
+
+  private async loadHls(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
     const Hls = await getHls();
+    if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
     this.HlsClass = Hls;
-    if (this.destroyed) return;
 
     if (!Hls.isSupported()) {
       if (this.video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -2051,8 +2297,6 @@ export class ElfuraPlayer {
     this.hls = hls;
 
     let startupFragErrors = 0;
-    this.armStartupWatchdog(this.currentSource?.id);
-
     hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
       // Guard against HEVC-only levels on MSE engines without hardware HEVC support
       const hasPlayableCodec =
@@ -2064,13 +2308,20 @@ export class ElfuraPlayer {
         return;
       }
 
-      this.qualityLevels = data.levels
+      this.qualityLevels = (this.currentSource?.qualityLabelsUnreliable ? [] : data.levels)
         .map((l, i) => ({
           id: i,
           height: l.height ?? 0,
           width: l.width ?? 0,
           bitrate: l.bitrate ?? 0,
-          label: l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`,
+          // Height-less levels are labelled by bitrate only when it is
+          // meaningful; a 0-height/0-bitrate level is a single fixed
+          // rendition and must never surface as a "0k" quality option.
+          label: l.height
+            ? `${l.height}p`
+            : (l.bitrate ?? 0) >= 100_000
+              ? `${Math.round((l.bitrate ?? 0) / 1000)}k`
+              : '',
         }))
         .sort((a, b) => b.height - a.height);
       this.emit('qualityLevels', this.qualityLevels);
@@ -2080,15 +2331,7 @@ export class ElfuraPlayer {
       if (probe && this.currentSource?.id === probe.opt.id) {
         queueMicrotask(() => {
           if (this.activeProbe?.seq !== probe.seq || this.hls !== hls) return;
-          const nativeMatch = this.audioTracks.find(
-            (t) => t.kind === 'native' && matchScore(probe.targetLang, t.lang) >= 0,
-          );
-          if (nativeMatch && typeof nativeMatch.ref === 'number') {
-            hls.audioTrack = nativeMatch.ref;
-          } else if (probe.opt.multiAudio || (data.audioTracks?.length ?? 0) > 1) {
-            probe.settle({ ok: false, loadFailed: false });
-            return;
-          } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') < 0) {
+          if (!this.applyHlsProbeAudioSelection(probe, data.audioTracks ?? [], hls)) {
             probe.settle({ ok: false, loadFailed: false });
             return;
           }
@@ -2108,7 +2351,6 @@ export class ElfuraPlayer {
 
     hls.on(Hls.Events.FRAG_LOADED, () => {
       startupFragErrors = 0;
-      this.clearStartupWatchdog();
     });
 
     // The truth behind "Auto": what ABR is really serving right now.
@@ -2152,19 +2394,15 @@ export class ElfuraPlayer {
       this.mergeNativeAudio(mapped);
     });
 
-    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, (_e, data) => {
-      this.subtitleTracks = (data.subtitleTracks ?? []).map((t) => ({
-        id: `native:${t.id}`,
-        kind: 'native' as const,
-        lang: canonLang(t.lang || t.name),
-        label: languageLabel(t.lang ?? 'und', t.name || undefined),
-        url: t.url,
-      }));
+    // Embedded provider subtitles are not exposed; only supplied OpenSubtitles tracks.
+    hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+      hls.subtitleTrack = -1;
+      this.subtitleTracks = [];
       this.mergeExternalSubs();
-      this.emit('subtitleTracks', this.subtitleTracks);
     });
 
     hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (this.hls !== hls || loadSeq !== this.engineLoadSeq) return;
       const details = String(data.details || '');
       const unrecoverableCodec =
         details === 'bufferAddCodecError' || details === 'manifestIncompatibleCodecsError';
@@ -2197,7 +2435,7 @@ export class ElfuraPlayer {
       if (
         !data.fatal &&
         this.video.readyState === 0 &&
-        /^(?:fragLoadError|fragLoadTimeOut|keyLoadError|levelLoadError|audioTrackLoadError)$/i.test(details)
+        /^(?:fragLoadError|fragLoadTimeOut|keyLoadError|keyLoadTimeOut|levelLoadError|levelLoadTimeOut|audioTrackLoadError|audioTrackLoadTimeOut)$/i.test(details)
       ) {
         startupFragErrors++;
         if (startupFragErrors >= 2) {
@@ -2214,10 +2452,20 @@ export class ElfuraPlayer {
     void this.handleAutoplay();
   }
 
-  private async loadDash(url: string): Promise<void> {
+  private updateDashQualityLevels(player: MediaPlayerClass): void {
+    this.qualityLevels = player.getRepresentationsByType('video')
+      .map((rep, index) => ({
+        id: index, height: rep.height || 0, width: rep.width || 0, bitrate: rep.bandwidth || 0,
+        label: rep.height ? `${rep.height}p` : '',
+      }))
+      .sort((a, b) => b.height - a.height);
+    this.emit('qualityLevels', this.qualityLevels);
+  }
+
+  private async loadDash(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
     const Dash = await getDash();
-    if (this.destroyed) return;
+    if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
     const player = Dash().create();
     this.dash = player;
     const extras = player as unknown as DashExtras;
@@ -2236,10 +2484,10 @@ export class ElfuraPlayer {
         true,
       );
     }
-    player.initialize(this.video, this.decorate(url), false);
-
     player.on(Dash.events.STREAM_INITIALIZED, () => {
       const dashAudio = player.getTracksFor('audio');
+      const preferredDashAudio = this.desiredAudioLang && dashAudio.find((t: MediaInfo) => matchScore(this.desiredAudioLang!, t.lang ?? '') >= 0);
+      if (!this.activeProbe && preferredDashAudio) player.setCurrentTrack(preferredDashAudio);
       this.mergeNativeAudio(
         dashAudio.map((t: MediaInfo, i: number) => ({
           id: i,
@@ -2248,27 +2496,12 @@ export class ElfuraPlayer {
           default: i === 0,
         })),
       );
-      this.qualityLevels = extras
-        .getBitrateInfoListFor('video')
-        .map((b) => ({
-          id: b.qualityIndex,
-          height: b.height,
-          width: b.width,
-          bitrate: b.bitrate,
-          label: b.height ? `${b.height}p` : `${Math.round(b.bitrate / 1000)}k`,
-        }))
-        .sort((a, b) => b.height - a.height);
-      this.emit('qualityLevels', this.qualityLevels);
+      this.updateDashQualityLevels(player);
       this.applyQualityCap();
 
-      this.subtitleTracks = player.getTracksFor('text').map((t: MediaInfo, i: number) => ({
-        id: `native:text:${i}`,
-        kind: 'native' as const,
-        lang: canonLang(t.lang),
-        label: languageLabel(t.lang ?? 'und'),
-      }));
+      player.setTextTrack(-1);
+      this.subtitleTracks = [];
       this.mergeExternalSubs();
-      this.emit('subtitleTracks', this.subtitleTracks);
 
       const probe = this.activeProbe;
       if (probe && this.currentSource?.id === probe.opt.id) {
@@ -2286,12 +2519,10 @@ export class ElfuraPlayer {
       }
     });
 
-    player.on(Dash.events.QUALITY_CHANGE_RENDERED, (e: { mediaType?: string; newQuality?: number }) => {
-      if (e.mediaType !== 'video') return;
-      const level = this.qualityLevels.find((l) => l.id === e.newQuality);
-      if (!level) return;
-      this.effectiveHeight = level.height;
-      this.emit('qualityEffective', { height: level.height, label: level.label, mode: this.qualityMode });
+    player.on(Dash.events.QUALITY_CHANGE_RENDERED, (e: { mediaType?: string; newRepresentation?: { height?: number } }) => {
+      if (e.mediaType !== 'video' || !e.newRepresentation?.height) return;
+      this.effectiveHeight = e.newRepresentation.height;
+      this.emit('qualityEffective', { height: this.effectiveHeight, mode: this.qualityMode });
     });
 
     player.on(Dash.events.ERROR, (e: { error?: unknown; message?: string }) => {
@@ -2303,6 +2534,7 @@ export class ElfuraPlayer {
       this.failover();
     });
 
+    player.initialize(this.video, this.decorate(url), false);
     void this.handleAutoplay();
   }
 
@@ -2401,6 +2633,78 @@ export class ElfuraPlayer {
     this.failover();
   }
 
+  /** Re-resolve groups once when startup exhausts the early bounded result.
+   * Slow lanes can have warmed the backend cache after the initial response.
+   * Failed fingerprints are never retried in this recovery pass.
+   */
+  private recoverExhaustedSources(): void {
+    if (this.exhaustedRecoveryInFlight) return;
+    const cfg = this.input.config;
+    const terminal = () => {
+      if (this.destroyed) return;
+      this.shell.dataset.buffering = 'false';
+      this.emit('error', { code: 'all-sources-failed', message: 'All playable sources failed' });
+    };
+    if (this.exhaustedRecoveryAttempted || !cfg.tmdb) { terminal(); return; }
+    this.exhaustedRecoveryAttempted = true;
+    this.exhaustedRecoveryInFlight = true;
+    const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+    const recoveryLoadSeq = this.engineLoadSeq;
+    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+    if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';
+    void (async () => {
+      let activated = false;
+      await Promise.all(groups.map(async group => {
+        try {
+          const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
+          url.searchParams.set('type', cfg.mediaType || 'movie');
+          url.searchParams.set('tmdb', String(cfg.tmdb));
+          if (cfg.mediaType === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
+          url.searchParams.set('source', group);
+          if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
+          if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+          const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10000) });
+          if (!res.ok) return [];
+          const raw = await res.json() as { s?: number; p?: string; sources?: SourceOption[] };
+          const data = raw.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+            ? await openSealedEnvelope<{ sources?: SourceOption[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce)) : raw;
+          const candidates = (data.sources ?? []).filter(c => c.sourceId === group);
+          if (activated || this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+
+      const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
+      const ids = new Set(this.sources.map(s => s.id));
+      const recovered: SourceOption[] = [];
+      for (const candidate of candidates) {
+        if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
+        let id = candidate.id, n = 0;
+        while (ids.has(id) || this.failedSourceIds.has(id)) id = `${candidate.id}:recovery-${++n}`;
+        const option: SourceOption = { ...candidate, id, url: this.resolveBackendMediaUrl(candidate.url),
+          audioTracks: candidate.audioTracks?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})),
+          subtitles: candidate.subtitles?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})) };
+        ids.add(id);
+        if (option.fingerprint) fingerprints.add(option.fingerprint);
+        this.sources.push(option); recovered.push(option);
+      }
+      if (recovered.length) {
+        this.reorderSourcesHierarchy(this.desiredAudioLang);
+        this.emit('sourcesUpdated', this.sources);
+      }
+      const next = this.sources.find(s => !this.isCandidateFailed(s));
+      if (!next) return;
+      activated = true;
+      this.exhaustedRecoveryInFlight = false;
+      void this.activateSourceOption(next, true);
+        } catch { /* another provider may still succeed */ }
+      }));
+      if (!activated && !this.destroyed && recoveryLoadSeq === this.engineLoadSeq && snapshot === `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) {
+        this.exhaustedRecoveryInFlight = false;
+        terminal();
+      }
+    })();
+  }
+
   /**
    * Walk `sources` on fatal error. If an audio language is actively selected,
    * first try all remaining raw sources of that selected language before
@@ -2420,9 +2724,16 @@ export class ElfuraPlayer {
       const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
         (s) => !this.isCandidateFailed(s),
       );
-      ordered.sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
+      // After a failure, prefer a different provider group over another
+      // rendition from the same failing upstream; latency breaks ties.
+      ordered.sort((a, b) =>
+        Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId) ||
+        (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
-      if (!next) return;
+      if (!next) {
+        this.recoverExhaustedSources();
+        return;
+      }
       this.emit('server:switch', {
         from: this.currentSource?.label ?? null,
         to: next.label,
@@ -2432,9 +2743,19 @@ export class ElfuraPlayer {
       return;
     }
 
+    if (this.sources.length === 1) {
+      this.markCandidateFailed(this.sources[0]);
+      this.recoverExhaustedSources();
+      return;
+    }
+
     const cfg = this.input.config;
     const servers = cfg.servers ?? [];
-    if (servers.length < 2) return;
+    if (servers.length < 2) {
+      this.shell.dataset.buffering = 'false';
+      this.emit('error', { code: 'all-sources-failed', message: 'All playable servers failed' });
+      return;
+    }
     const currentIdx = servers.findIndex((s) => s.url === cfg.src);
     const next = servers[currentIdx + 1];
     if (!next) return;
@@ -2507,7 +2828,7 @@ export class ElfuraPlayer {
             : null;
       const preferred =
         (targetMatchLang
-          ? this.audioTracks.find((t) => matchScore(targetMatchLang, t.lang) >= 0)
+          ? this.audioTracks.find((t) => t.kind === 'native' && matchScore(targetMatchLang, t.lang) >= 0)
           : null) ??
         (!this.currentAudio ? this.audioTracks.find((t) => t.default) ?? this.audioTracks[0] : null);
       if (preferred) this.currentAudio = preferred;
@@ -2525,12 +2846,21 @@ export class ElfuraPlayer {
       label: languageLabel(x.lang, x.label),
       url: x.url,
     }));
-    const merged = [...this.subtitleTracks];
-    for (const e of external) {
-      const dup = merged.some(
-        (t) => (e.url && t.url === e.url) || (t.kind === 'native' && t.lang === e.lang && t.label === e.label),
-      );
-      if (!dup) merged.push(e);
+    const merged: SubtitleTrack[] = [];
+    const seen = new Map<string, SubtitleTrack>();
+    for (const track of [...this.subtitleTracks, ...external]) {
+      // Same URL is always redundant; otherwise collapse only identical language + label
+      // so meaningful variants such as English (Forced) and English (SDH) survive.
+      const key = track.url
+        ? `url:${track.url}`
+        : `track:${track.lang}:${track.label.trim().toLowerCase()}`;
+      const duplicate = seen.get(key);
+      if (duplicate) {
+        if (this.currentSubtitle?.id === track.id) this.currentSubtitle = duplicate;
+        continue;
+      }
+      seen.set(key, track);
+      merged.push(track);
     }
     this.subtitleTracks = merged;
     this.emit('subtitleTracks', this.subtitleTracks);
@@ -2629,6 +2959,34 @@ export class ElfuraPlayer {
     this.bus.emit(name, data);
   }
 
+  /** Enrich already-playing TV episodes without delaying source selection. */
+  private async fetchBackgroundSkipMarkers(): Promise<void> {
+    const cfg = this.input.config;
+    const duration = this.video.duration;
+    const tmdb = String(cfg.tmdb || this.mediaInfo?.tmdbId || '');
+    const season = Number(cfg.season || 1), episode = Number(cfg.episode || 1);
+    if (cfg.mediaType !== 'tv' || !/^\d+$/.test(tmdb) || !Number.isFinite(duration) || duration < 60 || duration > 21600 || (cfg.intro && cfg.outro)) return;
+    const key = `${tmdb}:${season}:${episode}:${Math.round(duration)}`;
+    if (this.skipLookupKey === key) return;
+    this.skipLookupKey = key;
+    try {
+      const url = new URL('/api/v1/segments', new URL(cfg.api || '/api/v1/playback', window.location.href));
+      url.searchParams.set('tmdb', tmdb); url.searchParams.set('s', String(season));
+      url.searchParams.set('e', String(episode)); url.searchParams.set('duration', String(duration));
+      if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+      const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(4500) });
+      if (!res.ok) return;
+      const data = await res.json() as { segments?: { intro?: [number, number]; outro?: [number, number] } };
+      if (this.destroyed || this.skipLookupKey !== key || Number(cfg.season || 1) !== season || Number(cfg.episode || 1) !== episode || String(cfg.tmdb || this.mediaInfo?.tmdbId || '') !== tmdb || Math.abs(this.video.duration - duration) > 1) return;
+      const toRange = (range?: [number, number]) => Array.isArray(range) && range.length === 2 && range.every(Number.isFinite) && range[0] >= 0 && range[1] > range[0] && range[1] <= duration ? [{ lang: String(range[0]), url: String(range[1]) }] : undefined;
+      if (!cfg.intro) cfg.intro = toRange(data.segments?.intro);
+      if (!cfg.outro) cfg.outro = toRange(data.segments?.outro);
+      this.emit('segments:invalidate', {});
+    } catch { /* optional enrichment must not affect playback */ }
+  }
+
   private bindMediaEvents(): void {
     const v = this.video;
     v.addEventListener('play', () => this.emit('play', {}));
@@ -2638,11 +2996,12 @@ export class ElfuraPlayer {
       if (this.input.config.autoplayNextEp || this.input.config.next) this.emit('episode:next', {});
     });
     v.addEventListener('waiting', () => this.emit('buffering', {}));
-    v.addEventListener('loadedmetadata', () => this.clearStartupWatchdog());
+    v.addEventListener('loadeddata', () => this.clearStartupWatchdog());
     v.addEventListener('playing', () => {
       this.clearStartupWatchdog();
       this.emit('buffered', {});
     });
+    v.addEventListener('loadedmetadata', () => { void this.fetchBackgroundSkipMarkers(); });
     v.addEventListener('durationchange', () => {
       this.emit('durationchange', { duration: v.duration });
       this.emit('segments:invalidate', {});

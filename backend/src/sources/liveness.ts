@@ -11,7 +11,11 @@
  *      (zero local disk writes, strictly adhering to `RULES.md`).
  */
 
-import { extractManifestAudioLangs, seedManifestRamCache } from '../relay.js';
+import {
+  extractManifestAudioLangs,
+  resolveHlsChildUrl,
+  seedManifestRamCache,
+} from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import type { RawStreamCandidate } from './types.js';
@@ -29,9 +33,46 @@ export interface LivenessProbeOutcome {
   confirmedDead: boolean;
   rttMs?: number;
   discoveredAudioLangs?: string[];
+  manifestKind?: 'hls-master' | 'hls-media' | 'dash';
+  manifestAudioRenditions?: number;
+  manifestVideoVariants?: number;
+  /** Distinct rendition heights (desc) for multi-quality ABR streams. */
+  qualityLadder?: number[];
+  /** Number of quality options when known (1 = single fixed quality). */
+  qualityOptions?: number;
+}
+
+/** Extract the ABR ladder (distinct heights, desc) from an HLS master or DASH MPD. */
+export function extractQualityLadder(text: string, isDash: boolean): { ladder: number[]; options: number } {
+  const heights = new Set<number>();
+  if (isDash) {
+    for (const m of text.matchAll(/<Representation\b[^>]*\bheight="(\d+)"/gi)) {
+      const h = Number(m[1]);
+      if (h > 0) heights.add(h);
+    }
+    if (!heights.size) {
+      // Representations without heights are not a usable quality ladder.
+      return { ladder: [], options: 0 };
+    }
+  } else {
+    let variants = 0;
+    for (const line of text.split(/\r?\n/)) {
+      if (!/^#EXT-X-STREAM-INF\b/i.test(line.trim())) continue;
+      variants++;
+      const res = line.match(/\bRESOLUTION=\d+x(\d+)\b/i);
+      if (res) heights.add(Number(res[1]));
+    }
+    if (!variants) return { ladder: [], options: 1 };
+    // Variants without RESOLUTION are NOT a usable quality ladder (players
+    // render them as "0k"): quality stays unknown, never multi-quality.
+    if (heights.size < 2) return { ladder: [...heights], options: heights.size };
+  }
+  const ladder = [...heights].sort((a, b) => b - a);
+  return { ladder, options: Math.max(1, ladder.length) };
 }
 
 interface CachedLivenessEntry extends LivenessProbeOutcome {
+  observedAt: number;
   expiresAt: number;
 }
 
@@ -42,7 +83,7 @@ function cacheKeyFor(url: string, headers?: Record<string, string>): string {
   return `${url}|${JSON.stringify(headers ?? {})}`;
 }
 
-function getCachedLiveness(key: string): LivenessProbeOutcome | null {
+function getCachedLiveness(key: string): CachedLivenessEntry | null {
   const hit = livenessRamCache.get(key);
   if (!hit) return null;
   if (Date.now() > hit.expiresAt) {
@@ -52,6 +93,17 @@ function getCachedLiveness(key: string): LivenessProbeOutcome | null {
   livenessRamCache.delete(key);
   livenessRamCache.set(key, hit);
   return hit;
+}
+
+/** Age of the cached observation; this is not a fresh playback test. */
+export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): number | null {
+  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  return hit ? Math.max(0, Date.now() - hit.observedAt) : null;
+}
+
+/** Report only existing liveness evidence; does not initiate upstream requests. */
+export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
+  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
@@ -64,6 +116,7 @@ function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
   }
   livenessRamCache.set(key, {
     ...outcome,
+    observedAt: Date.now(),
     expiresAt: Date.now() + (outcome.alive ? ALIVE_TTL_MS : DEAD_TTL_MS),
   });
 }
@@ -136,7 +189,7 @@ function pickHlsChildCheckTargets(masterText: string, baseUrl: string): string[]
   for (const raw of [variantUri, defaultAudioUri || firstAudioUri]) {
     if (!raw) continue;
     try {
-      const abs = new URL(raw, baseUrl).toString();
+      const abs = resolveHlsChildUrl(raw, baseUrl);
       if (isSafeUpstreamUrl(abs) && !targets.includes(abs)) {
         targets.push(abs);
       }
@@ -151,16 +204,16 @@ async function verifyChildHlsPlaylist(
   childUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
-): Promise<boolean> {
+): Promise<'alive' | 'dead' | 'unknown'> {
   const res = await fetch(childUrl, {
     method: 'GET',
     headers,
     redirect: 'follow',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(1150)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
   });
   const finalUrl = res.url || childUrl;
-  if (!isSafeUpstreamUrl(finalUrl)) return false;
-  if (!res.ok) return false;
+  if (!isSafeUpstreamUrl(finalUrl)) return 'dead';
+  if (!res.ok) return res.status === 429 || res.status >= 500 ? 'unknown' : 'dead';
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (ct.includes('text/html') || ct.includes('application/xhtml')) {
@@ -169,13 +222,13 @@ async function verifyChildHlsPlaylist(
     } catch {
       /* ignore */
     }
-    return false;
+    return 'dead';
   }
 
   const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
   const lead = text.trimStart();
-  if (!lead.startsWith('#EXTM3U')) return false;
-  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return false;
+  if (!lead.startsWith('#EXTM3U')) return 'dead';
+  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return 'dead';
 
   if (/#EXT-X-ENDLIST\b/i.test(text)) {
     seedManifestRamCache(childUrl, headers, {
@@ -184,7 +237,23 @@ async function verifyChildHlsPlaylist(
       bodyText: text,
     });
   }
-  return true;
+  return 'alive';
+}
+
+// A caller with a shorter deadline must not wait for an existing shared
+// in-flight probe whose own network timeout is longer.
+function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): Promise<LivenessProbeOutcome> {
+  if (!signal) return task;
+  if (signal.aborted) return Promise.resolve({ alive: false, confirmedDead: false });
+  return new Promise((resolve) => {
+    const aborted = () => finish({ alive: false, confirmedDead: false });
+    const finish = (value: LivenessProbeOutcome) => {
+      signal.removeEventListener('abort', aborted);
+      resolve(value);
+    };
+    signal.addEventListener('abort', aborted, { once: true });
+    void task.then(finish, () => finish({ alive: false, confirmedDead: false }));
+  });
 }
 
 async function runSingleProbe(
@@ -200,14 +269,15 @@ async function runSingleProbe(
   if (cached) return cached;
 
   const inflight = livenessInFlight.get(key);
-  if (inflight) return inflight;
+  if (inflight) return awaitProbe(inflight, outerSignal);
 
   const task = (async (): Promise<LivenessProbeOutcome> => {
     const t0 = performance.now();
     const elapsed = () => Math.max(1, Math.round(performance.now() - t0));
-    const sig = outerSignal
-      ? AbortSignal.any([outerSignal, AbortSignal.timeout(1500)])
-      : AbortSignal.timeout(1500);
+    // A caller can stop waiting at its startup deadline without cancelling the
+    // shared 3s network probe. Successful late results warm the liveness cache
+    // for background recovery; no new request extends initial playback.
+    const sig = AbortSignal.timeout(3000);
 
     try {
       if (cand.type === 'mp4') {
@@ -244,7 +314,12 @@ async function runSingleProbe(
           setCachedLiveness(key, dead);
           return dead;
         }
-        const ok: LivenessProbeOutcome = { alive: true, confirmedDead: false, rttMs: elapsed() };
+        const ok: LivenessProbeOutcome = {
+          alive: true,
+          confirmedDead: false,
+          rttMs: elapsed(),
+          qualityOptions: 1,
+        };
         setCachedLiveness(key, ok);
         return ok;
       }
@@ -267,6 +342,9 @@ async function runSingleProbe(
           await res.body?.cancel();
         } catch {
           /* ignore */
+        }
+        if (isSafeUpstreamUrl(finalUrl) && (res.status === 429 || res.status >= 500)) {
+          return { alive: false, confirmedDead: false };
         }
         const dead = { alive: false, confirmedDead: true };
         setCachedLiveness(key, dead);
@@ -302,10 +380,14 @@ async function runSingleProbe(
           });
         }
         const dashLangs = extractDashAudioLangs(bodyText);
+        const dashLadder = extractQualityLadder(bodyText, true);
         const ok: LivenessProbeOutcome = {
           alive: true,
           confirmedDead: false,
           rttMs: elapsed(),
+          manifestKind: 'dash',
+          qualityOptions: dashLadder.options,
+          ...(dashLadder.ladder.length ? { qualityLadder: dashLadder.ladder } : {}),
           ...(dashLangs.length ? { discoveredAudioLangs: dashLangs } : {}),
         };
         setCachedLiveness(key, ok);
@@ -333,13 +415,17 @@ async function runSingleProbe(
         if (childTargets.length > 0) {
           const childChecks = await Promise.all(
             childTargets.map((cu) =>
-              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(() => false),
+              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(() => 'unknown' as const),
             ),
           );
-          if (childChecks.some((okChild) => !okChild)) {
+          if (childChecks.includes('dead')) {
             const dead = { alive: false, confirmedDead: true };
             setCachedLiveness(key, dead);
             return dead;
+          }
+          if (childChecks.includes('unknown')) {
+            // A slow child is not a dead child; do not poison the cache.
+            return { alive: false, confirmedDead: false };
           }
         }
       }
@@ -353,26 +439,34 @@ async function runSingleProbe(
       }
 
       const hlsLangs = extractManifestAudioLangs(bodyText);
+      const hlsLadder = isMaster
+        ? extractQualityLadder(bodyText, false)
+        : { ladder: [] as number[], options: 1 };
       const ok: LivenessProbeOutcome = {
         alive: true,
         confirmedDead: false,
         rttMs: elapsed(),
+        manifestKind: isMaster ? 'hls-master' : 'hls-media',
+        manifestAudioRenditions: (bodyText.match(/^#EXT-X-MEDIA:.*\bTYPE=AUDIO\b/gim) ?? []).length,
+        manifestVideoVariants: (bodyText.match(/^#EXT-X-STREAM-INF\b/gim) ?? []).length,
+        qualityOptions: hlsLadder.options,
+        ...(hlsLadder.ladder.length ? { qualityLadder: hlsLadder.ladder } : {}),
         ...(hlsLangs.length ? { discoveredAudioLangs: hlsLangs } : {}),
       };
       setCachedLiveness(key, ok);
       return ok;
     } catch {
-      // Timeout or transient abort: do not mark confirmedDead so slow origins remain last-resort fallbacks
+      // Timeout or transient abort is not proof of death. The filter below retains
+      // it only when no other candidate verifies healthy.
       return { alive: false, confirmedDead: false };
     }
   })();
 
   livenessInFlight.set(key, task);
-  try {
-    return await task;
-  } finally {
-    livenessInFlight.delete(key);
-  }
+  void task.finally(() => {
+    if (livenessInFlight.get(key) === task) livenessInFlight.delete(key);
+  });
+  return awaitProbe(task, outerSignal);
 }
 
 /**
@@ -385,7 +479,15 @@ export async function verifyAndFilterCandidates(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
 ): Promise<RawStreamCandidate[]> {
-  if (!candidates.length) return [];
+  const detailed = await verifyAndFilterCandidatesDetailed(candidates, signal);
+  return detailed.candidates;
+}
+
+export async function verifyAndFilterCandidatesDetailed(
+  candidates: RawStreamCandidate[],
+  signal?: AbortSignal,
+): Promise<{ candidates: RawStreamCandidate[]; verifiedAliveCount: number }> {
+  if (!candidates.length) return { candidates: [], verifiedAliveCount: 0 };
 
   // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead.
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
@@ -412,8 +514,8 @@ export async function verifyAndFilterCandidates(
   }
 
   const budgetSig = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(1950)])
-    : AbortSignal.timeout(1950);
+    ? AbortSignal.any([signal, AbortSignal.timeout(3500)])
+    : AbortSignal.timeout(3500);
 
   const outcomes = new Map<string, LivenessProbeOutcome>();
   const entries = [...uniqueTargets.entries()].sort((a, b) => a[1].priority - b[1].priority);
@@ -439,7 +541,22 @@ export async function verifyAndFilterCandidates(
     let updated: RawStreamCandidate = { ...base };
 
     if (outcome.discoveredAudioLangs && outcome.discoveredAudioLangs.length > 0) {
-      if (outcome.discoveredAudioLangs.length > 1 || updated.multiAudio) {
+      if (outcome.discoveredAudioLangs.length === 1) {
+        // Manifest truth overrides provider metadata: a manifest exposing
+        // exactly one audio rendition is a single-language stream, even if
+        // the provider claimed several dubs. Advertising it as multi-audio
+        // makes language switches appear to succeed while audio never changes.
+        const only = normalizeLang(outcome.discoveredAudioLangs[0]);
+        if (only.code !== 'und') {
+          updated = {
+            ...updated,
+            multiAudio: false,
+            availableAudioLangs: [only.code],
+            audioLang: only.code,
+            audioLabel: only.label,
+          };
+        }
+      } else if (outcome.discoveredAudioLangs.length > 1 || updated.multiAudio) {
         const merged = [...(updated.availableAudioLangs ?? [])];
         for (const code of outcome.discoveredAudioLangs) {
           if (!merged.includes(code)) merged.push(code);
@@ -469,40 +586,141 @@ export async function verifyAndFilterCandidates(
       };
     }
 
+    if (outcome.qualityOptions !== undefined) {
+      // The measured manifest is the ONLY ladder authority. Provider/API
+      // metadata (e.g. an `availableQualities` family list) must never
+      // promote a single-rendition leaf playlist into a fake multi-quality
+      // stream — that is how "4 QUALITIES" badges ended up on streams whose
+      // player quality menu contains a single 0-height level.
+      updated = {
+        ...updated,
+        qualityOptions: updated.qualityLabelsUnreliable ? 0 : outcome.qualityOptions,
+        qualityLadder: !updated.qualityLabelsUnreliable && outcome.qualityLadder?.length ? outcome.qualityLadder : undefined,
+        // A leaf playlist or height-less master cannot substantiate a
+        // catalogue's fixed-resolution label.
+        ...((outcome.manifestKind === 'hls-media' || outcome.manifestKind === 'hls-master') && !outcome.qualityLadder?.length ? { quality: 'auto' } : {}),
+      };
+    }
+
     return updated;
   };
 
+  const outcomeFor = (cand: RawStreamCandidate) => ({
+    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers)),
+    standby: cand.standbyUrl && cand.standbyUrl !== cand.url
+      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
+      : undefined,
+  });
+  const hasVerifiedAlive = candidates.some((cand) => {
+    const outcome = outcomeFor(cand);
+    return !!outcome.primary?.alive || !!outcome.standby?.alive;
+  });
+
   const kept: RawStreamCandidate[] = [];
+  let verifiedAliveCount = 0;
 
   for (const cand of candidates) {
-    const primaryOutcome = outcomes.get(cacheKeyFor(cand.url, cand.headers));
+    const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
     const standbyHeaders = cand.standbyHeaders ?? cand.headers;
-    const standbyOutcome =
-      cand.standbyUrl && cand.standbyUrl !== cand.url
-        ? outcomes.get(cacheKeyFor(cand.standbyUrl, standbyHeaders))
-        : undefined;
+    const hasStandby = !!(cand.standbyUrl && cand.standbyUrl !== cand.url);
+    const promoteStandby = (): RawStreamCandidate => ({
+      ...cand,
+      url: cand.standbyUrl!,
+      headers: standbyHeaders,
+      standbyUrl: undefined,
+      standbyHeaders: undefined,
+    });
 
+    // Always prefer a verified healthy lane, including a standby whose primary
+    // timed out. Once any healthy option exists, never advertise unprobed lanes.
+    if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
+      verifiedAliveCount++;
+      kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      continue;
+    }
+    if (primaryOutcome?.alive) {
+      verifiedAliveCount++;
+      const cleanedStandby = standbyOutcome?.confirmedDead
+        ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
+        : cand;
+      kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+      continue;
+    }
+    if (hasVerifiedAlive) continue;
+
+    // Last-resort mode only: no candidate verified healthy, so an unconfirmed
+    // slow origin is preferable to returning no playback option at all.
     if (primaryOutcome?.confirmedDead) {
-      // Primary is confirmed dead — promote healthy/unconfirmed standby if available, else drop completely!
-      if (cand.standbyUrl && cand.standbyUrl !== cand.url && !standbyOutcome?.confirmedDead) {
-        const promoted: RawStreamCandidate = {
-          ...cand,
-          url: cand.standbyUrl,
-          headers: standbyHeaders,
-          standbyUrl: undefined,
-          standbyHeaders: undefined,
-        };
-        kept.push(applyOutcomeToCandidate(promoted, standbyOutcome));
+      if (hasStandby && !standbyOutcome?.confirmedDead) {
+        kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       }
       continue;
     }
-
-    let cleanedStandby = cand;
-    if (standbyOutcome?.confirmedDead) {
-      cleanedStandby = { ...cand, standbyUrl: undefined, standbyHeaders: undefined };
-    }
+    const cleanedStandby = standbyOutcome?.confirmedDead
+      ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
+      : cand;
     kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 
-  return kept;
+  return { candidates: kept, verifiedAliveCount };
+}
+
+/** Slow, on-demand diagnostic only. No URLs, headers or upstream body are returned.
+ * This does not alter playback selection or the liveness cache. */
+export async function diagnoseMultiAudioCandidate(candidate: RawStreamCandidate) {
+  type Step = { stage: string; status: string; ms: number; httpStatus?: number; error?: string };
+  const steps: Step[] = [];
+  const headers = { 'User-Agent': DEFAULT_PROBE_UA, Accept: '*/*', ...(candidate.headers ?? {}) };
+  const read = async (stage: string, startUrl: string): Promise<{ text: string; url: string } | null> => {
+    const start = Date.now();
+    const signal = AbortSignal.timeout(8000);
+    try {
+      let url = startUrl;
+      for (let i = 0; i <= 3; i++) {
+        if (!isSafeUpstreamUrl(url)) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
+        const res = await fetch(url, {headers, signal, redirect:'manual'});
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get('location');
+          await res.body?.cancel();
+          if (!location || i === 3) { steps.push({stage,status:'redirect-error',httpStatus:res.status,ms:Date.now()-start});return null; }
+          url = new URL(location,url).href;
+          continue;
+        }
+        if (!res.ok) { await res.body?.cancel(); steps.push({stage,status:'http-error',httpStatus:res.status,ms:Date.now()-start});return null; }
+        const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
+        const valid = text.trimStart().startsWith('#EXTM3U') && (stage === 'master' || /#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text));
+        steps.push({stage,status:valid?'ok':'invalid-manifest',httpStatus:res.status,ms:Date.now()-start});
+        return valid ? {text,url} : null;
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.name : 'Error';
+      const cause = (err as {cause?:{code?:string}})?.cause?.code;
+      steps.push({stage,status:error === 'TimeoutError' || error === 'AbortError' ? 'timeout':'network-error',ms:Date.now()-start,
+        error:cause && /^[A-Z0-9_]{1,40}$/.test(cause) ? cause : error.replace(/[^a-zA-Z]/g,'').slice(0,40)});
+    }
+    return null;
+  };
+  if (candidate.type !== 'hls') return {status:'unsupported',manifestLanguages:[],steps};
+  const master = await read('master', candidate.url);
+  if (!master) return {status:'master-unavailable',manifestLanguages:[],steps};
+  const languages = extractManifestAudioLangs(master.text);
+  const lines = master.text.split(/\r?\n/);
+  let video = '', audio = '';
+  for (let i=0;i<lines.length;i++) {
+    const line=lines[i].trim();
+    if (!video && /^#EXT-X-STREAM-INF\b/i.test(line)) video=lines.slice(i+1).map(x=>x.trim()).find(x=>x && !x.startsWith('#')) || '';
+    if (/^#EXT-X-MEDIA:/i.test(line) && /TYPE=AUDIO\b/i.test(line)) {
+      const uri=line.match(/\bURI="([^"]+)"/i)?.[1] || '';
+      if (uri && (!audio || /DEFAULT=YES\b/i.test(line))) audio=uri;
+    }
+  }
+  const checks: Promise<unknown>[] = [];
+  for (const [stage, uri] of [['video-playlist',video],['audio-playlist',audio]]) {
+    if (!uri) { steps.push({stage,status:'not-listed',ms:0}); continue; }
+    try { checks.push(read(stage,resolveHlsChildUrl(uri,master.url))); }
+    catch { steps.push({stage,status:'invalid-url',ms:0}); }
+  }
+  await Promise.all(checks);
+  const childrenOk = steps.filter(x=>x.stage !== 'master').every(x=>x.status==='ok');
+  return {status:languages.length>1 && childrenOk?'manifest-and-playlists-reachable':'incomplete',manifestLanguages:languages,steps};
 }

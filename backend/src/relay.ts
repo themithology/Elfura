@@ -18,6 +18,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
+import type { StreamTicketPayload } from './security.js';
 import {
   applyCorsHeaders,
   isSafeUpstreamUrl,
@@ -166,7 +167,10 @@ export async function verifyDirectSegmentOffload(
       }
 
       const statusOk = res.status === 200 || res.status === 206;
-      const corsOk = acao === '*' || acao === CORS_PROBE_ORIGIN;
+      // A CDN that merely echoes CORS_PROBE_ORIGIN has only authorized our fake
+      // probe, not the viewer's real embed origin. Offload exclusively on a
+      // wildcard; reflected/specific origins must remain on the backend relay.
+      const corsOk = acao === '*';
       const bodyOk =
         !ct.includes('text/html') &&
         !ct.includes('application/xhtml') &&
@@ -249,6 +253,16 @@ export function sanitizeSubRip(srtText: string): string {
   }
 
   return `${kept.join('\n\n')}\n`;
+}
+
+/**
+ * Some live HLS producers escape underscores and slashes in playlist URIs
+ * (for example `hls\_mps`). WHATWG URL parsing treats a backslash in an HTTP
+ * path as a slash, producing a different, nonexistent CDN key. Normalize the
+ * producer's escapes before resolving or sealing every child reference.
+ */
+export function normalizeManifestUriReference(rawRef: string): string {
+  return rawRef.trim().replace(/\\([/_])/g, '$1');
 }
 
 function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlaylist: boolean): 'm' | 's' | 'a' | 'k' {
@@ -383,9 +397,21 @@ function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string
   });
 }
 
+/** Preserve this CDN's manifest access parameter only on same-origin children. */
+export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
+  const base = new URL(baseUrl);
+  const child = new URL(normalizeManifestUriReference(rawRef), base);
+  if (child.origin === base.origin && /(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/i.test(base.hostname)) {
+    const key = base.searchParams.get('api_key') || base.searchParams.get('apikey');
+    if (key && !child.searchParams.has('api_key') && !child.searchParams.has('apikey')) child.searchParams.set('api_key', key);
+  }
+  return child.toString();
+}
+
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
+  /** Private signed-ticket context for refreshing this provider's HLS paths. */
   /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
   canOffloadSegment?: (absUrl: string) => boolean;
 }
@@ -410,11 +436,11 @@ export function rewriteHlsManifest(
   })();
 
   const wrapUrl = (rawRef: string, kind: 'm' | 's' | 'a' | 'k'): string => {
-    const trimmed = rawRef.trim();
+    const trimmed = normalizeManifestUriReference(rawRef);
     if (!trimmed || trimmed.startsWith('data:')) return rawRef;
     let abs: string;
     try {
-      abs = new URL(trimmed, baseUrl).toString();
+      abs = resolveHlsChildUrl(trimmed, baseUrl);
     } catch {
       return rawRef;
     }
@@ -443,7 +469,14 @@ export function rewriteHlsManifest(
     dedupedHeaderLines.push(l);
   }
 
-  const lines = sanitizeExtXMediaLines(dedupedHeaderLines, hintAudioLang);
+  // Provider subtitle renditions must never be offered or fetched. Subtitle
+  // tracks are supplied exclusively by OpenSubtitles at the registry layer.
+  const noProviderSubs = dedupedHeaderLines
+    .filter(line => !/^\s*#EXT-X-MEDIA:.*\bTYPE=SUBTITLES\b/i.test(line))
+    .map(line => /^\s*#EXT-X-(?:I-FRAME-)?STREAM-INF:/i.test(line)
+      ? line.replace(/,SUBTITLES=(?:"[^"]*"|[^,]*)/gi, '').replace(/(:)SUBTITLES=(?:"[^"]*"|[^,]*),?/i, '$1')
+      : line);
+  const lines = sanitizeExtXMediaLines(noProviderSubs, hintAudioLang);
   let expectVariantUri = false;
 
   const rewritten = lines.map((line, lineIdx) => {
@@ -500,7 +533,76 @@ export function rewriteHlsManifest(
   return rewritten.join('\n');
 }
 
-function rewriteDashManifest(
+function xmlUnescape(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([\da-f]+);/gi, (_m, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, '&');
+}
+
+function xmlAttributeEscape(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+}
+
+const DASH_TEMPLATE_PARAMS = [
+  { name: 'RepresentationID', param: '_dr', pattern: /\$RepresentationID\$/g, placeholder: /\$RepresentationID\$/ },
+  { name: 'Number', param: '_dn', pattern: /\$Number(?:%0\d+d)?\$/g, placeholder: /\$Number(?:%0\d+d)?\$/ },
+  { name: 'Time', param: '_dt', pattern: /\$Time\$/g, placeholder: /\$Time\$/ },
+  { name: 'Bandwidth', param: '_db', pattern: /\$Bandwidth\$/g, placeholder: /\$Bandwidth\$/ },
+] as const;
+
+/** Keep DASH substitutions visible to dash.js while the upstream template stays encrypted. */
+function sealDashTemplateUrl(
+  rawTemplate: string,
+  baseUrl: string,
+  headers: Record<string, string> | undefined,
+  secret: Buffer,
+  streamPath: string,
+): string {
+  const abs = new URL(xmlUnescape(rawTemplate), baseUrl).toString();
+  if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH template');
+  const ticket = sealStreamTicket(secret, {
+    u: abs,
+    ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+    k: 'a',
+  });
+  const params = [`t=${encodeURIComponent(ticket)}`];
+  for (const token of DASH_TEMPLATE_PARAMS) {
+    token.placeholder.lastIndex = 0;
+    if (token.placeholder.test(abs)) {
+      token.pattern.lastIndex = 0;
+      const match = abs.match(token.pattern)?.[0] || `$${token.name}$`;
+      params.push(`${token.param}=${match}`);
+    }
+  }
+  return `${streamPath}?${params.join('&')}`;
+}
+
+/** Apply dash.js substitutions to the sealed upstream template at request time. */
+export function materializeDashTicket(
+  ticket: StreamTicketPayload,
+  params: URLSearchParams,
+): StreamTicketPayload | null {
+  let resolved = ticket.u;
+  for (const token of DASH_TEMPLATE_PARAMS) {
+    token.pattern.lastIndex = 0;
+    if (!token.pattern.test(resolved)) continue;
+    const value = params.get(token.param);
+    if (value === null || value.length > 160) return null;
+    const valid = token.name === 'RepresentationID' ? /^[A-Za-z0-9_.-]+$/ : /^\d+$/.test(value);
+    if (!valid) return null;
+    token.pattern.lastIndex = 0;
+    resolved = resolved.replace(token.pattern, () => value);
+  }
+  if (/\$(?:RepresentationID|Number(?:%0\d+d)?|Time|Bandwidth)\$/.test(resolved)) return null;
+  return resolved === ticket.u ? ticket : { ...ticket, u: resolved };
+}
+
+export function rewriteDashManifest(
   mpdText: string,
   baseUrl: string,
   headers: Record<string, string> | undefined,
@@ -508,32 +610,86 @@ function rewriteDashManifest(
   streamPath = '/api/v1/stream',
   options?: RewriteManifestOptions,
 ): string {
-  return mpdText.replace(/<BaseURL>([^<]+)<\/BaseURL>/gi, (full, inner: string) => {
-    const raw = inner.trim();
-    if (!raw) return full;
-    let abs: string;
-    try {
-      abs = new URL(raw, baseUrl).toString();
-    } catch {
-      return full;
-    }
-    if (!isSafeUpstreamUrl(abs)) return full;
-    if (!options?.forceProxy && options?.canOffloadSegment?.(abs)) {
-      return `<BaseURL>${abs}</BaseURL>`;
-    }
+  type Frame = { tag: string; base: string; hasBase: boolean };
+  const frames: Frame[] = [{ tag: '', base: baseUrl, hasBase: false }];
+  const scopedTags = new Set(['MPD', 'Period', 'AdaptationSet', 'Representation']);
+  const tokenPattern = /<!--[\s\S]*?-->|<BaseURL\b[^>]*>[\s\S]*?<\/BaseURL\s*>|<\/?[A-Za-z_][^>]*>/g;
+
+  const staticUrl = (raw: string, base: string): string => {
+    const abs = new URL(xmlUnescape(raw), base).toString();
+    if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH URL');
+    if (!options?.forceProxy && options?.canOffloadSegment?.(abs)) return abs;
     const ticket = sealStreamTicket(secret, {
       u: abs,
       ...(headers && Object.keys(headers).length ? { h: headers } : {}),
       k: 'a',
     });
-    return `<BaseURL>${streamPath}?t=${encodeURIComponent(ticket)}</BaseURL>`;
+    return `${streamPath}?t=${encodeURIComponent(ticket)}`;
+  };
+
+  return mpdText.replace(tokenPattern, (token) => {
+    if (token.startsWith('<!--')) return token;
+    const frame = frames[frames.length - 1];
+
+    const baseMatch = token.match(/^<BaseURL\b[^>]*>([\s\S]*?)<\/BaseURL\s*>$/i);
+    if (baseMatch) {
+      const raw = baseMatch[1].trim();
+      if (!raw) return token;
+      const parentBase = frame.base;
+      try {
+        const abs = new URL(xmlUnescape(raw), parentBase).toString();
+        const rewritten = token.replace(baseMatch[1], staticUrl(raw, parentBase));
+        if (!frame.hasBase) {
+          frame.base = abs;
+          frame.hasBase = true;
+        }
+        return rewritten;
+      } catch {
+        return token;
+      }
+    }
+
+    const closeMatch = token.match(/^<\/\s*([A-Za-z_][\w:.-]*)\s*>$/);
+    if (closeMatch) {
+      if (scopedTags.has(closeMatch[1]) && frames.length > 1 && frame.tag === closeMatch[1]) frames.pop();
+      return token;
+    }
+
+    const openMatch = token.match(/^<\s*([A-Za-z_][\w:.-]*)\b[^>]*>$/);
+    if (!openMatch) return token;
+    const tag = openMatch[1];
+    let rewritten = token;
+    const rewriteAttributes = (attrs: string[], dynamic: boolean) => {
+      for (const attr of attrs) {
+        const attrPattern = new RegExp(`(\\s${attr}\\s*=\\s*)(["'])([\\s\\S]*?)\\2`, 'i');
+        rewritten = rewritten.replace(attrPattern, (whole, prefix: string, quote: string, raw: string) => {
+          try {
+            const value = dynamic
+              ? sealDashTemplateUrl(raw, frame.base, headers, secret, streamPath)
+              : staticUrl(raw, frame.base);
+            return `${prefix}${quote}${xmlAttributeEscape(value)}${quote}`;
+          } catch {
+            return whole;
+          }
+        });
+      }
+    };
+
+    if (tag === 'SegmentTemplate') rewriteAttributes(['media', 'initialization'], true);
+    else if (tag === 'SegmentURL') rewriteAttributes(['media'], false);
+    else if (tag === 'Initialization') rewriteAttributes(['source'], false);
+
+    if (scopedTags.has(tag) && !/\/>$/.test(token)) {
+      frames.push({ tag, base: frame.base, hasBase: false });
+    }
+    return rewritten;
   });
 }
 
 function collectSampleSegmentUrls(kind: 'hls' | 'dash', bodyText: string, baseUrl: string): Map<string, string> {
   const samplesByBucket = new Map<string, string>();
   const consider = (rawRef: string) => {
-    const trimmed = rawRef.trim();
+    const trimmed = normalizeManifestUriReference(rawRef);
     if (!trimmed || trimmed.startsWith('data:')) return;
     let abs: string;
     try {
@@ -607,9 +763,9 @@ async function readBoundedText(res: Response, maxBytes: number): Promise<string>
   return Buffer.concat(chunks).toString('utf8');
 }
 
-const MAX_MANIFEST_RAM_ENTRIES = 128;
+const MAX_MANIFEST_RAM_ENTRIES = 256;
 const MAX_CACHEABLE_MANIFEST_BYTES = 262_144;
-const MANIFEST_RAM_TTL_MS = 45_000;
+const MANIFEST_RAM_TTL_MS = 180_000;
 
 interface CachedUpstreamManifest {
   expiresAt: number;
@@ -671,7 +827,7 @@ async function sendRewrittenManifest(
     relayMode: 'hybrid' | 'full';
     forceProxy: boolean;
     requireHttpsOffload: boolean;
-  },
+    },
 ): Promise<void> {
   const allowedBuckets = new Set<string>();
   if (
@@ -746,7 +902,9 @@ export async function handleStreamRelay(
 ): Promise<void> {
   applyCorsHeaders(res, opts.allowOrigin);
 
-  const ticket = openStreamTicket(opts.secret, opts.ticketParam);
+  const openedTicket = openStreamTicket(opts.secret, opts.ticketParam);
+  const requestParams = new URL(req.url || '/', 'http://relay.invalid').searchParams;
+  const ticket = openedTicket ? materializeDashTicket(openedTicket, requestParams) : null;
   if (!ticket) {
     setCloudflareCache(res, 'no-store');
     res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -815,7 +973,13 @@ export async function handleStreamRelay(
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
       redirect: 'follow',
-      signal: AbortSignal.any([abortController.signal, AbortSignal.timeout(25_000)]),
+      signal: AbortSignal.any([
+        abortController.signal,
+        // Manifests must fail fast so the player can fail over to the next
+        // source instead of spinning on a slow upstream; media segments get
+        // a longer window because they are larger and range-driven.
+        AbortSignal.timeout(ticket.k === 'm' ? 12_000 : 25_000),
+      ]),
     });
 
     const finalUrl = upstreamRes.url || ticket.u;

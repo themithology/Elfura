@@ -1,0 +1,48 @@
+process.env.ELFURA_NXSHA_ENABLED = '0';
+process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createBackendServer } from '../../dist/backend/index.js';
+import { ROXY_PAGE } from '../../dist/backend/roxy-page.js';
+new Function(ROXY_PAGE.match(/<script>([\s\S]*)<\/script>/)[1]);
+const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
+process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
+const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};
+const stop=app=>new Promise(r=>app.server.close(r));
+let app;
+try {
+ await fs.writeFile(path.join(tmp,'roxy.json'),JSON.stringify({events:[{at:Date.now()-73*3600000,kind:'play',site:'https://old.example',type:'movie',tmdb:'1'}],bans:[]}));
+ app=await start();
+ const call=(p,opts={})=>fetch(app.base+p,opts);
+ const post=(p,data,cookie,org=app.base)=>call(p,{method:'POST',headers:{'Content-Type':'application/json',Origin:org,...cookie?{Cookie:cookie}:{}},body:JSON.stringify(data)});
+ let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);assert.ok(!health.sources.some(s=>s.id==='source-6'));
+ assert.equal((await call('/dl/')).status,404);assert.equal((await call('/dl/api/resolve?type=movie&tmdb=550')).status,404);
+ let res=await call('/roxy');assert.equal(res.status,200);assert.equal(res.headers.get('x-frame-options'),'DENY');assert.match(await res.text(),/Playback, at a glance/);
+ res=await call('/roxy/api/overview');assert.equal(res.status,401);assert.equal(res.headers.get('access-control-allow-origin'),null);
+ assert.equal((await post('/roxy/api/login',{password:'wrong'})).status,401);
+ assert.equal((await post('/roxy/api/login',{password:process.env.ELFURA_SECRET},undefined,'https://evil.example')).status,403);
+ res=await post('/roxy/api/login',{password:process.env.ELFURA_SECRET});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie').split(';')[0];assert.match(res.headers.get('set-cookie'),/HttpOnly/);assert.match(res.headers.get('set-cookie'),/SameSite=Strict/);
+ res=await call('/roxy/api/overview',{headers:{Cookie:cookie}});let d=await res.json();assert.equal(d.playsToday,0);assert.equal(d.hours.length,72);
+ res=await call('/embed/movie/872585',{headers:{Referer:'https://example.com/article?private=yes'}});const html=await res.text();const boot=JSON.parse(html.match(/window\.__ELFURA_BOOT__=(.*?);<\/script>/)[1]);assert.ok(boot.analyticsTicket);
+ assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'play',title:'Jawan'})).status,200);
+ await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'heartbeat',title:'Jawan'});await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'failure'});await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'failure'});
+ assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket+'x',event:'play'})).status,400);
+ res=await call('/roxy/api/overview',{headers:{Cookie:cookie}});d=await res.json();assert.equal(d.playsToday,1);assert.equal(d.failuresToday,1);assert.equal(d.watching,1);assert.equal(d.sites[0].key,'https://example.com');assert.equal(d.topToday[0].title,'Jawan');
+ assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:true},cookie,'https://evil.example')).status,403);
+ assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:true},cookie)).status,200);
+ assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/another'}})).status,403);
+ assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'heartbeat'})).status,400);
+ res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.ok(d.sites.length > 0);assert.ok(!d.sites.some(s=>s.id==='vidmody'));assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
+ assert.equal((await post('/roxy/api/source-websites/request',{id:'unknown'},cookie)).status,400);
+ assert.equal((await post('/roxy/api/test',{type:'movie',tmdb:'872585'},cookie)).status,404);
+ assert.equal((await post('/roxy/api/clear',{},cookie)).status,200);
+ const stored=JSON.parse(await fs.readFile(path.join(tmp,'roxy.json'),'utf8'));assert.equal(stored.events.length,0);assert.deepEqual(stored.bans,['https://example.com']);
+ await stop(app);app=await start();assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/'}})).status,403);
+ // Short-lived session survives a restart with the same ELFURA_SECRET.
+ res=await call('/roxy/api/overview',{headers:{Cookie:cookie}});d=await res.json();assert.equal(d.playsToday,0);assert.deepEqual(d.bans,['https://example.com']);
+ assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:false},cookie)).status,200);assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/'}})).status,200);
+ assert.equal((await post('/roxy/api/logout',{},cookie)).status,200);
+ console.log('✓ Roxy auth, CSRF, 72-hour retention, playback counting, site bans, persistence, clearing, and diagnostics tests passed.');
+} finally {if(app)await stop(app);await fs.rm(tmp,{recursive:true,force:true});delete process.env.ROXY_DATA_DIR;delete process.env.ELFURA_SECRET;}

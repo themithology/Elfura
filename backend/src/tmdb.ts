@@ -569,3 +569,123 @@ export async function fetchTmdbSeasonEpisodes(
     seasonInFlight.delete(cacheKey);
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Public landing-page catalog                                         */
+/* ------------------------------------------------------------------ */
+
+export interface TmdbCatalogItem {
+  tmdbId: string;
+  type: 'movie' | 'tv' | 'anime';
+  title: string;
+  year: string;
+  overview: string;
+  rating: number | null;
+  poster: string | null;
+  backdrop: string | null;
+}
+
+export interface TmdbCatalog {
+  generatedAt: string;
+  movies: TmdbCatalogItem[];
+  series: TmdbCatalogItem[];
+  anime: TmdbCatalogItem[];
+}
+
+const CATALOG_TTL_MS = 10 * 60_000;
+let catalogCache: { expiresAt: number; key: string; value: TmdbCatalog } | null = null;
+let catalogInFlight: Promise<TmdbCatalog> | null = null;
+
+async function fetchCatalogList(
+  cfg: BackendConfig['tmdb'],
+  subpath: string,
+  query: Record<string, string> = {},
+): Promise<Record<string, unknown>[]> {
+  for (const ep of resolveTmdbEndpoints(cfg)) {
+    try {
+      const response = await fetch(buildEndpointUrl(ep, subpath, query), {
+        headers: buildEndpointHeaders(ep),
+        signal: AbortSignal.timeout(cfg.timeoutMs),
+      });
+      if (!response.ok) continue;
+      const payload = unwrapPayload(await response.json());
+      if (Array.isArray(payload?.results)) {
+        return payload.results.filter(
+          (item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item),
+        );
+      }
+    } catch {
+      // Try the next configured TMDB endpoint.
+    }
+  }
+  return [];
+}
+
+/** Live, sanitized TMDB data for the public landing page. No API key reaches the browser. */
+export async function fetchTmdbCatalog(cfg: BackendConfig['tmdb']): Promise<TmdbCatalog> {
+  const key = resolveTmdbEndpoints(cfg)[0]?.base || 'none';
+  if (catalogCache && catalogCache.key === key && Date.now() <= catalogCache.expiresAt) {
+    return catalogCache.value;
+  }
+  if (catalogInFlight) return catalogInFlight;
+
+  catalogInFlight = (async () => {
+    const [movieRows, seriesRows, animeRows] = await Promise.all([
+      fetchCatalogList(cfg, '/trending/movie/week', { language: 'en-US' }),
+      fetchCatalogList(cfg, '/trending/tv/week', { language: 'en-US' }),
+      fetchCatalogList(cfg, '/discover/tv', {
+        language: 'en-US',
+        sort_by: 'popularity.desc',
+        with_genres: '16',
+        with_original_language: 'ja',
+        'vote_count.gte': '100',
+        include_adult: 'false',
+      }),
+    ]);
+
+    const mapRows = (
+      rows: Record<string, unknown>[],
+      type: TmdbCatalogItem['type'],
+    ): TmdbCatalogItem[] => {
+      const seen = new Set<string>();
+      const items: TmdbCatalogItem[] = [];
+      for (const row of rows) {
+        const tmdbId = String(Number(row.id) || '');
+        const title = String(row.title || row.name || '').trim();
+        if (!tmdbId || !title || row.adult === true || seen.has(tmdbId)) continue;
+        seen.add(tmdbId);
+        const date = String(row.release_date || row.first_air_date || '');
+        const rating = Number(row.vote_average);
+        items.push({
+          tmdbId,
+          type,
+          title,
+          year: /^\d{4}/.test(date) ? date.slice(0, 4) : '',
+          overview: String(row.overview || '').trim(),
+          rating: Number.isFinite(rating) && rating > 0 ? Math.round(rating * 10) / 10 : null,
+          poster: fullImageUrl(cfg.imageBase, row.poster_path, 'w500'),
+          backdrop: fullImageUrl(cfg.imageBase, row.backdrop_path || row.poster_path, 'w1280'),
+        });
+        if (items.length >= 20) break;
+      }
+      return items;
+    };
+
+    const value: TmdbCatalog = {
+      generatedAt: new Date().toISOString(),
+      movies: mapRows(movieRows, 'movie'),
+      series: mapRows(seriesRows, 'tv'),
+      anime: mapRows(animeRows, 'anime'),
+    };
+    if (value.movies.length || value.series.length || value.anime.length) {
+      catalogCache = { key, value, expiresAt: Date.now() + CATALOG_TTL_MS };
+    }
+    return value;
+  })();
+
+  try {
+    return await catalogInFlight;
+  } finally {
+    catalogInFlight = null;
+  }
+}

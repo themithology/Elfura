@@ -1,0 +1,30 @@
+name: Production relay path comparison
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/relay-production-compare.mjs, .github/workflows/relay-production-compare.yml]
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {type: movie, id: '693134', source: 'source-3', mode: hybrid}
+          - {type: movie, id: '693134', source: 'source-3', mode: full}
+          - {type: tv, id: '93405', source: 'source-5', mode: hybrid}
+          - {type: tv, id: '93405', source: 'source-5', mode: full}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/relay-production-compare.mjs
+        env:
+          TRACE_TYPE: ${{ matrix.type }}
+          TRACE_ID: ${{ matrix.id }}
+          TRACE_SOURCE: ${{ matrix.source }}
+          TRACE_MODE: ${{ matrix.mode }}

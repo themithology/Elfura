@@ -1,0 +1,29 @@
+name: Working deployment baseline trace
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [.github/workflows/working-baseline-trace.yml, backend/test/working-baseline-trace.mjs]
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {type: movie, id: '693134', source: 'auto'}
+          - {type: movie, id: '693134', source: 'source-2'}
+          - {type: tv, id: '93405', source: 'auto'}
+          - {type: tv, id: '93405', source: 'source-2'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/working-baseline-trace.mjs
+        env:
+          TRACE_TYPE: ${{ matrix.type }}
+          TRACE_ID: ${{ matrix.id }}
+          TRACE_SOURCE: ${{ matrix.source }}

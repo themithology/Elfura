@@ -1,0 +1,20 @@
+name: Research direct Vidbolt-family sources
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-vidbolt-direct.mjs, backend/test/research-vidbolt-client.mjs, .github/workflows/research-vidbolt-direct.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock @ffmpeg-installer/ffmpeg
+      - run: node backend/test/research-vidbolt-direct.mjs
+      - run: node backend/test/research-vidbolt-client.mjs

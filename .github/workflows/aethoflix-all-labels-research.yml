@@ -1,0 +1,26 @@
+name: Research each Aethoflix label
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/aethoflix-all-labels-research.mjs, .github/workflows/aethoflix-all-labels-research.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {type: tv, tmdb: '93405'}
+          - {type: movie, tmdb: '693134'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: node backend/test/aethoflix-all-labels-research.mjs
+        env:
+          TEST_TYPE: ${{ matrix.type }}
+          TEST_TMDB: ${{ matrix.tmdb }}

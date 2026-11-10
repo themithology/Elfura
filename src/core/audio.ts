@@ -95,6 +95,15 @@ export function canonLang(raw?: string | null): string {
   const byEnglishName = lookupTagByEnglishName(lower);
   if (byEnglishName) return byEnglishName;
 
+  // Some HLS encoders put a provider qualifier in LANGUAGE as well as NAME,
+  // e.g. "hindi-(ms)" / "Hindi (MS)". It is not a BCP-47 subtag. Resolve
+  // the language before the qualifier rather than treating the track as unknown.
+  const unqualified = trimmed.replace(/[-_\s]*(?:\([^()]+\)|\[[^\[\]]+\])\s*$/, '').trim();
+  if (unqualified && unqualified !== trimmed) {
+    const base = canonLang(unqualified);
+    if (base !== 'und') return base;
+  }
+
   const candidateTag = trimmed.replace(/_/g, '-');
   if (typeof Intl !== 'undefined' && typeof Intl.Locale === 'function' && /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(candidateTag)) {
     try {

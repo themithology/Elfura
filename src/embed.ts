@@ -29,3 +29,27 @@ declare global {
   }
 }
 window.__elfura = mounted;
+
+// The server issues an opaque, title-bound analytics ticket for embed pages.
+// Calls are fire-and-forget and never delay resolving or starting playback.
+const analyticsTicket = (window as unknown as { __ELFURA_BOOT__?: { analyticsTicket?: string } }).__ELFURA_BOOT__?.analyticsTicket;
+if (analyticsTicket) {
+  const send = (event: 'play' | 'heartbeat' | 'stop' | 'failure') => {
+    void fetch('/api/v1/analytics', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket: analyticsTicket, event, title: mounted.player.getMediaInfo()?.title }), keepalive: true,
+    }).catch(() => {});
+  };
+  mounted.player.video.addEventListener('playing', () => send('play'));
+  mounted.player.video.addEventListener('pause', () => send('stop'));
+  mounted.player.video.addEventListener('ended', () => send('stop'));
+  window.addEventListener('pagehide', () => send('stop'));
+  mounted.player.bus.on('error', (data) => {
+    const code = (data as { code?: string })?.code;
+    if (code === 'all-sources-failed' || code === 'no-sources' || code === 'resolve-failed') send('failure');
+  });
+  window.setInterval(() => {
+    const video = mounted.player.video;
+    if (!video.paused && !video.ended && video.readyState >= 2) send('heartbeat');
+  }, 20_000);
+}

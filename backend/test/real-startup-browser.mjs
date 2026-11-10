@@ -1,0 +1,11 @@
+// End-to-end browser test using real upstream providers with the current build.
+// It exercises the normal combined-source path, not forced isolated providers.
+import {createBackendServer} from '../../dist/backend/index.js';
+import {loadBackendConfig} from '../../dist/backend/config.js';
+import {chromium} from 'playwright-core';
+import chromiumBinary from '@sparticuz/chromium';
+const type=process.env.TEST_TYPE||'movie',id=process.env.TEST_TMDB||'693134',cfg=loadBackendConfig();
+const {server}=createBackendServer({...cfg,isProd:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;let browser,page;const started=Date.now();
+try{browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});page=await browser.newPage();const media=type==='tv'?`tv/${id}/1/1`:`movie/${id}`;await page.goto(`${base}/embed/${media}?autoplay=1&muted=1`,{waitUntil:'domcontentloaded',timeout:30000});await page.waitForFunction(()=>window.__elfura?.player?.video?.currentTime>2&&window.__elfura.player.video.readyState>=2,null,{timeout:50000});const state=await page.evaluate(()=>({source:window.__elfura.player.currentSource?.sourceId,time:window.__elfura.player.video.currentTime,ready:window.__elfura.player.video.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable}));if(state.loading==='true')throw new Error('loading overlay stuck');console.log('::notice title=RealStartup::'+JSON.stringify({type,id,ok:true,ms:Date.now()-started,state}));}
+catch(e){const state=await page?.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId,time:window.__elfura?.player?.video?.currentTime,ready:window.__elfura?.player?.video?.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable,sources:window.__elfura?.player?.getSources().map(s=>({id:s.sourceId,multi:s.multiAudio,lang:s.audioLang}))})).catch(()=>null);console.log('::notice title=RealStartup::'+JSON.stringify({type,id,ok:false,ms:Date.now()-started,error:e.name,state}));process.exitCode=1;}
+finally{await browser?.close();await new Promise(r=>server.close(r));}

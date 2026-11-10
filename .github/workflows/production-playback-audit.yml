@@ -1,0 +1,32 @@
+name: Production playback audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/production-playback-audit.mjs, .github/workflows/production-playback-audit.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - path: movie/807
+            query: ''
+          - path: movie/807
+            query: '?source=source-2'
+          - path: movie/807
+            query: '?source=source-3'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/production-playback-audit.mjs
+        env:
+          TEST_PATH: ${{ matrix.path }}
+          TEST_QUERY: ${{ matrix.query }}

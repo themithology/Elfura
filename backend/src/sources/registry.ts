@@ -13,9 +13,12 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { verifyAndFilterCandidates } from './liveness.js';
-import { createSource1Adapter } from './source1.js';
-import { createSource2Adapter } from './source2.js';
+import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
+import { createSource3Adapter } from './source3.js';
+import { createSource4Adapter } from './source4.js';
+import { createSource5Adapter } from './source5.js';
+import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -34,18 +37,156 @@ export class SourceRegistry {
   private readonly cfg: BackendConfig;
   private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
+  private readonly segmentCache = new Map<
+    string,
+    { expiresAt: number; result: SkipSegments | undefined }
+  >();
+  private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      createSource1Adapter(cfg.source1),
-      createSource2Adapter(cfg.source2),
+      // Source 1 contains direct upstreams independently identified in Aethoflix.
+      // VidBolt/Orion is a direct upstream used by Aethoflix. No Aethoflix
+      // or ZXC mirror requests are made by this group.
+      {
+        id: 'source-1', label: 'Source 1', enabled: () => cfg.source1.enabled,
+        resolve: async (query) => {
+          const start = Date.now();
+          const candidates = await fetchFromVidBolt(cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', query);
+          query.diag?.push({ adapter: 'source-1', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
+          return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) };
+        },
+      },
+      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      createSource3Adapter(cfg.source3),
+      createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
+      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
     ];
   }
 
   listPublicSources(): { id: string; label: string }[] {
     return this.adapters.filter((a) => a.enabled()).map((a) => ({ id: a.id, label: a.label }));
+  }
+
+  /**
+   * Operator diagnostics: resolve one title through every adapter WITHOUT the
+   * response cache, reporting raw vs liveness-verified candidate counts and
+   * lane-level entries. Contains no upstream URLs or provider identifiers.
+   */
+  async diagnosePlayback(params: {
+    type: 'movie' | 'tv';
+    tmdbId: string;
+    season?: number;
+    episode?: number;
+  }) {
+    const diag: import('./types.js').DiagEntry[] = [];
+    const query: SourceQuery = {
+      type: params.type,
+      tmdbId: params.tmdbId,
+      season: params.season,
+      episode: params.episode,
+      diag,
+      resolveMetaFallback: () => fetchTmdbMetadata(this.cfg.tmdb, params),
+      signal: AbortSignal.timeout(15_000),
+    };
+    const diagnosticCandidates = new Map<string, RawStreamCandidate[]>();
+    const diagnosticRaw = new Map<string, RawStreamCandidate[]>();
+    const adapters = await Promise.all(
+      this.adapters
+        .filter((a) => a.enabled())
+        .map(async (adapter) => {
+          const t0 = Date.now();
+          try {
+            const result = await adapter.resolve(query);
+            const raw = result.candidates;
+            diagnosticRaw.set(adapter.id, raw);
+            const { candidates: verified, verifiedAliveCount } =
+              await verifyAndFilterCandidatesDetailed(raw);
+            diagnosticCandidates.set(adapter.id, verified);
+            // Diagnostic-only retry, independent of the short startup budget.
+            // Bound work per adapter; never include URLs or headers in output.
+            const deep = new Map(await Promise.all(raw.filter(c => c.multiAudio && c.type === 'hls').slice(0, 2)
+              .map(async c => [c.url, await diagnoseMultiAudioCandidate(c)] as const)));
+            return {
+              id: adapter.id,
+              ms: Date.now() - t0,
+              raw: raw.length,
+              verified: verified.length,
+              verifiedAlive: verifiedAliveCount,
+              multiAudio: verified.filter((c) => {
+                const evidence = cachedCandidateEvidence(c);
+                return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
+              }).length,
+              // Raw claims and independently measured manifest evidence are
+              // intentionally separate. Never return URLs, headers or tokens.
+              options: raw.slice(0, 20).map((candidate) => {
+                const evidence = cachedCandidateEvidence(candidate);
+                return {
+                  fingerprint: crypto.createHmac('sha256', this.cfg.secret)
+                    .update(candidate.url).digest('hex').slice(0, 12),
+                  type: candidate.type,
+                  claimedAudio: candidate.audioLang ?? null,
+                  claimedMultiAudio: !!candidate.multiAudio,
+                  verifiedMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
+                  reachability: evidence?.alive ? 'verified' : evidence?.confirmedDead ? 'dead' : 'unknown',
+                  claimedQuality: /^[a-z0-9 ._-]{1,32}$/i.test(candidate.quality) ? candidate.quality : 'unknown',
+                  deepProbe: deep.get(candidate.url) ?? null,
+                  probe: evidence ? {
+                    alive: evidence.alive,
+                    confirmedDead: evidence.confirmedDead,
+                    ms: evidence.rttMs ?? null,
+                    observationAgeMs: cachedCandidateEvidenceAgeMs(candidate),
+                    scope: candidate.type === 'mp4' ? 'upstream-range-response' : 'upstream-manifest-and-selected-playlists',
+                    mediaSegmentsChecked: false,
+                    browserPlaybackChecked: false,
+                    manifestKind: evidence.manifestKind ?? null,
+                    audioRenditions: evidence.manifestAudioRenditions ?? null,
+                    audioLanguages: evidence.discoveredAudioLangs ?? [],
+                    videoVariants: evidence.manifestVideoVariants ?? null,
+                    qualityHeights: evidence.qualityLadder ?? [],
+                  } : null,
+                };
+              }),
+              types: verified.reduce<Record<string, number>>((acc, c) => {
+                acc[c.type] = (acc[c.type] ?? 0) + 1;
+                return acc;
+              }, {}),
+              error: null as string | null,
+            };
+          } catch (err) {
+            return {
+              id: adapter.id,
+              ms: Date.now() - t0,
+              raw: 0,
+              verified: 0,
+              verifiedAlive: 0,
+              multiAudio: 0,
+              types: {} as Record<string, number>,
+              error: err instanceof Error ? err.name : 'error',
+            };
+          }
+        }),
+    );
+    const entries = this.adapters.flatMap(adapter =>
+      (diagnosticCandidates.get(adapter.id) ?? []).map(candidate => ({adapter,candidate})));
+    const selected = selectPlaybackCandidates(entries).map(({adapter,candidate}) => ({
+      sourceId:adapter.id,
+      fingerprint:crypto.createHmac('sha256',this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
+      multiAudio:!!candidate.multiAudio,
+      languages:candidate.availableAudioLangs ?? [],
+      verified:!!cachedCandidateEvidence(candidate)?.alive,
+    }));
+    const lanes = diag.map(entry => {
+      const candidates = (diagnosticRaw.get(entry.adapter) ?? []).filter(c => c.diagnosticLane === entry.lane);
+      const evidence = candidates.map(c => cachedCandidateEvidence(c));
+      return { ...entry, verifiedAlive: evidence.filter(e => e?.alive).length,
+        confirmedDead: evidence.filter(e => e?.confirmedDead).length,
+        unknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
+        verifiedMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
+    });
+    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, note: 'Diagnostic selection is not the player response. Liveness observations may be cached; HLS checks playlists, not media segments, relay delivery or browser playback. Counts named verified include unverified retained candidates; verifiedAlive counts reachable observations.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -86,7 +227,7 @@ export class SourceRegistry {
     if (existing) return existing;
 
     const p = adapter
-      .resolve({ ...query, preferredLang: undefined })
+      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => this.setCachedAdapterResult(baseKey, result) })
       .then((res) => {
         this.setCachedAdapterResult(baseKey, res);
         return res;
@@ -99,6 +240,51 @@ export class SourceRegistry {
     return p;
   }
 
+  private resolveSegmentsWithCache(
+    adapter: SourceAdapter,
+    baseKey: string,
+    query: SourceQuery,
+  ): Promise<SkipSegments | undefined> {
+    if (!adapter.resolveSegments) return Promise.resolve(undefined);
+
+    const cached = this.segmentCache.get(baseKey);
+    if (cached) {
+      if (Date.now() <= cached.expiresAt) {
+        // Refresh LRU position even when the cached result is undefined.
+        this.segmentCache.delete(baseKey);
+        this.segmentCache.set(baseKey, cached);
+        return Promise.resolve(cached.result);
+      }
+      this.segmentCache.delete(baseKey);
+    }
+
+    const existing = this.segmentInFlight.get(baseKey);
+    if (existing) return existing;
+
+    const resolveSegments = adapter.resolveSegments.bind(adapter);
+    const p = resolveSegments({ ...query, preferredLang: undefined })
+      .catch(() => undefined)
+      .then((result) => {
+        if (this.segmentCache.has(baseKey)) this.segmentCache.delete(baseKey);
+        while (this.segmentCache.size >= MAX_ADAPTER_CACHE_ENTRIES) {
+          const oldest = this.segmentCache.keys().next().value;
+          if (oldest === undefined) break;
+          this.segmentCache.delete(oldest);
+        }
+        this.segmentCache.set(baseKey, {
+          expiresAt: Date.now() + ADAPTER_CACHE_TTL_MS,
+          result,
+        });
+        return result;
+      })
+      .finally(() => {
+        this.segmentInFlight.delete(baseKey);
+      });
+
+    this.segmentInFlight.set(baseKey, p);
+    return p;
+  }
+
   async resolvePlayback(params: {
     type: 'movie' | 'tv';
     tmdbId: string;
@@ -108,6 +294,11 @@ export class SourceRegistry {
     preferredLang?: string;
     streamPathPrefix?: string;
   }): Promise<UniformPlaybackResponse | null> {
+    const resolveStartedAt = Date.now();
+    // One end-to-end budget, not additive provider + liveness + metadata waits.
+    const deadline = resolveStartedAt + 4800;
+    const remaining = () => Math.max(0, deadline - Date.now());
+    const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
       (a) => a.enabled() && (!params.sourceId || a.id === params.sourceId),
     );
@@ -123,6 +314,9 @@ export class SourceRegistry {
       episode: params.episode,
     });
 
+    let readyMedia: Awaited<typeof mediaPromise> | undefined;
+    void mediaPromise.then((m) => { readyMedia = m; }).catch(() => {});
+    const subtitleState: { value: Awaited<ReturnType<typeof fetchOpenSubtitlesFallback>> | null } = { value: null };
     // Warm OpenSubtitles fallback concurrently as soon as TMDB resolves `imdbId`
     const earlyOpenSubsPromise = this.cfg.subtitles?.enabled
       ? mediaPromise
@@ -138,6 +332,7 @@ export class SourceRegistry {
           )
           .catch(() => null)
       : Promise.resolve(null);
+    void earlyOpenSubsPromise.then((subs) => { subtitleState.value = subs; }).catch(() => {});
 
     const query: SourceQuery = {
       type: params.type,
@@ -159,15 +354,27 @@ export class SourceRegistry {
     let earlyRelease: (() => void) | null = null;
     let lagTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const cacheKeys = activeAdapters.map(
+      (adapter) =>
+        `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`,
+    );
+    // Segment lookup is deliberately independent of the adapter race. A fast
+    // Source 2 response must not discard Source 1's slower intro/outro metadata.
+    const segmentResults: (SkipSegments | undefined)[] = activeAdapters.map(() => undefined);
+    const segmentTasks = activeAdapters.map((adapter, idx) =>
+      this.resolveSegmentsWithCache(adapter, cacheKeys[idx], query)
+        .then((value) => { segmentResults[idx] = value; }).catch(() => {}),
+    );
+
     const adapterTasks = activeAdapters.map(async (adapter, idx) => {
-      const cacheKey = `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`;
+      const cacheKey = cacheKeys[idx];
       try {
         const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
         slots[idx] = { adapter, result };
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
-            lagTimer = setTimeout(() => earlyRelease?.(), 2600);
+            lagTimer = setTimeout(() => earlyRelease?.(), 450);
           }
         }
       } catch {
@@ -185,6 +392,7 @@ export class SourceRegistry {
       new Promise<void>((r) => {
         earlyRelease = r;
       }),
+      wait(Math.min(3400, remaining())),
     ]);
     if (lagTimer) clearTimeout(lagTimer);
 
@@ -198,7 +406,8 @@ export class SourceRegistry {
           key: `${adapterIdx}::${cand.key}`,
         })),
       );
-      const vFlat = await verifyAndFilterCandidates(tagged);
+      const { candidates: vFlat, verifiedAliveCount } =
+        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -215,90 +424,85 @@ export class SourceRegistry {
           liveCandidates: byIdx.get(idx) ?? [],
         })),
         totalLive: vFlat.length,
+        verifiedLive: verifiedAliveCount,
         vFlat,
       };
     };
 
     let verifiedBatch = await verifyCurrentSlots();
 
-    // If an adapter is still in flight AND our fast batch either had 0 live streams OR lacked
-    // the requested `preferredLang`, wait for all remaining adapters so no language dub is missed!
-    if (doneCount < activeAdapters.length) {
-      const wantCode = params.preferredLang ? normalizeLang(params.preferredLang).code : '';
-      const wantPrimary = wantCode && wantCode !== 'und' ? wantCode.split('-')[0] : '';
-      const fastHasWantedLang =
-        !wantPrimary ||
-        verifiedBatch.vFlat.some(
-          (c) =>
-            c.audioLang === wantCode ||
-            c.audioLang?.split('-')[0] === wantPrimary ||
-            c.availableAudioLangs?.some((l) => l === wantCode || l.split('-')[0] === wantPrimary),
-        );
-      if (verifiedBatch.totalLive === 0 || !fastHasWantedLang) {
-        await Promise.allSettled(adapterTasks);
-        verifiedBatch = await verifyCurrentSlots();
-      }
+    // If the fast batch is empty or couldn't be verified, allow outstanding
+    // adapters to finish within the same overall deadline. Healthy sources
+    // start immediately; preference matching must not block initial playback.
+    if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+      await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
+      verifiedBatch = await verifyCurrentSlots();
     }
 
-    const media = await mediaPromise;
+    // Metadata, skip markers and subtitles are enrichments; none may hold the
+    // first playable stream hostage. Their requests continue warming caches.
+    // A brief opportunistic window retains metadata and skip markers when
+    // they're already close, without making their upstream timeout additive.
+    if (remaining() > 0) await Promise.race([
+      Promise.allSettled([mediaPromise, ...segmentTasks]),
+      wait(Math.min(1200, remaining())),
+    ]);
+    const media = readyMedia ?? {
+      type: params.type, tmdbId: params.tmdbId, imdbId: null,
+      ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
+      title: '', year: '', overview: '', poster: null, backdrop: null, logo: null,
+    };
     const verifiedEntries = verifiedBatch.entries;
 
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;
-
+    for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
+    const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
-      if (!mergedSegments && result.segments) {
-        mergedSegments = result.segments;
-      }
+      if (!mergedSegments && result.segments) mergedSegments = result.segments;
       if (!media.title && result.metaHint?.title) {
-        media.title =
-          params.type === 'tv' && params.season && params.episode
-            ? `${result.metaHint.title} · S${params.season}E${params.episode}`
-            : result.metaHint.title;
+        media.title = params.type === 'tv' && params.season && params.episode
+          ? `${result.metaHint.title} · S${params.season}E${params.episode}` : result.metaHint.title;
       }
       if (!media.year && result.metaHint?.year) media.year = result.metaHint.year;
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
-
-      const labelCounts = new Map<string, number>();
-      let optionSeq = 0;
-
       for (const cand of liveCandidates) {
-        const sealed = this.sealCandidate(adapter, cand, ++optionSeq, labelCounts, streamBase);
-        uniformOptions.push(sealed);
-
-        // If candidate includes a distinct healthy standby backup URL, expose as automatic failover slot
-        if (cand.standbyUrl && cand.standbyUrl !== cand.url) {
-          const backupCand: RawStreamCandidate = {
-            ...cand,
-            key: `${cand.key}#standby`,
-            fingerprint: `${cand.fingerprint || cand.key}#standby`,
-            url: cand.standbyUrl,
-            headers: cand.standbyHeaders ?? cand.headers,
-            standbyUrl: undefined,
-          };
-          uniformOptions.push(this.sealCandidate(adapter, backupCand, ++optionSeq, labelCounts, streamBase));
+        candidateEntries.push({adapter,candidate:cand});
+        if (cand.standbyUrl && cachedCandidateEvidence({ ...cand, url:cand.standbyUrl, headers:cand.standbyHeaders ?? cand.headers })?.alive) {
+          candidateEntries.push({adapter,candidate:{...cand,key:`${cand.key}#standby`,fingerprint:`${cand.fingerprint || cand.key}#standby`,url:cand.standbyUrl,headers:cand.standbyHeaders ?? cand.headers,standbyUrl:undefined,standbyHeaders:undefined}});
         }
       }
     }
+    const counts = new Map<string, Map<string, number>>();
+    const sequences = new Map<string, number>();
+    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
+      if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
+      const seq = (sequences.get(adapter.id) ?? 0) + 1;
+      sequences.set(adapter.id,seq);
+      uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
+    }
 
-    if (!uniformOptions.length) return null;
+    if (!uniformOptions.length) {
+      // Operator-only diagnostics (server console; never sent to clients).
+      const detail = verifiedEntries
+        .map(
+          (e) =>
+            `${e.adapter.id}: raw=${e.result.candidates.length} verified=${e.liveCandidates.length}`,
+        )
+        .join(' ');
+      console.warn(
+        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} :: ${detail}`,
+      );
+      return null;
+    }
 
-    // Automatic OpenSubtitles fallback: seal & backfill missing subtitle languages
-    // whenever any stream option has sparse or zero native subtitles.
-    const needsSubFallback =
-      Boolean(media.imdbId) &&
-      Boolean(this.cfg.subtitles?.enabled) &&
-      uniformOptions.some((o) => o.subtitles.length < 3);
+    // Only OpenSubtitles tracks are exposed. No provider subtitle fallback.
+    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
-    if (needsSubFallback && media.imdbId) {
-      const rawFallbackSubs =
-        (await earlyOpenSubsPromise) ??
-        (await fetchOpenSubtitlesFallback(this.cfg.subtitles, {
-          type: params.type,
-          imdbId: media.imdbId,
-          season: params.season,
-          episode: params.episode,
-        }));
+    if (shouldResolveOpenSubtitles && media.imdbId) {
+      // Never issue a serial second request or wait beyond the startup budget.
+      if (!subtitleState.value && remaining() > 0) await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
+      const rawFallbackSubs = subtitleState.value ?? [];
 
       if (rawFallbackSubs.length > 0) {
         const sealedFallbackSubs = rawFallbackSubs.map((s) => ({
@@ -315,15 +519,27 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          const existingLangs = new Set(opt.subtitles.map((s) => s.lang.toLowerCase()));
-          for (const fb of sealedFallbackSubs) {
-            if (!existingLangs.has(fb.lang.toLowerCase())) {
-              opt.subtitles.push(fb);
-              existingLangs.add(fb.lang.toLowerCase());
-            }
-          }
+          opt.subtitles = [...sealedFallbackSubs];
         }
       }
+    }
+
+    // Hierarchy: genuine multi-audio streams (several languages muxed in one
+    // manifest) lead, then multi-quality ABR streams (a real rendition
+    // ladder), then known single-quality streams, and only then streams
+    // whose quality is unknown. Stable within each tier.
+    const qualityTierOf = (o: UniformStreamOption): number => {
+      const n = o.qualityLadder?.length ?? o.qualityOptions ?? 0;
+      if (n > 1) return 0;
+      if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
+      return 2;
+    };
+    if (!params.preferredLang) {
+      uniformOptions.sort(
+        (a, b) =>
+          Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
+          qualityTierOf(a) - qualityTierOf(b),
+      );
     }
 
     // When a preferred audio language is requested, promote matching streams
@@ -350,9 +566,17 @@ export class SourceRegistry {
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
+            qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
       }
+    }
+
+    const resolveMs = Date.now() - resolveStartedAt;
+    if (resolveMs > 8000) {
+      console.warn(
+        `[elfura-resolve] SLOW ${resolveMs}ms type=${params.type} tmdb=${params.tmdbId} options=${uniformOptions.length}`,
+      );
     }
 
     return {
@@ -414,17 +638,6 @@ export class SourceRegistry {
       )}`,
     }));
 
-    const subtitles = (cand.subtitles ?? []).map((s) => ({
-      lang: s.lang,
-      label: s.label,
-      url: `${streamBase}?t=${encodeURIComponent(
-        sealStreamTicket(this.cfg.secret, {
-          u: s.url,
-          ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
-          k: 's',
-        }),
-      )}`,
-    }));
 
     const latencyHintMs =
       typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
@@ -438,13 +651,18 @@ export class SourceRegistry {
       type: cand.type,
       url: `${streamBase}?t=${encodeURIComponent(streamTicket)}`,
       quality: cand.quality || 'auto',
+      ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
+      ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
+      ...((cand.qualityOptions ?? cand.qualityLadder?.length) !== undefined
+        ? { qualityOptions: cand.qualityOptions ?? cand.qualityLadder?.length }
+        : {}),
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
-      subtitles,
+      subtitles: [],
     };
   }
 }

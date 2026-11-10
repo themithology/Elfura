@@ -1,0 +1,21 @@
+// Inspect public VidBolt client protocol; never output keys or full asset URLs.
+const base='https://vidbolt.xyz';
+const head={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',Referer:base+'/'};
+async function text(path){try{const r=await fetch(new URL(path,base),{headers:head,signal:AbortSignal.timeout(18000)});return r.ok?await r.text():'';}catch{return '';}}
+const page=await text('/movie/550');const indexName=page.match(/\/assets\/(index-[A-Za-z0-9_-]+\.js)/)?.[1];const playerPath=[...page.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(m=>m[1]).find(s=>s.startsWith('/player/'));const index=indexName?await text('/assets/'+indexName):playerPath?await text(playerPath):'';const embeddedName=index.match(/assets\/(EmbeddedOnlyEmbedPage-[A-Za-z0-9_-]+\.js)/)?.[1];const embedded=embeddedName?await text('/assets/'+embeddedName):'';
+const providers=[...embedded.matchAll(/\{(?:id|"id"):"([a-z0-9-]+)",name:"([^"]*)",desc:"([^"]*)"/g)].map(m=>m[1]);
+const id=providers.find(x=>/orion|darkmatter/i.test(x));let chunk='';if(id){const match=embedded.match(new RegExp(`id:"${id}"([\\s\\S]*?)import\\("\\./([A-Za-z0-9_.-]+\\.js)"\\)`));if(match)chunk=await text('/assets/'+match[2]);}
+const domains=[...new Set([...chunk.matchAll(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?=[\/:"'`\\\s]|$)/gi)].map(m=>m[1]))];
+const summary={page:!!page,pageScripts:[...page.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(m=>m[1]),indexName:!!indexName,index:!!index,embedded:!!embedded,providers,id,chunk:!!chunk,domains,markers:Object.fromEntries(['api.movy.lol','animecurx','api_key','apikey','streamrip','rousav'].map(s=>[s,chunk.includes(s)]))};
+console.log(`::notice title=VidboltClient::${JSON.stringify(summary).replace(/%/g,'%25')}`);
+const imports=[...new Set([...index.matchAll(/["'`]((?:\.\/|\/player\/)?[a-zA-Z0-9_.-]+\.js)["'`]/g)].map(m=>m[1]))];
+console.log(`::notice title=VidboltClient::${JSON.stringify({imports:imports.slice(0,80),mainMarkers:Object.fromEntries(['api.movy.lol','animecurx','api_key','rousav','orion','Orion'].map(s=>[s,index.includes(s)])),pageMarkers:Object.fromEntries(['api.movy.lol','animecurx','api_key','rousav','m3u8','source','player'].map(s=>[s,page.includes(s)]))}).replace(/%/g,'%25')}`);
+const serverContexts=[...page.matchAll(/(?:servers|serverList|providers|__vbBoot)/gi)].slice(0,8).map(m=>page.slice(Math.max(0,m.index-160),m.index+900).replace(/[a-f0-9]{32,}/gi,'[redacted]').replace(/https?:[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]'));
+console.log(`::notice title=VidboltClient::${JSON.stringify({serverContexts}).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
+const pageMatches=[...page.matchAll(/(?:source|video|iframe|src=)/gi)].slice(0,8).map(m=>page.slice(Math.max(0,m.index-90),m.index+180).replace(/https?:[^\s"'`<>]+\?[^\s"'`<>]+/gi,'[url-redacted]'));
+const yeAt=Math.max(index.indexOf('function Ye('),index.indexOf('Ye=e=>'),index.indexOf('Ye=') );
+const queryBuilder=yeAt>=0?index.slice(yeAt,yeAt+700):'not-found';
+console.log(`::notice title=VidboltClient::${JSON.stringify({queryBuilder}).replace(/%/g,'%25')}`);
+const fetchMatches=[...index.matchAll(/\bfetch\(/g)].slice(0,12).map(m=>index.slice(Math.max(0,m.index-110),m.index+260).replace(/[a-f0-9]{32,}/gi,'[redacted]'));
+console.log(`::notice title=VidboltClient::${JSON.stringify({pageMatches,fetchMatches}).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);
+for(const term of ['api.movy.lol','animecurx','streamrip','api_key','/api/source','/api/tv','/api/resolve?','provider']){const haystack=chunk || index;const i=haystack.indexOf(term);if(i>=0){let s=haystack.slice(Math.max(0,i-850),i+300);s=s.replace(/[a-f0-9]{32,}/gi,'[redacted]').replace(/streamrip_secret_[0-9]+/g,'[redacted]');console.log(`::notice title=VidboltClient::${JSON.stringify({term,context:s}).replace(/%/g,'%25')}`);}}

@@ -1,0 +1,27 @@
+name: Test deployment manual playback
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/test-deployment-manual.mjs, .github/workflows/test-deployment-manual.yml]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {mode: direct, run: 1}
+          - {mode: direct, run: 2}
+          - {mode: direct, run: 3}
+          - {mode: iframe, run: 1}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/test-deployment-manual.mjs
+        env:
+          MODE: ${{ matrix.mode }}

@@ -1,6 +1,25 @@
+process.env.ELFURA_NXSHA_ENABLED = '0';
+process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from live upstreams
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { registerHooks } from 'node:module';
+
+// Redirect only the lazily loaded HLS engine to the event-order adapter. All
+// player orchestration and the loadHls()/manifest handlers remain production code.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'hls.js' || specifier === 'dashjs') {
+      return {
+        url: new URL(specifier === 'hls.js' ? './hls-event-order-mock.mjs' : './dash-v5-mock.mjs', import.meta.url).href,
+        shortCircuit: true,
+      };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
 import {
   isSafeUpstreamUrl,
   sealStreamTicket,
@@ -9,16 +28,18 @@ import {
 } from '../../dist/backend/security.js';
 import {
   normalizeLang,
-  unscramblePayload,
-  serializeSerovalEnvelope,
-  deserializeSerovalNode,
+  fetchFromVidBolt,
 } from '../../dist/backend/sources/source1.js';
 import {
   rewriteHlsManifest,
+  resolveHlsChildUrl,
+  rewriteDashManifest,
+  materializeDashTicket,
   sanitizeWebVtt,
   isAnonymousSegmentUrl,
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
+import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
 
 // 1. SSRF guard (production mode: loopback/RFC1918/metadata strictly rejected)
@@ -31,6 +52,38 @@ assert.equal(isSafeUpstreamUrl('http://[::1]/secret'), false);
 assert.equal(isSafeUpstreamUrl('file:///etc/passwd'), false);
 assert.equal(isSafeUpstreamUrl('https://cdn.example.com/stream/master.m3u8'), true);
 
+// Same-origin access parameters propagate only for the specific CDN families,
+// never to a different origin or over an explicit child key.
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.get('api_key'), 'fixture');
+assert.equal(new URL(resolveHlsChildUrl('https://other.example/a.m3u8', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8?apikey=child', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
+
+// The original provider is resolved independently, with untrusted domains rejected.
+{
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.pathname, '/api/resolve');
+      assert.equal(parsed.searchParams.get('only'), 'orion');
+      assert.equal(parsed.searchParams.get('season'), '2');
+      assert.equal(parsed.searchParams.get('episode'), '3');
+      return new Response(JSON.stringify({ stream: { sources: [
+        { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls', master: '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en"' },
+        { url: 'https://vidstuck.cc/master.m3u8', type: 'hls' },
+        { url: 'https://untrusted.example/master.m3u8', type: 'hls' },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const sources = await fetchFromVidBolt('https://vidbolt.xyz', {type:'tv',tmdbId:'93405',season:2,episode:3});
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
+    assert.equal(sources[0].multiAudio, true); // scheduling hint, independently verified before playback
+    assert.deepEqual(sources[0].availableAudioLangs, ['hi','en']);
+    assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
+  } finally { globalThis.fetch = originalFetch; }
+}
+
 // 2. Embed route matcher
 assert.deepEqual(matchEmbedPath('/embed/movie/278'), { mediaType: 'movie', tmdbId: '278' });
 assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {
@@ -38,25 +91,6 @@ assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {
   tmdbId: '94605',
   season: 1,
   episode: 3,
-});
-
-// 3. XOR scramble/unscramble cipher
-function scrambleForTest(plain) {
-  const key = 'tGfL1x#9vQ';
-  const raw = Buffer.from(plain, 'utf8');
-  const xored = Buffer.allocUnsafe(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    xored[i] = raw[i] ^ key.charCodeAt(i % 10) ^ (i & 0xff);
-  }
-  return xored.toString('base64').split('').reverse().join('');
-}
-const sampleJson = JSON.stringify({ ok: true, title: 'Arcane', links: [{ url: 'https://cdn.example/master.m3u8' }] });
-assert.equal(unscramblePayload(scrambleForTest(sampleJson)), sampleJson);
-
-// 4. Seroval AST codec
-const ser = serializeSerovalEnvelope({ data: { path: '/api/tv/94605/1/1', n: 42, ok: true } });
-assert.deepEqual(deserializeSerovalNode(JSON.parse(ser)), {
-  data: { path: '/api/tv/94605/1/1', n: 42, ok: true },
 });
 
 // 5. AES-256-GCM stateless stream tickets
@@ -92,6 +126,10 @@ assert.equal(canonLang('jpn'), 'ja');
 assert.equal(canonLang('kan'), 'kn');
 assert.equal(canonLang('es-419'), 'es-419');
 assert.equal(canonLang('pt-br'), 'pt-br');
+assert.equal(canonLang('hindi-(ms)'), 'hi');
+assert.equal(canonLang('Hindi (MS)'), 'hi');
+assert.equal(canonLang('telugu-(ms)'), 'te');
+assert.equal(canonLang('unknown (MS)'), 'und');
 assert.equal(matchScore('hi', 'hin'), 0);
 assert.equal(matchScore('es', 'es-419'), 1);
 assert.equal(languageLabel('hin', 'MovieHubBD'), 'Hindi');
@@ -133,8 +171,8 @@ assert(!rewrittenDune.includes('MovieHubBD'));
 assert(rewrittenDune.includes('LANGUAGE="hi"'));
 assert(rewrittenDune.includes('NAME="Hindi"'));
 assert(rewrittenDune.includes('NAME="English"'));
-assert(rewrittenDune.includes('NAME="English #2"'));
-assert(rewrittenDune.includes('NAME="English #3"'));
+assert(!rewrittenDune.includes('TYPE=SUBTITLES'));
+assert(!rewrittenDune.includes('SUBTITLES="subs"'));
 
 const kaiManifest = [
   '#EXTM3U',
@@ -149,6 +187,81 @@ assert.equal(rewrittenKai.match(/^#EXTM3U$/gm)?.length, 1);
 assert(rewrittenKai.includes('LANGUAGE="ja",NAME="Japanese",DEFAULT=YES'));
 assert(rewrittenKai.includes('LANGUAGE="kn",NAME="Kannada",DEFAULT=NO'));
 
+// Live Re:Zero S1E1 VidSync playlists escape underscores (`hls\_mps`). Preserve the
+// actual CDN key instead of letting WHATWG URL parsing turn it into `hls/_mps`.
+const escapedReZeroManifest = [
+  '#EXTM3U',
+  '#EXT-X-TARGETDURATION:10',
+  '#EXTINF:2.919578,',
+  'https://img.hscow.com/hls\\_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
+  '#EXT-X-ENDLIST',
+].join('\n');
+const rewrittenReZero = rewriteHlsManifest(
+  escapedReZeroManifest,
+  'https://img1.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/index_287.m3u8',
+  { Referer: 'https://api.hlowb.com/', 'User-Agent': 'okhttp/4.9.3' },
+  secret,
+);
+const reZeroSegmentRef = rewrittenReZero.split('\n').find((line) => line.startsWith('/api/v1/stream?t='));
+assert(reZeroSegmentRef, 'Escaped Re:Zero media segment must remain relayed');
+const reZeroSegmentTicket = openStreamTicket(
+  secret,
+  new URL(reZeroSegmentRef, 'https://elfura.example').searchParams.get('t'),
+);
+assert.equal(
+  reZeroSegmentTicket.u,
+  'https://img.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
+  'Re:Zero segment ticket must normalize hls\\_mps to the real hls_mps CDN key',
+);
+
+// DASH SegmentTemplate URLs must remain substitutable by dash.js without exposing
+// the upstream template. The relay materializes $Number$/$RepresentationID$ only
+// after opening the authenticated ticket.
+const dashTemplateMpd = `<?xml version="1.0"?>
+<MPD><BaseURL>https://cdn.example.com/root/?sig=a&amp;b=c</BaseURL><Period><AdaptationSet>
+<Representation id="v1" bandwidth="1200000"><SegmentTemplate startNumber="7"
+ media="video/$RepresentationID$/$Number%05d$.m4s?x=1&amp;y=2"
+ initialization="video/$RepresentationID$/init.mp4" /></Representation>
+</AdaptationSet></Period></MPD>`;
+const rewrittenDashTemplate = rewriteDashManifest(
+  dashTemplateMpd,
+  'https://origin.example.com/manifest.mpd',
+  { Referer: 'https://player.example.com/' },
+  secret,
+);
+assert(!rewrittenDashTemplate.includes('cdn.example.com'), 'DASH templates must not leak their upstream origin');
+const dashMediaRef = rewrittenDashTemplate.match(/\smedia="([^"]+)"/)?.[1]?.replaceAll('&amp;', '&');
+assert(dashMediaRef?.startsWith('/api/v1/stream?t='), 'DASH media template must be relayed');
+assert(dashMediaRef.includes('_dr=$RepresentationID$'), 'RepresentationID must remain visible to dash.js');
+assert(dashMediaRef.includes('_dn=$Number%05d$'), 'Number formatting must remain visible to dash.js');
+const dashMediaUrl = new URL(dashMediaRef, 'https://elfura.example');
+const dashTemplateTicket = openStreamTicket(secret, dashMediaUrl.searchParams.get('t'));
+assert.equal(
+  dashTemplateTicket.u,
+  'https://cdn.example.com/root/video/$RepresentationID$/$Number%05d$.m4s?x=1&y=2',
+);
+const materializedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
+assert.equal(materializedDashTicket, null, 'Unsubstituted test template must be rejected rather than fetched literally');
+dashMediaUrl.searchParams.set('_dr', 'v1');
+dashMediaUrl.searchParams.set('_dn', '00042');
+const resolvedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
+assert.equal(
+  resolvedDashTicket.u,
+  'https://cdn.example.com/root/video/v1/00042.m4s?x=1&y=2',
+  'Relay must substitute the actual DASH representation and padded segment number',
+);
+
+const dashListMpd = `<MPD><BaseURL>https://cdn.example.com/list/</BaseURL><Period><Representation id="a">
+<SegmentList><Initialization source="init.mp4"/><SegmentURL media="seg1.m4s"/></SegmentList>
+</Representation></Period></MPD>`;
+const rewrittenDashList = rewriteDashManifest(dashListMpd, 'https://origin.example.com/list.mpd', undefined, secret);
+const dashInitRef = rewrittenDashList.match(/\ssource="([^"]+)"/)?.[1];
+const dashSegmentRef = rewrittenDashList.match(/\smedia="([^"]+)"/)?.[1];
+assert.equal(openStreamTicket(secret, new URL(dashInitRef, 'https://elfura.example').searchParams.get('t')).u,
+  'https://cdn.example.com/list/init.mp4');
+assert.equal(openStreamTicket(secret, new URL(dashSegmentRef, 'https://elfura.example').searchParams.get('t')).u,
+  'https://cdn.example.com/list/seg1.m4s');
+
 // Source 2 rousav + dash-hls-bridge manifest sanitization & WebVTT spam cue stripping
 const rousavManifest = [
   '#EXTM3U',
@@ -161,7 +274,8 @@ const rousavManifest = [
 const rewrittenRousav = rewriteHlsManifest(rousavManifest, 'https://cdn.example.com/media/abc/index.m3u8', undefined, secret);
 assert(rewrittenRousav.includes('LANGUAGE="en"'));
 assert(!rewrittenRousav.includes('en.[CC]'));
-assert(rewrittenRousav.includes('NAME="English (SDH)"'));
+assert(!rewrittenRousav.includes('TYPE=SUBTITLES'));
+assert(!rewrittenRousav.includes('SUBTITLES="subs"'));
 assert(rewrittenRousav.includes('NAME="English"'));
 assert(rewrittenRousav.includes('NAME="Hindi"'));
 assert(!rewrittenRousav.includes('1. English'));
@@ -202,12 +316,100 @@ assert(cleanVtt.includes('Welcome back to Arrakis.'));
 process.env.NODE_ENV = 'test';
 process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
 
+// A healthy candidate must not be listed alongside slow/unverified lanes. Those
+// lanes remain available only in last-resort mode when nothing verifies alive.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.includes('/healthy.m3u8')) {
+      return new Response('#EXTM3U\n#EXTINF:4,\nseg0.ts\n#EXT-X-ENDLIST\n', {
+        status: 200,
+        headers: { 'Content-Type': 'application/vnd.apple.mpegurl' },
+      });
+    }
+    return new Promise((_resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('probe timeout')), 5000);
+      init.signal?.addEventListener('abort', () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    });
+  };
+  try {
+    const candidates = [
+      {
+        key: 'healthy', fingerprint: 'healthy', type: 'hls', url: 'https://cdn.example.com/healthy.m3u8',
+        quality: '1080p', multiAudio: true, subtitles: [], rank: 0, latencyMs: 0,
+      },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        key: `slow-${i}`, fingerprint: `slow-${i}`, type: 'hls',
+        url: `https://cdn.example.com/slow-${i}.m3u8`, quality: 'auto', multiAudio: false,
+        subtitles: [], rank: i + 1, latencyMs: 500,
+      })),
+    ];
+    const filtered = await verifyAndFilterCandidates(candidates);
+    assert.deepEqual(filtered.map((c) => c.key), ['healthy'],
+      'Unverified slow lanes must be hidden when a healthy candidate exists');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// A temporary child failure must not poison the master as permanently dead.
+{
+  const originalFetch = globalThis.fetch;
+  let childCalls = 0;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith('/retry-master.m3u8')) return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=1280x720\nretry-child.m3u8\n');
+    if (url.endsWith('/retry-child.m3u8')) {
+      if (++childCalls === 1) return new Response('temporary', { status: 503 });
+      return new Response('#EXTM3U\n#EXTINF:4,\nsegment.ts\n#EXT-X-ENDLIST\n');
+    }
+    throw new Error('unexpected fetch');
+  };
+  try {
+    const c = { key: 'retry-master', type: 'hls', url: 'https://cdn.example.com/retry-master.m3u8', quality: 'auto', rank: 1 };
+    assert.equal((await verifyAndFilterCandidatesDetailed([c])).verifiedAliveCount, 0);
+    assert.equal((await verifyAndFilterCandidatesDetailed([c])).verifiedAliveCount, 1);
+    assert.equal(childCalls, 2, 'transient child errors must be retried, not cached as dead');
+  } finally { globalThis.fetch = originalFetch; }
+}
+
 const SEGMENT_BYTES = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
 
+let skipSegmentRequestCount = 0;
+let removedSourceCalls = 0;
 const mockUpstream = http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const origin = `http://${req.headers.host}`;
+  if (/^\/api\/(?:extract|scan|sources)(?:\/|$)/.test(u.pathname) || u.pathname.startsWith('/backend/database/')) removedSourceCalls++;
 
+  if (u.pathname === '/tmdb/trending/movie/week') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 533535, title: 'Deadpool & Wolverine', release_date: '2024-07-24', vote_average: 7.9, poster_path: '/deadpool.jpg', backdrop_path: '/deadpool-wide.jpg', overview: 'Movie overview' },
+      { id: 1218925, title: 'Chainsaw Man - The Movie: Reze Arc', release_date: '2025-09-19', vote_average: 8.4, poster_path: '/reze.jpg', backdrop_path: '/reze-wide.jpg', overview: 'Anime film overview' },
+    ] }));
+    return;
+  }
+  if (u.pathname === '/tmdb/trending/tv/week') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 94605, name: 'Arcane', first_air_date: '2021-11-06', vote_average: 8.7, poster_path: '/arcane.jpg', backdrop_path: '/arcane-wide.jpg', overview: 'Series overview' },
+    ] }));
+    return;
+  }
+  if (u.pathname === '/tmdb/discover/tv') {
+    assert.equal(u.searchParams.get('with_genres'), '16');
+    assert.equal(u.searchParams.get('with_original_language'), 'ja');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ results: [
+      { id: 2190, name: 'Dynamic Anime', first_air_date: '2024-04-01', vote_average: 8.2, poster_path: '/anime.jpg', backdrop_path: '/anime-wide.jpg', overview: 'Anime overview' },
+    ] }));
+    return;
+  }
   if (u.pathname === '/tmdb/tv/94605') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
@@ -418,74 +620,9 @@ const mockUpstream = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && u.pathname.startsWith('/_serverFn/ff183e')) {
-    assert.equal(req.headers['x-tsr-serverfn'], 'true');
-    const reqChunks = [];
-    for await (const ch of req) reqChunks.push(ch);
-    const reqBodyStr = Buffer.concat(reqChunks).toString('utf8');
-    if (reqBodyStr.includes('1218925')) {
-      const inner1218925 = JSON.stringify({
-        ok: true,
-        imdb_id: 'tt30472557',
-        title: 'Chainsaw Man - The Movie: Reze Arc',
-        links: [
-          {
-            server: 'MHBD Dead Child',
-            label: 'Multi-Audio [HIN + ENG]',
-            quality: '1080p',
-            type: 'hls',
-            multi_audio: true,
-            audios: ['hin', 'eng'],
-            url: `${origin}/dead-child-stream/master.m3u8?v=1`,
-          },
-        ],
-      });
-      const ser1218925 = Buffer.from(serializeSerovalEnvelope({ p: scrambleForTest(inner1218925) }), 'utf8');
-      const fh = Buffer.alloc(9);
-      fh[0] = 0;
-      fh.writeUInt32BE(0, 1);
-      fh.writeUInt32BE(ser1218925.length, 5);
-      res.writeHead(200, { 'Content-Type': 'application/x-tss-framed', 'X-Tss-Serialized': 'true' });
-      res.end(Buffer.concat([fh, ser1218925]));
-      return;
-    }
-    const inner = JSON.stringify({
-      ok: true,
-      imdb_id: 'tt11126994',
-      title: 'Arcane',
-      links: [
-        {
-          server: 'TG HUB v2',
-          label: 'TG HUB v2 · Multi-Audio [HIN + ENG]',
-          quality: '1080p',
-          type: 'hls',
-          multi_audio: true,
-          audios: ['hin', 'eng'],
-          url: `${origin}/cdn/hub/master.m3u8`,
-        },
-      ],
-    });
-    const serResp = Buffer.from(serializeSerovalEnvelope({ p: scrambleForTest(inner) }), 'utf8');
-    const frameHeader = Buffer.alloc(9);
-    frameHeader[0] = 0;
-    frameHeader.writeUInt32BE(0, 1);
-    frameHeader.writeUInt32BE(serResp.length, 5);
-    res.writeHead(200, {
-      'Content-Type': 'application/x-tss-framed',
-      'X-Tss-Serialized': 'true',
-    });
-    res.end(Buffer.concat([frameHeader, serResp]));
-    return;
-  }
-
-  if (req.method === 'GET' && u.pathname.startsWith('/_serverFn/6b4f5d')) {
-    const serResp = serializeSerovalEnvelope({
-      intro: { start: 52, end: 94 },
-      outro: { start: 2310, end: 2420 },
-    });
-    res.writeHead(200, { 'Content-Type': 'application/json', 'X-Tss-Serialized': 'true' });
-    res.end(serResp);
-    return;
+  if (u.pathname.startsWith('/_serverFn/')) {
+    skipSegmentRequestCount++;
+    res.writeHead(410); res.end(); return;
   }
 
   if (u.pathname === '/api/tv/94605/1/1') {
@@ -499,6 +636,7 @@ const mockUpstream = http.createServer(async (req, res) => {
     res.end(
       JSON.stringify({
         meta: {
+          playbackToken: "fixture-rift-token",
           orionStreams: [
             {
               url: '/api/orion/abc123hash/master.m3u8',
@@ -510,6 +648,22 @@ const mockUpstream = http.createServer(async (req, res) => {
       }),
     );
     return;
+  }
+  if (u.pathname.startsWith('/api/orion/abc123hash/')) {
+    assert.equal(req.headers['x-playback-token'], 'fixture-rift-token');
+    const tail = u.pathname.split('/').pop();
+    if (tail === 'subtitles.json') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ tracks: [{ label: 'English', lang: 'en', url: '/api/orion/abc123hash/sub_en.vtt' }] }));
+      return;
+    }
+    if (tail === 'sub_en.vtt') {
+      res.writeHead(200, { 'Content-Type': 'text/vtt' }); res.end('WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nWelcome!\n'); return;
+    }
+    if (tail === 'master.m3u8') {
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+      res.end('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Hindi",LANGUAGE="hi",DEFAULT=YES,URI="/cdn/hub/a_hi.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",URI="/cdn/hub/a_en.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080,AUDIO="aud"\n/cdn/hub/v0.m3u8\n'); return;
+    }
   }
   if (u.pathname === '/api/relay') {
     const decoded = Buffer.from(u.searchParams.get('u'), 'base64url').toString('utf8');
@@ -593,6 +747,11 @@ const mockUpstream = http.createServer(async (req, res) => {
         '/cdn/hub/v0.m3u8',
       ].join('\n'),
     );
+    return;
+  }
+  if (u.pathname === '/vix-encrypted-segment.ts') {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(Buffer.from([0xff, 0x81, 0x00, 0x94, 0xac, 0x30, 0xc3, 0x88]));
     return;
   }
   if (u.pathname === '/dead-child-stream/audio0.m3u8' || u.pathname === '/dead-html-segment.ts') {
@@ -821,6 +980,13 @@ const mockUpstream = http.createServer(async (req, res) => {
         JSON.stringify({
           success: true,
           sources: byServer.orion.sources,
+          subtitles: [
+            {
+              url: `${origin}/media/rousav94605/subs_en.vtt`,
+              lang: 'en',
+              label: 'Native English',
+            },
+          ],
           byServer,
           scanReport: { totalServers: 30, onlineServers: 30, servers: scanServers },
         }),
@@ -1134,8 +1300,32 @@ const mockUpstream = http.createServer(async (req, res) => {
 
   // Hybrid offload test fixtures:
   //  - /edge-cors/* : anonymous, Referer-free, returns Access-Control-Allow-Origin: *
+  //  - /edge-echo-cors/* : echoes only the probe Origin (must stay relayed!)
   //  - /edge-nocors/* : anonymous, but omits Access-Control-Allow-Origin (must stay relayed!)
   //  - /edge-reflock/* : sends CORS *, but 403s without Referer (must stay relayed!)
+  if (u.pathname === '/edge-echo-cors/variant.m3u8') {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
+    res.end(
+      [
+        '#EXTM3U',
+        '#EXT-X-TARGETDURATION:6',
+        '#EXTINF:6.0,',
+        `${origin}/edge-echo-cors/chunk-0001.m4s`,
+        '#EXT-X-ENDLIST',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (u.pathname === '/edge-echo-cors/chunk-0001.m4s') {
+    res.writeHead(200, {
+      'Content-Type': 'video/iso.segment',
+      'Access-Control-Allow-Origin': String(req.headers.origin || ''),
+      Vary: 'Origin',
+      'Content-Length': String(SEGMENT_BYTES.length),
+    });
+    res.end(SEGMENT_BYTES);
+    return;
+  }
   if (u.pathname === '/edge-cors/master.m3u8') {
     res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' });
     res.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=4000000,RESOLUTION=1920x1080\n/edge-cors/variant.m3u8\n');
@@ -1256,6 +1446,7 @@ const { server: elfuraServer } = createBackendServer({
     appOrigin: upBase,
     apiOrigin: upBase,
     riftOrigin: upBase,
+    vidboltOrigin: upBase, // Keep integration tests isolated from live upstreams.
     riftRelay: upBase,
     syncOrigin: upBase,
   },
@@ -1263,7 +1454,14 @@ const { server: elfuraServer } = createBackendServer({
     enabled: true,
     embedOrigin: upBase,
     defaultServer: 'orion',
+    nxshaOrigin: upBase,
+    vidstuckOrigin: upBase,
   },
+  source3: {
+    enabled: true,
+    origin: upBase,
+  },
+  source4: { enabled: false },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,
@@ -1288,7 +1486,72 @@ try {
   assert.deepEqual(health.sources, [
     { id: 'source-1', label: 'Source 1' },
     { id: 'source-2', label: 'Source 2' },
+    { id: 'source-3', label: 'Source 3' },
   ]);
+
+  // The public diagnostic reports observations, never upstream links or
+  // credentials. A leaf playlist cannot become a verified quality ladder.
+  const diagRes = await fetch(`${apiBase}/diagnose/?type=tv&tmdb=94605&s=1&e=1`);
+  assert.equal(diagRes.status, 200);
+  assert.match(diagRes.headers.get('cache-control') || '', /no-store/);
+  const diag = await diagRes.json();
+  assert.equal(diag.ok, true);
+  assert.equal(diag.probe.tmdbId, '94605');
+  assert.equal(diag.sources.length, 3);
+  assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
+  assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
+  assert.match(diag.selectionPolicy.note, /not the player response/);
+  for (const s of diag.sources) for (const o of s.options ?? []) if (o.probe) {
+    assert.equal(o.probe.browserPlaybackChecked, false);
+    assert.equal(o.probe.mediaSegmentsChecked, false);
+    assert(o.probe.observationAgeMs >= 0);
+  }
+  assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
+  for (const source of diag.sources) {
+    assert(source.options.length <= 20);
+    for (const option of source.options) {
+      assert.match(option.fingerprint, /^[a-f0-9]{12}$/);
+      assert(!('url' in option) && !('headers' in option));
+      if (option.probe?.manifestKind === 'hls-media') {
+        assert.deepEqual(option.probe.qualityHeights, []);
+      }
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const cachedDiag = await fetch(`${apiBase}/api/v1/diagnostics?type=tv&tmdb=94605&s=1&e=1`);
+    assert.equal(cachedDiag.status, 200);
+  }
+  const limitedDiag = await fetch(`${apiBase}/diagnostic?type=movie&tmdb=1`);
+  assert.equal(limitedDiag.status, 429, 'different titles must not bypass the global diagnostics limit');
+
+  // Public landing routes and live, sanitized TMDB catalog used by every
+  // dynamic poster/demo/builder surface on the home page.
+  for (const landingPath of ['/', '/demo', '/docs', '/status']) {
+    const landingRes = await fetch(`${apiBase}${landingPath}`);
+    assert.equal(landingRes.status, 200, `${landingPath} must serve the public landing site`);
+    const landingHtml = await landingRes.text();
+    assert(landingHtml.includes('TheOGPirateBot'));
+    assert(landingHtml.includes('data-poster-track'));
+    assert(!landingHtml.includes('https://image.tmdb.org/t/p/w500/'), 'Poster content must come from the catalog API, not fixed markup');
+  }
+
+  const brandIconRes = await fetch(`${apiBase}/icon-maskable-512.png`);
+  assert.equal(brandIconRes.status, 200, 'production backend must serve the official root logo');
+  assert.equal(brandIconRes.headers.get('content-type'), 'image/png');
+  const brandIconBytes = Buffer.from(await brandIconRes.arrayBuffer());
+  const expectedBrandIcon = await readFile(new URL('../../dist/icon-maskable-512.png', import.meta.url));
+  assert(brandIconBytes.equals(expectedBrandIcon), 'served logo must be the exact supplied PNG');
+
+  const catalogRes = await fetch(`${apiBase}/api/v1/catalog`, { headers: browserHeaders });
+  assert.equal(catalogRes.status, 200);
+  const catalog = await catalogRes.json();
+  assert.equal(catalog.ok, true);
+  assert.equal(catalog.movies[0].tmdbId, '533535');
+  assert.equal(catalog.series[0].tmdbId, '94605');
+  assert.equal(catalog.anime[0].type, 'anime');
+  assert.equal(catalog.movies[0].poster, 'https://image.tmdb.org/t/p/w500/deadpool.jpg');
+  assert.equal(catalog.movies[0].backdrop, 'https://image.tmdb.org/t/p/w1280/deadpool-wide.jpg');
+  assert(!JSON.stringify(catalog).includes('api_key'), 'Catalog must never expose TMDB credentials');
 
   const badOriginRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
     headers: { Origin: 'https://evil-scraper.example', 'User-Agent': browserHeaders['User-Agent'] },
@@ -1316,9 +1579,31 @@ try {
   assert.equal(pbRes.status, 200);
   const pb = await pbRes.json();
   assert.equal(pb.ok, true);
+  assert.equal(removedSourceCalls, 0, 'legacy SOURCE2 settings must not activate removed providers');
+  const upstreamUrls = pb.sources.map((s) => openStreamTicket(secret, new URL(s.url, apiBase).searchParams.get('t')).u);
+  assert.equal(new Set(upstreamUrls).size, upstreamUrls.length, 'identical upstream streams must be deduplicated across groups');
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
-  assert.deepEqual(pb.segments.intro, [52, 94]);
-  assert.deepEqual(pb.primary.availableAudioLangs, ['hi', 'en']);
+  assert.equal(pb.segments, undefined, "TG skip endpoint must not be used");
+  assert.equal(skipSegmentRequestCount, 0, "removed TG service must not be contacted");
+  assert(pb.sources.length > 0, 'remaining providers should produce playable options');
+  // A provider's quality catalogue is not proof that the selected manifest
+  // actually contains multiple renditions; only measured ladders may rank so.
+  // Hierarchy invariant: within the same multi-audio class, multi-quality
+  // options never rank below single-quality or unknown-quality options.
+  {
+    const tierOf = (o) => {
+      const n = o.qualityOptions ?? o.qualityLadder?.length ?? 0;
+      if (n > 1) return 0;
+      if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
+      return 2;
+    };
+    let lastKey = '';
+    for (const o of pb.sources) {
+      const key = `${o.multiAudio ? '0' : '1'}:${tierOf(o)}`;
+      assert(key >= lastKey, `Source hierarchy violated at ${o.label} (${key} after ${lastKey})`);
+      lastKey = key;
+    }
+  }
 
   const rawJsonStr = JSON.stringify(pb);
   for (const forbidden of [
@@ -1339,46 +1624,14 @@ try {
     assert(!rawJsonStr.toLowerCase().includes(forbidden.toLowerCase()), `Leaked internal string: ${forbidden}`);
   }
 
-  // Verify Source 2 candidates are present, deduplicated, and canonicalized cleanly
-  const s2Options = pb.sources.filter((s) => s.sourceId === 'source-2');
-  assert(s2Options.length >= 4, 'Expected Source 2 candidates in uniform playback response');
-  // French 720p was aliased across orion & valstrax with two vidbolt tokens -> must deduplicate to 1!
-  const s2French = s2Options.filter((s) => s.audioLang === 'fr');
-  assert.equal(s2French.length, 1, 'Expected per-server vidbolt French clones to deduplicate to 1');
-  assert(s2Options.some((s) => s.audioLang === 'es-419' && s.label.includes('Latin American Spanish')));
-  assert(s2Options.some((s) => s.audioLang === 'bn' && s.label.includes('Bangla')));
-  // "Kurdish sub" hardsub stream must NOT masquerade as Kurdish audio ('ku')!
-  assert(!s2Options.some((s) => s.audioLang === 'ku'), 'Hardsub stream must not be tagged as Kurdish audio');
+  // The replacement Source 2 must resolve VidRift directly, not the removed adapter.
+  const riftOption = pb.sources.find((s) => s.sourceId === 'source-2');
+  assert(riftOption, 'Expected the VidRift fixture in Source 2');
+  const riftMasterRes = await fetch(`${apiBase}${riftOption.url}`, { headers: browserHeaders });
+  assert.equal(riftMasterRes.status, 200);
+  assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
 
-  // Verify Source 2 rousav multi-audio master + child playlist Referer injection + VTT spam cue filter
-  const s2Multi = s2Options.find((s) => s.multiAudio);
-  assert(s2Multi, 'Expected Source 2 multi-audio master stream');
-  const s2MasterRes = await fetch(`${apiBase}${s2Multi.url}`, { headers: browserHeaders });
-  assert.equal(s2MasterRes.status, 200);
-  const s2MasterText = await s2MasterRes.text();
-  assert(s2MasterText.includes('NAME="English"'));
-  assert(s2MasterText.includes('NAME="Hindi"'));
-  const s2ChildLine = s2MasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
-  const s2ChildRes = await fetch(`${apiBase}${s2ChildLine}`, { headers: browserHeaders });
-  assert.equal(s2ChildRes.status, 200, 'Expected rousav child playlist to succeed with server-side Referer');
-
-  const s2SubRes = await fetch(`${apiBase}${s2Multi.subtitles[0].url}`, { headers: browserHeaders });
-  assert.equal(s2SubRes.status, 200);
-  const s2SubText = await s2SubRes.text();
-  assert(!s2SubText.includes('aethoflix'), 'Expected WebVTT spam cue to be stripped');
-  assert(s2SubText.includes('Real subtitle line from Source 2.'));
-
-  // Requesting preferred lang=fr promotes Source 2 French directly to `primary`!
-  const pbFrRes = await fetch(
-    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&lang=fr&nonce=${boot.nonce}`,
-    { headers: { ...browserHeaders, 'X-Playback-Token': boot.pltoken } },
-  );
-  assert.equal(pbFrRes.status, 200);
-  const pbFr = await pbFrRes.json();
-  assert.equal(pbFr.primary.sourceId, 'source-2');
-  assert.equal(pbFr.primary.audioLang, 'fr');
-
-  const protectedOpt = pb.sources.find((s) => s.label.includes('English'));
+  const protectedOpt = pb.sources.find((s) => s.sourceId === 'source-3');
   const protectedMasterRes = await fetch(`${apiBase}${protectedOpt.url}`, { headers: browserHeaders });
   assert.equal(protectedMasterRes.status, 200);
 
@@ -1398,7 +1651,7 @@ try {
 
   const subRes = await fetch(`${apiBase}${pb.primary.subtitles[0].url}`, { headers: browserHeaders });
   assert.equal(subRes.status, 200);
-  assert((await subRes.text()).includes('Welcome to Piltover!'));
+  assert((await subRes.text()).includes('Welcome to Piltover.'));
 
   // 7. Verify exhaustive raw-source audio search + fallback + unavailable message in ElfuraPlayer
   // Provide minimal DOM shims in Node so we can test ElfuraPlayer's real searchRawSourcesForLanguage logic
@@ -1577,39 +1830,325 @@ try {
 
   player.destroy();
 
-  // 8. Verify full 30-server Source 2 harvesting + latency ordering + Ukr->uk canonicalization on movie/533535
-  const sess533535Res = await fetch(`${apiBase}/api/v1/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'https://watch.elfura.example' },
-    body: JSON.stringify({ type: 'movie', tmdb: '533535' }),
-  });
-  const sess533535 = await sess533535Res.json();
-  const pb533535Res = await fetch(
-    `${apiBase}/api/v1/playback?type=movie&tmdb=533535&nonce=${encodeURIComponent(sess533535.nonce)}`,
-    {
-      headers: {
-        Origin: 'https://watch.elfura.example',
-        'X-Playback-Token': sess533535.pltoken,
-      },
-    },
-  );
-  assert.equal(pb533535Res.status, 200);
-  const pb533535Raw = await pb533535Res.text();
-  for (const leaked of ['rousav', 'quantum', 'valstrax', 'zxc_orion', 'vidbolt', 'aethoflix']) {
-    assert(!pb533535Raw.toLowerCase().includes(leaked), `Playback payload leaked "${leaked}"`);
+  // 7b. An early probe win aborts the rest of its wave. Aborted candidates were
+  // previously mislabeled as language-rejected and skipped by the engine fallback.
+  // Prove that a later multi-audio source is tried, and that no-winner races also
+  // exhaust every candidate before reporting a language unavailable.
+  // Exercise the actual loadDash handler against dash.js 5's representation API.
+  const dashPlayer = new ElfuraPlayer({ postMessage: false });
+  await dashPlayer.loadDash('https://cdn.example.com/movie.mpd');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(dashPlayer.getQualityLevels().map((q) => q.height), [1080, 720, 480]);
+  dashPlayer.setQuality(720);
+  assert.deepEqual(globalThis.__elfuraDashTestPlayer.selections.at(-1), { type: 'video', index: 1, forceReplace: true });
+  assert.equal(globalThis.__elfuraDashTestPlayer.settingsCalls.at(-1).streaming.abr.autoSwitchBitrate.video, false);
+  assert.equal(dashPlayer.getState().effectiveHeight, 0, 'selection must not claim a rendered height');
+  globalThis.__elfuraDashTestPlayer.emitRendered(720);
+  assert.equal(dashPlayer.getState().effectiveHeight, 720);
+  dashPlayer.setQuality('auto');
+  assert.equal(globalThis.__elfuraDashTestPlayer.settingsCalls.at(-1).streaming.abr.autoSwitchBitrate.video, true);
+  dashPlayer.destroy();
+  delete globalThis.__elfuraDashTestPlayer;
+
+  // A single stalled initial source must not leave the startup screen forever:
+  // retry both provider groups and actually attach a newly discovered option.
+  {
+    const originalFetch=globalThis.fetch;
+    const dead={...pb.primary,id:'source-3:1',sourceId:'source-3',fingerprint:'dead-initial',multiAudio:false,audioTracks:[],subtitles:[]};
+    const good={...dead,id:'source-2:1',sourceId:'source-2',fingerprint:'late-good',multiAudio:true,availableAudioLangs:['en','hi']};
+    let requested=[];
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-2'?[good]:[dead]})};
+    try {
+      const p=new ElfuraPlayer({postMessage:false});p.input.config.tmdb='693134';p.input.config.mediaType='movie';p.input.config.api='https://retry.example/api/v1/playback';p.sources=[dead];p.currentSource=dead;
+      let active; p.activateSourceOption=async opt=>{active=opt;p.currentSource=opt};
+      p.failover();await new Promise(r=>setTimeout(r,40));
+      assert.deepEqual(requested.sort(),['source-1','source-2','source-3','source-4','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
+      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,5,'exhaustion recovery must be bounded');
+      p.destroy();
+    } finally {globalThis.fetch=originalFetch;}
   }
-  const pb533535 = JSON.parse(pb533535Raw);
-  const s2Movie = pb533535.sources.filter((s) => s.sourceId === 'source-2');
-  assert(
-    s2Movie.length >= 33,
-    `Expected all 30 Source 2 servers + distinct dubs (got ${s2Movie.length})`,
+  // The watchdog must cover a single option too and not stop at metadata or
+  // the first fragment: it is released only once decoded data is available.
+  {
+    const p=new ElfuraPlayer({postMessage:false}); const opt={...pb.primary,id:'only-option',sourceId:'source-3'};p.sources=[opt];p.currentSource=opt;p.video.readyState=0;
+    const oldTimer=globalThis.setTimeout;let callback,delay,called=0;globalThis.setTimeout=(fn,ms)=>{callback=fn;delay=ms;return 1};p.failover=()=>{called++};
+    try {
+      p.armStartupWatchdog(opt.id);assert.equal(delay,10000);callback();assert.equal(called,1);
+      // A parsed HLS manifest gets one bounded grace period for slow segments.
+      called=0;p.hls={levels:[{}],destroy(){}};p.armStartupWatchdog(opt.id);callback();assert.equal(called,0);assert.equal(delay,10000);callback();assert.equal(called,1);
+    }finally{globalThis.setTimeout=oldTimer;p.startupWatchdogTimer=null;p.destroy();}
+  }
+
+  // A late multi-audio group must appear without interrupting or relabelling
+  // the active Korean stream. The recovery request uses the same API origin.
+  {
+    const oldFetch = globalThis.fetch;
+    let releaseRecovery;
+    const recoveryGate = new Promise((resolve) => { releaseRecovery = resolve; });
+    const primary = { ...pb.primary, id: 'source-3:late-test', sourceId: 'source-3', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
+    const multi = { ...primary, id: 'source-1:1', sourceId: 'source-1', label: 'Source 1 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
+    let recoveryCalls = 0;
+    globalThis.fetch = async (input) => {
+      const u = new URL(String(input));
+      assert.equal(u.origin, 'https://recovery.example');
+      if (u.searchParams.get('source') === 'source-1') {
+        recoveryCalls++;
+        await recoveryGate;
+        return new Response(JSON.stringify({ ok: true, sources: [multi] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true, sources: [primary], primary }), { status: 200 });
+    };
+    try {
+      const p = new ElfuraPlayer({ postMessage: false, api: 'https://recovery.example/api/v1/playback', tmdb: '123456', mediaType: 'movie', pltoken: 'test-token', nonce: 'test-nonce' });
+      p.activateSourceOption = async (option) => { p.currentSource = option; };
+      const updated = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('late source recovery timed out')), 3000);
+        p.bus.on('sourcesUpdated', () => { clearTimeout(timer); resolve(); });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+      assert.equal(recoveryCalls, 1);
+      assert.equal(p.currentSource?.id, primary.id);
+      p.mergeNativeAudio([{ id: 0, lang: 'ko', label: 'Korean', default: true }]);
+      releaseRecovery();
+      await updated;
+      assert(p.getSources().some((s) => s.fingerprint === 'latemulti'));
+      assert(p.getAudioTracks().some((t) => t.lang === 'hi'));
+      assert.equal(p.currentSource?.id, primary.id);
+      assert.equal(p.getState().audioLang, 'ko', 'a newly discovered Hindi option is not already playing');
+      p.destroy();
+    } finally { globalThis.fetch = oldFetch; }
+  }
+
+  // A late multi-audio source must trigger the explicit Hindi preference,
+  // even when the track menu previously listed Hindi as an unplayed source hint.
+  {
+    const oldFetch=globalThis.fetch;
+    let release; const gate=new Promise(r=>{release=r});
+    const primary={...pb.primary,id:'anime-primary',sourceId:'source-3',audioLang:'en',multiAudio:false,availableAudioLangs:[],audioTracks:[],subtitles:[]};
+    const anime={...primary,id:'source-1:1',sourceId:'source-1',audioLang:undefined,multiAudio:true,availableAudioLangs:['hi','en'],fingerprint:'anime-new'};
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.searchParams.get('source')==='source-1'){await gate;return Response.json({ok:true,sources:[anime]})}if(u.searchParams.get('source'))return new Response('',{status:404});return Response.json({ok:true,primary,sources:[primary]})};
+    try{
+      const p=new ElfuraPlayer({postMessage:false,api:'https://anime-recovery.example/api/v1/playback',tmdb:'95479',mediaType:'tv',season:1,episode:1,lang:'hi',pltoken:'token',nonce:'nonce'});
+      p.activateSourceOption=async option=>{p.currentSource=option};let requested=[];p.setAudio=async lang=>{requested.push(lang);return true};
+      await new Promise(r=>setTimeout(r,20));assert.equal(p.currentSource?.id,primary.id);
+      p.currentAudio={id:'hint-hi',kind:'source',lang:'hi',label:'Hindi',ref:'hi'};
+      release();await new Promise(r=>setTimeout(r,2100));assert(p.getSources().some(s=>s.sourceId==='source-1'));assert.deepEqual(requested,['hi']);p.destroy();
+    }finally{globalThis.fetch=oldFetch}
+  }
+
+  // A source-specific playback request can recover the same fingerprint after
+  // the startup probe times out, without duplicating or restarting it.
+  {
+    const oldFetch=globalThis.fetch;let calls=0,release;const gate=new Promise(r=>{release=r});
+    const fallback={...pb.primary,id:'late-source-1',sourceId:'source-1',audioLang:undefined,multiAudio:false,availableAudioLangs:[],fingerprint:'same-vidbolt',audioTracks:[],subtitles:[]};
+    const proven={...fallback,multiAudio:true,availableAudioLangs:['hi','en']};
+    globalThis.fetch=async input=>{if(!String(input).includes('/api/v1/playback'))return new Response('',{status:404});calls++;if(calls===1)return Response.json({ok:true,primary:fallback,sources:[fallback]});await gate;return Response.json({ok:true,primary:proven,sources:[proven]});};
+    try {const p=new ElfuraPlayer({postMessage:false,api:'https://recovery.example/api/v1/playback',tmdb:'872585',mediaType:'movie',source:'source-1',pltoken:'token',nonce:'nonce'});
+      p.activateSourceOption=async opt=>{p.currentSource=opt};await new Promise(r=>setTimeout(r,2100));assert.equal(calls,2);release();await new Promise(r=>setTimeout(r,30));assert.equal(p.getSources().length,1);assert.equal(p.getSources()[0].multiAudio,true);assert.deepEqual(p.getSources()[0].availableAudioLangs,['hi','en']);p.destroy();
+    } finally {globalThis.fetch=oldFetch;}
+  }
+
+  // Preferred Hindi must choose a known matching source without running the
+  // exhaustive audio search before the first source is attached.
+  {
+    const oldFetch = globalThis.fetch;
+    const eng = { ...pb.primary, id:'initial-english', sourceId:'source-2', audioLang:'en', multiAudio:false, availableAudioLangs:[], audioTracks:[], subtitles:[] };
+    const hin = { ...eng, id:'initial-hindi-multi', audioLang:undefined, multiAudio:true, availableAudioLangs:['en','hi'] };
+    globalThis.fetch = async () => new Response(JSON.stringify({ok:true,primary:eng,sources:[eng,hin]}),{status:200});
+    try {
+      const p = new ElfuraPlayer({postMessage:false,api:'https://initial.example/api/v1/playback',tmdb:'123456',mediaType:'movie',source:'source-2',lang:'hi',pltoken:'token',nonce:'nonce'});
+      let searches=0, selected=null;
+      p.setAudio = async () => { searches++; return false; };
+      p.activateSourceOption = async (option) => { selected=option.id; p.currentSource=option; };
+      await new Promise(r=>setTimeout(r,20));
+      assert.equal(selected,'initial-hindi-multi');
+      assert.equal(searches,0,'Initial playback must not wait for exhaustive audio search');
+      assert.equal(p.desiredAudioLang,'hi');
+      p.destroy();
+    } finally { globalThis.fetch=oldFetch; }
+  }
+
+  const searchPlayer = new ElfuraPlayer({ postMessage: false });
+  const searchSources = [
+    {
+      id: 'initial-en', sourceId: 'source-1', label: 'Source 1', type: 'mp4',
+      url: 'https://cdn.example.com/initial-en.mp4', quality: '720p', audioLang: 'en',
+      audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'multi-bad', sourceId: 'source-1', label: 'Source 1', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=multi-bad', quality: '1080p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-bad-fp',
+      latencyHintMs: 1, audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'multi-good', sourceId: 'source-2', label: 'Source 2', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=multi-good', quality: '720p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-good-fp',
+      latencyHintMs: 500, audioTracks: [], subtitles: [],
+    },
+    {
+      id: 'direct-hi', sourceId: 'source-2', label: 'Source 2', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=direct-hi', quality: '1080p',
+      audioLang: 'hi', fingerprint: 'direct-hi-fp', latencyHintMs: 1,
+      audioTracks: [], subtitles: [],
+    },
+  ];
+  searchPlayer.sources = searchSources;
+  searchPlayer.currentSource = searchSources[0];
+
+  // Real HLS event handlers must abandon a startup whose child playlists
+  // repeatedly time out, not wait forever on a parsed master manifest.
+  {
+    const p = new ElfuraPlayer({ postMessage: false });
+    let failures = 0;
+    p.failover = () => { failures++; };
+    await p.loadHls(searchSources[1].url);
+    p.hls.emit('hlsError', { details: 'levelLoadTimeOut', fatal: false, type: 'networkError' });
+    assert.equal(failures, 0);
+    p.hls.emit('hlsError', { details: 'audioTrackLoadTimeOut', fatal: false, type: 'networkError' });
+    assert.equal(failures, 1);
+    p.destroy();
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+
+  // Fatal fallback favors a separate provider over a faster sibling.
+  {
+    const p = new ElfuraPlayer({ postMessage: false });
+    p.sources = [searchSources[1], {...searchSources[1], id:'sibling', fingerprint:'sibling', latencyHintMs:1}, searchSources[2]];
+    p.currentSource = p.sources[0];
+    let chosen;
+    p.activateSourceOption = async opt => { chosen = opt; };
+    p.failover();
+    assert.equal(chosen.id, 'multi-good');
+    p.destroy();
+  }
+
+  // HLS event-order regression: MANIFEST_PARSED can run before
+  // AUDIO_TRACKS_UPDATED has replaced the previous source's track list. The
+  // incoming manifest, not stale this.audioTracks, must select Hindi.
+  const hlsOrderPlayer = new ElfuraPlayer({ postMessage: false });
+  hlsOrderPlayer.currentSource = searchSources[1];
+  hlsOrderPlayer.audioTracks = [
+    { id: 'native:0', kind: 'native', lang: 'en', label: 'English', ref: 0 },
+  ];
+  let manifestProbeResult = null;
+  const manifestProbeDone = new Promise((resolve) => {
+    hlsOrderPlayer.activeProbe = {
+      seq: 1,
+      targetLang: 'hi',
+      opt: searchSources[1],
+      startedAt: Date.now(),
+      settle: (result) => {
+        manifestProbeResult = result;
+        resolve(result);
+      },
+    };
+  });
+  await hlsOrderPlayer.loadHls(searchSources[1].url);
+  await manifestProbeDone;
+  // Let the mock finish its ordered event sequence even when a regression
+  // settles early; assertions below then identify the incorrect probe result.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(
+    hlsOrderPlayer.hls.eventLog,
+    ['manifest', 'audioTracks', 'fragment'],
+    'test must exercise manifest parsing before audio-track registration',
   );
-  assert.equal(s2Movie[0].latencyHintMs, 365, 'Fastest 365ms server must be ranked first');
-  assert.equal(s2Movie[1].latencyHintMs, 370, 'Second fastest 370ms server must be ranked second');
-  assert(/^[0-9a-f]{12}$/.test(s2Movie[0].fingerprint), 'Expected 12-hex opaque fingerprint');
-  assert(s2Movie.some((s) => s.audioLang === 'hi'), 'Expected Hindi dub in movie/533535');
-  assert(s2Movie.some((s) => s.audioLang === 'te'), 'Expected Telugu dub in movie/533535');
-  assert(s2Movie.some((s) => s.audioLang === 'uk'), 'Expected "Ukr" normalized to ISO "uk"');
+  assert.equal(manifestProbeResult?.ok, true, 'real manifest handler must accept incoming Hindi');
+  assert.equal(hlsOrderPlayer.hls.audioTrack, 1, 'real manifest handler must select Hindi directly');
+  hlsOrderPlayer.destroy();
+
+  // Fake language switch regression: a candidate whose metadata claims
+  // [hi, en] but whose manifest exposes only an English track must REJECT a
+  // Hindi probe — never report a switch that does not change the audio.
+  {
+    const fakeProbePlayer = new ElfuraPlayer({ postMessage: false });
+    const fakeCand = {
+      id: 'fake-multi', sourceId: 'source-1', label: 'Source 1', type: 'hls',
+      url: 'https://watch.elfura.example/api/v1/stream?t=fake', quality: '1080p',
+      multiAudio: true, availableAudioLangs: ['hi', 'en'], audioTracks: [], subtitles: [],
+    };
+    const accepted = fakeProbePlayer.applyHlsProbeAudioSelection(
+      { targetLang: 'hi', opt: fakeCand },
+      [{ id: 0, lang: 'en', name: 'English' }],
+      { audioTrack: 0 },
+    );
+    assert.equal(accepted, false, 'single-track manifest must reject metadata-claimed language switch');
+    const directCand = { ...fakeCand, multiAudio: false, availableAudioLangs: ['hi'], audioLang: 'hi' };
+    const directAccepted = fakeProbePlayer.applyHlsProbeAudioSelection(
+      { targetLang: 'hi', opt: directCand },
+      [],
+      { audioTrack: 0 },
+    );
+    assert.equal(directAccepted, true, 'direct single-dub metadata match must still be accepted');
+    fakeProbePlayer.destroy();
+  }
+
+  // An empty EXT-X-MEDIA list is inconclusive. It must not mark a multi-audio
+  // candidate languageRejected and thereby exclude it from the real engine pass.
+  const previousProbeFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n', {
+      status: 200,
+      headers: { 'content-type': 'application/vnd.apple.mpegurl' },
+    });
+    const unlisted = await searchPlayer.probeCandidateViaFetch(
+      {
+        ...searchSources[1],
+        id: 'unlisted-hindi',
+        audioLang: 'und',
+        availableAudioLangs: [],
+      },
+      'hi',
+      new AbortController().signal,
+    );
+    assert.equal(unlisted.ok, true, 'unknown audio metadata must remain eligible for engine probing');
+    assert.notEqual(unlisted.languageRejected, true);
+  } finally {
+    globalThis.fetch = previousProbeFetch;
+  }
+
+  let languageAttempts = [];
+  let racedOrder = [];
+  searchPlayer.raceCandidatesBatch = async (wave) => {
+    racedOrder = wave.map((s) => s.id);
+    // Only multi-bad answered; every other candidate was aborted/unknown.
+    return { winner: wave[0], winners: [wave[0]], failed: [], rejected: [] };
+  };
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: opt.id === 'multi-good' };
+  };
+  const recoveredHindi = await searchPlayer.searchRawSourcesForLanguage('hi', 'Hindi');
+  assert.equal(recoveredHindi, true, 'Later multi-audio source must recover after the first winner rejects Hindi');
+  assert.deepEqual(racedOrder, ['multi-bad', 'multi-good', 'direct-hi'], 'Multi-audio must precede direct Hindi regardless of latency');
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good'], 'Aborted multi-good probe must receive a real engine attempt');
+  assert.equal(searchPlayer.getState().audioLang, 'hi');
+
+  // Even when a direct Hindi stream is already healthy, explicit selection must
+  // not bypass the higher-priority multi-audio tier.
+  languageAttempts = [];
+  searchPlayer.currentSource = searchSources[3];
+  searchPlayer.video.readyState = 2;
+  const prioritizedHindi = await searchPlayer.setAudio('hi');
+  assert.equal(prioritizedHindi, true);
+  assert.equal(searchPlayer.getState().source, 'multi-good');
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good']);
+
+  languageAttempts = [];
+  searchPlayer.currentSource = searchSources[0];
+  searchPlayer.raceCandidatesBatch = async () => ({ winner: null, winners: [], failed: [], rejected: [] });
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: false };
+  };
+  const exhaustiveMiss = await searchPlayer.searchRawSourcesForLanguage('hi', 'Hindi');
+  assert.equal(exhaustiveMiss, false);
+  assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good', 'direct-hi'], 'Unavailable requires an actual attempt for every compatible source');
+  searchPlayer.destroy();
 
   // 9. Verify concurrent fastest-server racing (not sequential top-to-bottom) in ElfuraPlayer
   const deadTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/dead.mp4`, k: 'a' }))}`;
@@ -1750,44 +2289,14 @@ try {
     !s1Reze.some((s) => s.multiAudio),
     'Master-alive / child-HTML dead Source 1 stream must be pruned before entering playback response',
   );
-  // Meanwhile Source 1's VidZee Hindi stream routed via `/api/core/proxy` MUST be alive!
+  // Meanwhile Source 3's Hindi stream routed via `/api/core/proxy` MUST be alive!
+  const s3Reze = pbReze.sources.filter((s) => s.sourceId === 'source-3');
   assert(
-    s1Reze.some((s) => s.audioLang === 'hi'),
-    'Expected VidSync proxy-backed Hindi stream to survive deep liveness check',
+    s3Reze.length > 0,
+    'Expected Source 3 proxy-backed stream to survive deep liveness check',
   );
 
-  // Dead Source 2 `German` (`403` mirror) MUST be pruned, and `Kurdish sub` hardsub must not claim `ku` audio!
-  const s2Reze = pbReze.sources.filter((s) => s.sourceId === 'source-2');
-  assert(!s2Reze.some((s) => s.audioLang === 'de'), 'Dead 403 Source 2 mirror must be pruned server-side');
-  assert(!s2Reze.some((s) => s.audioLang === 'ku'), 'Kurdish hardsub must never masquerade as Kurdish audio');
-
-  // Verify ALL real Source 2 audio languages + in-manifest discovered languages (`ko`, `th`) are unlocked!
-  const discoveredRezeLangs = new Set();
-  for (const s of s2Reze) {
-    if (s.audioLang) discoveredRezeLangs.add(s.audioLang);
-    for (const l of s.availableAudioLangs || []) discoveredRezeLangs.add(l);
-  }
-  for (const expectedLang of ['ja', 'hi', 'en', 'fr', 'ar', 'id', 'ko', 'th']) {
-    assert(
-      discoveredRezeLangs.has(expectedLang),
-      `Expected Source 2 to unlock "${expectedLang}" audio track (got ${[...discoveredRezeLangs].join(',')})`,
-    );
-  }
-
-  // Verify `dash-hls-bridge` Japanese single-dub stream kept outer Signature, stamped `LANGUAGE="ja",NAME="Japanese"`, and tagged `hvc1`!
-  const jaOpt = s2Reze.find((s) => s.audioLang === 'ja');
-  assert(jaOpt, 'Expected Source 2 Japanese dub option');
-  const jaMasterRes = await fetch(`${apiBase}${jaOpt.url}`, { headers: browserHeaders });
-  assert.equal(jaMasterRes.status, 200, 'Expected outer-signed dash-hls-bridge stream to return 200');
-  const jaMasterText = await jaMasterRes.text();
-  assert(
-    jaMasterText.includes('LANGUAGE="ja"') && jaMasterText.includes('NAME="Japanese"'),
-    `Expected single-dub NAME="Audio" manifest to be stamped as Japanese, got:\n${jaMasterText}`,
-  );
-  assert(
-    jaMasterText.includes('CODECS="hvc1.'),
-    'Expected _h265_ dash-hls-bridge variant to receive explicit HEVC CODECS tag',
-  );
+  const jaOpt = { ...pb.primary, id: 'synthetic-ja', audioLang: 'ja', label: 'Source 2 · Japanese', multiAudio: false, availableAudioLangs: [], audioTracks: [] };
 
   // Verify relay.ts strictly rejects HTML manifest and HTML segment responses with 502 no-store
   const htmlManifestTicket = sealStreamTicket(secret, { u: `${upBase}/dead-child-stream/audio0.m3u8`, k: 'm' });
@@ -1806,6 +2315,7 @@ try {
   });
   assert.equal(htmlSegRes.status, 502, 'Relay must reject HTML masquerading as a binary media segment with 502');
 
+
   // Verify single-dub native audio inheritance in ElfuraPlayer produces zero ghost "Original" track
   const singleDubPlayer = new ElfuraPlayer({ postMessage: false });
   singleDubPlayer.sources = [jaOpt];
@@ -1817,43 +2327,6 @@ try {
     'Single-dub source must not emit a bogus "Original" audio track alongside "Japanese"',
   );
   singleDubPlayer.destroy();
-
-  // Verify HEVC-unsupported MSE pre-probe skips HEVC-only candidate and picks H.264 stream immediately
-  globalThis.window.location = {
-    pathname: '/player-test',
-    search: '',
-    href: `${apiBase}/player-test`,
-  };
-  globalThis.fetch = (input, init = {}) =>
-    rawNodeFetch(input, {
-      ...init,
-      headers: {
-        Referer: globalThis.window.location.href,
-        ...(init.headers || {}),
-      },
-    });
-  globalThis.MediaSource = {
-    isTypeSupported: (mime) => !/hvc1|hev1/i.test(mime),
-  };
-
-  const enH264Opt = s2Reze.find((s) => s.audioLang === 'en');
-  assert(enH264Opt, 'Expected H.264 English option');
-  const hevcGuardPlayer = new ElfuraPlayer({ postMessage: false });
-  const pickedForNoHevc = await hevcGuardPlayer.selectFastestInitialSource(
-    [
-      { ...jaOpt, audioLang: 'en', latencyHintMs: 50 }, // faster hint, HEVC-only
-      { ...enH264Opt, latencyHintMs: 200 }, // H.264
-    ],
-    enH264Opt,
-  );
-  assert.equal(
-    pickedForNoHevc.id,
-    enH264Opt.id,
-    'Devices without MSE HEVC support must skip HEVC-only stream and pick H.264 stream immediately',
-  );
-  hevcGuardPlayer.destroy();
-  delete globalThis.MediaSource;
-  globalThis.fetch = rawNodeFetch;
 
   // 12. Verify Source 2 cold-cache `success: false` recovery + `/api/scan` warm-up + `atlas` retry
   const { createSource2Adapter } = await import('../../dist/backend/sources/source2.js');
@@ -1949,7 +2422,8 @@ try {
   //     - Title Logo with playful Cartoony Font fallback (`elf-title-cartoon`) when logo is unavailable
   //     - Cinema Paused Screen (`elf-pause-screen`: Title Logo/Cartoon, `PAUSED`, tagline, year + ★ rating, overview)
   //     - Zero center forward/backward 10s skip buttons, animated Play/Pause & 4-corner Fullscreen,
-  //       double-tap 10s skip, hold-for-2x, Screen Lock, and Hotstar 5s bottom language selector
+  //       double-tap 10s skip, hold-for-2x, Screen Lock, bottom Episodes/thumbnails,
+  //       integrated current-language navigation, branded loading, and terminal unavailable UI
   assert.equal(pb.media.episodeName, 'Welcome to the Playground');
   assert.equal(pb.media.tagline, 'Every legend has a beginning.');
   assert.equal(pb.media.rating, 8.8);
@@ -1957,7 +2431,7 @@ try {
   assert.equal(pb.media.logo, 'https://image.tmdb.org/t/p/w780/arcaneTitleLogo.png');
 
   const cssAssetsDir = new URL('../../dist/assets/', import.meta.url);
-  const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.endsWith('.css'));
+  const cssFile = fs.readdirSync(cssAssetsDir).find((f) => f.startsWith('embed-') && f.endsWith('.css'));
   assert(cssFile, 'Expected built player CSS asset in dist/assets/');
   const builtCss = fs.readFileSync(new URL(cssFile, cssAssetsDir), 'utf8');
 
@@ -1973,7 +2447,16 @@ try {
     'elf-pause-screen',
     'elf-title-logo',
     'elf-title-cartoon',
-    'elf-hotstar-lang',
+    'elf-audio-quick',
+    'elf-audio-current',
+    'elf-audio-badge',
+    'elf-mi-lang',
+    'elf-episodes-btn',
+    'elf-epw-thumb',
+    'elf-loading-screen',
+    'elf-loading-quote',
+    'elf-unavailable-screen',
+    'retrySources',
     'elf-pp-svg',
     'elf-fs-svg',
     'elf-dtap-left',
@@ -1985,12 +2468,20 @@ try {
     assert(libBundle.includes(requiredToken), `Expected PlayerUI bundle to contain "${requiredToken}"`);
   }
   assert(!libBundle.includes('center.append(this.back10'), 'Center container must not include 10s skip buttons');
+  assert(!libBundle.includes('elf-hotstar-lang'), 'Floating language pills must stay removed');
+  assert(!builtCss.includes('.elf-hotstar-lang'), 'Floating language pill styles must stay removed');
   for (const requiredCss of [
     '.elf-og-pill',
     '.elf-pill-back',
     '.elf-pause-screen',
     '.elf-title-cartoon',
-    '.elf-hotstar-lang',
+    '.elf-audio-quick',
+    '.elf-audio-option',
+    '.elf-audio-badge',
+    '.elf-episodes-btn',
+    '.elf-epw-thumb',
+    '.elf-loading-screen',
+    '.elf-unavailable-screen',
     '.elf-fs-tl',
     '.elf-pp-pause',
     '.elf-dtap-ripple',
@@ -2101,8 +2592,48 @@ try {
     });
     assert.equal(sawEnvelopeHeader, true, 'ElfuraPlayer must send X-Elfura-Envelope: 1 on /api/v1/playback');
     assert.equal(envPlayer.getMediaInfo()?.episodeName, 'Welcome to the Playground');
-    assert(envPlayer.getSources().length >= 5, 'ElfuraPlayer must decrypt sealed playback envelope via WebCrypto');
+    assert.equal(envPlayer.getSources().length, pb.sources.length, 'ElfuraPlayer must decrypt every source from the sealed playback envelope');
     envPlayer.destroy();
+
+    // A player embedded on a different origin with an absolute `api` endpoint must send the
+    // returned root-relative media tickets to that API origin, not to the embed host.
+    globalThis.window.location = {
+      pathname: '/embed/tv/94605/1/1',
+      search: '',
+      href: 'https://watch.elfura.example/embed/tv/94605/1/1',
+    };
+    const crossOriginPlayer = new ElfuraPlayer({
+      postMessage: false,
+      api: `${apiBase}/api/v1/playback`,
+      tmdb: '94605',
+      mediaType: 'tv',
+      season: 1,
+      episode: 1,
+      pltoken: boot.pltoken,
+      nonce: boot.nonce,
+    });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timed out waiting for cross-origin backend sources')), 4000);
+      crossOriginPlayer.bus.on('sources', () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    const crossSources = crossOriginPlayer.getSources();
+    assert.equal(crossSources.length, pb.sources.length);
+    for (const source of crossSources) {
+      assert(
+        source.url.startsWith(`${apiBase}/api/v1/stream?t=`),
+        `Cross-origin backend ticket was resolved against the wrong origin: ${source.url}`,
+      );
+      for (const track of [...(source.audioTracks ?? []), ...(source.subtitles ?? [])]) {
+        assert(
+          track.url.startsWith(`${apiBase}/api/v1/stream?t=`),
+          `Cross-origin track ticket was resolved against the wrong origin: ${track.url}`,
+        );
+      }
+    }
+    crossOriginPlayer.destroy();
   } finally {
     globalThis.fetch = origFetchForEnv;
   }
@@ -2165,6 +2696,22 @@ try {
     assert(
       !noCorsText.includes('/edge-nocors/chunk-0001.m4s'),
       'Segments lacking Access-Control-Allow-Origin must stay relayed through /api/v1/stream',
+    );
+
+    // Origin-reflecting CDN authorized only our fake probe origin. It must stay relayed because
+    // a viewer's real Origin would receive a different ACAO value and fail browser CORS.
+    const echoCorsTicket = sealStreamTicket(secret, { u: `${upBase}/edge-echo-cors/variant.m3u8`, k: 'm' });
+    const echoCorsRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(echoCorsTicket)}`, {
+      headers: browserHeaders,
+    });
+    const echoCorsText = await echoCorsRes.text();
+    assert(
+      !echoCorsText.includes(`${upBase}/edge-echo-cors/chunk-0001.m4s`),
+      'Origin-reflecting CDN segments must stay relayed instead of failing the viewer real Origin',
+    );
+    assert(
+      echoCorsText.split('\n').some((l) => l.startsWith('/api/v1/stream?t=')),
+      'Origin-reflecting CDN segments must be rewritten to backend stream tickets',
     );
 
     // Referer-locked CDN (`/edge-reflock/*`) must NEVER offload (would 403 in browser!)
@@ -2316,6 +2863,23 @@ try {
   //     (a) Automatic OpenSubtitles Fallback (zero-disk RAM cache, .sub filtering, legacy tag canonicalization,
   //         sealed `/api/v1/stream?t=...` tickets with zero external domain leak, and SRT spam-cue sanitization)
   const arcaneSubLangs = pb.primary.subtitles.map((s) => s.lang);
+  assert.deepEqual(
+    [...arcaneSubLangs].sort(),
+    ['en', 'es-419', 'hi', 'pt-br'],
+    'OpenSubtitles must replace—not mix with—the native subtitle catalogue',
+  );
+  assert.equal(new Set(arcaneSubLangs).size, arcaneSubLangs.length, 'No duplicate subtitle languages');
+  for (const option of pb.sources) {
+    assert.deepEqual(
+      option.subtitles.map((s) => s.lang).sort(),
+      [...arcaneSubLangs].sort(),
+      'Every stream option must expose the same unambiguous OpenSubtitles choices',
+    );
+    assert(
+      option.subtitles.every((s) => !['1. English [CC]', 'Native English'].includes(s.label)),
+      'Native/provider labels must not leak into the OpenSubtitles-only catalogue',
+    );
+  }
   assert(arcaneSubLangs.includes('en'), 'Expected OpenSubtitles English fallback track');
   assert(arcaneSubLangs.includes('hi'), 'Expected OpenSubtitles Hindi fallback track');
   assert(arcaneSubLangs.includes('pt-br'), 'Expected OpenSubtitles `pob` to canonicalize to `pt-br`');
@@ -2484,6 +3048,7 @@ try {
       openSslEncryptBase64Url,
       openSslDecrypt,
     } = await import('../../dist/backend/sources/source2.js');
+    const { createSource3Adapter } = await import('../../dist/backend/sources/source3.js');
     const { loadBackendConfig } = await import('../../dist/backend/config.js');
     const { rewriteHlsManifest } = await import('../../dist/backend/relay.js');
 
@@ -2501,10 +3066,14 @@ try {
       pCfgB.secret.toString('hex'),
       'Placeholder ELFURA_SECRET must generate fresh ephemeral secrets instead of hashing static text',
     );
-    assert.equal(pCfgA.source1.apiOrigin, '', 'Dead tgvidapi default must be cleared when unset');
+    assert(!('apiOrigin' in pCfgA.source1), 'removed TG configuration must not be registered');
     assert.equal(pCfgA.source2.embedOrigin, '', 'Dead aethoflix default must be cleared when unset');
-    assert.equal(pCfgA.source2.nxshaOrigin, 'https://nxsha.space');
-    assert.equal(pCfgA.source2.vidstuckOrigin, 'https://vidstuck.cc');
+    assert.equal(pCfgA.source2.enabled, false);
+    assert.equal(pCfgA.source2.nxshaOrigin, '');
+    assert.equal(pCfgA.source2.vidstuckOrigin, '');
+    const legacyCfg = loadBackendConfig({ SOURCE2_ENABLED: '1', SOURCE2_NXSHA_ORIGIN: 'https://legacy.invalid', SOURCE2_VIDSTUCK_ORIGIN: 'https://legacy.invalid' });
+    assert.equal(legacyCfg.source2.enabled, false);
+    assert.equal(legacyCfg.source2.nxshaOrigin, '');
 
     // (b) Anonymity guard blocks every newly added upstream/worker domain from direct segment offload
     for (const newLeakyUrl of [
@@ -2554,9 +3123,12 @@ try {
       { Referer: 'https://nxsha.space/' },
       pCfgA.secret,
     );
+    // Opaque encrypted ticket bytes can coincidentally spell a watermark;
+    // inspect only manifest labels, not random URI token contents.
+    const nitroLabelsOnly = rewrittenNitroManifest.replace(/URI="[^"]*"/g, 'URI="[ticket]"');
     assert(
-      !rewrittenNitroManifest.toLowerCase().includes('hguider') &&
-        !rewrittenNitroManifest.toLowerCase().includes('sply'),
+      !nitroLabelsOnly.toLowerCase().includes('hguider') &&
+        !nitroLabelsOnly.toLowerCase().includes('sply'),
       'Expected hguider/SPLY release watermarks to be stripped from #EXT-X-MEDIA',
     );
     assert(
@@ -2564,7 +3136,7 @@ try {
       'Expected hin -> hi Hindi normalization on rewritten nitro manifest',
     );
 
-    // (c) End-to-end mock cluster test for Source 1 (VidSync Castle Proxy + VidRock GCM + VidLink)
+    // (c) End-to-end mock cluster test for VidSync Castle Proxy and VidRock GCM
     //     and Source 2 (NXStream Salted__ AES-256-CBC + VidStuck Raider Salted__ AES-256-CBC)
     const NX_PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
     const VS_PASS = '7f4c9e2a81d63b05c4f7a9e8126d3b50e1a8c7f23d9465ab0c6e9f1d4a7b832c';
@@ -2581,7 +3153,8 @@ try {
     };
 
     let vidapiReceivedReferer = '';
-    const clusterMock = http.createServer((req, res) => {
+    const requestedNxProviders = [];
+    const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
 
@@ -2600,7 +3173,22 @@ try {
                       type: 'hls',
                       quality: '1080p',
                       audioLanguage: 'en',
+                      audioTracks: [{ language: 'English' }, { language: 'Hindi' }],
+                      availableQualities: ['1080p', '720p', '480p'],
                       headers: { Referer: 'https://api.hlowb.com/' },
+                      subtitles: [
+                        { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
+                        { url: `${cOrigin}/vlink/hi.srt`, language: 'Hindi' },
+                      ],
+                    },
+                    {
+                      provider: { id: 'direct-test', name: 'Direct' },
+                      url: `${cOrigin}/direct/master.m3u8`,
+                      type: 'hls',
+                      quality: '720p',
+                      availableQualities: ['1080p', '720p'],
+                      audioLanguage: 'hi',
+                      headers: { Referer: 'https://media.example/' },
                     },
                     {
                       provider: { id: 'castle', name: 'Castle' },
@@ -2635,31 +3223,7 @@ try {
           JSON.stringify({
             Nova: encryptVidRock(`${cOrigin}/vrock/nova.m3u8`),
             Hindi: encryptVidRock(`${cOrigin}/vrock/hindi.m3u8`),
-          }),
-        );
-        return;
-      }
-
-      // VidLink enc-dec + /api/b/movie
-      if (cu.pathname === '/api/enc-vidlink') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 200, result: 'ENC_533535_OK' }));
-        return;
-      }
-      if (cu.pathname === '/api/b/movie/ENC_533535_OK') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            stream: {
-              qualities: {
-                1080: { type: 'mp4', url: `${cOrigin}/vlink/1080.mp4` },
-                480: { type: 'mp4', url: `${cOrigin}/vlink/480.mp4` },
-              },
-              captions: [
-                { url: `${cOrigin}/vlink/en.srt`, language: 'English' },
-                { url: `${cOrigin}/vlink/hi.srt`, language: 'Hindi' },
-              ],
-            },
+            Luna: encryptVidRock('https://belfast.armadilloscp.workers.dev/browser-gated'),
           }),
         );
         return;
@@ -2676,9 +3240,35 @@ try {
             _hash: openSslEncryptBase64Url(
               JSON.stringify({
                 servers: [
-                  { id: 'nitro', status: 'online' },
+                  { id: 'nitro', status: 'online', types: ['web'] },
                   { id: 'vidapi', status: 'online' },
                   { id: 'mhbox', status: 'online' },
+                  { id: 'awsind', status: 'online', web_support: true, isDisable: false },
+                  { id: 'watchout', status: 'online' },
+                  { id: 'bdxs', status: 'online' },
+                  { id: 'showbox-online', status: 'online' },
+                  { id: 'stvv', status: 'online' },
+                  { id: 'rive-citadel', status: 'online', isDisable: true },
+                  { id: 'castle', status: 'online', web_support: false },
+                  { id: 'streamflix', status: 'online', types: ['app'] },
+                ],
+              }),
+              NX_PASS,
+            ),
+          }),
+        );
+        return;
+      }
+      if (cu.pathname === '/api/subtitles') {
+        const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
+        assert.equal(dec.tmdbId, '533535');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            _hash: openSslEncryptBase64Url(
+              JSON.stringify({
+                subtitles: [
+                  { uri: `${cOrigin}/nx/sub_hi.vtt`, language: 'hi', display: 'Hindi' },
                 ],
               }),
               NX_PASS,
@@ -2689,7 +3279,43 @@ try {
       }
       if (cu.pathname === '/api/sources') {
         const dec = JSON.parse(openSslDecrypt(cu.searchParams.get('q') || '', NX_PASS));
+        requestedNxProviders.push(dec.provider);
         const byProv = {
+          awsind: [
+            {
+              provider: 'awsind',
+              url: `${cOrigin}/awsind/multi.m3u8`,
+              label: 'AwsPly',
+              quality: '1080p',
+              type: 'hls',
+              lang: 'en',
+              langName: 'English',
+              multiLangs: ['en', 'hi', 'ta'],
+            },
+            {
+              provider: 'awsind',
+              url: `${cOrigin}/awsind/expired.m3u8?Expires=100`,
+              label: 'Hindi',
+              type: 'hls',
+            },
+            {
+              provider: 'awsind',
+              url: 'https://i-arch-400.husvu445bey.com/stream2/dead.m3u8',
+              label: 'Hindi',
+              type: 'hls',
+            },
+          ],
+          watchout: [
+            {
+              provider: 'watchout',
+              url: `${cOrigin}/watchout/hindi.m3u8`,
+              label: 'watchout',
+              quality: '720p',
+              type: 'm3u8',
+              lang: 'hi',
+              langName: 'Hindi',
+            },
+          ],
           nitro: [
             {
               provider: 'nitro',
@@ -2745,42 +3371,57 @@ try {
 
       // VidStuck (`/backend/raider`, `/backend/servers/*`, `/backend/subtitle`)
       if (cu.pathname === '/backend/raider' && req.method === 'POST') {
+        let rawBody = '';
+        for await (const chunk of req) rawBody += chunk;
+        const body = JSON.parse(rawBody || '{}');
+        assert.equal(body.a7f39c821d604e5b91e57b, 533535, 'VidStuck raider requires numeric TMDB id');
+        assert.equal(body.c81306d28147a35632e816b, 'movie');
+        assert(body['6b491e258392e7561a9384c'], 'VidStuck raider requires target server id');
+        assert.equal(req.headers['content-type'], 'application/json');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ token: 'vs_tok_ok', ts: 1793800000 }));
+        res.end(JSON.stringify({ token: `vs_tok_${body['6b491e258392e7561a9384c']}`, ts: 1793800000 }));
         return;
       }
       if (cu.pathname === '/backend/servers/orion') {
         const isHiDub = cu.searchParams.get('dubCode') === 'hi';
+        assert.equal(cu.searchParams.get('6b491e258392e7561a9384c'), 'orion');
+        assert.equal(cu.searchParams.get('c492f7a183d01e36c538a716d'), 'vs_tok_orion');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
             success: true,
-            data: {
-              links: [
-                {
-                  link: openSslEncryptBase64Url(
-                    `${cOrigin}/vs/${isHiDub ? 'orion_hi.mpd' : 'orion_en.mpd'}`,
-                    VS_PASS,
-                  ),
-                  type: 'dash',
-                  resolution: 1080,
-                },
-              ],
-              dubs: isHiDub ? [] : [{ lanCode: 'hi', lanName: 'Hindi', dubType: 0 }],
-            },
+            links: [
+              {
+                link: openSslEncryptBase64Url(
+                  `/vs/${isHiDub ? 'orion_hi.mpd' : 'orion_en.mpd'}`,
+                  VS_PASS,
+                ),
+                type: 'dash',
+                resolution: 1080,
+              },
+              {
+                link: openSslEncryptBase64Url('/vs/orion_hevc.mpd', VS_PASS),
+                type: 'dash',
+                resolution: 1080,
+                onlyHevc: true,
+              },
+            ],
+            dubs: isHiDub ? [] : [{ lang: 'hi', name: 'Hindi', type: 0 }],
           }),
         );
         return;
       }
       if (cu.pathname.startsWith('/backend/servers/')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, data: { links: [] } }));
+        res.end(JSON.stringify({ success: true, links: [] }));
         return;
       }
       if (cu.pathname === '/backend/subtitle') {
+        assert.equal(cu.searchParams.get('6b491e258392e7561a9384c'), 'subtitle');
+        assert.equal(cu.searchParams.get('c492f7a183d01e36c538a716d'), 'vs_tok_subtitle');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
-          JSON.stringify([{ url: `${cOrigin}/vs/sub_en.vtt`, lang: 'en', label: 'English' }]),
+          JSON.stringify({ captions: [{ file: `${cOrigin}/vs/sub_en.vtt`, language: 'en', display: 'English' }] }),
         );
         return;
       }
@@ -2802,25 +3443,47 @@ try {
         riftRelay: '',
         syncOrigin: cmOrigin,
         vidrockOrigin: cmOrigin,
-        vidlinkOrigin: cmOrigin,
-        encDecOrigin: cmOrigin,
-      });
-      const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi' });
+        vidboltOrigin: cmOrigin,
+      }, 2);
+      const laneDiag = [];
+      const s1Out = await s1Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi', diag: laneDiag });
+      assert(s1Out.candidates.every(c => c.diagnosticLane === 'E'), 'diagnostics must attribute VidRock candidates to lane E');
+      const s3Rec = createSource3Adapter({ enabled: true, origin: cmOrigin });
+      const s3Out = await s3Rec.resolve({ type: 'movie', tmdbId: '533535', preferredLang: 'hi', diag: [] });
+      assert(s3Out.candidates.every(c => c.diagnosticLane === 'stream'));
 
-      // Castle must use `/api/core/proxy` (NOT `/ip-locked/...`), collapse quality clones to 1, and drop IP-bound standby!
-      const castleCands = s1Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
+      // Source 3 must prefer `/api/core/proxy`, collapse quality clones, and retain the direct
+      // signed CDN lane as a secondary candidate for registry-level liveness filtering.
+      const directCand = s3Out.candidates.find((c) => c.url.includes('/direct/master.m3u8'));
+      assert.equal(directCand?.headers?.Referer, 'https://media.example/', 'direct CDN must retain provider media headers');
+      assert.equal(directCand?.quality, '720p', 'do not use catalogue quality as selected-stream quality');
+      const castleCands = s3Out.candidates.filter((c) => c.url.includes('/api/core/proxy'));
       assert.equal(castleCands.length, 1, 'Expected Castle 1080p/720p clones to collapse to 1 proxy candidate');
-      assert.equal(castleCands[0].standbyUrl, undefined, 'IP-signed directUrl must not be placed in standbyUrl');
+      assert.equal(castleCands[0].multiAudio, false, 'catalogue language labels are not switchable manifest tracks');
+      assert.equal(castleCands[0].audioLang, 'en', 'unambiguous single-track language is retained as a hint');
+      assert.equal(directCand.audioLang, 'hi');
+      assert.equal(directCand.subtitles, undefined, 'provider subtitles must be ignored');
+      const checkedCastle = await verifyAndFilterCandidates([castleCands[0]]);
+      assert.equal(checkedCastle[0].qualityOptions, 1, 'a leaf playlist must override a claimed quality ladder');
+      assert.equal(checkedCastle[0].qualityLadder, undefined);
+      assert(
+        castleCands[0].standbyUrl?.includes('/ip-locked/index_287.m3u8'),
+        'Direct signed CDN URL must remain available as a verified failover',
+      );
+      const deadDirectProbe = await fetch(castleCands[0].standbyUrl);
+      assert.equal(deadDirectProbe.status, 403, 'Fixture must prove dead direct lanes are prunable by liveness');
 
       // VidRock Hindi must be decrypted and prioritized first for `preferredLang: 'hi'`
       assert(
         s1Out.candidates[0].url === `${cmOrigin}/vrock/hindi.m3u8` && s1Out.candidates[0].audioLang === 'hi',
         'Expected VidRock AES-256-GCM Hindi candidate to be decrypted & ranked #1 for preferredLang=hi',
       );
-      // Pooled VidLink captions (`en`, `hi`) must be shared onto VidSync & VidRock candidates!
+      assert.equal(s1Out.candidates[0].headers['User-Agent'], ' ', 'VidRock media requires single-space UA');
+      assert.equal(s1Out.candidates[0].headers.Referer, undefined, 'VidRock media must omit Referer');
+      assert.equal(s1Out.candidates[0].headers.Origin, undefined, 'VidRock media must omit Origin');
       assert(
-        castleCands[0].subtitles.length >= 2 && s1Out.candidates[0].subtitles.length >= 2,
-        'Expected VidLink captions to be pooled across all Source 1 candidates',
+        !s1Out.candidates.some((c) => c.url.includes('workers.dev')),
+        'Browser/TLS-gated VidRock Workers lanes must not be advertised as playable',
       );
 
       const s2Rec = createS2Recovery({
@@ -2838,6 +3501,26 @@ try {
         imdbId: 'tt6263850',
         preferredLang: 'hi',
       });
+
+      assert.deepEqual(
+        [...requestedNxProviders].sort(),
+        ['awsind', 'bdxs', 'mhbox', 'nitro', 'showbox-online', 'streamflix', 'vidapi', 'watchout'].sort(),
+        'Measured multi-language providers must fit the bounded probe set; disabled/app-only servers must be skipped',
+      );
+      const awsCand = s2Out.candidates.find((c) => c.url.includes('/awsind/multi.m3u8'));
+      assert(awsCand, 'Expected current AwsPly provider candidate');
+      assert.equal(awsCand.multiAudio, true);
+      assert.deepEqual(awsCand.availableAudioLangs, ['en', 'hi', 'ta']);
+      assert(
+        awsCand.subtitles.some((s) => s.url === `${cmOrigin}/nx/sub_hi.vtt` && s.lang === 'hi'),
+        'Current Nxsha language + uri subtitles must be normalized and pooled',
+      );
+      const watchoutCand = s2Out.candidates.find((c) => c.url.includes('/watchout/hindi.m3u8'));
+      assert(watchoutCand && watchoutCand.audioLang === 'hi', 'Explicit Nxsha lang/langName must survive parsing');
+      assert(
+        !s2Out.candidates.some((c) => /expired\.m3u8|husvu445bey|orion_hevc/.test(c.url)),
+        'Expired, known-dead and HEVC-only lanes must never be advertised',
+      );
 
       const nitroCand = s2Out.candidates.find((c) => c.url.includes('/nitro/master.m3u8'));
       assert(nitroCand, 'Expected NXStream nitro candidate');

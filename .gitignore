@@ -8,3 +8,6 @@ dist/
 !.env.example
 *.zip
 !elfura-pterodactyl.zip
+
+# Private, persistent Roxy analytics and site bans
+data/

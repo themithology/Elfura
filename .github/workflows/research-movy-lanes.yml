@@ -1,0 +1,18 @@
+name: Research Movy original lanes
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-movy-lanes.mjs, .github/workflows/research-movy-lanes.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/test/research-movy-lanes.mjs

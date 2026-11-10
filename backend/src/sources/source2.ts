@@ -97,7 +97,10 @@ interface ExtractSubtitleItem {
   url?: string;
   file?: string;
   src?: string;
+  /** Nxsha's current subtitle API uses `uri` instead of `url`/`file`. */
+  uri?: string;
   lang?: string;
+  lan?: string;
   language?: string;
   srclang?: string;
   label?: string;
@@ -307,13 +310,13 @@ function mapSubtitles(
   const seen = new Set<string>();
   const out: RawTrackRef[] = [];
   for (const s of items) {
-    const rawUrl = s?.url || s?.file || s?.src || '';
+    const rawUrl = s?.url || s?.file || s?.src || s?.uri || '';
     if (!rawUrl) continue;
     const unwrapped = unwrapUpstreamUrl(rawUrl, embedOrigin);
     if (!unwrapped) continue;
 
     const rawLabel = String(s.label || s.display || '').trim();
-    const rawLang = String(s.lang || s.language || s.srclang || rawLabel).trim();
+    const rawLang = String(s.lang || s.lan || s.language || s.srclang || rawLabel).trim();
     const norm = normalizeLang(rawLang, rawLabel);
     const dedupKey = `${norm.code}:${unwrapped.url}`;
     if (seen.has(dedupKey)) continue;
@@ -468,6 +471,7 @@ interface ParsedCandidateItem {
   isHardsub: boolean;
   baseRank: number;
   latencyMs: number;
+  qualityLadder?: number[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -492,25 +496,63 @@ const VS_FIELDS = {
   imdb: 'f35a8194265e871c4933a725f',
 } as const;
 
+// Current Nxsha scraper IDs, with native multi-language providers first.
+// `/api/servers` remains authoritative; this order only chooses which healthy
+// providers fit inside the bounded probe set and provides a fallback if discovery fails.
 const NX_PRIORITY_SERVERS = [
-  'nitro',
-  'vidapi',
+  // Order grounded in the measured NX_TV_SERVERS list from the open-source
+  // TJ-Plugins/Nuvio clients (servers that actually returned links on real
+  // titles), multi-language scrapers first.
   'mhbox',
-  'rive-citadel',
-  'castle',
-  'awsind',
-  'bdxs',
-  'rive-hindicast',
-  'rive-primevids',
+  'awsind', // AwsPly
+  'rive-citadel', // Citadel
+  'nitro', // Nitro
+  'em-8',
+  'xdownloader', // XDrop
+  'castle', // CastVid
+  'k4khdhub',
+  'streamflix', // StremFx
+  'vidapi',
+  'hdhub4u-direct',
+  'rive-flowcast',
+  'vixolity', // Vixo
+  'k4khdhub-direct',
+  'watchout', // Multi-bill
+  'bdxs', // Multi-blue
+  'showbox-online', // Xuhd
+  'stvv', // Stvvid
+  'purstream', // PureWave
+  'rive-primevids', // Prvibd
+  'ophim', // Ophm
+  'rive-hindicast', // VidHindi
   'rive-flowcast',
   'rive-guru',
   'rive-quasar',
-  'watchout',
   'hdhub4u',
   'k4khdhub',
-  'streamflix',
   'em-8',
 ];
+
+const NX_MAX_PROVIDER_PROBES = 8;
+
+/** Known dead/IP-locked worker lanes and non-media pages returned as sources. */
+function isDeadNxshaSourceUrl(rawUrl: string): boolean {
+  const lower = rawUrl.trim().toLowerCase();
+  if (!lower) return true;
+  if (
+    lower.includes('nxstreamhub.workers.dev') ||
+    lower.includes('worker-inosuke.workers.dev') ||
+    lower.includes('silent-math-8425.itsnitrox.tech') ||
+    lower.includes('wts.itsnitrox.tech/pitro') ||
+    lower.includes('wts.itsnitrox.tech/litro') ||
+    lower.includes('husvu445bey.com') ||
+    lower.includes('kkphimplayer') ||
+    lower.includes('gemma416okl.com/play/')
+  ) {
+    return true;
+  }
+  return /\/file\/[a-z0-9]+$/i.test(lower) || /\.(?:mkv|html?|js|exe|swf)(?:[?#]|$)/i.test(lower);
+}
 
 const NON_LANG_NOISE_RE =
   /^(?:hguider|sply(?:-\d+)?|pitro|litro|nitro|vidapi|mhbox|castle|bdxs|awsind|dub|dubbed|sub|subbed|subs|hd|sd|fhd|uhd|qhd|hdr|hdr10|sdr|dv|hevc|h264|h265|x264|x265|aac|eac3|ddp|atmos|auto|raw|org|ori|original|original\s+audio|audio|main|backup|vip|server\s*\d*|stream\s*\d*|\d{2,4}[pk]?|\d+(?:\.\d+)?\s*(?:gb|mb|kbps|mbps))$/i;
@@ -537,14 +579,24 @@ function isS2OriginCoolingDown(origin?: string): boolean {
   return false;
 }
 
-function tripS2OriginCooldown(origin?: string): void {
+function tripS2OriginCooldown(origin?: string, durationMs = S2_ORIGIN_COOLDOWN_MS): void {
   if (!origin || isLoopbackHost(origin)) return;
   if (deadS2OriginUntil.size >= 64) {
     const oldest = deadS2OriginUntil.keys().next().value;
     if (oldest !== undefined) deadS2OriginUntil.delete(oldest);
   }
-  deadS2OriginUntil.set(origin, Date.now() + S2_ORIGIN_COOLDOWN_MS);
+  deadS2OriginUntil.set(origin, Date.now() + durationMs);
 }
+
+/**
+ * VidStuck rate-limits its token endpoint aggressively (HTTP 429 for ~10s
+ * when traffic bursts). Working clients therefore mint ONE token per
+ * server+title and reuse it for server, dub, and retry calls. We cache
+ * tokens briefly instead of minting per request.
+ */
+const vsTokenCache = new Map<string, { token: string; ts: number | string; expiresAt: number }>();
+const VS_TOKEN_TTL_MS = 45_000;
+const VS_RATE_LIMIT_COOLDOWN_MS = 20_000;
 
 function evpBytesToKey(pass: string, salt: Buffer): { key: Buffer; iv: Buffer } {
   const passBuf = Buffer.from(pass, 'utf8');
@@ -585,7 +637,11 @@ export function openSslDecrypt(b64OrUrlSafe: string, pass: string): string | nul
   }
 }
 
-function parseNxItemMeta(rawLabel?: string, rawQuality?: string): {
+function parseNxItemMeta(
+  rawLabel?: string,
+  rawQuality?: string,
+  hints?: { lang?: string; langName?: string; multiLangs?: string[] },
+): {
   quality: string;
   singleCode?: string;
   singleLabel?: string;
@@ -630,6 +686,19 @@ function parseNxItemMeta(rawLabel?: string, rawQuality?: string): {
     }
   }
 
+  // Newer Nxsha providers expose language metadata separately from the label.
+  // Prefer those explicit values instead of trying to infer audio from server names.
+  const addExplicitLang = (rawCode: string, rawName = '') => {
+    const norm = normalizeLang(rawCode, rawName || rawCode);
+    if (!norm.code || norm.code === 'und' || codes.includes(norm.code)) return;
+    codes.push(norm.code);
+    labelsByCode.set(norm.code, norm.label);
+  };
+  for (const rawCode of Array.isArray(hints?.multiLangs) ? hints.multiLangs : []) {
+    if (typeof rawCode === 'string' && rawCode.trim()) addExplicitLang(rawCode.trim());
+  }
+  if (hints?.lang?.trim()) addExplicitLang(hints.lang.trim(), hints.langName?.trim() || '');
+
   const multiAudio = !isHardsub && (codes.length > 1 || /multi[- ]?audio/i.test(label));
   if (!isHardsub && !multiAudio && codes.length === 1) {
     return {
@@ -658,6 +727,9 @@ interface NxRawSource {
   headers?: Record<string, string>;
   quality?: string | number;
   label?: string;
+  lang?: string;
+  langName?: string;
+  multiLangs?: string[];
   isEmbed?: boolean;
   type?: string;
   subtitles?: ExtractSubtitleItem[];
@@ -697,6 +769,7 @@ async function fetchFromNxsha(
         signal: sig,
       });
       if (!res.ok) {
+        console.warn(`[elfura-source2] nxsha ${pathName} HTTP ${res.status} provider=${String(body.provider ?? '-')}`);
         if (res.status >= 500) tripS2OriginCooldown(nxOrigin);
         return null;
       }
@@ -704,7 +777,10 @@ async function fetchFromNxsha(
       if (!json?._hash) return null;
       const dec = openSslDecrypt(json._hash, NX_PASS);
       return dec ? (JSON.parse(dec) as T) : null;
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[elfura-source2] nxsha ${pathName} failed provider=${String(body.provider ?? '-')}: ${err instanceof Error ? err.name : 'error'}`,
+      );
       return null;
     }
   };
@@ -719,32 +795,70 @@ async function fetchFromNxsha(
       : {}),
   };
 
-  const srvResp = await callNx<{
-    servers?: { id?: string; provider?: string; status?: string }[];
+  const serverPromise = callNx<{
+    servers?: {
+      id?: string;
+      provider?: string;
+      scraper?: string;
+      status?: string;
+      web_support?: boolean;
+      isDisable?: boolean;
+      types?: string[];
+      high_priority?: number;
+      position?: number;
+    }[];
   }>('/api/servers', baseReq, 3600);
+  // Subtitle discovery is independent of server probing; start it concurrently so
+  // current `language` + `uri` tracks do not add another serial playback delay.
+  const subtitlePromise = callNx<
+    { subtitles?: ExtractSubtitleItem[] } | ExtractSubtitleItem[]
+  >('/api/subtitles', baseReq, 3000);
+  const srvResp = await serverPromise;
 
   let activeIds: string[] = [];
   if (Array.isArray(srvResp?.servers) && srvResp.servers.length > 0) {
     activeIds = srvResp.servers
-      .filter((s) => s && s.status !== 'error' && s.status !== 'offline')
-      .map((s) => String(s.id || s.provider || '').trim())
+      .filter(
+        (s) =>
+          s &&
+          s.web_support !== false &&
+          s.isDisable !== true &&
+          s.status !== 'error' &&
+          s.status !== 'offline' &&
+          s.status !== 'disabled',
+        // NOTE: `types` on Nxsha server entries describes media support
+        // (movie/tv), not client platform — filtering on it discarded
+        // nearly every provider (32 listed -> 1 tried in production).
+      )
+      .sort((a, b) => {
+        const ap = Number(a.high_priority ?? a.position ?? 999);
+        const bp = Number(b.high_priority ?? b.position ?? 999);
+        return ap - bp;
+      })
+      .map((s) => String(s.scraper || s.id || s.provider || '').trim())
       .filter(Boolean);
   }
-  if (!activeIds.length) {
-    activeIds = NX_PRIORITY_SERVERS.slice(0, 8);
+  if (activeIds.length < NX_MAX_PROVIDER_PROBES) {
+    // Top up with the known multi-language scrapers so a metadata-shape
+    // change in /api/servers can never shrink probing to a single provider.
+    for (const id of NX_PRIORITY_SERVERS) {
+      if (activeIds.length >= NX_MAX_PROVIDER_PROBES) break;
+      if (!activeIds.includes(id)) activeIds.push(id);
+    }
   }
 
-  // Sort active servers by priority order (`nitro` multi-audio, `vidapi` 1080p H.264, `mhbox` 6-dub DASH, etc.)
+  // Keep fan-out bounded: current multi-language scrapers sort ahead of legacy
+  // single-language lanes, while unknown future IDs retain upstream list order.
   const orderedProviders = [...new Set(activeIds)]
     .sort((a, b) => {
       const ia = NX_PRIORITY_SERVERS.indexOf(a);
       const ib = NX_PRIORITY_SERVERS.indexOf(b);
       return (ia >= 0 ? ia : 999) - (ib >= 0 ? ib : 999);
     })
-    .slice(0, 10);
+    .slice(0, NX_MAX_PROVIDER_PROBES);
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const providerResults = await Promise.all(
+  const providerResultsPromise = Promise.all(
     orderedProviders.map(async (provider, pIdx) => {
       const t0 = performance.now();
       const data = await callNx<{ sources?: NxRawSource[]; subtitles?: ExtractSubtitleItem[] }>(
@@ -756,8 +870,17 @@ async function fetchFromNxsha(
       return { provider, pIdx, ms, data };
     }),
   );
+  const [providerResults, dedicatedSubtitleResp] = await Promise.all([
+    providerResultsPromise,
+    subtitlePromise,
+  ]);
 
   const rawSubs: ExtractSubtitleItem[] = [];
+  if (Array.isArray(dedicatedSubtitleResp)) {
+    rawSubs.push(...dedicatedSubtitleResp);
+  } else if (Array.isArray(dedicatedSubtitleResp?.subtitles)) {
+    rawSubs.push(...dedicatedSubtitleResp.subtitles);
+  }
   for (const r of providerResults) {
     if (Array.isArray(r.data?.subtitles)) rawSubs.push(...r.data!.subtitles!);
     for (const s of r.data?.sources ?? []) {
@@ -778,12 +901,27 @@ async function fetchFromNxsha(
       const s = list[sIdx];
       if (!s || s.isEmbed) continue;
       const rawUrl = String(s.url ?? '').trim();
-      if (!rawUrl || !isSafeUpstreamUrl(rawUrl) || seenUrls.has(rawUrl)) continue;
-      if (/\/file\/[A-Za-z0-9]+$/i.test(rawUrl)) continue;
+      if (
+        !rawUrl ||
+        !isSafeUpstreamUrl(rawUrl) ||
+        isDeadNxshaSourceUrl(rawUrl) ||
+        seenUrls.has(rawUrl)
+      ) {
+        continue;
+      }
 
       try {
-        const expParam = new URL(rawUrl).searchParams.get('expire');
-        if (expParam && Number(expParam) > 0 && Number(expParam) < nowSec + 30) continue;
+        const parsedUrl = new URL(rawUrl);
+        let expRaw = '';
+        for (const [key, value] of parsedUrl.searchParams) {
+          if (['expire', 'expires', 'exp'].includes(key.toLowerCase())) {
+            expRaw = value;
+            break;
+          }
+        }
+        let expSec = Number(expRaw);
+        if (expSec > 1_000_000_000_000) expSec /= 1000;
+        if (expSec > 0 && expSec < nowSec + 30) continue;
       } catch {
         continue;
       }
@@ -806,7 +944,11 @@ async function fetchFromNxsha(
         };
       }
 
-      const meta = parseNxItemMeta(s.label, s.quality !== undefined ? String(s.quality) : undefined);
+      const meta = parseNxItemMeta(
+        s.label,
+        s.quality !== undefined ? String(s.quality) : undefined,
+        { lang: s.lang, langName: s.langName, multiLangs: s.multiLangs },
+      );
       const streamType = inferStreamType(s.type, rawUrl);
       const qualityBonus = meta.quality === '2160p' || meta.quality === '1080p' ? 0 : meta.quality === '720p' ? 2 : 4;
       const rankBase = meta.isHardsub
@@ -831,6 +973,19 @@ async function fetchFromNxsha(
     }
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'nx',
+    ok: out.length > 0,
+    ms: 0,
+    detail:
+      `serversListed=${Array.isArray(srvResp?.servers) ? srvResp.servers.length : 0} ` +
+      `tried=[${orderedProviders.join(',')}] ` +
+      `hits=${providerResults.filter((r) => Array.isArray(r.data?.sources) && r.data.sources.length > 0).length} ` +
+      `empty=${providerResults.filter((r) => r.data && Array.isArray(r.data.sources) && r.data.sources.length === 0).length} ` +
+      `null=${providerResults.filter((r) => !r.data).length} ` +
+      `candidates=${out.length}`,
+  });
   return out;
 }
 
@@ -867,31 +1022,73 @@ async function fetchFromVidStuck(
     'User-Agent': BROWSER_UA,
   };
 
-  const mintRaider = async (): Promise<{ token: string; ts: number | string } | null> => {
+  const vsDiag = { mintOk: 0, mintTotal: 0, statuses: [] as string[] };
+  const vsTokenKey = (serverId: string) =>
+    `${vsOrigin}|${serverId}|${query.type}|${query.tmdbId}|${query.season ?? 0}|${query.episode ?? 0}`;
+  const mintRaider = async (
+    serverId: string,
+    forceFresh = false,
+  ): Promise<{ token: string; ts: number | string } | null> => {
+    const cacheKey = vsTokenKey(serverId);
+    if (!forceFresh) {
+      const hit = vsTokenCache.get(cacheKey);
+      if (hit && Date.now() <= hit.expiresAt) {
+        vsDiag.mintOk++;
+        return { token: hit.token, ts: hit.ts };
+      }
+    }
+    vsDiag.mintTotal++;
     try {
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3200)]) : AbortSignal.timeout(3200);
+      const body: Record<string, string | number> = {
+        [VS_FIELDS.id]: Number(query.tmdbId),
+        [VS_FIELDS.type]: query.type,
+        [VS_FIELDS.path]: serverId,
+      };
+      if (query.type === 'tv') {
+        body[VS_FIELDS.s] = Number(query.season ?? 1);
+        body[VS_FIELDS.e] = Number(query.episode ?? 1);
+      }
       const res = await fetch(`${vsOrigin}/backend/raider`, {
         method: 'POST',
-        headers: apiHeaders,
+        headers: { ...apiHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
         signal: sig,
       });
       if (res.status === 429 || res.status >= 500) {
-        tripS2OriginCooldown(vsOrigin);
+        vsDiag.statuses.push(`mint:${res.status}`);
+        // VidStuck's limit window is ~10s; a 5-minute self-ban turns a
+        // transient limit into a long Source 2 outage.
+        tripS2OriginCooldown(vsOrigin, res.status === 429 ? VS_RATE_LIMIT_COOLDOWN_MS : S2_ORIGIN_COOLDOWN_MS);
         return null;
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        vsDiag.statuses.push(`mint:${res.status}`);
+        return null;
+      }
       const j = (await res.json()) as { token?: string; ts?: number | string };
-      return j?.token && j?.ts !== undefined ? { token: j.token, ts: j.ts } : null;
-    } catch {
+      if (j?.token && j?.ts !== undefined) {
+        vsDiag.mintOk++;
+        vsTokenCache.set(cacheKey, { token: j.token, ts: j.ts, expiresAt: Date.now() + VS_TOKEN_TTL_MS });
+        return { token: j.token, ts: j.ts };
+      }
+      vsDiag.statuses.push('mint:no-token');
+      return null;
+    } catch (err) {
+      vsDiag.statuses.push(`mint:${err instanceof Error ? err.name : 'error'}`);
       return null;
     }
   };
 
-  const buildVsParams = (tok: { token: string; ts: number | string }, extra: Record<string, string> = {}): URLSearchParams => {
+  const buildVsParams = (
+    tok: { token: string; ts: number | string },
+    serverId: string,
+    extra: Record<string, string> = {},
+  ): URLSearchParams => {
     const p = new URLSearchParams();
     p.set(VS_FIELDS.id, String(query.tmdbId));
     p.set(VS_FIELDS.type, query.type);
-    p.set(VS_FIELDS.path, embedPath);
+    p.set(VS_FIELDS.path, serverId);
     if (query.type === 'tv') {
       p.set(VS_FIELDS.s, String(query.season ?? 1));
       p.set(VS_FIELDS.e, String(query.episode ?? 1));
@@ -909,75 +1106,118 @@ async function fetchFromVidStuck(
     return p;
   };
 
+  interface VsLinkItem {
+    link?: string;
+    type?: string;
+    resolution?: string | number;
+    quality?: string;
+    label?: string;
+    lang?: string;
+    langName?: string;
+    multiLangs?: string[];
+    onlyHevc?: boolean;
+  }
+  interface VsDubItem {
+    lanCode?: string;
+    lanName?: string;
+    dubType?: string | number;
+    /** Current direct API aliases. */
+    lang?: string;
+    name?: string;
+    type?: string | number;
+  }
   interface VsServerPayload {
     success?: boolean;
+    links?: VsLinkItem[];
+    dubs?: VsDubItem[];
+    subtitles?: ExtractSubtitleItem[];
     data?: {
-      links?: { link?: string; type?: string; resolution?: string | number; quality?: string }[];
-      dubs?: { lanCode?: string; lanName?: string; dubType?: string | number }[];
+      links?: VsLinkItem[];
+      dubs?: VsDubItem[];
       subtitles?: ExtractSubtitleItem[];
     };
   }
 
-  const firstTok = await mintRaider();
-  if (!firstTok) return [];
-
-  const fetchServer = async (srv: string, extra: Record<string, string> = {}, tokOverride?: { token: string; ts: number | string }): Promise<VsServerPayload | null> => {
-    const tok = tokOverride ?? (await mintRaider());
-    if (!tok) return null;
-    try {
-      const qs = buildVsParams(tok, extra).toString();
-      const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
-      const res = await fetch(`${vsOrigin}/backend/servers/${srv}?${qs}`, {
-        headers: apiHeaders,
-        signal: sig,
-      });
-      if (res.status === 429) {
-        tripS2OriginCooldown(vsOrigin);
+  const fetchServer = async (srv: string, extra: Record<string, string> = {}): Promise<VsServerPayload | null> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const tok = await mintRaider(srv, attempt > 0);
+      if (!tok) return null;
+      try {
+        const qs = buildVsParams(tok, srv, extra).toString();
+        const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
+        const res = await fetch(`${vsOrigin}/backend/servers/${srv}?${qs}`, {
+          headers: apiHeaders,
+          signal: sig,
+        });
+        if (res.status === 401 && attempt === 0) {
+          // Token rejected/expired: drop it and retry once with a fresh mint.
+          vsTokenCache.delete(vsTokenKey(srv));
+          continue;
+        }
+        if (res.status === 429) {
+          vsDiag.statuses.push(`${srv}:429`);
+          tripS2OriginCooldown(vsOrigin, VS_RATE_LIMIT_COOLDOWN_MS);
+          return null;
+        }
+        if (!res.ok) vsDiag.statuses.push(`${srv}:${res.status}`);
+        return res.ok ? ((await res.json()) as VsServerPayload) : null;
+      } catch (err) {
+        vsDiag.statuses.push(`${srv}:${err instanceof Error ? err.name : 'error'}`);
         return null;
       }
-      return res.ok ? ((await res.json()) as VsServerPayload) : null;
-    } catch {
-      return null;
     }
+    return null;
   };
 
   const fetchVsSubs = async (): Promise<RawTrackRef[]> => {
     try {
-      const p = new URLSearchParams();
-      p.set(VS_FIELDS.id, String(query.tmdbId));
-      p.set(VS_FIELDS.type, query.type);
-      if (query.type === 'tv') {
-        p.set(VS_FIELDS.s, String(query.season ?? 1));
-        p.set(VS_FIELDS.e, String(query.episode ?? 1));
-      }
-      if (metaHint.imdbId) p.set(VS_FIELDS.imdb, metaHint.imdbId);
+      const tok = await mintRaider('subtitle');
+      if (!tok) return [];
+      const p = buildVsParams(tok, 'subtitle');
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
       const res = await fetch(`${vsOrigin}/backend/subtitle?${p.toString()}`, {
         headers: apiHeaders,
         signal: sig,
       });
       if (!res.ok) return [];
-      const raw = (await res.json()) as ExtractSubtitleItem[] | { subtitles?: ExtractSubtitleItem[]; data?: ExtractSubtitleItem[] };
-      const arr = Array.isArray(raw) ? raw : raw?.subtitles ?? raw?.data ?? [];
+      const raw = (await res.json()) as
+        | ExtractSubtitleItem[]
+        | { captions?: ExtractSubtitleItem[]; subtitles?: ExtractSubtitleItem[]; data?: ExtractSubtitleItem[] };
+      const arr = Array.isArray(raw) ? raw : raw?.captions ?? raw?.subtitles ?? raw?.data ?? [];
       return mapSubtitles(arr, vsOrigin);
     } catch {
       return [];
     }
   };
 
-  const [orionRes, atlasRes, daedalusRes, vsSubs] = await Promise.all([
-    fetchServer('orion', {}, firstTok),
-    fetchServer('atlas'),
-    fetchServer('daedalus'),
+  // Staged fan-out (researched client behavior): VidStuck's token endpoint
+  // rate-limits bursts, so ask the three distinct-file servers first and
+  // only spend tokens on the mirrors when those come back empty.
+  const hasLinks = (p: VsServerPayload | null) =>
+    Array.isArray(p?.links ?? p?.data?.links) && ((p?.links ?? p?.data?.links)?.length ?? 0) > 0;
+  const [firstWave, vsSubs] = await Promise.all([
+    Promise.all([fetchServer('orion'), fetchServer('atlas'), fetchServer('daedalus')]),
     fetchVsSubs(),
   ]);
+  let [orionRes, atlasRes, daedalusRes] = firstWave;
+  let andromedaRes: VsServerPayload | null = null;
+  let ursaRes: VsServerPayload | null = null;
+  if (!hasLinks(orionRes) && !query.signal?.aborted) {
+    // Orion occasionally answers empty on the first hit; one retry with the
+    // same cached token recovers it in the reference clients.
+    await new Promise((r) => setTimeout(r, 1200));
+    orionRes = (await fetchServer('orion')) ?? orionRes;
+  }
+  if (!hasLinks(orionRes) && !hasLinks(atlasRes) && !hasLinks(daedalusRes)) {
+    [andromedaRes, ursaRes] = await Promise.all([fetchServer('andromeda'), fetchServer('ursa')]);
+  }
 
-  // Unlock Orion regional dubs (Hindi + preferredLang) dynamically if advertised in `orion.data.dubs`
-  const advertisedDubs = Array.isArray(orionRes?.data?.dubs) ? orionRes!.data!.dubs! : [];
+  // Unlock Orion regional dubs (Hindi + preferredLang) dynamically when advertised.
+  const advertisedDubs = orionRes?.dubs ?? orionRes?.data?.dubs ?? [];
   const wantedDubItems: { rawCode: string; normCode: string; normLabel: string; dubType: string }[] = [];
   for (const d of advertisedDubs) {
-    const rawCode = String(d?.lanCode ?? '').trim();
-    const rawName = String(d?.lanName ?? '').trim();
+    const rawCode = String(d?.lanCode ?? d?.lang ?? '').trim();
+    const rawName = String(d?.lanName ?? d?.name ?? '').trim();
     if (!rawCode || HARDSUB_LABEL_RE.test(rawName)) continue;
     const norm = normalizeLang(rawName || rawCode, rawName || rawCode);
     if (!norm.code || norm.code === 'und') continue;
@@ -988,7 +1228,7 @@ async function fetchFromVidStuck(
           rawCode,
           normCode: norm.code,
           normLabel: norm.label,
-          dubType: String(d?.dubType ?? '0'),
+          dubType: String(d?.dubType ?? d?.type ?? '0'),
         });
       }
     }
@@ -1016,28 +1256,52 @@ async function fetchFromVidStuck(
     rankBase: number,
     explicitLang?: { code: string; label: string },
   ) => {
-    const links = payload?.data?.links;
+    const links = payload?.links ?? payload?.data?.links;
     if (!Array.isArray(links)) return;
     for (let i = 0; i < links.length; i++) {
       const item = links[i];
+      // HEVC-only DASH/MP4 responses are not reliable browser playback sources;
+      // keep compatible H.264/HLS candidates instead of advertising a broken option.
+      if (item?.onlyHevc === true) continue;
       const rawLink = String(item?.link ?? '').trim();
       if (!rawLink) continue;
-      const url = /^https?:\/\//i.test(rawLink) ? rawLink : openSslDecrypt(rawLink, VS_PASS)?.trim() || '';
+      const decrypted = /^https?:\/\//i.test(rawLink) ? rawLink : openSslDecrypt(rawLink, VS_PASS)?.trim() || '';
+      let url = decrypted;
+      if (decrypted && !/^https?:\/\//i.test(decrypted)) {
+        try {
+          url = new URL(decrypted, `${vsOrigin}/`).toString();
+        } catch {
+          url = '';
+        }
+      }
       if (!url || !isSafeUpstreamUrl(url) || seen.has(url)) continue;
       seen.add(url);
 
       const resNum = Number(String(item?.resolution || item?.quality || '').replace(/\D+/g, '')) || 0;
-      const quality = resNum >= 2160 ? '2160p' : resNum > 0 ? `${resNum}p` : 'auto';
+      const detectedQuality = resNum >= 2160 ? '2160p' : resNum > 0 ? `${resNum}p` : 'auto';
+      const meta = parseNxItemMeta(item?.label, detectedQuality, {
+        lang: item?.lang,
+        langName: item?.langName,
+        multiLangs: item?.multiLangs,
+      });
+      const quality = detectedQuality === 'auto' ? meta.quality : detectedQuality;
       out.push({
         key: `vs:${srvId}:${explicitLang?.code || 'orig'}:${i}:${url}`,
         type: inferStreamType(item?.type, url),
         url,
         headers: mediaHeaders,
         quality,
-        ...(explicitLang ? { audioLang: explicitLang.code, audioLabel: explicitLang.label } : {}),
-        multiAudio: false,
+        ...(explicitLang
+          ? { audioLang: explicitLang.code, audioLabel: explicitLang.label }
+          : meta.singleCode
+            ? { audioLang: meta.singleCode, audioLabel: meta.singleLabel }
+            : {}),
+        ...(!explicitLang && meta.discoveredCodes.length
+          ? { availableAudioLangs: meta.discoveredCodes }
+          : {}),
+        multiAudio: explicitLang ? false : meta.multiAudio,
         subtitles: vsSubs,
-        rank: rankBase + i * 0.2,
+        rank: rankBase + (!explicitLang && meta.multiAudio ? -4 : 0) + i * 0.2,
       });
     }
   };
@@ -1046,8 +1310,10 @@ async function fetchFromVidStuck(
   for (const { dub, resp } of dubPayloads) {
     collectLinks('orion-dub', resp, 8, { code: dub.normCode, label: dub.normLabel });
   }
+  collectLinks('andromeda', andromedaRes, 9);
   collectLinks('atlas', atlasRes, 11);
   collectLinks('daedalus', daedalusRes, 13);
+  collectLinks('ursa', ursaRes, 15);
 
   if (out.length > 0) {
     if (vidstuckCache.size >= MAX_VS_CACHE) {
@@ -1057,6 +1323,13 @@ async function fetchFromVidStuck(
     vidstuckCache.set(cacheKey, { expiresAt: Date.now() + VS_CACHE_TTL_MS, candidates: out });
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'vs',
+    ok: out.length > 0,
+    ms: 0,
+    detail: `serversResponded=${[orionRes, andromedaRes, atlasRes, daedalusRes, ursaRes].filter(Boolean).length}/5 mintOk=${vsDiag.mintOk}/${vsDiag.mintTotal} statuses=[${vsDiag.statuses.slice(0, 8).join(',')}] candidates=${out.length}`,
+  });
   return out;
 }
 
@@ -1114,6 +1387,13 @@ async function resolveViaExtractApi(
   }
 
   if (!fetched || !hasAnySources(fetched.payload)) {
+    query.diag?.push({
+      adapter: 'source-2',
+      lane: 'extract',
+      ok: false,
+      ms: 0,
+      detail: cfg.embedOrigin ? 'no-sources-or-unreachable' : 'not-configured',
+    });
     return [];
   }
 
@@ -1335,6 +1615,7 @@ async function resolveViaExtractApi(
       isHardsub,
       baseRank,
       latencyMs,
+      ...(ladderNums.length ? { qualityLadder: [...ladderNums].sort((a, b) => b - a) } : {}),
     };
   };
 
@@ -1428,6 +1709,9 @@ async function resolveViaExtractApi(
       ...(p.singleLabel ? { audioLabel: p.singleLabel } : {}),
       ...(p.discoveredCodes.length ? { availableAudioLangs: p.discoveredCodes } : {}),
       multiAudio: p.isMultiAudio,
+      ...(p.qualityLadder?.length
+        ? { qualityLadder: p.qualityLadder, qualityOptions: p.qualityLadder.length }
+        : {}),
       subtitles: sharedSubs,
       ...(standby ? { standbyUrl: standby.url, standbyHeaders: standby.headers } : {}),
       rank: p.baseRank + latencyPenalty + tieOffset,
@@ -1468,6 +1752,13 @@ async function resolveViaExtractApi(
     );
   }
 
+  query.diag?.push({
+    adapter: 'source-2',
+    lane: 'extract',
+    ok: emittedCandidates.length > 0,
+    ms: requestLatencyMs,
+    detail: `candidates=${emittedCandidates.length}`,
+  });
   return emittedCandidates;
 }
 

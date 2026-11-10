@@ -1,0 +1,27 @@
+name: Production playback pipeline trace
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/production-pipeline-trace.mjs, .github/workflows/production-pipeline-trace.yml]
+permissions:
+  contents: read
+jobs:
+  trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {type: movie, id: '693134'}
+          - {type: movie, id: '872585'}
+          - {type: tv, id: '93405'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/production-pipeline-trace.mjs
+        env:
+          TRACE_TYPE: ${{ matrix.type }}
+          TRACE_ID: ${{ matrix.id }}
