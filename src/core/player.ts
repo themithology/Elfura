@@ -1314,6 +1314,13 @@ export class ElfuraPlayer {
     this.initialAudioApplied = true;
     this.desiredAudioLang = targetLang;
 
+    // A user-requested language switch is a fresh attempt. Startup/failover
+    // probes may have marked a usable dub as failed after a transient timeout;
+    // setSource already clears these flags for manual server picks, so do the
+    // same here before searching language-compatible candidates.
+    this.failedSourceIds.clear();
+    this.failedFingerprints.clear();
+
     const currentHealthy = !!this.currentSource && !this.isCandidateFailed(this.currentSource);
     const mustPrioritizeMulti =
       targetLang !== 'und' &&

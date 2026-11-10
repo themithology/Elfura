@@ -2163,6 +2163,27 @@ try {
   assert.equal(searchPlayer.getState().source, 'multi-good');
   assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good']);
 
+  // A transient startup timeout may have marked a direct Hindi dub failed;
+  // a fresh explicit language request must retry it just like manual setSource.
+  const directHindiOption = searchSources.find((s) => s.id === 'direct-hi');
+  const initialEnglishOption = searchSources.find((s) => s.id === 'initial-en');
+  searchPlayer.sources = [initialEnglishOption, directHindiOption];
+  assert.deepEqual(searchPlayer.getSources().map((s) => s.id), ['initial-en', 'direct-hi']);
+  searchPlayer.currentSource = initialEnglishOption;
+  searchPlayer.failedSourceIds.add('direct-hi');
+  searchPlayer.failedFingerprints.add('direct-hi-fp');
+  languageAttempts = [];
+  searchPlayer.raceCandidatesBatch = async (wave) => ({ winner: wave[0], winners: [wave[0]], failed: [], rejected: [] });
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: opt.id === 'direct-hi' };
+  };
+  const retriedHindi = await searchPlayer.setAudio('hi');
+  assert.equal(retriedHindi, true, `explicit Hindi selection must retry a candidate previously marked failed; attempts=${JSON.stringify(languageAttempts)}`);
+  assert.deepEqual(languageAttempts, ['direct-hi']);
+
+  searchPlayer.sources = searchSources;
   languageAttempts = [];
   searchPlayer.currentSource = searchSources[0];
   searchPlayer.raceCandidatesBatch = async () => ({ winner: null, winners: [], failed: [], rejected: [] });
