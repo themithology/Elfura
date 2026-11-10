@@ -18,7 +18,7 @@ try {
  // Exercise real newly registered adapters with hung discovery, not just fake adapters.
  globalThis.fetch=async url=>String(url).startsWith('https://cdn.example.org/')?new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}):never();
  const realCfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',OPENSUBTITLES_ENABLED:'0'});
- reg=new SourceRegistry(realCfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),...reg.adapters.filter(a=>['source-7','source-8','source-9','source-10','source-11','source-12','source-13'].includes(a.id))];
+ reg=new SourceRegistry(realCfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),...reg.adapters.filter(a=>['source-7','source-8','source-9','source-10','source-11','source-12','source-13','source-14','source-15'].includes(a.id))];
  start=Date.now();const mixed=await reg.resolvePlayback({type:'movie',tmdbId:'999004'});const newSourcesMs=Date.now()-start;
  assert(mixed?.sources.length,'Existing fast source must remain available');assert(newSourcesMs<2500,`New hung sources delayed startup to ${newSourcesMs}ms`);
  console.log(`✓ Startup budget: fast ${fastMs}ms, no sources ${failMs}ms, stalled verification ${probeMs}ms, new sources stalled ${newSourcesMs}ms.`);

@@ -1,3 +1,5 @@
+process.env.ELFURA_MAPPLE_ENABLED = '0';
+process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
 process.env.ELFURA_XPASS_ENABLED = '0';
 process.env.ELFURA_VIDZEN_ENABLED = '0';
 process.env.ELFURA_VAPLAYER_ENABLED = '0';
