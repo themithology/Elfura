@@ -123,6 +123,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const roxy = new RoxyStore(cfg.secret);
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyTestLimiter = new SlidingWindowLimiter(6);
+  const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -211,7 +212,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       if (pathname === '/roxy/api/source-websites' && method === 'GET') { reply(200, { sites: roxySourceWebsites(cfg) }); return; }
       if (pathname === '/roxy/api/source-websites/request' && method === 'POST') {
-        if (!roxyTestLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
+        if (!roxyWebsiteLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
         try {
           const body = await readJsonBody(req, 4096);
           const sites = roxySourceWebsites(cfg);
