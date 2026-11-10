@@ -14,6 +14,7 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
     ...(cfg.source9?.enabled ? [{ id: 'vixsrc', name: 'VixSrc', source: 'Source 9', url: 'https://vixsrc.to', enabled: true }] : []),
     ...(cfg.source10?.enabled ? [{ id: 'vidnest', name: 'VidNest', source: 'Source 10', url: 'https://vidnest.fun', enabled: true }] : []),
+    ...(cfg.source11?.enabled ? [{ id: 'vaplayer', name: 'VidAPI.ru', source: 'Source 11', url: 'https://vidapi.ru', enabled: true }] : []),
   ];
 }
 
