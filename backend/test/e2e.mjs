@@ -1870,6 +1870,13 @@ try {
       assert.deepEqual(requested.sort(),['source-1','source-2','source-3','source-4','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
       p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,5,'exhaustion recovery must be bounded');
       p.destroy();
+      // A backend-advertised new group participates without a player release.
+      requested=[];
+      const newer={...good,id:'source-10:1',sourceId:'source-10',fingerprint:'dynamic-good'};
+      globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-10'?[newer]:[]})};
+      const p2=new ElfuraPlayer({postMessage:false});p2.input.config.tmdb='693134';p2.input.config.mediaType='movie';p2.input.config.api='https://retry.example/api/v1/playback';p2.sourceGroups=['source-3','source-10'];p2.sources=[dead];p2.currentSource=dead;
+      let dynamicActive;p2.activateSourceOption=async opt=>{dynamicActive=opt;p2.currentSource=opt};p2.failover();await new Promise(r=>setTimeout(r,40));
+      assert.deepEqual(requested.filter(Boolean).sort(),['source-10','source-3']);assert.equal(dynamicActive?.fingerprint,'dynamic-good');p2.destroy();
     } finally {globalThis.fetch=originalFetch;}
   }
   // The watchdog must cover a single option too and not stop at metadata or
@@ -1891,17 +1898,17 @@ try {
     let releaseRecovery;
     const recoveryGate = new Promise((resolve) => { releaseRecovery = resolve; });
     const primary = { ...pb.primary, id: 'source-3:late-test', sourceId: 'source-3', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
-    const multi = { ...primary, id: 'source-1:1', sourceId: 'source-1', label: 'Source 1 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
+    const multi = { ...primary, id: 'source-10:1', sourceId: 'source-10', label: 'Source 10 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
     let recoveryCalls = 0;
     globalThis.fetch = async (input) => {
       const u = new URL(String(input));
       assert.equal(u.origin, 'https://recovery.example');
-      if (u.searchParams.get('source') === 'source-1') {
+      if (u.searchParams.get('source') === 'source-10') {
         recoveryCalls++;
         await recoveryGate;
         return new Response(JSON.stringify({ ok: true, sources: [multi] }), { status: 200 });
       }
-      return new Response(JSON.stringify({ ok: true, sources: [primary], primary }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, sources: [primary], primary, sourceGroups: ['source-3', 'source-10', 'source-10', '../unsafe'] }), { status: 200 });
     };
     try {
       const p = new ElfuraPlayer({ postMessage: false, api: 'https://recovery.example/api/v1/playback', tmdb: '123456', mediaType: 'movie', pltoken: 'test-token', nonce: 'test-nonce' });

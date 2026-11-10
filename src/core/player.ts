@@ -191,6 +191,8 @@ export class ElfuraPlayer {
   private externalAudio = new ExternalAudioSync();
 
   private sources: SourceOption[] = [];
+  // Generic source groups supplied by the backend; fallback supports older servers.
+  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
   private currentSource: SourceOption | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
@@ -991,6 +993,7 @@ export class ElfuraPlayer {
         media?: TitleMediaInfo;
         primary?: SourceOption;
         sources?: SourceOption[];
+        sourceGroups?: string[];
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
@@ -1012,6 +1015,13 @@ export class ElfuraPlayer {
         return;
       }
 
+      // Bound and validate ids before using them in recovery requests. Do not
+      // hardcode provider-specific groups in the player.
+      if (Array.isArray(data.sourceGroups)) {
+        this.sourceGroups = [...new Set(data.sourceGroups.filter((id): id is string => typeof id === 'string' && /^source-[1-9]\d{0,3}$/.test(id)))].slice(0, 32);
+      } else {
+        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+      }
       if (data.media) {
         this.mediaInfo = data.media;
       }
@@ -1081,7 +1091,7 @@ export class ElfuraPlayer {
       // A slow provider can miss the initial bounded backend race. Fetch its
       // source group once in the background so playback need not wait, then
       // add newly verified choices without restarting the active stream.
-      const lateGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'].filter((id) =>
+      const lateGroups = this.sourceGroups.filter((id) =>
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
@@ -2650,7 +2660,7 @@ export class ElfuraPlayer {
     this.exhaustedRecoveryInFlight = true;
     const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     const recoveryLoadSeq = this.engineLoadSeq;
-    const groups = cfg.source ? [String(cfg.source)] : ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+    const groups = cfg.source ? [String(cfg.source)] : this.sourceGroups;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
     if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';

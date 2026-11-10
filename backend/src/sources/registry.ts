@@ -594,6 +594,7 @@ export class SourceRegistry {
       media,
       primary: uniformOptions[0],
       sources: uniformOptions,
+      sourceGroups: activeAdapters.map(adapter => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
   }
