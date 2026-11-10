@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ROXY_PAGE } from './roxy-page.js';
+import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
 import {
   applyCorsHeaders,
@@ -207,6 +208,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (pathname === '/roxy/api/clear' && method === 'POST') { roxy.clear(); const ok=await roxy.flush(); reply(ok?200:500,ok?{ok:true}:{error:'Could not persist deletion'}); return; }
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
+      }
+      if (pathname === '/roxy/api/source-websites' && method === 'GET') { reply(200, { sites: roxySourceWebsites(cfg) }); return; }
+      if (pathname === '/roxy/api/source-websites/request' && method === 'POST') {
+        if (!roxyTestLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
+        try {
+          const body = await readJsonBody(req, 4096);
+          const sites = roxySourceWebsites(cfg);
+          const selected = body.id === 'all' ? sites : sites.filter(site => site.id === body.id);
+          if (!selected.length) { reply(400,{error:'Unknown source website'}); return; }
+          reply(200,{results: await Promise.all(selected.map(requestSourceWebsite))});
+        } catch { reply(400,{error:'Invalid request'}); }
+        return;
       }
       if (pathname === '/roxy/api/test' && method === 'POST') {
         if (!roxyTestLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
