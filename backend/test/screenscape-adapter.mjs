@@ -31,7 +31,7 @@ globalThis.fetch = async input => {
   throw new Error(`unexpected request ${u.hostname}`);
 };
 try {
-  const defaultRegistry = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'}));
+  const defaultRegistry = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_SCREENSCAPE_ENABLED:'0'}));
   assert(!defaultRegistry.listPublicSources().some(s=>s.id==='source-7'));
   const cfg = loadBackendConfig({ELFURA_SECRET:'test', ELFURA_SCREENSCAPE_ENABLED:'1'});
   assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
@@ -46,5 +46,5 @@ try {
   assert.equal(result.candidates[0].diagnosticLane,'S');
   assert.equal(diag[0].ok,true);
   assert.deepEqual((await createSource7Adapter(()=>true).resolve({type:'movie',tmdbId:'bad'})).candidates,[]);
-  console.log('✓ ScreenScape opt-in, bounded lanes, unsafe/embed rejection and verified manifest audio');
+  console.log('✓ ScreenScape toggle, bounded lanes, unsafe/embed rejection and verified manifest audio');
 } finally { globalThis.fetch = old; }

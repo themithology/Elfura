@@ -1,3 +1,6 @@
+process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
+process.env.ELFURA_VIDZEE_ENABLED = '0';
+process.env.ELFURA_VIXSRC_ENABLED = '0';
 process.env.ELFURA_NXSHA_ENABLED = '0';
 process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
 import assert from 'node:assert/strict';

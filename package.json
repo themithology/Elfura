@@ -13,7 +13,7 @@
     "build:backend": "node -e \"require('node:fs').rmSync('dist/backend',{recursive:true,force:true})\" && tsc -p backend/tsconfig.json",
     "build:pterodactyl": "npm run build && python3 scripts/build-pterodactyl-zip.py",
     "start": "node index.js",
-    "test": "node backend/test/e2e.mjs && node backend/test/roxy.mjs && node backend/test/startup-budget.mjs && node backend/test/selection.mjs && node backend/test/bingr-adapter.mjs && node backend/test/nuvio-adapters.mjs && node backend/test/screenscape-adapter.mjs && node backend/test/vidzee-adapter.mjs",
+    "test": "node backend/test/e2e.mjs && node backend/test/roxy.mjs && node backend/test/startup-budget.mjs && node backend/test/selection.mjs && node backend/test/bingr-adapter.mjs && node backend/test/nuvio-adapters.mjs && node backend/test/screenscape-adapter.mjs && node backend/test/vidzee-adapter.mjs && node backend/test/vixsrc-adapter.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "typecheck": "npm run typecheck:player && npm run typecheck:backend",
     "typecheck:player": "tsc --noEmit",

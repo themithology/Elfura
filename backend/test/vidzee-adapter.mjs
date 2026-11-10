@@ -32,7 +32,7 @@ try {
   assert.equal(result.candidates.length,2); assert.deepEqual(result.candidates[0].availableAudioLangs,['hi','en']);
   assert.equal(result.candidates[1].audioLang,'hi'); assert.notEqual(result.candidates[1].multiAudio,true);
   assert.equal(result.candidates[0].multiAudio,true); assert.equal(result.candidates[0].diagnosticLane,'Z');
-  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-8'));
+  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDZEE_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-8'));
   assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDZEE_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-8'));
-  console.log('✓ VidZee opt-in, validated input, bounded server list, safe headers and separate audio dubs');
+  console.log('✓ VidZee toggle, validated input, bounded server list, safe headers and separate audio dubs');
 } finally {globalThis.fetch=original;}
