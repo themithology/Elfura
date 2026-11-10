@@ -218,7 +218,7 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1, Source 2 & Source 3 adapters
+backend/src/sources/      isolated SourceAdapter registry + Source 1–17 adapters (16 DesiDubAnime direct HLS, 17 Anikoto direct HLS)
 ```
 
 ## Roxy operator dashboard

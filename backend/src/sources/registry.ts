@@ -27,6 +27,8 @@ import { createSource12Adapter } from './source12.js';
 import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
+import { createSource16Adapter } from './source16.js';
+import { createSource17Adapter } from './source17.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -81,6 +83,8 @@ export class SourceRegistry {
       createSource13Adapter(() => cfg.source13?.enabled ?? false),
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
+      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
+      createSource17Adapter(() => cfg.source17?.enabled ?? process.env.ELFURA_ANIKOTO_ENABLED !== '0'),
     ];
   }
 
