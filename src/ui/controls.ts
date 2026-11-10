@@ -267,6 +267,7 @@ export class PlayerUI {
   private loadingQuoteSession = 0;
   private loadingQuoteHistory = new Set<string>();
   private loadingActive = false;
+  private slowNoticeShown = false;
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
   private unavailableTitle!: HTMLElement;
@@ -814,6 +815,12 @@ export class PlayerUI {
     // in-flight manifest/segment. Playback continues behind the retry screen.
     this.loadingDeadlineTimer = window.setTimeout(() => {
       if (!this.loadingActive) return;
+      if (!this.claimSlowNotice()) {
+        // Retry attempts for the same title keep the progress state, but don't
+        // put the identical blocking warning back over the player.
+        this.loadingStatus.textContent = 'Still trying to connect…';
+        return;
+      }
       this.hideInitialLoading(true);
       this.slowLoadingActive = true;
       this.unavailableTitle.textContent = 'Taking longer than expected';
@@ -837,6 +844,12 @@ export class PlayerUI {
       this.showNextFallbackQuote();
       void this.fetchLoadingQuote(session);
     }, 6500);
+  }
+
+  private claimSlowNotice(): boolean {
+    if (this.slowNoticeShown) return false;
+    this.slowNoticeShown = true;
+    return true;
   }
 
   private showNextFallbackQuote(): void {
@@ -1254,6 +1267,7 @@ export class PlayerUI {
     const markPlaybackReady = () => {
       // Ignore late media events from an attempt already declared unavailable.
       if (shell.dataset.unavailable === 'true') return;
+      this.slowNoticeShown = false;
       shell.dataset.buffering = 'false';
       shell.dataset.unavailable = 'false';
       this.unavailableScreen.dataset.visible = 'false';
@@ -1389,6 +1403,7 @@ export class PlayerUI {
     });
     bus.on('episodeChange', (d) => {
       const ev = d as { season?: number; episode?: number } | undefined;
+      this.slowNoticeShown = false;
       this.showInitialLoading();
       this.nextEpDismissedKey = '';
       this.nextSeasonRequested = 0;

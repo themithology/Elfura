@@ -1757,6 +1757,9 @@ try {
   assert.equal(toastProbe.toastEl.textContent, 'Repeated warning fixture');
   assert.equal(toastProbe.toastTimer, firstToastTimer, 'identical toast repeats must not restart or reshow during cooldown');
   clearTimeout(toastProbe.toastTimer);
+  const slowNoticeProbe = { slowNoticeShown: false };
+  assert.equal(PlayerUI.prototype.claimSlowNotice.call(slowNoticeProbe), true);
+  assert.equal(PlayerUI.prototype.claimSlowNotice.call(slowNoticeProbe), false, 'slow-connect warning is shown only once until playback recovers');
 
   const player = new ElfuraPlayer({ postMessage: false });
   // Seed 4 raw sources: 1 English default, 1 DEAD Tamil raw source, 1 WORKING Tamil raw source, 1 DEAD Korean raw source
