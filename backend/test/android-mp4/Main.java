@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class Main extends Activity {
   private final Handler handler=new Handler();
   private SurfaceHolder holder;
-  private String[] files={"fragmented.mp4", "patched-movie.mp4", "patched-all.mp4", "dash-patched.mp4", "standard.mp4"};
+  private String[] files={"fragmented.mp4", "patched-movie.mp4", "patched-all.mp4", "dash-patched.mp4", "standard.mp4", "combined.ts"};
   private int idx=0;
   @Override public void onCreate(Bundle b){super.onCreate(b);SurfaceView view=new SurfaceView(this);setContentView(view);view.getHolder().addCallback(new SurfaceHolder.Callback(){public void surfaceCreated(SurfaceHolder h){holder=h;runNext();}public void surfaceChanged(SurfaceHolder h,int f,int w,int he){}public void surfaceDestroyed(SurfaceHolder h){}});}
   private void runNext(){

@@ -17,9 +17,10 @@ adb push "$RUNNER_TEMP/patched-movie.mp4" /sdcard/Android/data/online.theogpirat
 adb push "$RUNNER_TEMP/patched-all.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/patched-all.mp4 >/dev/null
 adb push "$RUNNER_TEMP/dash-patched.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/dash-patched.mp4 >/dev/null
 adb push "$RUNNER_TEMP/standard.mp4" /sdcard/Android/data/online.theogpiratebot.mediatest/files/standard.mp4 >/dev/null
+adb push "$RUNNER_TEMP/combined.ts" /sdcard/Android/data/online.theogpiratebot.mediatest/files/combined.ts >/dev/null
 adb logcat -c
 adb shell am start -n online.theogpiratebot.mediatest/.Main >/dev/null
-for i in $(seq 1 30); do
+for i in $(seq 1 45); do
   if adb logcat -d -s ElfuraTest:I '*:S' | grep -q DONE; then break; fi
   sleep 1
 done

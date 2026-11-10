@@ -24,6 +24,7 @@ jobs:
           python3 backend/test/android-mp4/patch.py "$RUNNER_TEMP/fragmented.mp4" "$RUNNER_TEMP/patched-movie.mp4" "$RUNNER_TEMP/patched-all.mp4"
           "$F" -hide_banner -loglevel error -copyts -f mpegts -i "$RUNNER_TEMP/v.ts" -f mpegts -i "$RUNNER_TEMP/a.ts" -map 0:v -map 1:a -c copy -bsf:a aac_adtstoasc -movflags frag_keyframe+delay_moov+default_base_moof+dash -f mp4 pipe:1 > "$RUNNER_TEMP/dash.mp4"
           python3 backend/test/android-mp4/patch.py "$RUNNER_TEMP/dash.mp4" "$RUNNER_TEMP/dash-movie.mp4" "$RUNNER_TEMP/dash-patched.mp4"
+          "$F" -hide_banner -loglevel error -copyts -f mpegts -i "$RUNNER_TEMP/v.ts" -f mpegts -i "$RUNNER_TEMP/a.ts" -map 0:v -map 1:a -c copy -f mpegts pipe:1 > "$RUNNER_TEMP/combined.ts"
           "$F" -hide_banner -loglevel error -i "$RUNNER_TEMP/fragmented.mp4" -c copy -movflags +faststart "$RUNNER_TEMP/standard.mp4"
       - name: Setup Android build tools
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' >/dev/null || true
