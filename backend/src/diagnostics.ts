@@ -1,26 +1,27 @@
 /**
- * Elfura Backend — Operator Diagnostics (`GET /api/v1/diagnostics`)
- * ================================================================
- * JSON snapshot of what the backend can actually reach and resolve, for the
- * server operator. Contains NO secrets, NO upstream URLs, and NO provider
- * names: upstream hosts are reported as short SHA-256 hashes, config as
- * booleans/host-hashes, and source lanes as opaque codes. Results are
- * cached briefly so the endpoint cannot be used to hammer upstreams.
+ * Playback-focused operator diagnostics (`GET /diagnose`).
+ *
+ * This reports the actual title lookup, source resolution, selected stream
+ * candidates, HLS/DASH/MP4 probes, and a bounded byte-range read from sample
+ * media segments. It intentionally does not probe unrelated provider root
+ * domains: a 200/404 at a homepage says nothing about whether this title plays.
+ * Raw URLs, response bodies, upstream headers, and credentials never leave the
+ * server. A successful server-side segment read is not browser playback proof.
  */
 
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, type BackendConfig } from './config.js';
 import type { SourceRegistry } from './sources/registry.js';
-import { fetchTmdbCatalog, fetchTmdbMetadata } from './tmdb.js';
+import { fetchTmdbMetadata } from './tmdb.js';
 
 export interface DiagnosticsProbe {
   type: 'movie' | 'tv';
   tmdbId: string;
   season: number;
   episode: number;
+  lang?: string;
 }
 
 let buildInfoCache: { commit: string } | null = null;
@@ -49,73 +50,16 @@ export function readBuildInfo(): { commit: string } {
   return buildInfoCache;
 }
 
-const DIAG_CACHE_TTL_MS = 45_000;
-let cached: { key: string; expiresAt: number; value: unknown } | null = null;
+const DIAG_CACHE_TTL_MS = 12_000;
+let cached: { key: string; expiresAt: number; createdAt: number; value: unknown } | null = null;
 let inFlight: { key: string; promise: Promise<unknown> } | null = null;
-
-function hostHash(raw?: string): string | null {
-  if (!raw) return null;
-  try {
-    const host = new URL(raw).host;
-    return crypto.createHash('sha256').update(host).digest('hex').slice(0, 12);
-  } catch {
-    return 'invalid';
-  }
-}
-
-async function probeOrigin(role: string, origin?: string): Promise<Record<string, unknown>> {
-  if (!origin) return { role, configured: false };
-  const t0 = Date.now();
-  try {
-    const res = await fetch(origin, {
-      method: 'GET',
-      headers: { 'User-Agent': 'ElfuraDiagnostics/1.0', Accept: '*/*' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(3500),
-    });
-    try {
-      await res.body?.cancel();
-    } catch {
-      /* ignore */
-    }
-    return {
-      role,
-      configured: true,
-      host: hostHash(origin),
-      reachable: true,
-      status: res.status,
-      ms: Date.now() - t0,
-    };
-  } catch (err) {
-    const cause = (err as { cause?: { code?: string } })?.cause;
-    return {
-      role,
-      configured: true,
-      host: hostHash(origin),
-      reachable: false,
-      error: err instanceof Error ? err.name : 'error',
-      ...(cause?.code ? { cause: cause.code } : {}),
-      ms: Date.now() - t0,
-    };
-  }
-}
 
 async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: DiagnosticsProbe) {
   const started = Date.now();
-  const tmdbBase = cfg.tmdb.apiBase || 'https://api.themoviedb.org/3';
-
-  const [origins, tmdbMeta, catalog, sources] = await Promise.all([
-    Promise.all([
-      probeOrigin('tmdb', tmdbBase),
-      probeOrigin('s1-rift', cfg.source1.riftOrigin),
-      probeOrigin('s1-bolt', cfg.source1.vidboltOrigin),
-      probeOrigin('s1-rock', cfg.source1.vidrockOrigin),
-      probeOrigin('s3-vidsync', cfg.source3.origin),
-      probeOrigin('subtitles', cfg.subtitles.openSubtitlesBase),
-    ]),
+  const [meta, playback] = await Promise.all([
     (async () => {
       const t0 = Date.now();
-      const meta = await fetchTmdbMetadata(cfg.tmdb, {
+      const result = await fetchTmdbMetadata(cfg.tmdb, {
         type: probe.type,
         tmdbId: probe.tmdbId,
         season: probe.season,
@@ -123,66 +67,62 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       });
       return {
         ms: Date.now() - t0,
-        titleFound: !!meta.title,
-        year: meta.year || null,
-        imdbFound: !!meta.imdbId,
-        posterFound: !!meta.poster,
+        titleFound: !!result.title,
+        title: result.title || null,
+        year: result.year || null,
+        imdbFound: !!result.imdbId,
       };
     })(),
-    (async () => {
-      const t0 = Date.now();
-      const cat = await fetchTmdbCatalog(cfg.tmdb);
-      return {
-        ms: Date.now() - t0,
-        movies: cat.movies.length,
-        series: cat.series.length,
-        anime: cat.anime.length,
-      };
-    })(),
-    registry.diagnosePlayback(probe),
+    registry.diagnosePlayback({
+      type: probe.type,
+      tmdbId: probe.tmdbId,
+      season: probe.season,
+      episode: probe.episode,
+      preferredLang: probe.lang,
+    }),
   ]);
 
   const hints: string[] = [];
-  if (!tmdbMeta.titleFound) hints.push('tmdb-metadata-not-resolving');
-  if (!catalog.movies && !catalog.series && !catalog.anime) hints.push('tmdb-catalog-empty');
-  for (const a of sources.adapters) {
-    if (a.raw === 0) hints.push(`${a.id}-returned-zero-candidates`);
-    else if (a.verified === 0) hints.push(`${a.id}-candidates-all-failed-liveness`);
-  }
-  for (const o of origins) {
-    if (o.configured && o.reachable === false) hints.push(`origin-unreachable:${o.role}`);
-  }
-  if (!hasConfiguredSecret()) hints.push('elfura-secret-not-configured-ephemeral');
+  if (!meta.titleFound) hints.push('tmdb-identity-lookup-failed');
+  if (!playback.selected.length) hints.push('no-stream-candidate-selected');
+  const emptySources = playback.adapters.filter(a => a.raw === 0).map(a => a.id);
+  if (emptySources.length) hints.push(`no-title-candidate:${emptySources.join(',')}`);
+  if (playback.adapters.some(a => a.raw > 0 && a.manifestReachable === 0)) hints.push('one-or-more-source-manifests-did-not-verify');
+  const hasPipelineFailure = playback.playbackChecks.some(c => {
+    const check = c.check as { manifest?: { status?: string }; media?: { status?: string } };
+    return !['ok', 'not-applicable'].includes(check.manifest?.status ?? '') || !['ok', 'not-applicable'].includes(check.media?.status ?? '');
+  });
+  if (hasPipelineFailure) hints.push('one-or-more-sampled-manifest-or-media-stages-failed');
+  if (playback.playbackChecks.length && !hasPipelineFailure) hints.push('backend-fetched-sample-media; browser-and-relay-playback-still-unconfirmed');
+  if (!hasConfiguredSecret()) hints.push('ephemeral-playback-secret-generated-at-boot');
 
   return {
     ok: true,
     build: readBuildInfo(),
     generatedAt: new Date().toISOString(),
     totalMs: Date.now() - started,
-    runtime: { node: process.version, uptimeSec: Math.round(process.uptime()) },
     probe,
     config: {
       secretConfigured: hasConfiguredSecret(),
       relayMode: cfg.relayMode,
       resolveTimeoutMs: cfg.resolveTimeoutMs,
       requireToken: cfg.requireToken,
-      allowedOrigins: cfg.allowedOrigins,
-      tmdb: {
-        baseConfigured: !!cfg.tmdb.apiBase,
-        baseHost: hostHash(tmdbBase),
-        keyConfigured: !!(cfg.tmdb.apiKey || cfg.tmdb.bearerToken),
-        imageHost: hostHash(cfg.tmdb.imageBase),
-      },
-      sourcesEnabled: registry.listPublicSources().map((s) => s.id),
+      sourcesEnabled: registry.listPublicSources().map(s => s.id),
     },
-    tmdb: tmdbMeta,
-    catalog,
-    origins,
-    sources: sources.adapters,
-    lanes: sources.lanes,
-    selected: sources.selected,
-    selectionPolicy: sources.policy,
-    hints,
+    identity: meta,
+    playback: {
+      resolution: {
+        adapters: playback.adapters,
+        lanes: playback.lanes,
+        selected: playback.selected,
+      },
+      candidateChecks: playback.playbackChecks,
+      policy: playback.policy,
+    },
+    diagnosis: {
+      hints,
+      scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/v1/stream relay response, device decoder, and audible language are not exercised by this endpoint.',
+    },
   };
 }
 
@@ -190,18 +130,18 @@ export function collectDiagnostics(
   cfg: BackendConfig,
   registry: SourceRegistry,
   probe: DiagnosticsProbe,
+  forceFresh = false,
 ): Promise<unknown> {
-  const key = `${probe.type}:${probe.tmdbId}:${probe.season}:${probe.episode}`;
-  if (cached && cached.key === key && Date.now() <= cached.expiresAt) {
-    return Promise.resolve(cached.value);
+  const key = `${probe.type}:${probe.tmdbId}:${probe.season}:${probe.episode}:${probe.lang ?? ''}`;
+  if (!forceFresh && cached && cached.key === key && Date.now() <= cached.expiresAt) {
+    return Promise.resolve({ ...(cached.value as object), cache: { hit: true, ageMs: Date.now() - cached.createdAt } });
   }
   if (inFlight && inFlight.key === key) return inFlight.promise;
-  // Only one active report globally, even when callers vary the title.
   if (inFlight) return Promise.reject(new Error('diagnostics busy'));
   const promise = collect(cfg, registry, probe)
-    .then((value) => {
-      cached = { key, expiresAt: Date.now() + DIAG_CACHE_TTL_MS, value };
-      return value;
+    .then(value => {
+      cached = { key, createdAt: Date.now(), expiresAt: Date.now() + DIAG_CACHE_TTL_MS, value };
+      return { ...(value as object), cache: { hit: false, ageMs: 0 } };
     })
     .finally(() => {
       if (inFlight?.promise === promise) inFlight = null;

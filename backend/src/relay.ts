@@ -147,17 +147,32 @@ export async function verifyDirectSegmentOffload(
 
   const probePromise = (async (): Promise<boolean> => {
     try {
-      const res = await fetch(sampleUrl, {
-        method: 'GET',
-        headers: {
-          Origin: CORS_PROBE_ORIGIN,
-          'User-Agent': DEFAULT_RELAY_UA,
-          Accept: '*/*',
-        },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(1500),
-      });
-      const finalUrl = res.url || sampleUrl;
+      let target = sampleUrl;
+      let res: Response | null = null;
+      for (let hop = 0; hop <= 3; hop++) {
+        if (!isSafeUpstreamUrl(target)) return false;
+        res = await fetch(target, {
+          method: 'GET',
+          headers: {
+            Origin: CORS_PROBE_ORIGIN,
+            'User-Agent': DEFAULT_RELAY_UA,
+            Accept: '*/*',
+          },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(1500),
+        });
+        if (res.status < 300 || res.status >= 400) break;
+        const location = res.headers.get('location');
+        await res.body?.cancel().catch(() => {});
+        if (!location || hop === 3) return false;
+        try { target = new URL(location, target).href; } catch { return false; }
+      }
+      if (!res) return false;
+      const finalUrl = res.url || target;
+      if (!isSafeUpstreamUrl(finalUrl)) {
+        await res.body?.cancel().catch(() => {});
+        return false;
+      }
       const acao = (res.headers.get('access-control-allow-origin') || '').trim();
       const ct = (res.headers.get('content-type') || '').toLowerCase();
       try {

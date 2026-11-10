@@ -10,6 +10,11 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     { id: 'vidsync', name: 'VidSync', source: 'Source 3', url: cfg.source3.origin || 'https://vidsync.pro', enabled: cfg.source3.enabled },
     { id: 'bingr', name: 'Bingr', source: 'Source 4', url: 'https://bingr.one', enabled: cfg.source4?.enabled ?? true },
     { id: 'nxsha', name: 'Nxsha', source: 'Source 5', url: 'https://nxsha.space', enabled: cfg.source5?.enabled ?? true },
+    ...(cfg.source7?.enabled ? [{ id: 'screenscape', name: 'ScreenScape', source: 'Source 7', url: 'https://screenscape.me', enabled: true }] : []),
+    ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
+    ...(cfg.source9?.enabled ? [{ id: 'vixsrc', name: 'VixSrc', source: 'Source 9', url: 'https://vixsrc.to', enabled: true }] : []),
+    ...(cfg.source10?.enabled ? [{ id: 'vidnest', name: 'VidNest', source: 'Source 10', url: 'https://vidnest.fun', enabled: true }] : []),
+    ...(cfg.source11?.enabled ? [{ id: 'vaplayer', name: 'VidAPI.ru', source: 'Source 11', url: 'https://vidapi.ru', enabled: true }] : []),
   ];
 }
 

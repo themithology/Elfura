@@ -162,5 +162,7 @@ export interface UniformPlaybackResponse {
   media: MediaMetadata;
   primary: UniformStreamOption;
   sources: UniformStreamOption[];
+  /** Enabled generic source ids for asynchronous recovery, never provider details. */
+  sourceGroups?: string[];
   segments?: SkipSegments;
 }

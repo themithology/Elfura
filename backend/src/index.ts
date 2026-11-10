@@ -282,7 +282,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           tmdbId: tmdbRaw.slice(0, 12) || '693134',
           season: num(url.searchParams.get('s'), 1),
           episode: num(url.searchParams.get('e'), 1),
-        });
+          lang: /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i.test(url.searchParams.get('lang') || '')
+            ? (url.searchParams.get('lang') || '').slice(0, 12).toLowerCase()
+            : undefined,
+        }, url.searchParams.get('fresh') === '1');
         sendJson(res, 200, report, '*', 'no-store');
       } catch (error) {
         const busy = error instanceof Error && error.message === 'diagnostics busy';

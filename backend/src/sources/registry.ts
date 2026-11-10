@@ -13,11 +13,16 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseMultiAudioCandidate, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
+import { createSource7Adapter } from './source7.js';
+import { createSource8Adapter } from './source8.js';
+import { createSource9Adapter } from './source9.js';
+import { createSource10Adapter } from './source10.js';
+import { createSource11Adapter } from './source11.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -63,6 +68,11 @@ export class SourceRegistry {
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
       createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
+      createSource7Adapter(() => cfg.source7?.enabled ?? false),
+      createSource8Adapter(() => cfg.source8?.enabled ?? false),
+      createSource9Adapter(() => cfg.source9?.enabled ?? false),
+      createSource10Adapter(() => cfg.source10?.enabled ?? false),
+      createSource11Adapter(() => cfg.source11?.enabled ?? false),
     ];
   }
 
@@ -72,14 +82,15 @@ export class SourceRegistry {
 
   /**
    * Operator diagnostics: resolve one title through every adapter WITHOUT the
-   * response cache, reporting raw vs liveness-verified candidate counts and
-   * lane-level entries. Contains no upstream URLs or provider identifiers.
+   * response cache, reporting discovered candidates, manifest reachability,
+   * and bounded media-segment probes. Contains no upstream URLs or headers.
    */
   async diagnosePlayback(params: {
     type: 'movie' | 'tv';
     tmdbId: string;
     season?: number;
     episode?: number;
+    preferredLang?: string;
   }) {
     const diag: import('./types.js').DiagEntry[] = [];
     const query: SourceQuery = {
@@ -87,6 +98,7 @@ export class SourceRegistry {
       tmdbId: params.tmdbId,
       season: params.season,
       episode: params.episode,
+      preferredLang: params.preferredLang,
       diag,
       resolveMetaFallback: () => fetchTmdbMetadata(this.cfg.tmdb, params),
       signal: AbortSignal.timeout(15_000),
@@ -105,17 +117,13 @@ export class SourceRegistry {
             const { candidates: verified, verifiedAliveCount } =
               await verifyAndFilterCandidatesDetailed(raw);
             diagnosticCandidates.set(adapter.id, verified);
-            // Diagnostic-only retry, independent of the short startup budget.
-            // Bound work per adapter; never include URLs or headers in output.
-            const deep = new Map(await Promise.all(raw.filter(c => c.multiAudio && c.type === 'hls').slice(0, 2)
-              .map(async c => [c.url, await diagnoseMultiAudioCandidate(c)] as const)));
             return {
               id: adapter.id,
               ms: Date.now() - t0,
               raw: raw.length,
-              verified: verified.length,
-              verifiedAlive: verifiedAliveCount,
-              multiAudio: verified.filter((c) => {
+              retained: verified.length,
+              manifestReachable: verifiedAliveCount,
+              manifestMultiAudio: verified.filter((c) => {
                 const evidence = cachedCandidateEvidence(c);
                 return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
               }).length,
@@ -129,18 +137,16 @@ export class SourceRegistry {
                   type: candidate.type,
                   claimedAudio: candidate.audioLang ?? null,
                   claimedMultiAudio: !!candidate.multiAudio,
-                  verifiedMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
-                  reachability: evidence?.alive ? 'verified' : evidence?.confirmedDead ? 'dead' : 'unknown',
+                  manifestMultiAudio: !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1,
+                  manifestStatus: evidence?.alive ? 'reachable' : evidence?.confirmedDead ? 'failed' : 'unknown',
                   claimedQuality: /^[a-z0-9 ._-]{1,32}$/i.test(candidate.quality) ? candidate.quality : 'unknown',
-                  deepProbe: deep.get(candidate.url) ?? null,
                   probe: evidence ? {
                     alive: evidence.alive,
                     confirmedDead: evidence.confirmedDead,
                     ms: evidence.rttMs ?? null,
-                    observationAgeMs: cachedCandidateEvidenceAgeMs(candidate),
-                    scope: candidate.type === 'mp4' ? 'upstream-range-response' : 'upstream-manifest-and-selected-playlists',
-                    mediaSegmentsChecked: false,
-                    browserPlaybackChecked: false,
+                    cachedObservationAgeMs: cachedCandidateEvidenceAgeMs(candidate),
+                    checkedLayer: candidate.type === 'mp4' ? 'mp4-range-response' : 'manifest-and-child-playlists',
+                    mediaSegmentCheckedHere: false,
                     manifestKind: evidence.manifestKind ?? null,
                     audioRenditions: evidence.manifestAudioRenditions ?? null,
                     audioLanguages: evidence.discoveredAudioLangs ?? [],
@@ -160,9 +166,9 @@ export class SourceRegistry {
               id: adapter.id,
               ms: Date.now() - t0,
               raw: 0,
-              verified: 0,
-              verifiedAlive: 0,
-              multiAudio: 0,
+              retained: 0,
+              manifestReachable: 0,
+              manifestMultiAudio: 0,
               types: {} as Record<string, number>,
               error: err instanceof Error ? err.name : 'error',
             };
@@ -171,22 +177,52 @@ export class SourceRegistry {
     );
     const entries = this.adapters.flatMap(adapter =>
       (diagnosticCandidates.get(adapter.id) ?? []).map(candidate => ({adapter,candidate})));
-    const selected = selectPlaybackCandidates(entries).map(({adapter,candidate}) => ({
+    const selectedEntries = selectPlaybackCandidates(entries, params.preferredLang);
+    const selected = selectedEntries.map(({adapter,candidate}) => ({
       sourceId:adapter.id,
       fingerprint:crypto.createHmac('sha256',this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
       multiAudio:!!candidate.multiAudio,
       languages:candidate.availableAudioLangs ?? [],
-      verified:!!cachedCandidateEvidence(candidate)?.alive,
+      manifestReachable:!!cachedCandidateEvidence(candidate)?.alive,
     }));
+
+    // Check the first stream the resolver would offer from each source, then
+    // spend any remaining small budget on a Hindi-labeled alternate. This is
+    // deliberately about real selected candidates, not arbitrary root domains.
+    const samples: { adapter: SourceAdapter; candidate: RawStreamCandidate }[] = [];
+    const seenUrls = new Set<string>();
+    const addSample = (adapter: SourceAdapter, candidate?: RawStreamCandidate) => {
+      if (!candidate || seenUrls.has(candidate.url) || samples.length >= 8) return;
+      seenUrls.add(candidate.url);
+      samples.push({ adapter, candidate });
+    };
+    for (const adapter of this.adapters) {
+      addSample(adapter, selectedEntries.find(x => x.adapter.id === adapter.id)?.candidate);
+    }
+    for (const adapter of this.adapters) {
+      const hindi = (diagnosticCandidates.get(adapter.id) ?? []).find(c => c.audioLang === 'hi');
+      addSample(adapter, hindi);
+    }
+    const playbackChecks: Record<string, unknown>[] = [];
+    for (let offset = 0; offset < samples.length; offset += 4) {
+      const batch = await Promise.all(samples.slice(offset, offset + 4).map(async ({adapter,candidate}) => ({
+        sourceId: adapter.id,
+        fingerprint: crypto.createHmac('sha256', this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
+        type: candidate.type,
+        claimedAudio: candidate.audioLang ?? null,
+        check: await diagnoseCandidatePlayback(candidate, this.cfg.relayMode),
+      })));
+      playbackChecks.push(...batch);
+    }
     const lanes = diag.map(entry => {
       const candidates = (diagnosticRaw.get(entry.adapter) ?? []).filter(c => c.diagnosticLane === entry.lane);
       const evidence = candidates.map(c => cachedCandidateEvidence(c));
-      return { ...entry, verifiedAlive: evidence.filter(e => e?.alive).length,
-        confirmedDead: evidence.filter(e => e?.confirmedDead).length,
-        unknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
-        verifiedMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
+      return { ...entry, candidateCount: candidates.length, manifestReachable: evidence.filter(e => e?.alive).length,
+        manifestFailed: evidence.filter(e => e?.confirmedDead).length,
+        manifestUnknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
+        manifestMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, note: 'Diagnostic selection is not the player response. Liveness observations may be cached; HLS checks playlists, not media segments, relay delivery or browser playback. Counts named verified include unverified retained candidates; verifiedAlive counts reachable observations.' } };
+    return { adapters, lanes, selected, playbackChecks, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -584,6 +620,7 @@ export class SourceRegistry {
       media,
       primary: uniformOptions[0],
       sources: uniformOptions,
+      sourceGroups: activeAdapters.map(adapter => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
   }
