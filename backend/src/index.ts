@@ -313,8 +313,14 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 400, { ok: false, error: 'invalid json body' }, allowOrigin);
         return;
       }
-      const mediaType = body.type === 'tv' ? 'tv' : body.type === 'movie' ? 'movie' : '*';
-      const tmdbId = typeof body.tmdb === 'string' && body.tmdb.trim() ? body.tmdb.trim() : '*';
+      const mediaType = body.anilist ? 'tv' : body.type === 'tv' ? 'tv' : body.type === 'movie' ? 'movie' : '*';
+      const anilistRaw = body.anilist === undefined || body.anilist === null ? '' : String(body.anilist).trim();
+      if (anilistRaw && (!/^\d{1,10}$/.test(anilistRaw) || Number(anilistRaw) < 1)) {
+        sendJson(res, 400, { ok: false, error: 'valid anilist parameter is required' }, allowOrigin);
+        return;
+      }
+      const tmdbBase = typeof body.tmdb === 'string' && body.tmdb.trim() ? body.tmdb.trim() : '*';
+      const tmdbId = anilistRaw ? `tmdb:${tmdbBase}|anilist:${anilistRaw}` : tmdbBase;
       const minted = mintPlaybackToken(cfg.secret, req, {
         mediaType,
         tmdbId,
@@ -358,15 +364,29 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       };
 
       const rawType = pick(['type', 'mediaType']).toLowerCase();
-      const mediaType: 'movie' | 'tv' = rawType === 'tv' ? 'tv' : 'movie';
+      const anilistRaw = pick(['anilist', 'anilistId']);
+      if (anilistRaw && (!/^\d{1,10}$/.test(anilistRaw) || Number(anilistRaw) < 1)) {
+        sendJson(res, 400, { ok: false, error: 'valid anilist parameter is required' }, allowOrigin);
+        return;
+      }
+      const anilistId = anilistRaw || undefined;
+      const mediaType: 'movie' | 'tv' = anilistId || rawType === 'tv' ? 'tv' : 'movie';
       const tmdbId = pick(['tmdb', 'tmdbId', 'id']);
       if (!tmdbId || !/^[A-Za-z0-9_-]{1,24}$/.test(tmdbId)) {
         sendJson(res, 400, { ok: false, error: 'valid tmdb parameter is required' }, allowOrigin);
         return;
       }
+      const tokenScopeId = anilistId ? `tmdb:${tmdbId}|anilist:${anilistId}` : tmdbId;
 
       const season = mediaType === 'tv' ? Math.max(1, Number(pick(['s', 'season'])) || 1) : undefined;
       const episode = mediaType === 'tv' ? Math.max(1, Number(pick(['e', 'ep', 'episode'])) || 1) : undefined;
+      const anilistEpisodeRaw = pick(['anilistEpisode', 'anilist_ep']);
+      const anilistEpisodeNumber = Number(anilistEpisodeRaw);
+      if (anilistEpisodeRaw && (!/^\d{1,4}$/.test(anilistEpisodeRaw) || !Number.isSafeInteger(anilistEpisodeNumber) || anilistEpisodeNumber < 1 || anilistEpisodeNumber > 5000)) {
+        sendJson(res, 400, { ok: false, error: 'valid anilistEpisode parameter must be between 1 and 5000' }, allowOrigin);
+        return;
+      }
+      const anilistEpisode = anilistEpisodeRaw ? anilistEpisodeNumber : undefined;
       const sourceId = pick(['source']) || undefined;
       const preferredLang = pick(['lang']) || undefined;
 
@@ -377,7 +397,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (cfg.requireToken) {
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, {
           mediaType,
-          tmdbId,
+          tmdbId: tokenScopeId,
           bindIp: cfg.bindTokenIp,
         });
         if (!verified.ok) {
@@ -389,8 +409,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const resolved = await registry.resolvePlayback({
         type: mediaType,
         tmdbId,
+        anilistId,
         season,
         episode,
+        anilistEpisode,
         sourceId,
         preferredLang,
       });
@@ -548,25 +570,37 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           return;
         }
 
+        const qAnilistRaw = url.searchParams.get('anilist')?.trim() || url.searchParams.get('anilistId')?.trim() || '';
+        if (qAnilistRaw && (!/^\d{1,10}$/.test(qAnilistRaw) || Number(qAnilistRaw) < 1)) {
+          sendJson(res, 400, { ok: false, error: 'valid anilist parameter is required' });
+          return;
+        }
+        const qAnilist = qAnilistRaw || undefined;
         const qTmdb = url.searchParams.get('tmdb')?.trim() || embedMatch.tmdbId || '*';
+        if (qAnilist && !/^[A-Za-z0-9_-]{1,24}$/.test(qTmdb)) {
+          sendJson(res, 400, { ok: false, error: 'valid tmdb parameter is required with anilist' });
+          return;
+        }
         const qTypeRaw = (url.searchParams.get('mediaType') || url.searchParams.get('type') || '').toLowerCase();
         const qMediaType =
-          embedMatch.mediaType || (qTypeRaw === 'tv' ? 'tv' : qTypeRaw === 'movie' ? 'movie' : '*');
+          qAnilist ? 'tv' : embedMatch.mediaType || (qTypeRaw === 'tv' ? 'tv' : qTypeRaw === 'movie' ? 'movie' : '*');
+        const qScopeId = qAnilist ? `tmdb:${qTmdb}|anilist:${qAnilist}` : qTmdb;
 
         const minted = mintPlaybackToken(cfg.secret, req, {
           mediaType: qMediaType,
-          tmdbId: qTmdb,
+          tmdbId: qScopeId,
           bindIp: cfg.bindTokenIp,
         });
 
         const bootData = {
-          ...(embedMatch.mediaType ? { mediaType: embedMatch.mediaType } : {}),
+          ...(embedMatch.mediaType ? { mediaType: embedMatch.mediaType } : qAnilist ? { mediaType: 'tv' } : {}),
           ...(embedMatch.tmdbId ? { tmdb: embedMatch.tmdbId } : {}),
+          ...(qAnilist ? { anilist: qAnilist } : {}),
           ...(embedMatch.season ? { season: embedMatch.season } : {}),
           ...(embedMatch.episode ? { episode: embedMatch.episode } : {}),
           pltoken: minted.pltoken,
           nonce: minted.nonce,
-          ...((qMediaType === 'movie' || qMediaType === 'tv') && /^[A-Za-z0-9_-]{1,24}$/.test(qTmdb) ? { analyticsTicket: roxy.ticket(parentSite, qMediaType, qTmdb) } : {}),
+          ...(!qAnilist && (qMediaType === 'movie' || qMediaType === 'tv') && /^[A-Za-z0-9_-]{1,24}$/.test(qTmdb) ? { analyticsTicket: roxy.ticket(parentSite, qMediaType, qTmdb) } : {}),
         };
 
         // Escape `<` inside JSON to prevent script breakout

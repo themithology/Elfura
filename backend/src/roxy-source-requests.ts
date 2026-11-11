@@ -5,8 +5,6 @@ import { isSafeUpstreamUrl } from './security.js';
 export function roxySourceWebsites(cfg: BackendConfig) {
   const citadelEnabled = cfg.source14?.enabled ?? (process.env.ELFURA_RIVE_CITADEL_ENABLED !== '0');
   const mappleEnabled = cfg.source15?.enabled ?? (process.env.ELFURA_MAPPLE_ENABLED !== '0');
-  const desiDubEnabled = cfg.source16?.enabled ?? (process.env.ELFURA_DESIDUB_ENABLED !== '0');
-  const anikotoEnabled = cfg.source17?.enabled ?? (process.env.ELFURA_ANIKOTO_ENABLED !== '0');
   return [
     { id: 'vidbolt', name: 'VidBolt', source: 'Source 1', url: cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', enabled: cfg.source1.enabled },
     { id: 'vidrift', name: 'VidRift', source: 'Source 2', url: cfg.source1.riftOrigin, enabled: cfg.source1.enabled },
@@ -24,12 +22,6 @@ export function roxySourceWebsites(cfg: BackendConfig) {
       : []),
     ...(mappleEnabled
       ? [{ id: 'mapple', name: 'Mapple', source: 'Source 15', url: 'https://mapple.fun', enabled: true }]
-      : []),
-    ...(desiDubEnabled
-      ? [{ id: 'desidub', name: 'DesiDubAnime', source: 'Source 16', url: 'https://www.desidubanime.me', enabled: true }]
-      : []),
-    ...(anikotoEnabled
-      ? [{ id: 'anikoto', name: 'Anikoto', source: 'Source 17', url: 'https://anikototv.to', enabled: true }]
       : []),
   ];
 }

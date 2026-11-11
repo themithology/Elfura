@@ -28,7 +28,6 @@ import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
 import { createSource16Adapter } from './source16.js';
-import { createSource17Adapter } from './source17.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -83,8 +82,7 @@ export class SourceRegistry {
       createSource13Adapter(() => cfg.source13?.enabled ?? false),
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
-      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
-      createSource17Adapter(() => cfg.source17?.enabled ?? process.env.ELFURA_ANIKOTO_ENABLED !== '0'),
+      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
     ];
   }
 
@@ -339,12 +337,14 @@ export class SourceRegistry {
     season?: number;
     episode?: number;
     sourceId?: string;
+    anilistId?: string;
+    anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
-    const deadline = resolveStartedAt + 4800;
+    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : 4800);
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
@@ -385,6 +385,8 @@ export class SourceRegistry {
     const query: SourceQuery = {
       type: params.type,
       tmdbId: params.tmdbId,
+      anilistId: params.anilistId,
+      anilistEpisode: params.anilistEpisode,
       season: params.season,
       episode: params.episode,
       preferredLang: params.preferredLang,
@@ -404,7 +406,7 @@ export class SourceRegistry {
 
     const cacheKeys = activeAdapters.map(
       (adapter) =>
-        `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`,
+        `${adapter.id}:${params.type}:${params.tmdbId}:${params.anilistId ?? ''}:${params.anilistEpisode ?? 0}:${params.season ?? 0}:${params.episode ?? 0}`,
     );
     // Segment lookup is deliberately independent of the adapter race. A fast
     // Source 2 response must not discard Source 1's slower intro/outro metadata.
@@ -482,7 +484,11 @@ export class SourceRegistry {
     // If the fast batch is empty or couldn't be verified, allow outstanding
     // adapters to finish within the same overall deadline. Healthy sources
     // start immediately; preference matching must not block initial playback.
-    if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+    const anivexaIndex = params.anilistId ? activeAdapters.findIndex((adapter) => adapter.id === 'source-16') : -1;
+    if (anivexaIndex >= 0 && slots[anivexaIndex] === null && remaining() > 1500) {
+      await Promise.race([adapterTasks[anivexaIndex], wait(Math.min(7500, remaining() - 1300))]);
+      verifiedBatch = await verifyCurrentSlots();
+    } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
     }
@@ -585,6 +591,7 @@ export class SourceRegistry {
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
+          Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
           qualityTierOf(a) - qualityTierOf(b),
       );
@@ -613,6 +620,7 @@ export class SourceRegistry {
         };
         uniformOptions.sort(
           (a, b) =>
+            Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
             scoreOpt(a) - scoreOpt(b) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),

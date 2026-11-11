@@ -68,6 +68,7 @@ RUNTIME_PACKAGE_JSON = json.dumps(
         },
         "dependencies": {
             "typescript": "file:./vendor/ts-shim",
+            "wreq-js": "3.2.0",
         },
     },
     indent=2,

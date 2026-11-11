@@ -23,6 +23,8 @@ export interface DiagEntry {
 export interface SourceQuery {
   type: 'movie' | 'tv';
   tmdbId: string;
+  anilistId?: string;
+  anilistEpisode?: number;
   /** When present, adapters append lane-level diagnostics for /api/v1/diagnostics. */
   diag?: DiagEntry[];
   /** Warm the adapter cache with lanes that finish after a fast initial result. */

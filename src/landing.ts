@@ -369,9 +369,15 @@ const buildEmbedUrl = (): string => {
   const season = Math.max(1, Number(field('season').value) || 1);
   const episode = Math.max(1, Number(field('episode').value) || 1);
   const anilist = field('anilist').value.trim();
+  const anilistEpisode = Number(field('anilistEpisode').value);
   const path = type === 'movie' ? `/embed/movie/${encodeURIComponent(id)}` : `/embed/tv/${encodeURIComponent(id)}/${season}/${episode}`;
   const url = new URL(path, window.location.origin);
-  if (type === 'tv' && anilist) url.searchParams.set('anilist', anilist);
+  if (type === 'tv' && anilist) {
+    url.searchParams.set('anilist', anilist);
+    if (Number.isSafeInteger(anilistEpisode) && anilistEpisode >= 1 && anilistEpisode <= 5000) {
+      url.searchParams.set('anilistEpisode', String(anilistEpisode));
+    }
+  }
   const color = field('color').value.replace('#', '');
   url.searchParams.set('color', color);
   const lang = field<HTMLSelectElement>('lang').value;
@@ -421,7 +427,7 @@ const origin = window.location.origin;
 const codeExamples: Record<string, string> = {
   movie: `<iframe\n  src="${origin}/embed/movie/533535?color=f4f4f4"\n  title="Movie player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
   tv: `<iframe\n  src="${origin}/embed/tv/94605/1/1?episodeSelector=1&autoplayNextEp=1"\n  title="Episode player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
-  anime: `<iframe\n  src="${origin}/embed/tv/1429/1/3?anilist=16498"\n  title="Anime episode player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
+  anime: `<iframe\n  src="${origin}/embed/tv/1429/1/1?anilist=16498&anilistEpisode=3"\n  title="Anime episode player"\n  width="100%"\n  height="100%"\n  style="aspect-ratio:16/9;border:0"\n  allow="autoplay; fullscreen; picture-in-picture"\n  allowfullscreen\n></iframe>`,
   sdk: `import { Elfura } from '${origin}/lib/elfura.js';\nimport '${origin}/lib/elfura-player.css';\n\nconst { player, ui, destroy } = Elfura.mount(\n  document.querySelector('#player'),\n  {\n    tmdb: '94605',\n    mediaType: 'tv',\n    season: 1,\n    episode: 1,\n    lang: 'hi',\n    sublang: 'en',\n    color: '#f4f4f4',\n    autoplayNextEp: true,\n  }\n);\n\nconst state = player.getState();\nconsole.log(state.audioLang, state.qualityMode);`,
   events: `window.addEventListener('message', (event) => {\n  // Always pin the sender to your player origin.\n  if (event.origin !== '${origin}') return;\n  const message = event.data;\n  if (message?.__elfura !== 1 || message.kind !== 'event') return;\n\n  analytics.track(\`player:\${message.name}\`, {\n    ...message.data,\n    sessionId: message.sessionId,\n  });\n});\n\n// Commands use the same versioned, origin-locked envelope.\n// The player acknowledges every command with its reqId.`,
 };
