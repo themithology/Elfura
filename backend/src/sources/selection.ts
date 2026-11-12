@@ -35,12 +35,13 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
   const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
   single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.latency-b.latency||a.order-b.order);
+  const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const selected: typeof single = [];
   const hosts = new Set<string>();
   // A verified candidate always beats an unknown one. Within each confidence
   // class, prefer independent hosts before taking a second from one host.
   for (const alive of [true, false]) {
-    const tier = single.filter(item => item.alive === alive);
+    const tier = ordinarySingle.filter(item => item.alive === alive);
     for (const item of tier) {
       if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
       if (hosts.has(item.host)) continue;
@@ -55,7 +56,7 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
   // remain separate streams, never synthetic tracks in a multi-audio manifest.
   const languages = new Set(selected.map(item => normalizeLang(item.candidate.audioLang || 'und').code).filter(lang => lang !== 'und'));
   let dubsAdded = 0;
-  for (const item of single) {
+  for (const item of ordinarySingle) {
     if (!item.alive || selected.includes(item)) continue;
     const lang = normalizeLang(item.candidate.audioLang || 'und').code;
     if (lang === 'und' || languages.has(lang)) continue;

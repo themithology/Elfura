@@ -100,12 +100,16 @@ export class SourceRegistry {
     tmdbId: string;
     season?: number;
     episode?: number;
+    anilistId?: string;
+    anilistEpisode?: number;
     preferredLang?: string;
   }) {
     const diag: import('./types.js').DiagEntry[] = [];
     const query: SourceQuery = {
       type: params.type,
       tmdbId: params.tmdbId,
+      anilistId: params.anilistId,
+      anilistEpisode: params.anilistEpisode,
       season: params.season,
       episode: params.episode,
       preferredLang: params.preferredLang,
@@ -481,12 +485,15 @@ export class SourceRegistry {
 
     let verifiedBatch = await verifyCurrentSlots();
 
-    // If the fast batch is empty or couldn't be verified, allow outstanding
-    // adapters to finish within the same overall deadline. Healthy sources
-    // start immediately; preference matching must not block initial playback.
-    const anivexaIndex = params.anilistId ? activeAdapters.findIndex((adapter) => adapter.id === 'source-16') : -1;
-    if (anivexaIndex >= 0 && slots[anivexaIndex] === null && remaining() > 1500) {
-      await Promise.race([adapterTasks[anivexaIndex], wait(Math.min(7500, remaining() - 1300))]);
+    // An AniList lookup must not let Anivexa monopolize the startup window.
+    // If no candidate has verified yet, give every outstanding adapter most of
+    // the remaining budget; if playback is already verified, allow a short
+    // grace period for the standard sources to join the response.
+    if (params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
+      const waitBudget = verifiedBatch.verifiedLive > 0
+        ? Math.min(3000, Math.max(0, remaining() - 1300))
+        : Math.max(0, remaining() - 1300);
+      await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
       verifiedBatch = await verifyCurrentSlots();
     } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);

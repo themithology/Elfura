@@ -21,6 +21,8 @@ export interface DiagnosticsProbe {
   tmdbId: string;
   season: number;
   episode: number;
+  anilist?: string;
+  anilistEpisode?: number;
   lang?: string;
 }
 
@@ -78,6 +80,8 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       tmdbId: probe.tmdbId,
       season: probe.season,
       episode: probe.episode,
+      anilistId: probe.anilist,
+      anilistEpisode: probe.anilistEpisode,
       preferredLang: probe.lang,
     }),
   ]);
@@ -132,7 +136,7 @@ export function collectDiagnostics(
   probe: DiagnosticsProbe,
   forceFresh = false,
 ): Promise<unknown> {
-  const key = `${probe.type}:${probe.tmdbId}:${probe.season}:${probe.episode}:${probe.lang ?? ''}`;
+  const key = `${probe.type}:${probe.tmdbId}:${probe.anilist ?? ''}:${probe.anilistEpisode ?? ''}:${probe.season}:${probe.episode}:${probe.lang ?? ''}`;
   if (!forceFresh && cached && cached.key === key && Date.now() <= cached.expiresAt) {
     return Promise.resolve({ ...(cached.value as object), cache: { hit: true, ageMs: Date.now() - cached.createdAt } });
   }

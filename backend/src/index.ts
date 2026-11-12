@@ -270,26 +270,51 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 429, { ok: false, error: 'diagnostics rate limit exceeded; try again later' });
         return;
       }
-      const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+      const anilistRaw = url.searchParams.get('anilist')?.trim() || url.searchParams.get('anilistId')?.trim() || '';
+      if (anilistRaw && (!/^\d{1,10}$/.test(anilistRaw) || Number(anilistRaw) < 1)) {
+        sendJson(res, 400, { ok: false, error: 'valid anilist parameter is required' });
+        return;
+      }
+      const anilistEpisodeRaw = url.searchParams.get('anilistEpisode')?.trim() || url.searchParams.get('anilist_ep')?.trim() || '';
+      const anilistEpisode = Number(anilistEpisodeRaw);
+      if (anilistEpisodeRaw && (!/^\d{1,4}$/.test(anilistEpisodeRaw) || !Number.isSafeInteger(anilistEpisode) || anilistEpisode < 1 || anilistEpisode > 5000)) {
+        sendJson(res, 400, { ok: false, error: 'valid anilistEpisode parameter must be between 1 and 5000' });
+        return;
+      }
+      const type = (anilistRaw || url.searchParams.get('type') === 'tv') ? 'tv' : 'movie';
       const tmdbRaw = (url.searchParams.get('tmdb') || '693134').replace(/\D/g, '');
       const num = (raw: string | null, fallback: number) => {
         const n = Number(raw);
         return Number.isFinite(n) && n > 0 ? Math.min(999, Math.floor(n)) : fallback;
       };
+      let diagnosticTimer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const report = await collectDiagnostics(cfg, registry, {
+        const reportPromise = collectDiagnostics(cfg, registry, {
           type,
           tmdbId: tmdbRaw.slice(0, 12) || '693134',
           season: num(url.searchParams.get('s'), 1),
           episode: num(url.searchParams.get('e'), 1),
+          ...(anilistRaw ? { anilist: anilistRaw } : {}),
+          ...(anilistEpisodeRaw ? { anilistEpisode } : {}),
           lang: /^[a-z]{2,3}(?:-[a-z0-9]{2,8})?$/i.test(url.searchParams.get('lang') || '')
             ? (url.searchParams.get('lang') || '').slice(0, 12).toLowerCase()
             : undefined,
         }, url.searchParams.get('fresh') === '1');
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          diagnosticTimer = setTimeout(() => reject(new Error('diagnostics timeout')), 30_000);
+        });
+        const report = await Promise.race([reportPromise, timeoutPromise]);
         sendJson(res, 200, report, '*', 'no-store');
       } catch (error) {
-        const busy = error instanceof Error && error.message === 'diagnostics busy';
-        sendJson(res, busy ? 429 : 500, { ok: false, error: busy ? 'diagnostics busy; try again shortly' : 'diagnostics failed' });
+        const message = error instanceof Error ? error.message : '';
+        const busy = message === 'diagnostics busy';
+        const timedOut = message === 'diagnostics timeout';
+        sendJson(res, timedOut ? 504 : busy ? 429 : 500, {
+          ok: false,
+          error: timedOut ? 'diagnostics timed out after 30 seconds; check provider connectivity and server logs' : busy ? 'diagnostics busy; try again shortly' : 'diagnostics failed',
+        });
+      } finally {
+        if (diagnosticTimer) clearTimeout(diagnosticTimer);
       }
       return;
     }

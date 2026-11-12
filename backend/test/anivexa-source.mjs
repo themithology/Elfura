@@ -108,6 +108,14 @@ try {
     assert.equal((await originalFetch(`${base}/api/v1/playback?type=tv&tmdb=872585&anilist=16498&s=1&e=1&anilistEpisode=0`, {
       headers: {Origin: base, 'User-Agent': 'Mozilla/5.0 Chrome/137.0.0.0 Safari/537.36'},
     })).status, 400, 'AniList episode override must be a positive episode number');
+    const diagnostic = await originalFetch(`${base}/api/v1/diagnostics?type=tv&tmdb=872585&anilist=16498&anilistEpisode=3&s=1&e=1&fresh=1`, {
+      headers: {Origin: base, 'User-Agent': 'Mozilla/5.0 Chrome/137.0.0.0 Safari/537.36'},
+    });
+    assert.equal(diagnostic.status, 200, 'operator diagnostics accept AniList inputs');
+    const diagnosticBody = await diagnostic.json();
+    assert.equal(diagnosticBody.probe.anilist, '16498');
+    assert.equal(diagnosticBody.probe.anilistEpisode, 3);
+    assert.equal(diagnosticBody.playback.resolution.adapters.find(source => source.id === 'source-16')?.raw, 2);
   } finally {
     await new Promise(resolve => serverApp.server.close(resolve));
   }
@@ -121,7 +129,30 @@ try {
   assert(combined?.sources.length >= 2);
   assert.equal(combined.sources[0].sourceId, 'source-16', 'Anivexa streams are prioritized when an AniList ID is supplied');
 
-  console.log('✓ Anivexa uses the AniList input, adds direct provider streams to TMDB results, skips embeds, and ranks first.');
+  for (const anivexaUrl of [
+    'https://media.example/anivexa-delayed-standard.m3u8',
+    'https://unreachable.example/anivexa-delayed-standard.m3u8',
+  ]) {
+    const withSlowStandardSource = new SourceRegistry(cfg);
+    withSlowStandardSource.adapters = [
+      {
+        id: 'source-1', label: 'Source 1', enabled: () => true,
+        resolve: async () => {
+          await new Promise(resolve => setTimeout(resolve, 2500));
+          return {candidates: [candidate('source-1', `https://media.example/standard-${encodeURIComponent(new URL(anivexaUrl).hostname)}.m3u8`)]};
+        },
+      },
+      {
+        id: 'source-16', label: 'Anivexa', enabled: () => true,
+        resolve: async () => ({candidates: [{...candidate('source-16', anivexaUrl), audioVariant: 'sub'}]}),
+      },
+    ];
+    const resultWithStandard = await withSlowStandardSource.resolvePlayback({...query, anilistId: '16498'});
+    assert(resultWithStandard?.sources.some(source => source.sourceId === 'source-1'),
+      `a slower regular source must survive AniList resolution even when Anivexa ${anivexaUrl.includes('unreachable') ? 'cannot verify' : 'verifies'} first`);
+  }
+
+  console.log('✓ Anivexa uses AniList, preserves normal sources during anime resolution, skips embeds, and ranks first.');
 } finally {
   anivexaWorker.fetch = originalWorkerFetch;
   globalThis.fetch = originalFetch;
