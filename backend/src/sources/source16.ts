@@ -127,7 +127,6 @@ async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
       const type = streamType(stream, url.href);
       if (!type || seen.has(url.href)) continue;
       seen.add(url.href);
-      const server = String(stream.server ?? provider).replace(/[^\w .-]/g, '').trim().slice(0, 50) || provider;
       const quality = String(stream.quality ?? 'auto').trim().slice(0, 24) || 'auto';
       const rankRaw = Number(stream.priority);
       candidates.push({
@@ -136,7 +135,8 @@ async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
         url: url.href,
         headers: safeHeaders(stream, url),
         quality,
-        audioLabel: `${server} ${audio.toUpperCase()}`,
+        audioVariant: audio,
+        audioLabel: audio === 'sub' ? 'Japanese SUB' : 'English DUB',
         subtitles: subtitleTracks(stream.subtitles),
         rank: Number.isFinite(rankRaw) ? Math.max(1, Math.min(999, Math.round(rankRaw))) : candidates.length + 1,
       });

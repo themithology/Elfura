@@ -82,6 +82,8 @@ export interface SourceOption {
   fingerprint?: string;
   latencyHintMs?: number;
   audioLang?: string;
+  /** Provider-declared source mode; separate from verified audioLang/audioTracks. */
+  audioVariant?: 'sub' | 'dub';
   availableAudioLangs?: string[];
   multiAudio?: boolean;
   audioTracks: { lang: string; label: string; url: string }[];

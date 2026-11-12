@@ -42,7 +42,8 @@ try {
   const adapter = createSource16Adapter(() => true);
   const result = await adapter.resolve(query);
   assert.equal(result.candidates.length, 2, 'the aggregator returns direct HLS from different providers and drops embed fallbacks');
-  assert.deepEqual(result.candidates.map(candidate => candidate.audioLabel), ['AniZone SUB', 'ReAnime DUB']);
+  assert.deepEqual(result.candidates.map(candidate => candidate.audioLabel), ['Japanese SUB', 'English DUB']);
+  assert.deepEqual(result.candidates.map(candidate => candidate.audioVariant), ['sub', 'dub']);
   assert(result.candidates.every(candidate => candidate.type === 'hls' && candidate.audioLang === undefined));
   assert(requests.includes('/episodes/16498'));
   assert(requests.includes('/watch/anizone/16498/sub/anizone-1'));
@@ -89,9 +90,18 @@ try {
     });
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert(body.sources.some(source => source.sourceId === 'source-1'), 'TMDB sources still resolve alongside Anivexa');
+    assert(body.sources.some(source => source.sourceId === 'source-1'), `TMDB sources still resolve alongside Anivexa (got ${body.sources.map(source => source.sourceId + ':' + source.label).join(', ')})`);
     assert.equal(body.sources[0].sourceId, 'source-16', 'AniList-backed Anivexa candidates lead the combined response');
+    const animeModes = body.sources.filter(source => source.audioVariant);
+    assert.deepEqual(animeModes.map(source => source.audioVariant), ['sub', 'dub'], 'Japanese SUB is the default Anivexa mode hierarchy, followed by English DUB');
+    assert.deepEqual(animeModes.map(source => source.label), ['Anivexa · Japanese SUB', 'Anivexa · English DUB']);
+    assert(animeModes.every(source => source.audioLang === undefined), 'SUB/DUB mode labels are not reported as verified manifest audio languages');
     assert(requests.slice(requestCount).includes('/watch/anizone/16498/sub/anizone-3'), 'backend forwards the independent AniList episode override');
+    const englishResponse = await originalFetch(`${base}/api/v1/playback?type=tv&tmdb=872585&anilist=16498&s=1&e=1&anilistEpisode=3&lang=en`, {
+      headers: {Origin: base, 'User-Agent': 'Mozilla/5.0 Chrome/137.0.0.0 Safari/537.36'},
+    });
+    const englishBody = await englishResponse.json();
+    assert.deepEqual(englishBody.sources.filter(source => source.audioVariant).map(source => source.audioVariant), ['dub', 'sub'], 'English preference puts DUB before SUB without fabricating a verified language track');
     assert.equal((await originalFetch(`${base}/api/v1/playback?type=tv&anilist=16498&s=1&e=1`, {
       headers: {Origin: base, 'User-Agent': 'Mozilla/5.0 Chrome/137.0.0.0 Safari/537.36'},
     })).status, 400, 'AniList anime resolution requires the TMDB ID too so standard sources remain available');

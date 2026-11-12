@@ -33,6 +33,7 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
   const preferred = preferredLang ? normalizeLang(preferredLang).code : 'und';
   const matches = (item: typeof single[number]) => preferred !== 'und' &&
     !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
+  const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
   single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.latency-b.latency||a.order-b.order);
   const selected: typeof single = [];
   const hosts = new Set<string>();
@@ -61,5 +62,13 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     selected.push(item); languages.add(lang);
     if (++dubsAdded >= MAX_SEPARATE_DUBS) break;
   }
-  return [...multi,...selected].map(({adapter,candidate})=>({adapter,candidate}));
+  // Keep one verified live source for each Anivexa SUB/DUB mode even when the
+  // generic unlabelled fallback cap would otherwise drop one side. These are
+  // provider source variants, not claims about manifest audio tracks.
+  const animeVariants: typeof single = [];
+  for (const variant of variantOrder) {
+    const item = single.find(candidate => candidate.alive && candidate.candidate.audioVariant === variant);
+    if (item && !selected.includes(item)) animeVariants.push(item);
+  }
+  return [...multi,...selected,...animeVariants].map(({adapter,candidate})=>({adapter,candidate}));
 }

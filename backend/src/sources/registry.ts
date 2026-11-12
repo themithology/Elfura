@@ -588,12 +588,19 @@ export class SourceRegistry {
       if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
       return 2;
     };
+    const animeVariantTier = (o: UniformStreamOption, language?: string): number => {
+      if (!o.audioVariant) return 2;
+      const primary = language ? normalizeLang(language).code.split('-')[0] : '';
+      const preferred = primary === 'en' ? 'dub' : 'sub';
+      return o.audioVariant === preferred ? 0 : 1;
+    };
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
           Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
-          qualityTierOf(a) - qualityTierOf(b),
+          qualityTierOf(a) - qualityTierOf(b) ||
+          animeVariantTier(a) - animeVariantTier(b),
       );
     }
 
@@ -622,6 +629,7 @@ export class SourceRegistry {
           (a, b) =>
             Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
             scoreOpt(a) - scoreOpt(b) ||
+            animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
@@ -716,6 +724,7 @@ export class SourceRegistry {
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
+      ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
