@@ -3,6 +3,8 @@ import { isSafeUpstreamUrl } from './security.js';
 
 /** Operator-only website checks. These are not playback or stream tests. */
 export function roxySourceWebsites(cfg: BackendConfig) {
+  const citadelEnabled = cfg.source14?.enabled ?? (process.env.ELFURA_RIVE_CITADEL_ENABLED !== '0');
+  const mappleEnabled = cfg.source15?.enabled ?? (process.env.ELFURA_MAPPLE_ENABLED !== '0');
   return [
     { id: 'vidbolt', name: 'VidBolt', source: 'Source 1', url: cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', enabled: cfg.source1.enabled },
     { id: 'vidrift', name: 'VidRift', source: 'Source 2', url: cfg.source1.riftOrigin, enabled: cfg.source1.enabled },
@@ -10,6 +12,17 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     { id: 'vidsync', name: 'VidSync', source: 'Source 3', url: cfg.source3.origin || 'https://vidsync.pro', enabled: cfg.source3.enabled },
     { id: 'bingr', name: 'Bingr', source: 'Source 4', url: 'https://bingr.one', enabled: cfg.source4?.enabled ?? true },
     { id: 'nxsha', name: 'Nxsha', source: 'Source 5', url: 'https://nxsha.space', enabled: cfg.source5?.enabled ?? true },
+    ...(cfg.source7?.enabled ? [{ id: 'screenscape', name: 'ScreenScape', source: 'Source 7', url: 'https://screenscape.me', enabled: true }] : []),
+    ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
+    ...(cfg.source9?.enabled ? [{ id: 'vixsrc', name: 'VixSrc', source: 'Source 9', url: 'https://vixsrc.to', enabled: true }] : []),
+    ...(cfg.source10?.enabled ? [{ id: 'vidnest', name: 'VidNest', source: 'Source 10', url: 'https://vidnest.fun', enabled: true }] : []),
+    ...(cfg.source11?.enabled ? [{ id: 'vaplayer', name: 'VidAPI.ru', source: 'Source 11', url: 'https://vidapi.ru', enabled: true }] : []),
+    ...(citadelEnabled
+      ? [{ id: 'citadel', name: 'Rive Citadel', source: 'Source 14', url: 'https://www.rivestream.app', enabled: true }]
+      : []),
+    ...(mappleEnabled
+      ? [{ id: 'mapple', name: 'Mapple', source: 'Source 15', url: 'https://mapple.fun', enabled: true }]
+      : []),
   ];
 }
 

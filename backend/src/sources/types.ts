@@ -23,6 +23,8 @@ export interface DiagEntry {
 export interface SourceQuery {
   type: 'movie' | 'tv';
   tmdbId: string;
+  anilistId?: string;
+  anilistEpisode?: number;
   /** When present, adapters append lane-level diagnostics for /api/v1/diagnostics. */
   diag?: DiagEntry[];
   /** Warm the adapter cache with lanes that finish after a fast initial result. */
@@ -77,8 +79,12 @@ export interface RawStreamCandidate {
   qualityOptions?: number;
   /** Manifest rendition heights are known to be unreliable; keep ABR but hide manual labels. */
   qualityLabelsUnreliable?: boolean;
-  /** Primary BCP-47 language if single-dub stream (e.g. 'hi', 'en'). */
+  /** Primary BCP-47 language if single-dub stream, verified from manifest evidence. */
   audioLang?: string;
+  /** Provider-declared language only; never use as verified audio or for language selection. */
+  claimedAudioLang?: string;
+  /** Provider-declared source mode, not a verified language/manifest track. */
+  audioVariant?: 'sub' | 'dub';
   audioLabel?: string;
   /** Dynamically discovered BCP-47 language codes carried inside a multi-audio stream. */
   availableAudioLangs?: string[];
@@ -151,6 +157,8 @@ export interface UniformStreamOption {
   /** Optional edge latency hint in ms for initial candidate ordering */
   latencyHintMs?: number;
   audioLang?: string;
+  /** Provider-declared SUB/DUB source mode, never an asserted manifest language. */
+  audioVariant?: 'sub' | 'dub';
   availableAudioLangs?: string[];
   multiAudio?: boolean;
   audioTracks: { lang: string; label: string; url: string }[];
@@ -162,5 +170,7 @@ export interface UniformPlaybackResponse {
   media: MediaMetadata;
   primary: UniformStreamOption;
   sources: UniformStreamOption[];
+  /** Enabled generic source ids for asynchronous recovery, never provider details. */
+  sourceGroups?: string[];
   segments?: SkipSegments;
 }

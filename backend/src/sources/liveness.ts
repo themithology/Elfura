@@ -15,6 +15,7 @@ import {
   extractManifestAudioLangs,
   resolveHlsChildUrl,
   seedManifestRamCache,
+  verifyDirectSegmentOffload,
 } from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
@@ -663,6 +664,259 @@ export async function verifyAndFilterCandidatesDetailed(
   }
 
   return { candidates: kept, verifiedAliveCount };
+}
+
+/**
+ * On-demand, server-side playback-path check. It probes the actual stream
+ * manifest, its selected media playlists, and a tiny byte-range from one video
+ * plus up to two audio segments. URLs and response bodies never leave the
+ * server. This still cannot prove that a viewer's browser can play the stream.
+ */
+export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, relayMode: 'hybrid' | 'full' = 'hybrid') {
+  type Check = { stage: string; status: string; ms: number; httpStatus?: number; contentType?: string; bytes?: number; error?: string };
+  const started = Date.now();
+  const checks: Check[] = [];
+  const languages = new Set<string>();
+  const headers = { 'User-Agent': DEFAULT_PROBE_UA, Accept: '*/*', ...(candidate.headers ?? {}) };
+  // Treat every source-supplied header as potentially credential-bearing; do
+  // not forward it across an origin-changing redirect.
+  const hasSensitiveHeader = Object.keys(candidate.headers ?? {}).length > 0;
+  const wholeRequest = AbortSignal.timeout(9000);
+
+  const readText = async (stage: string, startUrl: string): Promise<{ text: string; url: string } | null> => {
+    const t0 = Date.now();
+    try {
+      let url = startUrl;
+      for (let redirect = 0; redirect <= 3; redirect++) {
+        if (!isSafeUpstreamUrl(url)) {
+          checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
+          return null;
+        }
+        const res = await fetch(url, { headers, redirect: 'manual', signal: wholeRequest });
+        if (res.status >= 300 && res.status < 400) {
+          const location = res.headers.get('location');
+          await res.body?.cancel().catch(() => {});
+          if (!location || redirect === 3) {
+            checks.push({ stage, status: 'redirect-error', httpStatus: res.status, ms: Date.now() - t0 });
+            return null;
+          }
+          const nextUrl = new URL(location, url).href;
+          if (hasSensitiveHeader && new URL(nextUrl).origin !== new URL(url).origin) {
+            checks.push({ stage, status: 'blocked-auth-redirect', httpStatus: res.status, ms: Date.now() - t0 });
+            return null;
+          }
+          url = nextUrl;
+          continue;
+        }
+        const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (!res.ok || contentType.includes('text/html') || contentType.includes('application/json')) {
+          await res.body?.cancel().catch(() => {});
+          checks.push({ stage, status: 'http-error', httpStatus: res.status, ms: Date.now() - t0,
+            ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
+          return null;
+        }
+        const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
+        const lead = text.trimStart();
+        const isDashManifest = stage === 'manifest' && /<MPD\b/i.test(lead);
+        const isManifest = isDashManifest || (lead.startsWith('#EXTM3U') &&
+          (stage === 'manifest' || /#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)));
+        if (!isManifest) {
+          checks.push({ stage, status: 'invalid-manifest', httpStatus: res.status, ms: Date.now() - t0 });
+          return null;
+        }
+        checks.push({ stage, status: 'ok', httpStatus: res.status, ms: Date.now() - t0 });
+        const finalUrl = res.url || url;
+        if (!isSafeUpstreamUrl(finalUrl)) return null;
+        return { text, url: finalUrl };
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err.name : 'Error';
+      const cause = (err as { cause?: { code?: string } })?.cause?.code;
+      checks.push({ stage, status: error === 'TimeoutError' || error === 'AbortError' ? 'timeout' : 'network-error',
+        ms: Date.now() - t0, error: cause && /^[A-Z0-9_]{1,40}$/.test(cause) ? cause : error.replace(/[^a-zA-Z]/g, '').slice(0, 40) });
+    }
+    return null;
+  };
+
+  const rangeProbe = async (stage: string, url: string, redirectDepth = 0): Promise<{ url: string; ok: boolean } | null> => {
+    const t0 = Date.now();
+    try {
+      if (!isSafeUpstreamUrl(url)) {
+        checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
+        return null;
+      }
+      const res = await fetch(url, { headers: { ...headers, Range: 'bytes=0-1023' }, redirect: 'manual',
+        signal: AbortSignal.any([wholeRequest, AbortSignal.timeout(3000)]) });
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        await res.body?.cancel().catch(() => {});
+        if (!location) {
+          checks.push({ stage, status: 'redirect-error', httpStatus: res.status, ms: Date.now() - t0 });
+          return null;
+        }
+        if (redirectDepth >= 3) {
+          checks.push({ stage, status: 'redirect-limit', httpStatus: res.status, ms: Date.now() - t0 });
+          return null;
+        }
+        const target = new URL(location, url).href;
+        if (hasSensitiveHeader && new URL(target).origin !== new URL(url).origin) {
+          checks.push({ stage, status: 'blocked-auth-redirect', httpStatus: res.status, ms: Date.now() - t0 });
+          return null;
+        }
+        if (!isSafeUpstreamUrl(target)) {
+          checks.push({ stage, status: 'blocked-unsafe-redirect', httpStatus: res.status, ms: Date.now() - t0 });
+          return null;
+        }
+        return rangeProbe(stage, target, redirectDepth + 1);
+      }
+      const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const clearlyNotMedia = contentType.startsWith('image/') || contentType.startsWith('text/') ||
+        contentType.startsWith('font/') || /(?:html|json|xml)/i.test(contentType);
+      if (!(res.status === 200 || res.status === 206) || clearlyNotMedia) {
+        await res.body?.cancel().catch(() => {});
+        checks.push({ stage, status: clearlyNotMedia ? 'unexpected-content-type' : 'media-http-error',
+          httpStatus: res.status, ms: Date.now() - t0,
+          ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
+        return null;
+      }
+      let bytes = 0;
+      if (res.body) {
+        const reader = res.body.getReader();
+        try {
+          const { value } = await reader.read();
+          bytes = Math.min(value?.byteLength ?? 0, 1024);
+        } finally { await reader.cancel().catch(() => {}); }
+      }
+      const ok = bytes > 0;
+      checks.push({ stage, status: ok ? 'ok' : 'empty-media-response', httpStatus: res.status,
+        ms: Date.now() - t0, bytes, ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
+      return { url, ok };
+    } catch (err) {
+      const error = err instanceof Error ? err.name : 'Error';
+      const cause = (err as { cause?: { code?: string } })?.cause?.code;
+      checks.push({ stage, status: error === 'TimeoutError' || error === 'AbortError' ? 'timeout' : 'network-error',
+        ms: Date.now() - t0, error: cause && /^[A-Z0-9_]{1,40}$/.test(cause) ? cause : error.replace(/[^a-zA-Z]/g, '').slice(0, 40) });
+      return null;
+    }
+  };
+
+  const firstNonComment = (text: string, base: string): string | undefined => {
+    const raw = text.split(/\r?\n/).map(x => x.trim()).find(x => x && !x.startsWith('#'));
+    if (!raw) return;
+    try { const resolved = resolveHlsChildUrl(raw, base); return isSafeUpstreamUrl(resolved) ? resolved : undefined; }
+    catch { return; }
+  };
+
+  let result: { format: string; manifestStatus: string; manifestKind?: string; segmentStatus: string; mediaSegmentChecks: number };
+  const mediaSegments: { stage: string; url: string }[] = [];
+  if (candidate.type === 'mp4') {
+    mediaSegments.push({ stage: 'media-segment', url: candidate.url });
+    const sample = await rangeProbe('media-segment', candidate.url);
+    result = { format: 'mp4', manifestStatus: 'not-applicable', segmentStatus: sample?.ok ? 'ok' : (checks.at(-1)?.status ?? 'unknown'), mediaSegmentChecks: sample ? 1 : 0 };
+  } else if (candidate.type === 'hls') {
+    const manifest = await readText('manifest', candidate.url);
+    if (!manifest) {
+      result = { format: 'hls', manifestStatus: checks.at(-1)?.status ?? 'unknown', segmentStatus: 'not-reached', mediaSegmentChecks: 0 };
+    } else {
+      const isMaster = /#EXT-X-STREAM-INF\b/i.test(manifest.text);
+      const kind = isMaster ? 'hls-master' : 'hls-media';
+      for (const lang of extractManifestAudioLangs(manifest.text)) languages.add(lang);
+      const childTargets: { stage: string; url: string }[] = [];
+      if (isMaster) {
+        const lines = manifest.text.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          if (/^#EXT-X-STREAM-INF\b/i.test(lines[i].trim())) {
+            const uri = lines.slice(i + 1).map(x => x.trim()).find(x => x && !x.startsWith('#'));
+            if (uri) {
+              try { childTargets.push({ stage: 'video-playlist', url: resolveHlsChildUrl(uri, manifest.url) }); } catch { /* report below */ }
+              break;
+            }
+          }
+        }
+        const audioRows = lines.filter(x => /^#EXT-X-MEDIA:/i.test(x.trim()) && /TYPE=AUDIO\b/i.test(x));
+        const defaultAudio = audioRows.find(x => /DEFAULT=YES\b/i.test(x));
+        const audioToCheck = [...new Set([defaultAudio, ...audioRows].filter((x): x is string => !!x))].slice(0, 2);
+        for (let index = 0; index < audioToCheck.length; index++) {
+          const uri = audioToCheck[index].match(/\bURI="([^"]+)"/i)?.[1];
+          if (uri) { try { childTargets.push({ stage: 'audio-playlist', url: resolveHlsChildUrl(uri, manifest.url) }); } catch { /* report below */ } }
+        }
+      } else {
+        const seg = firstNonComment(manifest.text, manifest.url);
+        if (seg) mediaSegments.push({ stage: 'media-segment', url: seg });
+      }
+      const playlistResults = await Promise.all(childTargets.slice(0, 3).map(async child => {
+        const fetched = await readText(child.stage, child.url);
+        if (!fetched) return;
+        const nested = /#EXT-X-STREAM-INF\b/i.test(fetched.text);
+        const segment = firstNonComment(fetched.text, fetched.url);
+        if (segment && !nested) mediaSegments.push({ stage: child.stage.startsWith('audio-playlist') ? 'audio-segment' : 'video-segment', url: segment });
+      }));
+      void playlistResults;
+      const uniqueSegments = mediaSegments.filter((x, i, a) => a.findIndex(y => y.url === x.url) === i).slice(0, 3);
+      const probes = await Promise.all(uniqueSegments.map(async item => {
+        const probed = await rangeProbe(item.stage, item.url);
+        return { item, probed };
+      }));
+      const segmentResults = probes.map(x => x.probed?.ok ?? false);
+      const segStatus = uniqueSegments.length === 0 ? (isMaster && childTargets.length === 0 ? 'muxed-no-segment-url' : 'segment-not-found')
+        : segmentResults.every(Boolean) ? 'ok' : 'failed';
+      result = { format: 'hls', manifestStatus: 'ok', manifestKind: kind, segmentStatus: segStatus, mediaSegmentChecks: uniqueSegments.length };
+    }
+  } else {
+    // Probe explicit DASH SegmentURL/Initialization entries. Dynamic
+    // SegmentTemplate expressions need player state/representation selection,
+    // so report those as unprobed rather than claiming success.
+    const manifest = await readText('manifest', candidate.url);
+    let segmentStatus = 'not-probed-dash-template';
+    let mediaSegmentChecks = 0;
+    if (manifest) {
+      const baseRef = manifest.text.match(/<BaseURL[^>]*>([^<]+)<\/BaseURL>/i)?.[1]?.trim();
+      const segmentRef = manifest.text.match(/<SegmentURL[^>]*\bmedia=["']([^"']+)["']/i)?.[1]
+        ?? manifest.text.match(/<Initialization[^>]*\bsourceURL=["']([^"']+)["']/i)?.[1]
+        ?? manifest.text.match(/<Initialization[^>]*\bsource=["']([^"']+)["']/i)?.[1];
+      if (segmentRef) {
+        try {
+          const base = baseRef ? new URL(baseRef, manifest.url).href : manifest.url;
+          const segmentUrl = new URL(segmentRef, base).href;
+          if (isSafeUpstreamUrl(segmentUrl)) {
+            mediaSegments.push({ stage: 'media-segment', url: segmentUrl });
+            const sample = await rangeProbe('media-segment', segmentUrl);
+            mediaSegmentChecks = sample ? 1 : 0;
+            segmentStatus = sample?.ok ? 'ok' : (checks.at(-1)?.status ?? 'failed');
+          } else segmentStatus = 'blocked-unsafe-url';
+        } catch { segmentStatus = 'invalid-segment-url'; }
+      } else if (!/SegmentTemplate/i.test(manifest.text)) segmentStatus = 'segment-not-listed';
+    }
+    result = { format: 'dash', manifestStatus: manifest ? 'ok' : (checks.at(-1)?.status ?? 'unknown'),
+      manifestKind: manifest ? 'dash' : undefined, segmentStatus, mediaSegmentChecks };
+  }
+
+  const firstSegmentUrl = mediaSegments[0]?.url;
+  let delivery: Record<string, unknown> = { mode: 'unknown', segmentRelayChecked: false };
+  if (firstSegmentUrl) {
+    if (relayMode === 'full') {
+      delivery = { mode: 'full', route: 'backend-relay', segmentRelayChecked: false };
+    } else {
+      const canDirect = await verifyDirectSegmentOffload(firstSegmentUrl);
+      delivery = { mode: 'hybrid', route: canDirect ? 'browser-cdn-offload' : 'backend-relay',
+        corsOffloadPreflight: canDirect ? 'passed' : 'not-passed-or-policy-blocked', segmentRelayChecked: false };
+    }
+  }
+  const manifestLanguages = [...languages];
+  const failureStage = checks.find(x => !['ok'].includes(x.status))?.stage ??
+    (result.segmentStatus !== 'ok' ? 'media-segment' : null);
+  return {
+    format: result.format,
+    manifest: { status: result.manifestStatus, ...(result.manifestKind ? { kind: result.manifestKind } : {}) },
+    media: { status: result.segmentStatus, checks: result.mediaSegmentChecks },
+    checks,
+    manifestLanguages,
+    delivery,
+    failureStage,
+    elapsedMs: Date.now() - started,
+    // Always explicit: this is a server-side origin probe, not playback in a browser.
+    browserPlaybackChecked: false,
+  };
 }
 
 /** Slow, on-demand diagnostic only. No URLs, headers or upstream body are returned.

@@ -72,6 +72,17 @@ export interface BackendConfig {
   /** Optional experimental Source 4 HLS fallback. */
   source4?: { enabled: boolean };
   source5?: { enabled: boolean };
+  /** Experimental additional source controls. */
+  source7?: { enabled: boolean };
+  source8?: { enabled: boolean };
+  source9?: { enabled: boolean };
+  source10?: { enabled: boolean };
+  source11?: { enabled: boolean };
+  source12?: { enabled: boolean };
+  source13?: { enabled: boolean };
+  source14?: { enabled: boolean };
+  source15?: { enabled: boolean };
+  source16?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -203,6 +214,16 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
+    source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
+    source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
+    source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
+    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED !== '0' },
+    source12: { enabled: env.ELFURA_VIDZEN_ENABLED !== '0' },
+    source13: { enabled: env.ELFURA_XPASS_ENABLED !== '0' },
+    source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
+    source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
+    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

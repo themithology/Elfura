@@ -25,7 +25,7 @@
  * Strictly zero hardcoded audio tracks or static language lists.
  */
 
-import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
+import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, SourceOption, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
@@ -267,6 +267,7 @@ export class PlayerUI {
   private loadingQuoteSession = 0;
   private loadingQuoteHistory = new Set<string>();
   private loadingActive = false;
+  private slowNoticeShown = false;
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
   private unavailableTitle!: HTMLElement;
@@ -310,6 +311,7 @@ export class PlayerUI {
   private hideTimer = 0;
   private toastTimer = 0;
   private toastWarnUntil = 0;
+  private recentToastMessages = new Map<string, number>();
   private searchingTimer = 0;
   private hasRenderedAudioSelection = false;
   private flashTimer = 0;
@@ -809,18 +811,25 @@ export class PlayerUI {
     this.unavailableScreen.dataset.visible = 'false';
     clearTimeout(this.loadingDeadlineTimer);
     clearTimeout(this.loadingHardStopTimer);
-    // Stop the indefinite spinner at nine seconds without killing a valid
-    // in-flight manifest/segment. Playback continues behind the retry screen.
+    // Give mobile startup and the first media segment time to arrive before
+    // warning. The slow-connect notice is intentionally later than a brief
+    // source/manifest delay; playback continues if it eventually succeeds.
     this.loadingDeadlineTimer = window.setTimeout(() => {
       if (!this.loadingActive) return;
+      if (!this.claimSlowNotice()) {
+        // Retry attempts for the same title keep the progress state, but don't
+        // put the identical blocking warning back over the player.
+        this.loadingStatus.textContent = 'Still trying to connect…';
+        return;
+      }
       this.hideInitialLoading(true);
       this.slowLoadingActive = true;
       this.unavailableTitle.textContent = 'Taking longer than expected';
       this.unavailableMessage.textContent = 'Still connecting. You can wait or try again.';
       this.syncStateArtwork(this.resolveDisplayMedia());
       this.unavailableScreen.dataset.visible = 'true';
-    }, 9000);
-    // Bound genuine no-progress cases without calling a slow stream dead at 9s.
+    }, 20_000);
+    // Bound genuine no-progress cases without calling a slow stream dead early.
     this.loadingHardStopTimer = window.setTimeout(() => {
       if (this.loadingActive || this.slowLoadingActive) this.player.cancelStartup();
     }, 45000);
@@ -836,6 +845,12 @@ export class PlayerUI {
       this.showNextFallbackQuote();
       void this.fetchLoadingQuote(session);
     }, 6500);
+  }
+
+  private claimSlowNotice(): boolean {
+    if (this.slowNoticeShown) return false;
+    this.slowNoticeShown = true;
+    return true;
   }
 
   private showNextFallbackQuote(): void {
@@ -1202,6 +1217,10 @@ export class PlayerUI {
         else this.scheduleHide();
       }
     });
+    shell.addEventListener('focusin', () => this.showUI());
+    shell.addEventListener('focusout', () => {
+      window.setTimeout(() => this.scheduleHide(), 0);
+    });
 
     v.addEventListener('play', () => {
       const firstStart = !this.hasStartedPlayback;
@@ -1253,6 +1272,7 @@ export class PlayerUI {
     const markPlaybackReady = () => {
       // Ignore late media events from an attempt already declared unavailable.
       if (shell.dataset.unavailable === 'true') return;
+      this.slowNoticeShown = false;
       shell.dataset.buffering = 'false';
       shell.dataset.unavailable = 'false';
       this.unavailableScreen.dataset.visible = 'false';
@@ -1388,6 +1408,7 @@ export class PlayerUI {
     });
     bus.on('episodeChange', (d) => {
       const ev = d as { season?: number; episode?: number } | undefined;
+      this.slowNoticeShown = false;
       this.showInitialLoading();
       this.nextEpDismissedKey = '';
       this.nextSeasonRequested = 0;
@@ -2072,7 +2093,8 @@ export class PlayerUI {
     const step = Number(this.player.config.skipStep ?? 10);
     document.addEventListener('keydown', (e) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.isContentEditable) return;
+      const rangeControl = t instanceof HTMLInputElement && t.type === 'range' && shell.contains(t);
+      if ((t.tagName === 'INPUT' && !rangeControl) || t.tagName === 'SELECT' || t.isContentEditable) return;
       if (this.locked) {
         if (e.key === 'Escape') {
           this.setLocked(false);
@@ -2081,6 +2103,35 @@ export class PlayerUI {
           this.peekUnlockPill();
         }
         return;
+      }
+      const key = e.key.toLowerCase();
+      if (
+        ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'enter', 'select', 'tab', ' ', 'mediaplaypause'].includes(key)
+      ) {
+        this.showUI();
+      }
+      if (key === 'mediaplaypause') {
+        e.preventDefault();
+        this.player.toggle();
+        return;
+      }
+      if (rangeControl && key.startsWith('arrow')) return;
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        const controls = Array.from(
+          shell.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [role="button"], [role="slider"], input[type="range"]',
+          ),
+        ).filter((control) => !control.hidden && !control.closest('[hidden]'));
+        if (controls.length) {
+          const current = controls.indexOf(document.activeElement as HTMLElement);
+          const forward = key === 'arrowright' || key === 'arrowdown';
+          const next = current < 0
+            ? (forward ? 0 : controls.length - 1)
+            : (current + (forward ? 1 : -1) + controls.length) % controls.length;
+          controls[next].focus();
+          e.preventDefault();
+          return;
+        }
       }
       const v = this.player.video;
       const d = Number.isFinite(v.duration) ? v.duration : 0;
@@ -2300,6 +2351,31 @@ export class PlayerUI {
       listAudio.appendChild(this.row('Original', '', true, () => {}));
     }
     colAudio.appendChild(listAudio);
+
+    const animeVariantByMode = new Map<'sub' | 'dub', SourceOption>();
+    for (const source of this.player.getSources()) {
+      if (source.sourceId === 'source-16' && source.audioVariant && !animeVariantByMode.has(source.audioVariant)) {
+        animeVariantByMode.set(source.audioVariant, source);
+      }
+    }
+    if (animeVariantByMode.size > 0) {
+      colAudio.appendChild(el('div', 'elf-col-heading', 'Anime source version'));
+      colAudio.appendChild(el('div', 'elf-anime-variant-note', 'SUB/DUB are provider source labels; verified audio tracks are listed separately above.'));
+      const variantList = el('div', 'elf-col-list');
+      for (const variant of ['sub', 'dub'] as const) {
+        const source = animeVariantByMode.get(variant);
+        if (!source) continue;
+        const selected = st.source === source.id;
+        variantList.appendChild(this.row(
+          variant === 'sub' ? 'Japanese (SUB)' : 'English (DUB)',
+          'Switch stream',
+          selected,
+          () => { void this.player.setSource(source.id).then(() => this.renderPanelBody()); },
+          variant === 'sub' ? 'JA' : 'EN',
+        ));
+      }
+      colAudio.appendChild(variantList);
+    }
 
     const boostPct = this.player.getAudioBoost();
     const boostCard = el('div', 'elf-qol-card');
@@ -2914,7 +2990,8 @@ export class PlayerUI {
         this.player.video.paused ||
         this.panel.dataset.open === 'true' ||
         this.epWheelOpen ||
-        this.locked
+        this.locked ||
+        this.player.shell.contains(document.activeElement) && document.activeElement !== this.player.shell
       ) {
         return;
       }
@@ -2923,9 +3000,27 @@ export class PlayerUI {
   }
 
   showToast(msg: string, ms = 2200, kind: 'info' | 'warn' = 'info'): void {
-    if (kind === 'info' && Date.now() < this.toastWarnUntil) return;
-    if (kind === 'warn') this.toastWarnUntil = Date.now() + ms;
-    this.toastEl.textContent = msg;
+    const now = Date.now();
+    const message = msg.trim();
+    if (!message) return;
+    if (kind === 'info' && now < this.toastWarnUntil) return;
+
+    // Several failure/recovery paths can emit the same event repeatedly while
+    // a source is still failing over. Show that identical notice once per
+    // cooldown, rather than restarting the toast timer and nagging the viewer.
+    const lastShownAt = this.recentToastMessages.get(`${kind}:${message}`);
+    if (lastShownAt !== undefined && now - lastShownAt < 30_000) return;
+    this.recentToastMessages.set(`${kind}:${message}`, now);
+    if (this.recentToastMessages.size > 64) {
+      for (const [key, shownAt] of this.recentToastMessages) {
+        if (now - shownAt >= 30_000 || this.recentToastMessages.size > 64) {
+          this.recentToastMessages.delete(key);
+        }
+      }
+    }
+
+    if (kind === 'warn') this.toastWarnUntil = now + ms;
+    this.toastEl.textContent = message;
     this.toastEl.dataset.kind = kind;
     this.toastEl.dataset.show = 'true';
     clearTimeout(this.toastTimer);

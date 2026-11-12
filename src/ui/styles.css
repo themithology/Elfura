@@ -1529,6 +1529,12 @@
   flex-direction: column;
   gap: 2px;
 }
+.elf-anime-variant-note {
+  padding: 0 10px 6px;
+  color: var(--elf-fg-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
 
 .elf-menu-item {
   width: 100%;

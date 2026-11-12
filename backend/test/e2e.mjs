@@ -1,3 +1,13 @@
+process.env.ELFURA_MAPPLE_ENABLED = '0';
+process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
+process.env.ELFURA_ANIVEXA_ENABLED = '0';
+process.env.ELFURA_XPASS_ENABLED = '0';
+process.env.ELFURA_VIDZEN_ENABLED = '0';
+process.env.ELFURA_VAPLAYER_ENABLED = '0';
+process.env.ELFURA_VIDNEST_ENABLED = '0';
+process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
+process.env.ELFURA_VIDZEE_ENABLED = '0';
+process.env.ELFURA_VIXSRC_ENABLED = '0';
 process.env.ELFURA_NXSHA_ENABLED = '0';
 process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from live upstreams
 import assert from 'node:assert/strict';
@@ -40,7 +50,7 @@ import {
 } from '../../dist/backend/relay.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
 import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
-import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer } from '../../dist/lib/elfura.js';
+import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer, PlayerUI } from '../../dist/lib/elfura.js';
 
 // 1. SSRF guard (production mode: loopback/RFC1918/metadata strictly rejected)
 assert.equal(isSafeUpstreamUrl('http://127.0.0.1:8080/a.m3u8'), false);
@@ -1489,37 +1499,35 @@ try {
     { id: 'source-3', label: 'Source 3' },
   ]);
 
-  // The public diagnostic reports observations, never upstream links or
-  // credentials. A leaf playlist cannot become a verified quality ladder.
+  // Playback diagnosis uses actual selected stream candidates and bounded
+  // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
   const diagRes = await fetch(`${apiBase}/diagnose/?type=tv&tmdb=94605&s=1&e=1`);
   assert.equal(diagRes.status, 200);
   assert.match(diagRes.headers.get('cache-control') || '', /no-store/);
   const diag = await diagRes.json();
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
-  assert.equal(diag.sources.length, 3);
+  assert.equal(diag.identity.titleFound, true);
+  assert.equal(diag.playback.resolution.adapters.length, 3);
+  assert(Array.isArray(diag.playback.candidateChecks));
+  assert.equal(diag.playback.policy.browserPlaybackChecked, false);
+  assert.match(diag.diagnosis.scope, /1 KiB/);
   assert.equal(removedSourceCalls, 0, 'diagnostics must not call legacy source endpoints');
-  assert(diag.sources.some((s) => s.options?.some((o) => o.probe?.manifestKind)));
-  assert.match(diag.selectionPolicy.note, /not the player response/);
-  for (const s of diag.sources) for (const o of s.options ?? []) if (o.probe) {
-    assert.equal(o.probe.browserPlaybackChecked, false);
-    assert.equal(o.probe.mediaSegmentsChecked, false);
-    assert(o.probe.observationAgeMs >= 0);
-  }
-  assert(!JSON.stringify(diag.sources).includes(upBase), 'diagnostic options must not expose upstream URLs');
-  for (const source of diag.sources) {
-    assert(source.options.length <= 20);
-    for (const option of source.options) {
-      assert.match(option.fingerprint, /^[a-f0-9]{12}$/);
-      assert(!('url' in option) && !('headers' in option));
-      if (option.probe?.manifestKind === 'hls-media') {
-        assert.deepEqual(option.probe.qualityHeights, []);
-      }
+  assert(!JSON.stringify(diag).includes(upBase), 'diagnostics must not expose upstream URLs');
+  for (const check of diag.playback.candidateChecks) {
+    assert.match(check.fingerprint, /^[a-f0-9]{12}$/);
+    assert(!('url' in check) && !('headers' in check));
+    assert.equal(check.check.browserPlaybackChecked, false);
+    assert(Array.isArray(check.check.checks));
+    for (const step of check.check.checks) {
+      assert(!('url' in step) && !('headers' in step));
+      assert(typeof step.stage === 'string' && typeof step.status === 'string');
     }
   }
   for (let i = 0; i < 5; i++) {
     const cachedDiag = await fetch(`${apiBase}/api/v1/diagnostics?type=tv&tmdb=94605&s=1&e=1`);
     assert.equal(cachedDiag.status, 200);
+    assert.equal((await cachedDiag.json()).cache.hit, true);
   }
   const limitedDiag = await fetch(`${apiBase}/diagnostic?type=movie&tmdb=1`);
   assert.equal(limitedDiag.status, 429, 'different titles must not bypass the global diagnostics limit');
@@ -1742,6 +1750,22 @@ try {
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
 
+  const toastProbe = {
+    toastWarnUntil: 0,
+    recentToastMessages: new Map(),
+    toastEl: makeEl('div'),
+    toastTimer: 0,
+  };
+  PlayerUI.prototype.showToast.call(toastProbe, 'Repeated warning fixture', 6000, 'warn');
+  const firstToastTimer = toastProbe.toastTimer;
+  PlayerUI.prototype.showToast.call(toastProbe, 'Repeated warning fixture', 6000, 'warn');
+  assert.equal(toastProbe.toastEl.textContent, 'Repeated warning fixture');
+  assert.equal(toastProbe.toastTimer, firstToastTimer, 'identical toast repeats must not restart or reshow during cooldown');
+  clearTimeout(toastProbe.toastTimer);
+  const slowNoticeProbe = { slowNoticeShown: false };
+  assert.equal(PlayerUI.prototype.claimSlowNotice.call(slowNoticeProbe), true);
+  assert.equal(PlayerUI.prototype.claimSlowNotice.call(slowNoticeProbe), false, 'slow-connect warning is shown only once until playback recovers');
+
   const player = new ElfuraPlayer({ postMessage: false });
   // Seed 4 raw sources: 1 English default, 1 DEAD Tamil raw source, 1 WORKING Tamil raw source, 1 DEAD Korean raw source
   player.sources = [
@@ -1865,6 +1889,13 @@ try {
       assert.deepEqual(requested.sort(),['source-1','source-2','source-3','source-4','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
       p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,5,'exhaustion recovery must be bounded');
       p.destroy();
+      // A backend-advertised new group participates without a player release.
+      requested=[];
+      const newer={...good,id:'source-10:1',sourceId:'source-10',fingerprint:'dynamic-good'};
+      globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-10'?[newer]:[]})};
+      const p2=new ElfuraPlayer({postMessage:false});p2.input.config.tmdb='693134';p2.input.config.mediaType='movie';p2.input.config.api='https://retry.example/api/v1/playback';p2.sourceGroups=['source-3','source-10'];p2.sources=[dead];p2.currentSource=dead;
+      let dynamicActive;p2.activateSourceOption=async opt=>{dynamicActive=opt;p2.currentSource=opt};p2.failover();await new Promise(r=>setTimeout(r,40));
+      assert.deepEqual(requested.filter(Boolean).sort(),['source-10','source-3']);assert.equal(dynamicActive?.fingerprint,'dynamic-good');p2.destroy();
     } finally {globalThis.fetch=originalFetch;}
   }
   // The watchdog must cover a single option too and not stop at metadata or
@@ -1886,17 +1917,17 @@ try {
     let releaseRecovery;
     const recoveryGate = new Promise((resolve) => { releaseRecovery = resolve; });
     const primary = { ...pb.primary, id: 'source-3:late-test', sourceId: 'source-3', audioLang: 'ko', multiAudio: false, availableAudioLangs: [], fingerprint: 'lateprimary', audioTracks: [], subtitles: [] };
-    const multi = { ...primary, id: 'source-1:1', sourceId: 'source-1', label: 'Source 1 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
+    const multi = { ...primary, id: 'source-10:1', sourceId: 'source-10', label: 'Source 10 · Multi-Audio', audioLang: undefined, multiAudio: true, availableAudioLangs: ['ko', 'hi'], fingerprint: 'latemulti' };
     let recoveryCalls = 0;
     globalThis.fetch = async (input) => {
       const u = new URL(String(input));
       assert.equal(u.origin, 'https://recovery.example');
-      if (u.searchParams.get('source') === 'source-1') {
+      if (u.searchParams.get('source') === 'source-10') {
         recoveryCalls++;
         await recoveryGate;
         return new Response(JSON.stringify({ ok: true, sources: [multi] }), { status: 200 });
       }
-      return new Response(JSON.stringify({ ok: true, sources: [primary], primary }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, sources: [primary], primary, sourceGroups: ['source-3', 'source-10', 'source-10', '../unsafe'] }), { status: 200 });
     };
     try {
       const p = new ElfuraPlayer({ postMessage: false, api: 'https://recovery.example/api/v1/playback', tmdb: '123456', mediaType: 'movie', pltoken: 'test-token', nonce: 'test-nonce' });
@@ -2137,6 +2168,27 @@ try {
   assert.equal(searchPlayer.getState().source, 'multi-good');
   assert.deepEqual(languageAttempts, ['multi-bad', 'multi-good']);
 
+  // A transient startup timeout may have marked a direct Hindi dub failed;
+  // a fresh explicit language request must retry it just like manual setSource.
+  const directHindiOption = searchSources.find((s) => s.id === 'direct-hi');
+  const initialEnglishOption = searchSources.find((s) => s.id === 'initial-en');
+  searchPlayer.sources = [initialEnglishOption, directHindiOption];
+  assert.deepEqual(searchPlayer.getSources().map((s) => s.id), ['initial-en', 'direct-hi']);
+  searchPlayer.currentSource = initialEnglishOption;
+  searchPlayer.failedSourceIds.add('direct-hi');
+  searchPlayer.failedFingerprints.add('direct-hi-fp');
+  languageAttempts = [];
+  searchPlayer.raceCandidatesBatch = async (wave) => ({ winner: wave[0], winners: [wave[0]], failed: [], rejected: [] });
+  searchPlayer.probeRawCandidateForLanguage = async (opt) => {
+    languageAttempts.push(opt.id);
+    searchPlayer.currentSource = opt;
+    return { ok: opt.id === 'direct-hi' };
+  };
+  const retriedHindi = await searchPlayer.setAudio('hi');
+  assert.equal(retriedHindi, true, `explicit Hindi selection must retry a candidate previously marked failed; attempts=${JSON.stringify(languageAttempts)}`);
+  assert.deepEqual(languageAttempts, ['direct-hi']);
+
+  searchPlayer.sources = searchSources;
   languageAttempts = [];
   searchPlayer.currentSource = searchSources[0];
   searchPlayer.raceCandidatesBatch = async () => ({ winner: null, winners: [], failed: [], rejected: [] });
