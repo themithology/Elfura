@@ -1449,6 +1449,7 @@ const { server: elfuraServer } = createBackendServer({
     vidboltOrigin: upBase, // Keep integration tests isolated from live upstreams.
     riftRelay: upBase,
   },
+  source4: { enabled: false }, // Keep integration tests isolated from the live Bingr provider.
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,
