@@ -12,7 +12,7 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 
 const SITE = 'https://embed69.org';
 const SITE_REFERER = 'https://sololatino.net/';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36';
 const MAX_PAGE_BYTES = 1_200_000;
 const MAX_DIFFICULTY = 4;
 const POW_CAP = 100_000;
@@ -63,7 +63,7 @@ async function getText(rawUrl: string, headers: Record<string, string>, query: S
   for (let redirects = 0; redirects <= 3; redirects++) {
     try {
       const response = await fetch(url, {
-        headers: { 'User-Agent': UA, Accept: 'text/html,application/json,*/*', ...headers },
+        headers: { 'User-Agent': UA, Accept: '*/*', ...headers },
         redirect: 'manual',
         signal,
       });
