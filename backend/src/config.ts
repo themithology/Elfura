@@ -69,8 +69,6 @@ export interface BackendConfig {
     origin: string;
   };
 
-  /** Optional experimental Source 4 HLS fallback. */
-  source4?: { enabled: boolean };
   source5?: { enabled: boolean };
   /** Experimental additional source controls. */
   source7?: { enabled: boolean };
@@ -215,14 +213,13 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // Only sources with a live upstream+media validation remain on by default.
     // Other experimental lanes require an explicit opt-in until they pass the
     // live-source coverage matrix from the deployment environment.
-    source4: { enabled: env.ELFURA_BINGR_ENABLED === '1' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED === '1' },
     source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
-    source8: { enabled: env.ELFURA_VIDZEE_ENABLED === '1' },
+    source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED === '1' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED === '1' },
     source11: { enabled: env.ELFURA_VAPLAYER_ENABLED === '1' },
-    source12: { enabled: env.ELFURA_VIDZEN_ENABLED !== '0' },
+    source12: { enabled: env.ELFURA_VIDZEN_ENABLED === '1' },
     source13: { enabled: env.ELFURA_XPASS_ENABLED === '1' },
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },

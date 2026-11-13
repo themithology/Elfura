@@ -194,7 +194,7 @@ export class ElfuraPlayer {
 
   private sources: SourceOption[] = [];
   // Generic source groups supplied by the backend; fallback supports older servers.
-  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+  private sourceGroups: string[] = ['source-1', 'source-2', 'source-8', 'source-14'];
   private currentSource: SourceOption | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
@@ -1024,7 +1024,7 @@ export class ElfuraPlayer {
       if (Array.isArray(data.sourceGroups)) {
         this.sourceGroups = [...new Set(data.sourceGroups.filter((id): id is string => typeof id === 'string' && /^source-[1-9]\d{0,3}$/.test(id)))].slice(0, 32);
       } else {
-        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+        this.sourceGroups = ['source-1', 'source-2', 'source-8', 'source-14'];
       }
       if (data.media) {
         this.mediaInfo = data.media;

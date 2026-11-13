@@ -44,6 +44,6 @@ Run [42225986780](https://github.com/themithology/Elfura/actions/runs/4222598678
 
 ## Experimental additional HLS fallback
 
-Source 4 uses Bingr's watch-page API and may return HLS via shared upstreams or a third-party bridge; it is not an independent provider guarantee. Hindi-labelled separate streams are kept distinct from manifest-verified alternate audio. Set `ELFURA_BINGR_ENABLED=0` in the backend environment to disable it independently. It uses a bounded startup race, with late results cached for recovery. Upstream availability, title correctness and complete playback remain unverified by a manifest probe alone.
+Bingr's health and metadata endpoints responded, but the source did not return a candidate that passed the live media audit. It was removed from the active registry rather than treating API health or fixture tests as operational playback proof.
 
-Source 5 is the experimental Nxsha-backed Nitro/Indian-dub HLS adapter; it excludes the rejected Vidara provider and does not treat language labels as multi-audio evidence. It races alongside existing sources; set `ELFURA_NXSHA_ENABLED=0` to disable it. Availability and title matching are not guaranteed.
+Source 5 is the experimental Nxsha-backed Nitro/Indian-dub HLS adapter; it excludes the rejected Vidara provider and does not treat language labels as multi-audio evidence. Live coverage did not return a playable stream on the sampled titles. It is disabled by default and requires an explicit `ELFURA_NXSHA_ENABLED=1` opt-in; availability and title matching remain unconfirmed.

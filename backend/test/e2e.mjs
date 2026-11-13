@@ -9,7 +9,6 @@ process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
 process.env.ELFURA_VIDZEE_ENABLED = '0';
 process.env.ELFURA_VIXSRC_ENABLED = '0';
 process.env.ELFURA_NXSHA_ENABLED = '0';
-process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from live upstreams
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -1471,7 +1470,6 @@ const { server: elfuraServer } = createBackendServer({
     enabled: true,
     origin: upBase,
   },
-  source4: { enabled: false },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,
@@ -1886,8 +1884,8 @@ try {
       const p=new ElfuraPlayer({postMessage:false});p.input.config.tmdb='693134';p.input.config.mediaType='movie';p.input.config.api='https://retry.example/api/v1/playback';p.sources=[dead];p.currentSource=dead;
       let active; p.activateSourceOption=async opt=>{active=opt;p.currentSource=opt};
       p.failover();await new Promise(r=>setTimeout(r,40));
-      assert.deepEqual(requested.sort(),['source-1','source-2','source-3','source-4','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
-      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,5,'exhaustion recovery must be bounded');
+      assert.deepEqual(requested.sort(),['source-1','source-14','source-2','source-8']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
+      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,4,'exhaustion recovery must be bounded');
       p.destroy();
       // A backend-advertised new group participates without a player release.
       requested=[];
