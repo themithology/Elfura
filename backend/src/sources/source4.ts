@@ -1,124 +1,162 @@
-/** HLS candidates resolved from the Bingr watch-page protocol. Research-derived;
- * upstream labels are hints only: liveness verifies audio from the manifest. */
+/** Bingr's official stream API resolver. Only direct media URLs enter the relay. */
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
-const ORIGIN = 'https://bingr.one';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
-type Payload = { servers?: { id?: string }[]; streams?: { url?: string; language?: string; quality?: string; type?: string }[] };
+const API = 'https://api.bingr.one/api';
+const SITE = 'https://bingr.one';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36';
+const SERVERS = [
+  { id: 's40', name: 'Aphelion' },
+  { id: 's70', name: 'Polaris' },
+  { id: 's62', name: 'Bastion' },
+  { id: 's63', name: 'Hallyu' },
+  { id: 's30', name: 'Nova' },
+  { id: 's60', name: 'Vertex' },
+  { id: 's61', name: 'Corvus' },
+  { id: 's31', name: 'Orion' },
+  { id: 's3', name: 'Edmunds' },
+] as const;
+const MAX_RESPONSE_BYTES = 1_500_000;
 
-export function decodeBingrPayload(blob: string): Payload {
-  if (!/^v1\.[A-Za-z0-9_-]+$/.test(blob) || blob.length > 1_500_000) throw new Error('invalid payload');
-  const bytes = Buffer.from(blob.slice(3), 'base64url');
-  if (bytes.length < 13) throw new Error('short payload');
-  const iv = bytes.subarray(0, 12), data = Buffer.from(bytes.subarray(12));
-  const seed = Buffer.concat([Buffer.from('vY7#qL2!mZ9@wK4$'), iv]);
-  let state = Array.from({ length: 4 }, (_, i) => {
-    let x = (0x811c9dc5 ^ Math.imul(0x9e3779b9, i)) >>> 0;
-    for (const byte of seed) x = Math.imul(x ^ byte, 0x1000193) >>> 0;
-    return x;
-  });
-  let word = 0;
-  for (let i = 0; i < data.length; i++) {
-    if (i % 4 === 0) {
-      const [a, b, c, oldD] = state; const d = (oldD + 1) >>> 0;
-      word = (a + b + d) >>> 0;
-      state = [(b ^ (b >>> 9)) >>> 0, Math.imul(c, 9) >>> 0, (((c << 21) | (c >>> 11)) + word) >>> 0, d];
-    }
-    data[i] ^= (word >>> ((i % 4) * 8)) & 255;
+type BingrStream = {
+  url?: unknown;
+  type?: unknown;
+  quality?: unknown;
+  language?: unknown;
+  label?: unknown;
+  headers?: unknown;
+  embed?: unknown;
+};
+type BingrResponse = { sources?: BingrStream[] };
+
+async function readJson(response: Response): Promise<unknown> {
+  if (!response.ok || !response.body || Number(response.headers.get('content-length') || 0) > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    return null;
   }
-  const text = data.toString('utf8');
-  const end = text.lastIndexOf('}');
-  if (end < 0) throw new Error('invalid plaintext');
-  return JSON.parse(text.slice(0, end + 1)) as Payload;
-}
-
-async function readBounded(response: Response, limit: number): Promise<string> {
-  if (!response.body) return '';
-  const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
   try {
-    while (size <= limit) {
-      const { value, done } = await reader.read();
+    while (true) {
+      const { done, value } = await reader.read();
       if (done) break;
-      size += value.length;
-      if (size > limit) throw new Error('response too large');
+      size += value.byteLength;
+      if (size > MAX_RESPONSE_BYTES) return null;
       chunks.push(value);
     }
-    return Buffer.concat(chunks).toString('utf8');
-  } finally { await reader.cancel().catch(() => {}); }
+    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown; }
+    catch { return null; }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
+function safeHeaders(input: unknown): Record<string, string> {
+  const result: Record<string, string> = { 'User-Agent': UA, Referer: `${SITE}/`, Origin: SITE };
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return result;
+  for (const [key, value] of Object.entries(input)) {
+    if (!/^(referer|origin|user-agent)$/i.test(key) || typeof value !== 'string' || value.length > 2048 || /[\r\n]/.test(value)) continue;
+    if (/^(referer|origin)$/i.test(key) && !isSafeUpstreamUrl(value)) continue;
+    result[/^referer$/i.test(key) ? 'Referer' : /^origin$/i.test(key) ? 'Origin' : 'User-Agent'] = value;
+  }
+  return result;
+}
+
+function streamType(stream: BingrStream, url: string): RawStreamCandidate['type'] | null {
+  const type = String(stream.type ?? '').toLowerCase();
+  if (/\.m3u8(?:[?#]|$)/i.test(url) || /^(hls|m3u8|application\/vnd\.apple\.mpegurl)$/.test(type)) return 'hls';
+  if (/\.(?:mp4|m4v|webm)(?:[?#]|$)/i.test(url) || /^(mp4|file|progressive)$/.test(type)) return 'mp4';
+  return null;
+}
+
+function candidatesFrom(payload: BingrResponse | null, rank: number): RawStreamCandidate[] {
+  if (!Array.isArray(payload?.sources)) return [];
+  const result: RawStreamCandidate[] = [];
+  for (const stream of payload.sources.slice(0, 40)) {
+    if (typeof stream.url !== 'string' || stream.url.length > 8192 || stream.embed === true || /\b(?:embed|iframe)\b/i.test(String(stream.type ?? ''))) continue;
+    if (!isSafeUpstreamUrl(stream.url)) continue;
+    const type = streamType(stream, stream.url);
+    if (!type) continue;
+    const lang = normalizeLang(typeof stream.language === 'string' ? stream.language : 'und');
+    const quality = typeof stream.quality === 'string' && /^[\w .-]{1,32}$/.test(stream.quality) ? stream.quality : 'auto';
+    result.push({
+      key: stream.url,
+      url: stream.url,
+      type,
+      quality,
+      ...(lang.code !== 'und' ? { audioLang: lang.code, audioLabel: lang.label } : {}),
+      headers: safeHeaders(stream.headers),
+      rank: rank * 100 + result.length,
+    });
+  }
+  return result;
 }
 
 export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandidate[]> {
-  if (!/^\d{1,12}$/.test(query.tmdbId)) return [];
-  const season = query.season ?? 1, episode = query.episode ?? 1;
-  if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 1) return [];
-  const path = query.type === 'movie' ? `/watch/movie/${query.tmdbId}` : `/watch/tv/${query.tmdbId}/${season}/${episode}`;
-  const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
-  const get = async (url: string, limit: number) => {
-    const r = await fetch(url, { headers: { 'User-Agent': UA, Referer: ORIGIN + path, Accept: '*/*' }, redirect: 'error', signal });
-    if (!r.ok) { await r.body?.cancel(); return ''; }
-    return readBounded(r, limit);
+  if (!/^\d{1,12}$/.test(query.tmdbId) || !['movie', 'tv'].includes(query.type)) return [];
+  const season = query.season ?? 1;
+  const episode = query.episode ?? 1;
+  if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1)) return [];
+
+  const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8_500)]) : AbortSignal.timeout(8_500);
+  const headers = { 'User-Agent': UA, Accept: 'application/json', Referer: `${SITE}/`, Origin: SITE };
+  const getJson = async (url: string): Promise<unknown> => {
+    try {
+      const response = await fetch(url, { headers, redirect: 'error', signal });
+      return await readJson(response);
+    } catch { return null; }
   };
-  try {
-    const html = await get(ORIGIN + path, 2_000_000);
-    let rsc = '';
-    for (const m of html.matchAll(/self\.__next_f\.push\(\[1,"((?:[^"\\]|\\[\s\S])*)"\]\)/g)) {
-      try { rsc += JSON.parse('"' + m[1] + '"') as string; } catch { /* ignore malformed chunk */ }
-    }
-    const token = rsc.match(/"token":"([^"\\]{1,2048})"/)?.[1];
-    const blob = rsc.match(/v1\.[A-Za-z0-9_-]{60,}/)?.[0];
-    if (!blob) return [];
-    const first = decodeBingrPayload(blob);
-    const ids = (Array.isArray(first.servers) ? first.servers : []).map(s => s.id).filter((id): id is string => typeof id === 'string' && /^[a-z0-9_-]{1,40}$/i.test(id));
-    // Race all advertised servers; the outer registry bounds startup and warms
-    // the cache for later recovery if an upstream completes after that deadline.
-    const rows: Payload[] = [first];
-    let settled = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
-    const lanes = token ? ids.slice(0, 8) : [];
-    const all = Promise.all(lanes.map(async id => {
-      try {
-        const q = new URLSearchParams({ kind: query.type, t: token || "", provider: id, tmdb: query.tmdbId });
-        if (query.type === 'tv') { q.set('s', String(season)); q.set('e', String(episode)); }
-        const body = await get(`${ORIGIN}/api/sources?${q}`, 1_500_000);
-        if (body.startsWith('v1.')) rows.push(decodeBingrPayload(body.trim()));
-      } catch { /* an individual lane must not block the others */ }
-      finally {
-        settled++;
-        if (!query.diag && rows.some(r => r.streams?.length) && !timer) timer = setTimeout(() => release?.(), 350);
+
+  // Details are best-effort; the stream API can also resolve by TMDB ID alone.
+  const details = await getJson(`${API}/details/${query.type}/${encodeURIComponent(query.tmdbId)}`) as { title?: unknown; name?: unknown; year?: unknown; release_date?: unknown; first_air_date?: unknown } | null;
+  const title = typeof details?.title === 'string' ? details.title : typeof details?.name === 'string' ? details.name : '';
+  const date = typeof details?.release_date === 'string' ? details.release_date : typeof details?.first_air_date === 'string' ? details.first_air_date : '';
+  const year = typeof details?.year === 'string' || typeof details?.year === 'number' ? String(details.year) : date.slice(0, 4);
+  const search: Record<string, unknown> = {
+    ...(title ? { title } : {}),
+    ...(year ? { year } : {}),
+    ...(query.type === 'tv' ? { season, episode } : {}),
+  };
+
+  const resolved = await Promise.all(SERVERS.map(async (server, index) => {
+    try {
+      let payload: unknown;
+      if (server.id === 's40' && query.type === 'tv') {
+        payload = await getJson(`${API}/stream/aphelion-tv/${encodeURIComponent(query.tmdbId)}/${season}/${episode}`);
+      } else {
+        const response = await fetch(`${API}/stream`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ srv: server.id, t: query.type, id: query.tmdbId, query: search }),
+          redirect: 'error',
+          signal,
+        });
+        payload = await readJson(response);
       }
-    }));
-    if (query.diag) await all;
-    else if (lanes.length) await Promise.race([all, new Promise<void>(resolve => { release = resolve; }), new Promise<void>(resolve => setTimeout(resolve, 2200))]);
-    if (timer) clearTimeout(timer);
-    const build = (): RawStreamCandidate[] => {
-    const result: RawStreamCandidate[] = [], seen = new Set<string>();
-    for (const row of rows) for (const stream of Array.isArray(row.streams) ? row.streams.slice(0, 40) : []) {
-      const url = stream.url;
-      if (typeof url !== 'string' || !isSafeUpstreamUrl(url) || seen.has(url)) continue;
-      // A known bridge may expose HLS without a filename extension.
-      const host = new URL(url).hostname.toLowerCase();
-      if (!/\.m3u8(?:[?#]|$)/i.test(url) && !/hls|m3u8/i.test(String(stream.type || '')) && !/(?:^|\.)dash-hls-bridge\.johndoesdmc\.workers\.dev$/.test(host)) continue;
-      seen.add(url);
-      const lang = normalizeLang(typeof stream.language === 'string' ? stream.language : 'und');
-      result.push({ key: url, url, type: 'hls', quality: typeof stream.quality === 'string' && /^[\w .-]{1,24}$/.test(stream.quality) ? stream.quality : 'auto',
-        ...(lang.code !== 'und' ? { audioLang: lang.code, audioLabel: lang.label } : {}), rank: 10 + result.length });
-      if (result.length >= 40) return result;
-    }
-    return result;
-    };
-    const current = build();
-    if (!query.diag && settled < lanes.length && query.onLateResult) void all.then(() => query.onLateResult?.({ candidates: build() }));
-    return current;
-  } catch { return []; }
+      return candidatesFrom(payload as BingrResponse | null, index);
+    } catch { return []; }
+  }));
+
+  const seen = new Set<string>();
+  return resolved.flat().filter(candidate => {
+    if (seen.has(candidate.url)) return false;
+    seen.add(candidate.url);
+    return true;
+  }).slice(0, 40);
 }
 
 export function createSource4Adapter(enabled: () => boolean): SourceAdapter {
-  return { id: 'source-4', label: 'Source 4', enabled,
+  return {
+    id: 'source-4',
+    label: 'Source 4',
+    enabled,
     async resolve(query): Promise<RawSourceResult> {
       const start = Date.now();
       const candidates = await fetchFromBingr(query);
       query.diag?.push({ adapter: 'source-4', lane: 'B', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
-      return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'B' } : c) };
-    } };
+      return { candidates: candidates.map(candidate => query.diag ? { ...candidate, diagnosticLane: 'B' } : candidate) };
+    },
+  };
 }

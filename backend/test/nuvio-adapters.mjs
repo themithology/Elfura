@@ -11,7 +11,17 @@ globalThis.fetch=async (url,opts)=>{url=String(url);requests.push(url);
  }
  throw new Error('unexpected url');};
 try {
- const streams=await fetchFromNxsha({type:'tv',tmdbId:'93405',season:1,episode:1,diag:[]});assert.equal(streams.length,2);assert.equal(streams[0].multiAudio,undefined);assert.equal(streams[1].audioLang,'hi');assert(!requests.some(x=>x.includes('vidara')));
- assert.deepEqual(await fetchFromNxsha({type:'movie',tmdbId:'bad'}),[]);
+ const streams=await fetchFromNxsha({type:'tv',tmdbId:'93405',season:1,episode:1,diag:[]},undefined,{preferCurl:false});assert.equal(streams.length,2);assert.equal(streams[0].multiAudio,undefined);assert.equal(streams[1].audioLang,'hi');assert(!requests.some(x=>x.includes('vidara')));
+ assert.deepEqual(await fetchFromNxsha({type:'movie',tmdbId:'bad'},undefined,{preferCurl:false}),[]);
+ const curlStreams=await fetchFromNxsha({type:'movie',tmdbId:'693134'},undefined,{
+  preferCurl:true,
+  fetch:async()=>{throw new Error('curl should be used first')},
+  curl:async url=>{
+   const endpoint=new URL(url).pathname;
+   const payload=endpoint.endsWith('/servers')?{servers:[{scraper:'nitro'}]}:{sources:[{url:'https://cdn.example.org/from-curl.m3u8',type:'hls'}]};
+   return {status:200,body:JSON.stringify({_hash:nxEncode(payload)})};
+  }
+ });
+ assert.equal(curlStreams.length,1);assert.equal(curlStreams[0].url,'https://cdn.example.org/from-curl.m3u8');
 } finally {globalThis.fetch=original;}
 console.log('✓ Nxsha crypto, input, URL and HLS mapping');

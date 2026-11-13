@@ -45,7 +45,7 @@ export function createSource9Adapter(enabled: () => boolean): SourceAdapter {
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
     const candidates = verified.candidates.filter(c => {
       const evidence = cachedCandidateEvidence(c);
-      return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
+      return !!evidence?.alive;
     });
     query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};

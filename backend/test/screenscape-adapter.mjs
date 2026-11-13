@@ -36,7 +36,7 @@ try {
   const cfg = loadBackendConfig({ELFURA_SECRET:'test', ELFURA_SCREENSCAPE_ENABLED:'1'});
   assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
   const diag = [];
-  const result = await createSource7Adapter(() => true).resolve({type:'movie',tmdbId:'693134',diag});
+  const result = await createSource7Adapter(() => true, {preferCurl:false}).resolve({type:'movie',tmdbId:'693134',diag});
   assert.deepEqual(asked.sort(), ['bdxs','mbox']);
   assert.equal(result.candidates.length, 2);
   assert.equal(result.candidates[1].audioLang, 'en');

@@ -30,6 +30,9 @@ globalThis.fetch = async (input, init = {}) => {
   if (url.pathname === '/api/stream/shared/master.m3u8') {
     return new Response(hls, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
   }
+  if (url.pathname === '/api/stream/shared/segment.ts') {
+    return new Response(Buffer.from([0x47,0x00,0x00,0x10,0x00]), { status: 206, headers: { 'Content-Type': 'video/mp2t' } });
+  }
   throw new Error(`Unexpected VidZen request: ${url.pathname}`);
 };
 

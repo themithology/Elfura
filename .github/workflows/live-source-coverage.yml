@@ -87,6 +87,54 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
+          - name: VidSync Pro documented sample
+            type: movie
+            tmdb: '155'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-3'
+          - name: VixSrc documented sample
+            type: movie
+            tmdb: '786892'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-9'
+          - name: VidNest documented sample
+            type: movie
+            tmdb: '550'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-10'
+          - name: VAPlayer known movie sample
+            type: movie
+            tmdb: '550'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-11'
+          - name: Xpass known movie sample
+            type: movie
+            tmdb: '550'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-13'
+          - name: Mapple documented sample
+            type: movie
+            tmdb: '1596275'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-15'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

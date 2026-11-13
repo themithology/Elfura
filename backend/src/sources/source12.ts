@@ -7,7 +7,7 @@
  * No audio labels are inferred from the server names.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const SITE = 'https://vidzen.fun';
@@ -140,7 +140,14 @@ export function createSource12Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromVidZen(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      const reachable = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive).slice(0, 3);
+      const playbackChecks = await Promise.all(reachable.map(async candidate => ({
+        candidate,
+        result: await diagnoseCandidatePlayback(candidate, 'full'),
+      })));
+      const candidates = playbackChecks
+        .filter(({ result }) => result.manifest.status === 'ok' && result.media.status === 'ok')
+        .map(({ candidate }) => candidate);
       query.diag?.push({
         adapter: 'source-12',
         lane: 'VZ',
