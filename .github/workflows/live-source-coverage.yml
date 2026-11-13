@@ -1,0 +1,81 @@
+name: Live source coverage matrix
+
+on:
+  push:
+    branches: [arena/98a7882b-elfura]
+    paths:
+      - backend/src/sources/**
+      - backend/src/sources/registry.ts
+      - backend/test/live-sources.mjs
+      - .github/workflows/live-source-coverage.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-coverage:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - name: Dune Part Two, all non-Anivexa sources
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
+          - name: Death Note S1E1, all sources
+            type: tv
+            tmdb: '13916'
+            season: '1'
+            episode: '1'
+            anilist: '1535'
+            anilist_episode: '1'
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,combined'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Resolve each source and verify real manifests and media bytes
+        run: node backend/test/live-sources.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: live-source-matrix-only-not-a-production-secret
+          RELAY_MODE: hybrid
+          RESOLVE_TIMEOUT_MS: '20000'
+          TMDB_TIMEOUT_MS: '8000'
+          SOURCE1_ENABLED: '1'
+          SOURCE3_ENABLED: '1'
+          ELFURA_BINGR_ENABLED: '1'
+          ELFURA_NXSHA_ENABLED: '1'
+          ELFURA_SCREENSCAPE_ENABLED: '1'
+          ELFURA_VIDZEE_ENABLED: '1'
+          ELFURA_VIXSRC_ENABLED: '1'
+          ELFURA_VIDNEST_ENABLED: '1'
+          ELFURA_VAPLAYER_ENABLED: '1'
+          ELFURA_VIDZEN_ENABLED: '1'
+          ELFURA_XPASS_ENABLED: '1'
+          ELFURA_RIVE_CITADEL_ENABLED: '1'
+          ELFURA_MAPPLE_ENABLED: '1'
+          ELFURA_ANIVEXA_ENABLED: '1'
+          AUDIT_TYPE: ${{ matrix.type }}
+          AUDIT_TMDB: ${{ matrix.tmdb }}
+          AUDIT_SEASON: ${{ matrix.season }}
+          AUDIT_EPISODE: ${{ matrix.episode }}
+          AUDIT_ANILIST_ID: ${{ matrix.anilist }}
+          AUDIT_ANILIST_EPISODE: ${{ matrix.anilist_episode }}
+          AUDIT_TITLE: ${{ matrix.name }}
+          AUDIT_SOURCES: ${{ matrix.sources }}
+          AUDIT_MAX_RESOLVE_MS: '18000'
+          AUDIT_REQUIRE_MULTI_LANG: '0'
