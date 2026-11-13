@@ -63,6 +63,30 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-18,combined'
+          - name: Roma Source 18
+            type: movie
+            tmdb: '426426'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-18,combined'
+          - name: The Platform Source 18
+            type: movie
+            tmdb: '619264'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-18,combined'
+          - name: Instructions Not Included Source 18
+            type: movie
+            tmdb: '211672'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-18,combined'
           - name: Dune Part Two Source 17 Nuvio Streams
             type: movie
             tmdb: '693134'
