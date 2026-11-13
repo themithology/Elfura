@@ -241,7 +241,11 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },
     source16: { enabled: env.ELFURA_ANIVEXA_ENABLED === '1' },
-    stremioAddons: parseStremioAddonUrls(env.ELFURA_STREMIO_ADDONS),
+    stremioAddons: parseStremioAddonUrls(
+      env.ELFURA_STREMIO_ADDONS === undefined && isProd
+        ? '["https://nuviostreams.hayd.uk"]'
+        : env.ELFURA_STREMIO_ADDONS,
+    ),
     source18: { enabled: env.ELFURA_EMBED69_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',

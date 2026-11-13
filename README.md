@@ -220,7 +220,7 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1–16 adapters (16 bundled Anivexa anime aggregator; pass both `tmdb` and `anilist` for anime playback)
+backend/src/sources/      isolated SourceAdapter registry + Source 1–18 adapters (16 is bundled Anivexa; 17 is the Stremio bridge; 18 is Embed69)
 ```
 
 ## Roxy operator dashboard
@@ -235,4 +235,4 @@ Website attribution and banning use the browser's `Referer` origin on embed requ
 
 ### Optional Sources 17 and 18
 
-Source 17 queries up to eight operator-configured Stremio addon manifest/base URLs via `ELFURA_STREMIO_ADDONS` (JSON array). Only direct HLS, DASH, and MP4 streams are accepted; torrent, resolver-only, DRM, and unsupported media entries are ignored. Source 18 is the opt-in Embed69 adapter (`ELFURA_EMBED69_ENABLED=1`). Both still depend on live provider availability and title matching.
+Source 17 queries up to eight Stremio addon manifest/base URLs via `ELFURA_STREMIO_ADDONS` (JSON array); the production default is the public Nuvio Streams addon (`https://nuviostreams.hayd.uk`), which has passed live HLS-manifest and media-segment checks. You can replace it with your own configured addon URLs. Only direct HLS, DASH, and MP4 streams are accepted; torrent, resolver-only, DRM, and unsupported media entries are ignored. Source 18 is the opt-in Embed69 adapter (`ELFURA_EMBED69_ENABLED=1`); availability depends on Embed69 having a matching title and working embeds.
