@@ -15,6 +15,7 @@ globalThis.fetch = async (input, options) => {
     return Response.json({url:'https://vidara.example/stream.m3u8'});
   }
   if (u.hostname === 'vz-fixture.example') {
+    if (u.pathname === '/seg.ts') return new Response(Buffer.from([0x47,0,0,0,0]), {status:206,headers:{'Content-Type':'video/mp2t'}});
     if (u.pathname === '/child.m3u8') return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
     const langs = u.pathname === '/multi.m3u8' ? ['hi','en'] : ['hi'];
     return new Response('#EXTM3U\n' + langs.map(l=>`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="${l}",NAME="${l}",URI="/child.m3u8"`).join('\n') + '\n#EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="x"\n/child.m3u8');

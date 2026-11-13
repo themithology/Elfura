@@ -29,7 +29,8 @@ globalThis.fetch=async(input,opts)=>{
   return Response.json(encode(u.searchParams.get('_n'),payload));
  }
  if(u.hostname==='vn-fixture.example') {
-  if(u.pathname==='/tamil.mp4')return new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}});
+  if(u.pathname==='/seg.ts')return new Response(Buffer.from([0x47,0,0,0,0]),{status:206,headers:{'content-type':'video/mp2t'}});
+  if(u.pathname==='/tamil.mp4'){const mp4=Buffer.alloc(20);mp4.write('ftyp',4);return new Response(mp4,{status:206,headers:{'content-type':'video/mp4'}});}
   if(u.pathname==='/child.m3u8')return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
   if(u.pathname==='/hindi.m3u8')return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
   return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="x"\n/child.m3u8');
@@ -46,7 +47,8 @@ try {
  assert.equal(result.candidates[1].audioLang,'ta');assert.equal(result.candidates[1].type,'mp4');
  assert.deepEqual(result.candidates[2].availableAudioLangs,['hi','en']);assert.equal(result.candidates[2].multiAudio,true);
  assert.deepEqual(await fetchFromVidNest({...q,tmdbId:'bad'}),[]);
- assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-10'));
+ assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-10'));
+ assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-10'));
  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-10'));
  console.log('✓ VidNest authenticated encryption, bounded lanes, direct HLS and separate dubs');
 }finally{globalThis.fetch=old}

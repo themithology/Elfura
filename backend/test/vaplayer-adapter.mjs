@@ -21,7 +21,8 @@ try{
  assert.equal(raw.length,2);assert(!raw[0].audioLang);assert(!raw[0].multiAudio);
  const diag=[],res=await createSource11Adapter(()=>true).resolve({...q,diag});assert.equal(res.candidates.length,2);assert.deepEqual(res.candidates[0].availableAudioLangs,['en','hi']);assert.equal(res.candidates[0].multiAudio,true);assert.equal(res.candidates[1].multiAudio,false);assert.equal(res.candidates[1].audioLang,'en');assert.equal(res.candidates[0].diagnosticLane,'A');
  episode='3';assert.deepEqual(await fetchFromVAPlayer(q),[]);assert.deepEqual(await fetchFromVAPlayer({...q,tmdbId:'x'}),[]);assert.deepEqual(await fetchFromVAPlayer({...q,episode:0}),[]);
- assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-11'));
+ assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-11'));
+ assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VAPLAYER_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-11'));
  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VAPLAYER_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-11'));
  console.log('✓ VAPlayer bounded API, episode matching and manifest-only multi-audio');
 }finally{globalThis.fetch=old}

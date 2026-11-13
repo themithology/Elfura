@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://new.vidnest.fun';
@@ -85,11 +85,18 @@ export function createSource10Adapter(enabled: () => boolean): SourceAdapter {
   return {id:'source-10',label:'Source 10',enabled,async resolve(query) {
     const start = Date.now(), raw = await fetchFromVidNest(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
-    const candidates = verified.candidates.filter(c => {
+    const reachable = verified.candidates.filter(c => {
       const evidence = cachedCandidateEvidence(c);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
-    });
-    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}`});
+    }).slice(0, 3);
+    const playback = await Promise.all(reachable.map(async candidate => ({
+      candidate,
+      result: await diagnoseCandidatePlayback(candidate, 'full'),
+    })));
+    const candidates = playback
+      .filter(({ result }) => (result.manifest.status === 'ok' || result.manifest.status === 'not-applicable') && result.media.status === 'ok')
+      .map(({ candidate }) => candidate);
+    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},segment-verified=${candidates.length}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }

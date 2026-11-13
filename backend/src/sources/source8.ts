@@ -2,7 +2,7 @@
  * multilingual streams and reachable language-labelled dubs leave this adapter. No subtitle or embed proxy. */
 import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { cachedCandidateEvidence, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://core.vidzee.wtf';
@@ -66,11 +66,15 @@ export function createSource8Adapter(enabled: () => boolean): SourceAdapter {
     const start = Date.now();
     const raw = await fetchFromVidZee(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-    const usable = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
-      return !!evidence?.alive;
-    });
-    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},usable=${usable.length}` });
+    const reachable = verified.candidates.filter(c => !!cachedCandidateEvidence(c)?.alive).slice(0, 3);
+    const playback = await Promise.all(reachable.map(async candidate => ({
+      candidate,
+      result: await diagnoseCandidatePlayback(candidate, 'full'),
+    })));
+    const usable = playback
+      .filter(({ result }) => result.manifest.status === 'ok' && result.media.status === 'ok')
+      .map(({ candidate }) => candidate);
+    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},segment-verified=${usable.length}` });
     return { candidates: usable.map(c => query.diag ? { ...c, diagnosticLane: 'Z' } : c) };
   } };
 }

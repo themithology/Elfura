@@ -202,7 +202,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       vidstuckOrigin: '',
     },
     source3: {
-      enabled: env.SOURCE3_ENABLED !== '0',
+      enabled: env.SOURCE3_ENABLED === '1',
       // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
       // used to be an internal Source 1 lane before becoming Source 3.
       origin: (
@@ -212,18 +212,21 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         'https://vidsync.pro'
       ).replace(/\/+$/, ''),
     },
-    source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
-    source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
-    source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
-    source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
-    source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
-    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED !== '0' },
+    // Only sources with a live upstream+media validation remain on by default.
+    // Other experimental lanes require an explicit opt-in until they pass the
+    // live-source coverage matrix from the deployment environment.
+    source4: { enabled: env.ELFURA_BINGR_ENABLED === '1' },
+    source5: { enabled: env.ELFURA_NXSHA_ENABLED === '1' },
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
+    source8: { enabled: env.ELFURA_VIDZEE_ENABLED === '1' },
+    source9: { enabled: env.ELFURA_VIXSRC_ENABLED === '1' },
+    source10: { enabled: env.ELFURA_VIDNEST_ENABLED === '1' },
+    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED === '1' },
     source12: { enabled: env.ELFURA_VIDZEN_ENABLED !== '0' },
-    source13: { enabled: env.ELFURA_XPASS_ENABLED !== '0' },
+    source13: { enabled: env.ELFURA_XPASS_ENABLED === '1' },
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
-    source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
-    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
+    source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },
+    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
