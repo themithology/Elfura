@@ -36,7 +36,7 @@ function object(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 }
 function cleanHeaders(input: unknown): Record<string,string> {
-  const result: Record<string,string> = { 'User-Agent': UA, Referer: PLAYER + '/' };
+  const result: Record<string,string> = { 'User-Agent': UA, Referer: PLAYER + '/', Origin: PLAYER };
   for (const [key, value] of Object.entries(object(input) ?? {})) {
     if (!/^(referer|origin|user-agent)$/i.test(key) || typeof value !== 'string' || value.length > 2048 || /[\r\n]/.test(value)) continue;
     if (/^(referer|origin)$/i.test(key) && !isSafeUpstreamUrl(value)) continue;

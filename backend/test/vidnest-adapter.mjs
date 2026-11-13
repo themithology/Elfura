@@ -39,7 +39,7 @@ globalThis.fetch=async(input,opts)=>{
 try {
  const q={type:'movie',tmdbId:'693134'};
  const raw=await fetchFromVidNest(q);assert.equal(raw.length,3);assert.equal(raw[0].audioLang,'hi');
- assert.equal(raw[0].headers.Referer,'https://safe.example/');assert(!('Authorization' in raw[0].headers));
+ assert.equal(raw[0].headers.Referer,'https://safe.example/');assert.equal(raw[0].headers.Origin,'https://vidnest.fun');assert(!('Authorization' in raw[0].headers));
  assert.deepEqual(lanes.sort(),['allmovies','moviebox','nextgencloudfabric','onehd','vidlink','vidzee']);
  const diag=[];const result=await createSource10Adapter(()=>true).resolve({...q,diag});
  assert.equal(result.candidates.length,3);assert.equal(result.candidates[0].audioLang,'hi');
