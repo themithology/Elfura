@@ -127,3 +127,4 @@ jobs:
           AUDIT_SOURCES: ${{ matrix.sources }}
           AUDIT_MAX_RESOLVE_MS: '18000'
           AUDIT_REQUIRE_MULTI_LANG: '0'
+          AUDIT_ALLOW_UNAVAILABLE: '1'

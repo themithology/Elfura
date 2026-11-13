@@ -26,6 +26,8 @@ const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2,source-3'
 const MAX_RESOLVE_MS = Math.max(0, Number(process.env.AUDIT_MAX_RESOLVE_MS || 0));
 /** Fail unless at least one advertised option carries real multi-language evidence. */
 const REQUIRE_MULTI_LANG = process.env.AUDIT_REQUIRE_MULTI_LANG === '1';
+/** Treat a provider's title-specific no-match (HTTP 404) as unavailable, not broken media. */
+const ALLOW_UNAVAILABLE = process.env.AUDIT_ALLOW_UNAVAILABLE === '1';
 const REQUEST_TIMEOUT_MS = 20_000;
 const browserHeaders = {
   Origin: 'https://audit.elfura.invalid',
@@ -349,11 +351,17 @@ try {
         console.error(`[fail] ${sourceId}: no manifest evidence of multiple audio tracks`);
       }
     } catch (error) {
-      failed++;
       const message = error instanceof Error ? error.message : String(error);
-      report.push({ id: sourceId, ok: false, error: message });
-      console.error(`[fail] ${message}`);
-      annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${sourceId}: ${message}`);
+      const unavailable = ALLOW_UNAVAILABLE && /resolution failed \(404\)$/.test(message);
+      report.push({ id: sourceId, ok: false, status: unavailable ? 'unavailable' : 'failed', error: message });
+      if (unavailable) {
+        console.warn(`[unavailable] ${message}`);
+        annotate('warning', 'ElfuraUnavailable', `${TITLE_LABEL} ${sourceId}: ${message}; no title match from this provider`);
+      } else {
+        failed++;
+        console.error(`[fail] ${message}`);
+        annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${sourceId}: ${message}`);
+      }
     }
   }
 } finally {
