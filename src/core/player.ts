@@ -83,7 +83,6 @@ export interface SourceOption {
   latencyHintMs?: number;
   audioLang?: string;
   /** Provider-declared source mode; separate from verified audioLang/audioTracks. */
-  audioVariant?: 'sub' | 'dub';
   availableAudioLangs?: string[];
   multiAudio?: boolean;
   audioTracks: { lang: string; label: string; url: string }[];
@@ -938,7 +937,7 @@ export class ElfuraPlayer {
           const sessRes = await fetch(sessionUrl.toString(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: cfg.mediaType || 'movie', tmdb: String(cfg.tmdb), ...(cfg.anilist ? { anilist: String(cfg.anilist) } : {}) }),
+            body: JSON.stringify({ type: cfg.mediaType || 'movie', tmdb: String(cfg.tmdb),  }),
             signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3500)]),
           });
           if (sessRes.ok) {
@@ -956,11 +955,9 @@ export class ElfuraPlayer {
       const storedLang = !cfg.lang ? loadPreferredAudio() : null;
       const bootLang = cfg.lang ? String(cfg.lang) : storedLang;
 
-      apiUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
+      apiUrl.searchParams.set('type', cfg.mediaType || 'movie');
       apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
-      if (cfg.anilist) apiUrl.searchParams.set('anilist', String(cfg.anilist));
-      if (cfg.anilist && cfg.anilistEpisode !== undefined) apiUrl.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
-      if ((cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) === 'tv') {
+      if ((cfg.mediaType || 'movie') === 'tv') {
         apiUrl.searchParams.set('s', String(cfg.season ?? 1));
         apiUrl.searchParams.set('e', String(cfg.episode ?? 1));
       }
@@ -1100,7 +1097,7 @@ export class ElfuraPlayer {
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
       for (const recoveryId of lateGroups) {
-        const snapshot = `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+        const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
         const recoveryUrl = new URL(apiUrl);
         recoveryUrl.searchParams.set('source', recoveryId);
         void (async () => {
@@ -1118,7 +1115,7 @@ export class ElfuraPlayer {
             const recovered = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
               ? await openSealedEnvelope<PlaybackPayloadShape>(raw.p, String(cfg.pltoken), String(cfg.nonce))
               : raw;
-            if (!isCurrent() || snapshot !== `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
+            if (!isCurrent() || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}` || (cfg.source && cfg.source !== recoveryId)) return;
             const fingerprints = new Set(this.sources.map((s) => s.fingerprint).filter(Boolean));
             const ids = new Set(this.sources.map((s) => s.id));
             let added = false;
@@ -2021,13 +2018,6 @@ export class ElfuraPlayer {
       apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
       apiUrl.searchParams.set('s', String(target.season));
       apiUrl.searchParams.set('e', String(target.episode));
-      if (cfg.anilist) {
-        apiUrl.searchParams.set('anilist', String(cfg.anilist));
-        if (cfg.anilistEpisode !== undefined) {
-          const anilistOffset = cfg.anilistEpisode - Number(cfg.episode ?? 1);
-          apiUrl.searchParams.set('anilistEpisode', String(Math.max(1, target.episode + anilistOffset)));
-        }
-      }
       if (cfg.source) apiUrl.searchParams.set('source', String(cfg.source));
       const prefLang =
         this.desiredAudioLang ??
@@ -2095,11 +2085,9 @@ export class ElfuraPlayer {
     const cfg = this.input.config;
     const season = Math.max(1, Math.floor(Number(seasonInput) || 1));
     const episode = Math.max(1, Math.floor(Number(episodeInput) || 1));
-    const anilistEpisodeOffset = cfg.anilistEpisode === undefined ? null : cfg.anilistEpisode - Number(cfg.episode ?? 1);
     cfg.mediaType = 'tv';
     cfg.season = season;
     cfg.episode = episode;
-    if (anilistEpisodeOffset !== null) cfg.anilistEpisode = Math.max(1, episode + anilistEpisodeOffset);
     cfg.title = undefined;
     cfg.intro = undefined;
     cfg.outro = undefined;
@@ -2110,7 +2098,6 @@ export class ElfuraPlayer {
       const m = window.location.pathname.match(/^(\/embed\/tv\/[^/]+)\/\d+\/\d+(\/?)$/);
       if (m) {
         const nextUrl = new URL(`${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`, window.location.href);
-        if (cfg.anilistEpisode !== undefined) nextUrl.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
         window.history.replaceState(null, '', nextUrl);
       }
     } catch {
@@ -2679,7 +2666,7 @@ export class ElfuraPlayer {
     if (this.exhaustedRecoveryAttempted || !cfg.tmdb) { terminal(); return; }
     this.exhaustedRecoveryAttempted = true;
     this.exhaustedRecoveryInFlight = true;
-    const snapshot = `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
+    const snapshot = `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     const recoveryLoadSeq = this.engineLoadSeq;
     const groups = cfg.source ? [String(cfg.source)] : this.sourceGroups;
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -2690,11 +2677,9 @@ export class ElfuraPlayer {
       await Promise.all(groups.map(async group => {
         try {
           const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
-          url.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
+          url.searchParams.set('type', cfg.mediaType || 'movie');
           url.searchParams.set('tmdb', String(cfg.tmdb));
-          if (cfg.anilist) url.searchParams.set('anilist', String(cfg.anilist));
-          if (cfg.anilist && cfg.anilistEpisode !== undefined) url.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
-          if ((cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
+          if ((cfg.mediaType || 'movie') === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
           url.searchParams.set('source', group);
           if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
           if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
@@ -2704,7 +2689,7 @@ export class ElfuraPlayer {
           const data = raw.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
             ? await openSealedEnvelope<{ sources?: SourceOption[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce)) : raw;
           const candidates = (data.sources ?? []).filter(c => c.sourceId === group);
-          if (activated || this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
+          if (activated || this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
 
       const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
       const ids = new Set(this.sources.map(s => s.id));
@@ -2731,7 +2716,7 @@ export class ElfuraPlayer {
       void this.activateSourceOption(next, true);
         } catch { /* another provider may still succeed */ }
       }));
-      if (!activated && !this.destroyed && recoveryLoadSeq === this.engineLoadSeq && snapshot === `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) {
+      if (!activated && !this.destroyed && recoveryLoadSeq === this.engineLoadSeq && snapshot === `${cfg.tmdb}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) {
         this.exhaustedRecoveryInFlight = false;
         terminal();
       }

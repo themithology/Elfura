@@ -15,10 +15,8 @@ const TMDB_ID = process.env.AUDIT_TMDB || '65942';
 const TYPE = (process.env.AUDIT_TYPE || 'tv').trim().toLowerCase() === 'movie' ? 'movie' : 'tv';
 const SEASON = process.env.AUDIT_SEASON || '1';
 const EPISODE = process.env.AUDIT_EPISODE || '1';
-const ANILIST_ID = (process.env.AUDIT_ANILIST_ID || '').trim();
-const ANILIST_EPISODE = process.env.AUDIT_ANILIST_EPISODE || EPISODE;
 const TITLE_LABEL = process.env.AUDIT_TITLE || 'Re:Zero S1E1';
-const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2,source-3')
+const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2,source-8,source-14')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -276,10 +274,7 @@ async function resolveSource(sourceId) {
   const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
   // 'combined' = the real user path: no source filter, both adapters race.
   const sourceQuery = sourceId === 'combined' ? '' : `&source=${sourceId}`;
-  const anilistQuery = ANILIST_ID
-    ? `&anilist=${encodeURIComponent(ANILIST_ID)}&anilistEpisode=${encodeURIComponent(ANILIST_EPISODE)}`
-    : '';
-  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}${sourceQuery}${anilistQuery}${AUDIT_LANG ? `&lang=${encodeURIComponent(AUDIT_LANG)}` : ''}`;
+  const playbackUrl = `${apiBase}/api/v1/playback?type=${TYPE}&tmdb=${TMDB_ID}${seasonQuery}${sourceQuery}${AUDIT_LANG ? `&lang=${encodeURIComponent(AUDIT_LANG)}` : ''}`;
   const t0 = performance.now();
   const res = await fetchWithTimeout(playbackUrl);
   const resolveMs = Math.round(performance.now() - t0);

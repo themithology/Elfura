@@ -39,8 +39,6 @@ export interface ElfuraConfig {
   src?: string;
   type?: 'auto' | 'hls' | 'dash' | 'mp4';
   tmdb?: string;
-  anilist?: string;
-  anilistEpisode?: number;
   mediaType?: 'movie' | 'tv';
   season?: number;
   episode?: number;
@@ -199,9 +197,6 @@ export function resolveInput(
     (parsed.seen.has('season') || parsed.seen.has('episode')) &&
     merged.tmdb
   ) {
-    merged.mediaType = 'tv';
-  }
-  if (merged.anilist && !parsed.seen.has('mediaType') && !parsed.seen.has('type') && js.mediaType === undefined) {
     merged.mediaType = 'tv';
   }
 

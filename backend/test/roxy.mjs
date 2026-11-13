@@ -1,13 +1,5 @@
-process.env.ELFURA_MAPPLE_ENABLED = '0';
 process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
-process.env.ELFURA_XPASS_ENABLED = '0';
-process.env.ELFURA_VIDZEN_ENABLED = '0';
-process.env.ELFURA_VAPLAYER_ENABLED = '0';
-process.env.ELFURA_VIDNEST_ENABLED = '0';
-process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
 process.env.ELFURA_VIDZEE_ENABLED = '0';
-process.env.ELFURA_VIXSRC_ENABLED = '0';
-process.env.ELFURA_NXSHA_ENABLED = '0';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -20,11 +12,10 @@ new Function(ROXY_PAGE.match(/<script>([\s\S]*)<\/script>/)[1]);
 const adminSourceList = roxySourceWebsites(loadBackendConfig({
   ELFURA_SECRET: 'admin-source-test-secret',
   ELFURA_RIVE_CITADEL_ENABLED: '1',
-  ELFURA_MAPPLE_ENABLED: '1',
+  ELFURA_STREMIO_ADDONS: '["https://streams.example/manifest.json"]',
 }));
 assert(adminSourceList.some(site => site.id === 'citadel' && site.source === 'Source 14'));
-assert(adminSourceList.some(site => site.id === 'mapple' && site.source === 'Source 15'));
-assert(!adminSourceList.some(site => site.id === 'desidub' || site.id === 'anikoto' || site.id === 'anivexa'), 'operator website checks do not claim playback verification for bundled aggregators');
+assert(adminSourceList.some(site => site.id === 'stremio-1' && site.source === 'Source 17'));
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
 const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};

@@ -12,7 +12,7 @@ execFileSync(ffmpeg.path,['-loglevel','error','-filter_threads','1','-threads','
 const media=readFileSync(path.join(tmp,'segment.ts'));
 const {server}=createBackendServer({isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`;let browser;
-const stream={id:'source-3:1',sourceId:'source-3',label:'Source 3',type:'hls',url:'/fixture/slow.m3u8',quality:'auto',fingerprint:'slow-1',audioTracks:[],subtitles:[]};
+const stream={id:'source-14:1',sourceId:'source-14',label:'Source 14',type:'hls',url:'/fixture/slow.m3u8',quality:'auto',fingerprint:'slow-1',audioTracks:[],subtitles:[]};
 const out=[];
 try {
  for(const mode of ['slow-media','retry-late-api']) {
@@ -38,7 +38,7 @@ try {
   if(mode==='slow-media') {
    await page.waitForFunction(()=>window.__elfura.player.video.currentTime>0.1,null,{timeout:10000});
    after=await page.evaluate(()=>({time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,visible:document.querySelector('.elf-unavailable-screen')?.dataset.visible}));
-   if(after.source!=='source-3'||after.visible!=='false')throw Error('slow valid stream did not resume');
+   if(after.source!=='source-14'||after.visible!=='false')throw Error('slow valid stream did not resume');
   } else {
    await page.click('.elf-state-retry');
    await page.waitForFunction(()=>document.querySelector('.elf-shell')?.dataset.unavailable==='true',null,{timeout:5000});

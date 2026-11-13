@@ -59,7 +59,6 @@ Key parameters (full list: `Elfura.schemaDocs()`):
 | Param | Type | Example | Purpose |
 |---|---|---|---|
 | `tmdb` | id | `94605` | TMDB ID used by the standard playback sources |
-| `anilist` | id | `16498` | AniList ID used by bundled Anivexa; provide this alongside `tmdb` to load and prioritize anime sources |
 | `mediaType` | enum | `tv` | `movie` or `tv` (also accepts `?type=movie\|tv` or `/embed/tv/:id/:s/:e`) |
 | `season` / `episode` | int | `s=1&e=1` | 1-based season & episode for `tv` playback |
 | `source` | id | `source-1` | pin a preferred uniform source adapter |
@@ -82,6 +81,10 @@ Key parameters (full list: `Elfura.schemaDocs()`):
 
 Time and colour coercion is forgiving by design (`ARGB` hex, `mm:ss`, bare
 seconds all work) because embed builders emit inconsistent values in the wild.
+
+## Optional Stremio add-ons
+
+A user-configured Stremio-compatible aggregator can be queried through the backend bridge. Set `ELFURA_STREMIO_ADDONS` to a JSON array of HTTPS addon manifest/base URLs (up to eight), for example `ELFURA_STREMIO_ADDONS='["https://your-aiostreams.example/manifest.json"]'`. Use your own configured AIOStreams or MediaFusion instance; Elfura does not ship public instance URLs or execute addon code. Only direct HLS, DASH, and MP4 URLs are accepted—torrent and host-resolver records are ignored. This optional source is disabled when the setting is empty, and returned streams still require live media validation.
 
 ## 2. Multi-language audio
 
@@ -195,7 +198,7 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
 - **Clean TMDB Embed URLs:**
   - Movie: `/embed/movie/:tmdbId` or `/embed?tmdb=:tmdbId&type=movie`
   - TV Episode: `/embed/tv/:tmdbId/:season/:episode` or `/embed?tmdb=:tmdbId&type=tv&s=1&e=1`
-  - Anime episode with AniList-aware providers prioritized: `/embed?tmdb=:tmdbId&anilist=:anilistId&type=tv&s=1&e=1`
+  - Anime episodes use the standard TMDB TV route: `/embed/tv/:tmdbId/:season/:episode`
 - **Single Uniform Endpoint (`GET/POST /api/v1/playback`):** Resolves TMDB metadata (from your self-hosted `TMDB_API_BASE`) + modular `SourceAdapter` streams into one uniform schema with zero upstream provider names or raw CDN URLs exposed, wrapped in an **AES-256-GCM Sealed Playback Envelope** (`X-Elfura-Envelope: 1`) so DevTools Network Preview and copied cURL commands only see ciphertext.
 - **Smart Hybrid Stream Relay (`GET /api/v1/stream?t=<ticket>`, `RELAY_MODE=hybrid`):** Encrypts upstream URLs and required `Referer`/`Origin` headers inside AES-256-GCM tickets, always relays manifests/subtitles/keys and header-locked or source-identifying streams in memory with zero disk writes, and offloads verified anonymous CORS-safe HTTPS video segments directly to edge CDNs (keeping Cloudflare Proxy & 2 GB RAM Pterodactyl containers safe at scale, with automatic `&p=1` backend-tunnel failover if a viewer's ISP blocks an external CDN).
 - **Pterodactyl Ready (`elfura-pterodactyl.zip`):** Upload `elfura-pterodactyl.zip` to `/home/container` in Pterodactyl's **Files** tab and click **Unarchive** (flat-root archive — extracts directly into `/home/container` with pre-built `dist/` and zero heavy `node_modules`). Edit `.env` (or Startup variables) with `ELFURA_SECRET`, `TMDB_API_BASE`, and `ALLOWED_ORIGINS`, keep `MAIN_FILE=index.js` (also supports `index.ts`, `server.js`, `app.js`, `main.js`, `bot.js`, `start.js`, and ParkerCP's `ts-node --esm` Node 24 Egg), and click **Start**.
@@ -220,7 +223,7 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1–16 adapters (16 bundled Anivexa anime aggregator; pass both `tmdb` and `anilist` for anime playback)
+backend/src/sources/      isolated SourceAdapter registry and the four retained source groups (1, 2, 8, 14)
 ```
 
 ## Roxy operator dashboard

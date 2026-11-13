@@ -76,7 +76,7 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
 1. **Self-Hosted TMDB Primary Identity & Zero-Outage Fallback:**
    - Titles are addressed by TMDB ID (`movie` or `tv` with `season` & `episode`), resolved first through our self-hosted TMDB API (`TMDB_API_BASE`) and automatically falling back across `api.themoviedb.org/3` / `api.tmdb.org/3` in both `fetchTmdbMetadata` and `fetchTmdbSeasonEpisodes` if `TMDB_API_BASE` is unset or unreachable.
 2. **Plug-and-Play Multi-Cluster Source Isolation & Circuit Breakers:**
-   - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
+   - The public registry exposes only retained, live-audit-selected source groups 1, 2, 8, and 14. Keep each adapter isolated behind the shared `SourceAdapter` interface and retain bounded timeouts and network-safety checks; do not reintroduce removed integrations without fresh evidence and explicit user direction.
    - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
    - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
 

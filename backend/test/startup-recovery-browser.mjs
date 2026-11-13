@@ -14,7 +14,7 @@ try { execFileSync(ffmpeg.path,['-loglevel','error','-filter_threads','1','-thre
 const media=readFileSync(path.join(tmp,'segment.ts'));
 const cfg=loadBackendConfig();const {server}=createBackendServer({...cfg,isProd:false,requireToken:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`;let browser,page;
-const dead={id:'source-3:1',sourceId:'source-3',label:'Source 3',type:'hls',url:'/fixture/dead.m3u8',quality:'auto',fingerprint:'dead-1',audioTracks:[],subtitles:[]};
+const dead={id:'source-14:1',sourceId:'source-14',label:'Source 14',type:'hls',url:'/fixture/dead.m3u8',quality:'auto',fingerprint:'dead-1',audioTracks:[],subtitles:[]};
 const good={...dead,id:'source-2:1',sourceId:'source-2',label:'Source 2',url:'/fixture/good.m3u8',fingerprint:'good-2'};
 const mode=process.env.RECOVERY_MODE||'recover';let requests=[];
 try {
@@ -25,7 +25,7 @@ try {
  if(mode==='recover')await page.waitForFunction(()=>window.__elfura?.player?.currentSource?.sourceId==='source-2'&&window.__elfura.player.video.currentTime>1,null,{timeout:30000});
  else await page.waitForFunction(()=>document.querySelector('.elf-shell')?.dataset.unavailable==='true',null,{timeout:30000});
  const state=await page.evaluate(()=>({source:window.__elfura.player.currentSource?.sourceId,time:window.__elfura.player.video.currentTime,ready:window.__elfura.player.video.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable}));
- if(state.loading==='true'||!requests.includes('source-2')||!requests.includes('source-1')||(mode==='unavailable'&&!requests.includes('source-3')))throw new Error('missing bounded recovery');
+ if(state.loading==='true'||!requests.includes('source-2')||!requests.includes('source-1')||(mode==='unavailable'&&!requests.includes('source-14')))throw new Error('missing bounded recovery');
  console.log('::notice title=StartupRecovery::'+JSON.stringify({mode,ok:true,state,requests}));
 }catch(e){const state=await page?.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId,time:window.__elfura?.player?.video?.currentTime,ready:window.__elfura?.player?.video?.readyState,loading:document.querySelector('.elf-shell')?.dataset.initialLoading,unavailable:document.querySelector('.elf-shell')?.dataset.unavailable})).catch(()=>null);console.log('::notice title=StartupRecovery::'+JSON.stringify({mode,ok:false,error:e.name,state,requests}));process.exitCode=1;}
 finally{await browser?.close();await new Promise(r=>server.close(r));rmSync(tmp,{recursive:true,force:true});}

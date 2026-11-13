@@ -1,5 +1,7 @@
 # FlixFun upstream audit
 
+> Historical research archive. Its implementation-status notes reflect earlier dates and are not the current code inventory. As of 2026-11-04 only source groups 1, 2, 8, and 14 remain registered; source adapters, toggles, provider-specific tests, and player controls for the other integrations have been removed. Refer to `aethoflix-inventory.md` for the current status and validation caveat.
+
 Goal: trace the embed players listed by FlixFun to actual media candidates for Elfura, focusing on real language availability. An embed, a website responding, a provider's label, or an M3U8 URL is **not** proof of playable multilingual media. No provider in this audit has been newly integrated or fully browser-playback-tested here. Do not add Vidara or OFC.
 
 ## Scope

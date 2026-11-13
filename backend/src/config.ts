@@ -52,35 +52,16 @@ export interface BackendConfig {
     riftOrigin: string;
     vidboltOrigin?: string;
     riftRelay: string;
-    syncOrigin: string;
     vidrockOrigin?: string;
   };
-  /** Source 2 configurable endpoints (kept purely server-side). */
-  source2: {
-    enabled: boolean;
-    embedOrigin: string;
-    defaultServer: string;
-    nxshaOrigin?: string;
-    vidstuckOrigin?: string;
-  };
-  /** Source 3 configurable endpoint (kept purely server-side). */
-  source3: {
-    enabled: boolean;
-    origin: string;
-  };
-
-  source5?: { enabled: boolean };
-  /** Experimental additional source controls. */
-  source7?: { enabled: boolean };
+  /** Live-verified Source 8 VidZee control. */
   source8?: { enabled: boolean };
-  source9?: { enabled: boolean };
-  source10?: { enabled: boolean };
-  source11?: { enabled: boolean };
-  source12?: { enabled: boolean };
-  source13?: { enabled: boolean };
+  /** Live-verified Source 14 Citadel control. */
   source14?: { enabled: boolean };
-  source15?: { enabled: boolean };
-  source16?: { enabled: boolean };
+  /** User-configured Stremio-compatible addon manifest/base URLs (JSON array). */
+  stremioAddons: string[];
+  /** Embed69 adapter opt-in; off until the operator enables it. */
+  source18: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -151,6 +132,17 @@ function readDotEnvOverlay(): Record<string, string> {
   return out;
 }
 
+function parseStremioAddonUrls(raw?: string): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length <= 2048).map(item => item.trim()))].slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
   const env: NodeJS.ProcessEnv = envInput ?? {
     ...readDotEnvOverlay(),
@@ -187,43 +179,12 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
       vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
-      syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
-    // Legacy Source 2 configuration is retained in the type only; old panel
-    // environment variables must never reactivate the removed providers.
-    source2: {
-      enabled: false,
-      embedOrigin: '',
-      defaultServer: 'orion',
-      nxshaOrigin: '',
-      vidstuckOrigin: '',
-    },
-    source3: {
-      enabled: env.SOURCE3_ENABLED === '1',
-      // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
-      // used to be an internal Source 1 lane before becoming Source 3.
-      origin: (
-        env.SOURCE3_ORIGIN ||
-        env.VIDSYNC_ORIGIN ||
-        env.SOURCE1_SYNC_ORIGIN ||
-        'https://vidsync.pro'
-      ).replace(/\/+$/, ''),
-    },
-    // Only sources with a live upstream+media validation remain on by default.
-    // Other experimental lanes require an explicit opt-in until they pass the
-    // live-source coverage matrix from the deployment environment.
-    source5: { enabled: env.ELFURA_NXSHA_ENABLED === '1' },
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
-    source9: { enabled: env.ELFURA_VIXSRC_ENABLED === '1' },
-    source10: { enabled: env.ELFURA_VIDNEST_ENABLED === '1' },
-    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED === '1' },
-    source12: { enabled: env.ELFURA_VIDZEN_ENABLED === '1' },
-    source13: { enabled: env.ELFURA_XPASS_ENABLED === '1' },
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
-    source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },
-    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED === '1' },
+    stremioAddons: parseStremioAddonUrls(env.ELFURA_STREMIO_ADDONS),
+    source18: { enabled: env.ELFURA_EMBED69_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

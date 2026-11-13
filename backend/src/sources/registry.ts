@@ -15,18 +15,10 @@ import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
-import { createSource3Adapter } from './source3.js';
-import { createSource5Adapter } from './source5.js';
-import { createSource7Adapter } from './source7.js';
 import { createSource8Adapter } from './source8.js';
-import { createSource9Adapter } from './source9.js';
-import { createSource10Adapter } from './source10.js';
-import { createSource11Adapter } from './source11.js';
-import { createSource12Adapter } from './source12.js';
-import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
-import { createSource15Adapter } from './source15.js';
-import { createSource16Adapter } from './source16.js';
+import { createStremioAddonAdapter } from './source17.js';
+import { createSource18Adapter } from './source18.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -69,18 +61,10 @@ export class SourceRegistry {
         },
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
-      createSource3Adapter(cfg.source3),
-      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
-      createSource7Adapter(() => cfg.source7?.enabled ?? false),
-      createSource8Adapter(() => cfg.source8?.enabled ?? false),
-      createSource9Adapter(() => cfg.source9?.enabled ?? false),
-      createSource10Adapter(() => cfg.source10?.enabled ?? false),
-      createSource11Adapter(() => cfg.source11?.enabled ?? false),
-      createSource12Adapter(() => cfg.source12?.enabled ?? false),
-      createSource13Adapter(() => cfg.source13?.enabled ?? false),
-      createSource14Adapter(() => cfg.source14?.enabled ?? false),
-      createSource15Adapter(() => cfg.source15?.enabled ?? false),
-      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
+      createSource8Adapter(() => cfg.source8?.enabled ?? true),
+      createSource14Adapter(() => cfg.source14?.enabled ?? true),
+      createStremioAddonAdapter(cfg.stremioAddons ?? []),
+      createSource18Adapter(() => cfg.source18?.enabled ?? false),
     ];
   }
 
@@ -98,16 +82,12 @@ export class SourceRegistry {
     tmdbId: string;
     season?: number;
     episode?: number;
-    anilistId?: string;
-    anilistEpisode?: number;
     preferredLang?: string;
   }) {
     const diag: import('./types.js').DiagEntry[] = [];
     const query: SourceQuery = {
       type: params.type,
       tmdbId: params.tmdbId,
-      anilistId: params.anilistId,
-      anilistEpisode: params.anilistEpisode,
       season: params.season,
       episode: params.episode,
       preferredLang: params.preferredLang,
@@ -339,14 +319,12 @@ export class SourceRegistry {
     season?: number;
     episode?: number;
     sourceId?: string;
-    anilistId?: string;
-    anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
-    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : 4800);
+    const deadline = resolveStartedAt + 4800;
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
@@ -387,8 +365,6 @@ export class SourceRegistry {
     const query: SourceQuery = {
       type: params.type,
       tmdbId: params.tmdbId,
-      anilistId: params.anilistId,
-      anilistEpisode: params.anilistEpisode,
       season: params.season,
       episode: params.episode,
       preferredLang: params.preferredLang,
@@ -408,7 +384,7 @@ export class SourceRegistry {
 
     const cacheKeys = activeAdapters.map(
       (adapter) =>
-        `${adapter.id}:${params.type}:${params.tmdbId}:${params.anilistId ?? ''}:${params.anilistEpisode ?? 0}:${params.season ?? 0}:${params.episode ?? 0}`,
+        `${adapter.id}:${params.type}:${params.tmdbId}:${params.season ?? 0}:${params.episode ?? 0}`,
     );
     // Segment lookup is deliberately independent of the adapter race. A fast
     // Source 2 response must not discard Source 1's slower intro/outro metadata.
@@ -483,17 +459,7 @@ export class SourceRegistry {
 
     let verifiedBatch = await verifyCurrentSlots();
 
-    // An AniList lookup must not let Anivexa monopolize the startup window.
-    // If no candidate has verified yet, give every outstanding adapter most of
-    // the remaining budget; if playback is already verified, allow a short
-    // grace period for the standard sources to join the response.
-    if (params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
-      const waitBudget = verifiedBatch.verifiedLive > 0
-        ? Math.min(3000, Math.max(0, remaining() - 1300))
-        : Math.max(0, remaining() - 1300);
-      await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
-      verifiedBatch = await verifyCurrentSlots();
-    } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+    if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
     }
@@ -593,19 +559,11 @@ export class SourceRegistry {
       if (n === 1 || (o.quality && o.quality !== 'auto')) return 1;
       return 2;
     };
-    const animeVariantTier = (o: UniformStreamOption, language?: string): number => {
-      if (!o.audioVariant) return 2;
-      const primary = language ? normalizeLang(language).code.split('-')[0] : '';
-      const preferred = primary === 'en' ? 'dub' : 'sub';
-      return o.audioVariant === preferred ? 0 : 1;
-    };
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
-          Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
-          qualityTierOf(a) - qualityTierOf(b) ||
-          animeVariantTier(a) - animeVariantTier(b),
+          qualityTierOf(a) - qualityTierOf(b),
       );
     }
 
@@ -632,9 +590,7 @@ export class SourceRegistry {
         };
         uniformOptions.sort(
           (a, b) =>
-            Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
             scoreOpt(a) - scoreOpt(b) ||
-            animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
@@ -729,7 +685,6 @@ export class SourceRegistry {
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
-      ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,

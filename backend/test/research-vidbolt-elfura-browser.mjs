@@ -9,7 +9,6 @@ const dead='http://127.0.0.1:1';
 const {server,cfg}=createBackendServer({
   ...base, isProd:false, resolveTimeoutMs:10000,
   source1:{...base.source1,riftOrigin:dead,vidrockOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
-  source3:{...base.source3,enabled:false},
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const port=server.address().port;

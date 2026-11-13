@@ -4,7 +4,7 @@
  * Runs the real browser flow against a deployed Elfura origin:
  *   1. GET  /api/v1/catalog            (TMDB sanity)
  *   2. POST /api/v1/session            (mint pltoken, same UA throughout)
- *   3. GET  /api/v1/playback           (combined, source-1, source-2, source-3)
+ *   3. GET  /api/v1/playback           (combined, source-1, source-2, source-8, source-14)
  *   4. GET  primary stream manifest    (real manifest bytes via relay)
  * Reports only counts/labels/statuses via GitHub annotations — never URLs,
  * tokens, or provider identifiers.
@@ -71,7 +71,7 @@ const seasonQ = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
 let primaryUrl = '';
 let combinedUrls = [];
 if (token) {
-  for (const source of ['combined', 'source-1', 'source-2', 'source-3']) {
+  for (const source of ['combined', 'source-1', 'source-2', 'source-8', 'source-14']) {
     try {
       const srcQ = source === 'combined' ? '' : `&source=${source}`;
       const pb = await req(`/api/v1/playback?type=${TYPE}&tmdb=${TMDB}${seasonQ}${srcQ}`, {

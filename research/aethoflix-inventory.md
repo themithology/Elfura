@@ -2,6 +2,10 @@
 
 Audit: 6 November 2026. Research only; Aethoflix and the ZXC mirror are not production dependencies.
 
+## Current repository status (2026-11-04)
+
+Historical implementation notes below describe prior experiments and do not reflect the current registry. After the live-source coverage audit, only Source groups 1, 2, 8 (VidZee), and 14 (Rive Citadel) remain implemented and registered. All other numbered source adapters, their provider-specific tests, configuration switches, bundled Anivexa vendor code, and UI behavior have been removed. The audit sampled source candidates and media bytes; it did **not** verify sustained browser playback on the user's Pterodactyl deployment.
+
 ## All 31 advertised labels
 
 The family is what Aethoflix's current scan reports; it is a claim, not proof of the underlying CDN or an independent provider.
