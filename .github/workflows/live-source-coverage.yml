@@ -20,10 +20,10 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         include:
-          - name: Dune Part Two, all non-Anivexa sources
+          - name: Dune Part Two
             type: movie
             tmdb: '693134'
             season: '1'
@@ -31,7 +31,39 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
-          - name: Death Note S1E1, all sources
+          - name: Spider-Man Across the Spider-Verse
+            type: movie
+            tmdb: '872585'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
+          - name: Interstellar
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
+          - name: Re Zero S1E1
+            type: tv
+            tmdb: '65942'
+            season: '1'
+            episode: '1'
+            anilist: '21355'
+            anilist_episode: '1'
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,combined'
+          - name: Jujutsu Kaisen S1E1
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,combined'
+          - name: Death Note S1E1
             type: tv
             tmdb: '13916'
             season: '1'
@@ -39,6 +71,22 @@ jobs:
             anilist: '1535'
             anilist_episode: '1'
             sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,combined'
+          - name: Frieren S1E1
+            type: tv
+            tmdb: '209867'
+            season: '1'
+            episode: '1'
+            anilist: '154587'
+            anilist_episode: '1'
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,combined'
+          - name: Breaking Bad S1E1
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-1,source-2,source-3,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,combined'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
