@@ -70,7 +70,7 @@ jobs:
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            stremio_addons: '["https://nuviostreams.hayd.uk"]'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
             sources: 'source-17,combined'
           - name: Re Zero S1E1
             type: tv
