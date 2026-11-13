@@ -47,6 +47,23 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-1,source-8,source-14,source-18,combined'
+          - name: The Matrix Source 18
+            type: movie
+            tmdb: '603'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-18,combined'
+          - name: Dune Part Two Source 17 MediaFusion
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://mediafusion.elfhosted.com"]'
+            sources: 'source-17,combined'
           - name: Re Zero S1E1
             type: tv
             tmdb: '65942'
@@ -107,6 +124,7 @@ jobs:
           ELFURA_VIDZEE_ENABLED: '1'
           ELFURA_RIVE_CITADEL_ENABLED: '1'
           ELFURA_EMBED69_ENABLED: '1'
+          ELFURA_STREMIO_ADDONS: ${{ matrix.stremio_addons }}
           AUDIT_TYPE: ${{ matrix.type }}
           AUDIT_TMDB: ${{ matrix.tmdb }}
           AUDIT_SEASON: ${{ matrix.season }}
