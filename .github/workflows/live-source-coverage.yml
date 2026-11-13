@@ -55,14 +55,22 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-18,combined'
-          - name: Dune Part Two Source 17 MediaFusion
+          - name: Coco Source 18
+            type: movie
+            tmdb: '354912'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-18,combined'
+          - name: Dune Part Two Source 17 Nuvio Streams
             type: movie
             tmdb: '693134'
             season: '1'
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            stremio_addons: '["https://mediafusion.elfhosted.com"]'
+            stremio_addons: '["https://nuviostreams.hayd.uk"]'
             sources: 'source-17,combined'
           - name: Re Zero S1E1
             type: tv
