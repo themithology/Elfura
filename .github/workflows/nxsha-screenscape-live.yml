@@ -8,6 +8,7 @@ on:
       - backend/src/sources/source5.ts
       - backend/src/sources/source7.ts
       - backend/test/nuvio-adapters-live.mjs
+      - backend/test/live-manifest-link.mjs
       - .github/workflows/nxsha-screenscape-live.yml
 
 permissions:
