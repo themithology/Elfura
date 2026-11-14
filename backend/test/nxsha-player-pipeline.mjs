@@ -7,6 +7,7 @@ import { openStreamTicket } from '../../dist/backend/security.js';
 const originalFetch = globalThis.fetch;
 const queryProviders = [];
 const providerRequests = new Map();
+const relayedUpstreamHeaders = [];
 const config = loadBackendConfig({
   ELFURA_SECRET: 'nxsha-player-pipeline-test-secret',
   NODE_ENV: 'test',
@@ -32,7 +33,7 @@ const config = loadBackendConfig({
 
 // Exercise the actual production transport, registry, manifest-verification,
 // playback response and sealed-stream-ticket path without contacting providers.
-globalThis.fetch = async input => {
+globalThis.fetch = async (input, options = {}) => {
   const url = new URL(String(input));
   if (url.hostname === 'nxsha.space') {
     const request = nxDecode(url.searchParams.get('q'));
@@ -50,6 +51,7 @@ globalThis.fetch = async input => {
     return Response.json({ _hash: nxEncode({ sources: candidates }) });
   }
   if (url.hostname === 'cdn-fixture.example') {
+    relayedUpstreamHeaders.push(new Headers(options.headers));
     if (url.pathname === '/source5.m3u8') {
       // No language metadata: the provider's Hindi hint must not be presented as verified.
       return new Response('#EXTM3U\n#EXTINF:10,\nsegment.ts\n#EXT-X-ENDLIST', {
@@ -106,6 +108,13 @@ try {
   assert.equal(ticketOf(source5).l, undefined);
   assert.equal(ticketOf(source7).u, 'https://cdn-fixture.example/source7.m3u8');
   assert.equal(ticketOf(source7).l, 'en');
+  assert.equal(ticketOf(source7).h?.Referer, 'https://nxsha.space/',
+    'the sealed player ticket must retain the same Referer Nuvio sends to the CDN');
+  const relayed7 = await originalFetch(new URL(source7.url, base));
+  assert.equal(relayed7.status, 200, 'ScreenScape manifest must be fetched by Elfura’s player-facing relay');
+  await relayed7.text();
+  assert(relayedUpstreamHeaders.some(headers => headers.get('referer') === 'https://nxsha.space/'),
+    'the server-side relay must actually forward the Nxsha Referer, as Nuvio does');
   const relayed = await originalFetch(new URL(source5.url, base));
   assert.equal(relayed.status, 200, 'player-facing stream relay must fetch the sealed upstream manifest');
   const relayedManifest = await relayed.text();
