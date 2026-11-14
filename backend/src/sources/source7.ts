@@ -5,9 +5,10 @@ import { fetchFromNxsha, NXSHA_SERVER_PRIORITY } from './source5.js';
 import type { NxshaTransport } from './source5.js';
 import type { SourceAdapter } from './types.js';
 
-// Source 5 takes the first 12 available Nxsha lanes. ScreenScape takes the
-// next six from the same upstream list; this is genuinely additive and avoids
-// repeating Source 5's early lanes (as the previous hard-coded list did).
+// Nuvio's current ScreenScape plugin uses Nxsha's full server list. Elfura
+// bounds ScreenScape to the first six of Nuvio's empirically ranked prefix;
+// overlapping Source 5 is intentional because the tail lanes did not yield
+// manifest-reachable links in the live probes. Registry selection deduplicates URLs.
 
 export function createSource7Adapter(enabled: () => boolean, transport?: NxshaTransport): SourceAdapter {
   return { id: 'source-7', label: 'Source 7', enabled, async resolve(query) {
@@ -18,9 +19,9 @@ export function createSource7Adapter(enabled: () => boolean, transport?: NxshaTr
       : AbortSignal.timeout(4000);
     const candidates = await fetchFromNxsha(
       { ...query, signal: discoverySignal, diag: [], onLateResult: undefined },
-      NXSHA_SERVER_PRIORITY,
+      NXSHA_SERVER_PRIORITY.slice(0, 14),
       transport,
-      12,
+      0,
     );
     const verified = await verifyAndFilterCandidatesDetailed(candidates, query.signal);
     const usable = verified.candidates.filter(candidate => {

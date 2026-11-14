@@ -13,8 +13,9 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/
 let NX_PASS = '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120';
 // Nuvio's ScreenScape host hook (Skywave22/Plugins-TJ, commit
 // 643cb268eab2c62a9f6017ee8ae928e188d39715) lists these 14 as the servers
-// empirically returning links on NuvioTV, in preferred order. Keep them first;
-// Source 5 probes the first 12 and ScreenScape the next six, without overlap.
+// empirically returning links on NuvioTV, in preferred order. Both adapters
+// start from this evidence-backed prefix; ScreenScape reuses its top six as a
+// reliability fallback because the disjoint tail produced no live playback.
 // Remaining names come from that plugin's server catalogue. `ophim` is
 // explicitly excluded there as hard-subbed/page/embed-only.
 export const NXSHA_SERVER_PRIORITY = ['mhbox', 'awsind', 'rive-citadel', 'nitro', 'em-8', 'xdownloader', 'castle', 'k4khdhub', 'streamflix', 'vidapi', 'hdhub4u-direct', 'rive-flowcast', 'vixolity', 'k4khdhub-direct', 'rive-primevids', 'stvv', 'bdxs', 'watchout', 'showbox-online', 'purstream', 'rive-hindicast', 'mbox', 'imovr', 'yomovies', 'levi', 'toonstream', 'tamilblasters', 'hdhub4u', 'filmyfly', 'filmyfly-direct', 'moviesdrive', 'movone'];

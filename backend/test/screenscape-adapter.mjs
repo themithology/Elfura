@@ -15,7 +15,7 @@ globalThis.fetch = async input => {
       {scraper:'ophim'}, {scraper:'vidara'},
     ]}) });
     asked.push(q.provider);
-    const file = q.provider === 'vixolity' ? 'multi' : 'single';
+    const file = q.provider === NXSHA_SERVER_PRIORITY[0] ? 'multi' : 'single';
     return Response.json({ _hash: nxEncode({sources: [
       {url:`https://screen-fixture.example/${file}.m3u8`,type:'hls',label:'Hindi English Multi'},
       {url:'http://127.0.0.1/private.m3u8',type:'hls'},
@@ -42,9 +42,9 @@ try {
   assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
   const diag = [];
   const result = await createSource7Adapter(() => true, {preferCurl:false}).resolve({type:'movie',tmdbId:'693134',diag});
-  assert.deepEqual(asked.sort(), NXSHA_SERVER_PRIORITY.slice(12, 18).slice().sort());
-  assert.equal(asked.some(provider => NXSHA_SERVER_PRIORITY.slice(0, 12).includes(provider)), false,
-    'ScreenScape only calls the next six available Nxsha lanes after Source 5');
+  assert.deepEqual(asked.sort(), NXSHA_SERVER_PRIORITY.slice(0, 6).slice().sort());
+  assert(asked.every(provider => NXSHA_SERVER_PRIORITY.slice(0, 14).includes(provider)),
+    'ScreenScape stays within Nuvio’s empirically measured playable-server prefix');
   assert.equal(asked.includes('ophim'), false, 'skip the provider the upstream ScreenScape plugin excludes');
   assert.equal(result.candidates.length, 2);
   const english = result.candidates.find(candidate => candidate.audioLang === 'en');

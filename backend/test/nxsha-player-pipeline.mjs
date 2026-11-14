@@ -6,6 +6,7 @@ import { openStreamTicket } from '../../dist/backend/security.js';
 
 const originalFetch = globalThis.fetch;
 const queryProviders = [];
+const providerRequests = new Map();
 const config = loadBackendConfig({
   ELFURA_SECRET: 'nxsha-player-pipeline-test-secret',
   NODE_ENV: 'test',
@@ -39,9 +40,11 @@ globalThis.fetch = async input => {
       return Response.json({ _hash: nxEncode({ servers: NXSHA_SERVER_PRIORITY.slice(0, 18).map(scraper => ({ scraper })) }) });
     }
     queryProviders.push(request.provider);
+    const providerCount = (providerRequests.get(request.provider) || 0) + 1;
+    providerRequests.set(request.provider, providerCount);
     const candidates = request.provider === 'nitro'
       ? [{ url: 'https://cdn-fixture.example/source5.m3u8', type: 'hls', label: 'Hindi', language: 'Hindi' }]
-      : request.provider === 'vixolity'
+      : request.provider === NXSHA_SERVER_PRIORITY[0] && providerCount > 1
         ? [{ url: 'https://cdn-fixture.example/source7.m3u8', type: 'hls', label: 'English' }]
         : [];
     return Response.json({ _hash: nxEncode({ sources: candidates }) });
@@ -109,9 +112,8 @@ try {
   assert.match(relayedManifest, /^#EXTM3U/);
   assert.match(relayedManifest, /\/api\/v1\/stream\?t=/, 'rewrite relative media segments back through the relay');
   assert(queryProviders.includes('nitro'));
-  assert(queryProviders.includes('vixolity'));
-  assert.equal(NXSHA_SERVER_PRIORITY.slice(0, 12).includes('vixolity'), false,
-    'ScreenScape must use a distinct Nuvio-prioritized lane after Nxsha');
+  assert(queryProviders.includes(NXSHA_SERVER_PRIORITY[0]),
+    'ScreenScape reuses a live-proven Nuvio-prioritized lane as a reliability fallback');
 
   console.log('✓ Nxsha/ScreenScape discovery reaches the player only as safe, manifest-verified sealed options');
 } finally {
