@@ -293,6 +293,7 @@ jobs:
                   verdict = 'NO RESULT'
               detail = (hard_error or unavailable or {}).get('error', '')
               lines.append(f"| {source} | {verdict} | {passed} | {failed} | {detail.replace('|', '/')} |")
+              print(f"::notice title=ElfuraSourceVerdict::{source} {verdict}: {passed} passed option(s), {failed} failed option(s); {detail}")
           with open(summary_path, 'a') as out:
               out.write('\\n'.join(lines) + '\\n')
           PY
