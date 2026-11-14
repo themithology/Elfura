@@ -297,6 +297,34 @@ jobs:
           with open(summary_path, 'a') as out:
               out.write('\\n'.join(lines) + '\\n')
           PY
+      - name: Annotate remaining source verdicts
+        if: always()
+        env:
+          REPORT_PATH: ${{ runner.temp }}/live-source-audit.json
+          AUDIT_SOURCES: ${{ matrix.sources }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          report_path = os.environ['REPORT_PATH']
+          if not os.path.isfile(report_path):
+              raise SystemExit(0)
+          with open(report_path) as f:
+              rows = json.load(f).get('report', [])
+          sources = [x.strip() for x in os.environ['AUDIT_SOURCES'].split(',') if x.strip()]
+          for source in sources[10:]:
+              if source == 'combined':
+                  matched = [r for r in rows if r.get('id') == source or ':' in str(r.get('id', ''))]
+              else:
+                  matched = [r for r in rows if r.get('id') == source or str(r.get('id', '')).startswith(source + ':')]
+              unavailable = next((r for r in matched if r.get('status') == 'unavailable'), None)
+              hard_error = next((r for r in matched if r.get('status') == 'failed'), None)
+              options = [r for r in matched if r.get('id') != source and 'ok' in r]
+              passed = sum(r.get('ok') is True for r in options)
+              failed = sum(r.get('ok') is False for r in options)
+              verdict = 'FAIL' if failed or hard_error else 'PASS' if passed else 'UNAVAILABLE' if unavailable else 'NO RESULT'
+              detail = (hard_error or unavailable or {}).get('error', '')
+              print(f"::notice title=ElfuraSourceVerdict::{source} {verdict}: {passed} passed option(s), {failed} failed option(s); {detail}")
+          PY
       - name: Upload raw title audit report
         if: always()
         uses: actions/upload-artifact@v4
