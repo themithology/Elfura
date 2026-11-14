@@ -29,6 +29,9 @@ import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
 import { createSource16Adapter } from './source16.js';
 import { createStremioAddonAdapter } from './source17.js';
+import { createSource18Adapter } from './source18.js';
+import { createSource19Adapter } from './source19.js';
+import { createSource20Adapter } from './source20.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -84,6 +87,9 @@ export class SourceRegistry {
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
       createStremioAddonAdapter(cfg.stremioAddons ?? []),
+      createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_VIDLOVE_ENABLED === '1'),
+      createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_MOVIESAPI_ENABLED === '1'),
+      createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_ZENIX_ENABLED === '1'),
     ];
   }
 

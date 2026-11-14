@@ -1,5 +1,8 @@
 import { fetchFromNxsha } from '../../dist/backend/sources/source5.js';
 import { createSource7Adapter } from '../../dist/backend/sources/source7.js';
+import { fetchFromVidLove } from '../../dist/backend/sources/source18.js';
+import { fetchFromMoviesApi } from '../../dist/backend/sources/source19.js';
+import { fetchFromZenix } from '../../dist/backend/sources/source20.js';
 import { verifyAndFilterCandidatesDetailed, cachedCandidateEvidence } from '../../dist/backend/sources/liveness.js';
 
 // Real upstream check, separate from mocked adapter fixtures. A response alone
@@ -10,7 +13,7 @@ const cases = [
   { type: 'movie', tmdbId: '693134', name: 'Dune Part Two' },
   { type: 'tv', tmdbId: '1396', season: 1, episode: 1, name: 'Breaking Bad S1E1' },
 ];
-const totals = { source5: 0, source7: 0 };
+const totals = { source5: 0, source7: 0, source18: 0, source19: 0, source20: 0 };
 const originalFetch = globalThis.fetch;
 const requestTrace = [];
 const tracedFetch = async (input, options) => {
@@ -42,6 +45,21 @@ try {
       ['source7', async () => {
         const result = await screenscape.resolve(query);
         return { candidates: result.candidates, rawCount: result.candidates.length };
+      }],
+      ['source18', async () => {
+        const raw = await fetchFromVidLove({ ...query, diag: [] }, tracedFetch);
+        const checked = await verifyAndFilterCandidatesDetailed(raw, AbortSignal.timeout(10_000));
+        return { candidates: checked.candidates, rawCount: raw.length };
+      }],
+      ['source19', async () => {
+        const raw = await fetchFromMoviesApi({ ...query, diag: [] }, tracedFetch);
+        const checked = await verifyAndFilterCandidatesDetailed(raw, AbortSignal.timeout(10_000));
+        return { candidates: checked.candidates, rawCount: raw.length };
+      }],
+      ['source20', async () => {
+        const raw = await fetchFromZenix({ ...query, diag: [] }, tracedFetch);
+        const checked = await verifyAndFilterCandidatesDetailed(raw, AbortSignal.timeout(10_000));
+        return { candidates: checked.candidates, rawCount: raw.length };
       }],
     ]) {
       requestTrace.length = 0;

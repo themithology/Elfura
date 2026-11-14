@@ -75,6 +75,9 @@ export interface BackendConfig {
   source14?: { enabled: boolean };
   source15?: { enabled: boolean };
   source16?: { enabled: boolean };
+  source18?: { enabled: boolean };
+  source19?: { enabled: boolean };
+  source20?: { enabled: boolean };
   /** User-configured Stremio-compatible addon manifest/base URLs (JSON array). */
   stremioAddons: string[];
 
@@ -220,6 +223,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },
     source16: { enabled: env.ELFURA_ANIVEXA_ENABLED === '1' },
+    // Nuvio stack ports: VidLove (CineHD/CineJoy), MoviesAPI (FMovies), and Zenix.
+    source18: { enabled: env.ELFURA_VIDLOVE_ENABLED === '1' },
+    source19: { enabled: env.ELFURA_MOVIESAPI_ENABLED === '1' },
+    source20: { enabled: env.ELFURA_ZENIX_ENABLED === '1' },
     stremioAddons: parseStremioAddonUrls(
       env.ELFURA_STREMIO_ADDONS === undefined && isProd
         ? '["https://nuviostreams.hayd.uk"]'

@@ -1,0 +1,56 @@
+name: Build Pterodactyl deployment ZIP
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-deployment-zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build deployment ZIP
+        run: npm run build:pterodactyl
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Smoke-test ZIP upgrade and startup
+        run: python3 scripts/test-pterodactyl-zip.py
+
+      - name: Generate SHA-256 checksum
+        run: sha256sum elfura-pterodactyl.zip > elfura-pterodactyl.zip.sha256
+
+      - name: Upload deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: elfura-pterodactyl-${{ github.sha }}
+          path: |
+            elfura-pterodactyl.zip
+            elfura-pterodactyl.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

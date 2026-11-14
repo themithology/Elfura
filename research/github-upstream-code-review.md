@@ -30,4 +30,20 @@ The new `backend/test/nxsha-passphrase-refresh.mjs` fixture exercises the recove
 
 The Nuvio ScreenScape plugin does not treat a naked CDN URL as the playback interface. It probes the URL using `http_get` with `User-Agent`, `Referer: https://nxsha.space/`, and a small `Range`, then constructs `StreamResult({ url, headers })`; the player receives those headers when fetching the stream. Opening the upstream `.m3u8` directly in a browser omits that Referer and can trigger a Cloudflare block, which is what happened with the shared `itsnitrox.tech` URL. Elfura's intended playback URL is its sealed `/api/v1/stream?t=...` relay, not the upstream URL. The relay applies candidate headers to the master manifest and rewritten child playlist/segment requests. `backend/test/nxsha-player-pipeline.mjs` now asserts the ScreenScape ticket retains the Nxsha Referer and that the actual player-facing relay forwards it. This verifies the local relay contract with fixtures; it cannot make a CDN permit a blocked client/server IP. If the deployed Elfura relay itself gets Cloudflare's block, that candidate is unusable from that deployment and should be rejected rather than claimed playable.
 
+## Porting the full Nxsha-using plugin set
+
+Current `Skywave22/Plugins-TJ` main contains ten wrappers, but they are not ten independent Nxsha APIs. The repo has no declared license, so Elfura does not vendor or execute the bundled plugin JavaScript. Instead, the playback backends are mapped into Elfura's safe source workflow and shared backends are reused rather than queried ten times:
+
+| Nuvio plugin(s) | Playback paths represented in Elfura |
+|---|---|
+| CineHD, CineJoy | New VidLove variants (Source 18); existing VidRock (Source 1) and Nxsha (Sources 5/7). Wing's `/servers` call only labels VidLove choices; it does not return stream URLs. |
+| CineZo | Existing VidNest (Source 10) and Nxsha (Sources 5/7). |
+| FMovies | New MoviesAPI/Vidora endpoint (Source 19); existing VixSrc (Source 9) and Nxsha (Sources 5/7). |
+| HiStream, Nxsha, RiveStream, ScreenScape, VidBox | Shared Nxsha `/api/servers` → `/api/sources` flow, represented by Sources 5/7; these wrappers do not justify duplicate resolver calls. HiStream also proxies TMDB catalog data, not a separate media host. |
+| Zenix | New boot/token/provider flow (Source 20); existing VidRift (Source 1) and Nxsha (Sources 5/7). |
+
+The new Source 18/19/20 adapters are opt-in (`ELFURA_VIDLOVE_ENABLED`, `ELFURA_MOVIESAPI_ENABLED`, `ELFURA_ZENIX_ENABLED`) until live title checks pass. Each uses bounded JSON parsing, fixed upstream endpoints, safe-URL validation, the required player headers, and the regular manifest verification + sealed relay path. CineHD/CineJoy variants and FMovies/Zenix do not get separate duplicate Nxsha adapters. Local adapter fixtures establish request shape only; the live-provider workflow probes each new adapter on real titles before considering default enablement.
+
+The Nuvio player behavior also differs from opening a naked CDN URL: it carries the provider's User-Agent/Referer into `StreamResult`. Elfura seals and forwards those headers through the relay, with a fixture checking ScreenScape. A real relay check from GitHub Actions verifies the relay implementation from that runner's egress only, not from a user's deployment IP.
+
 Prior validation: `npm run build:backend`, Nxsha and ScreenScape adapter tests, full `npm test`, full `npm run typecheck`, and `git diff --check` passed. Mocked regression tests and project checks do not establish live provider availability or verified playback.
