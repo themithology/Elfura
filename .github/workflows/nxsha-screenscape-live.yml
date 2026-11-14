@@ -39,7 +39,6 @@ jobs:
           MEDIA_TYPE: movie
           TMDB_ID: '693134'
           OUTPUT_FILE: ${{ runner.temp }}/live-manifest.json
-          REVEAL_URL: '1'
       - name: Upload the manifest link without exposing it in logs
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[resolve-live-manifest]')
         uses: actions/upload-artifact@v4
