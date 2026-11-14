@@ -35,7 +35,6 @@ try {
   apiResult={src:'//evil.example/embed/1'}; assert.deepEqual(await fetchFromVixSrc(q),[]);
   apiResult={src:'/embed/221474'}; playlist='http://127.0.0.1/master.m3u8'; assert.deepEqual(await fetchFromVixSrc(q),[]);
   assert.deepEqual(await fetchFromVixSrc({...q,tmdbId:'bad'}),[]);
-  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIXSRC_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-9'));
-  assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIXSRC_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-9'));
+  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIXSRC_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-9'),'retired zero-hit source stays out of the runtime registry even if an old env toggle remains');
   console.log('✓ VixSrc bounded discovery, URL validation, signature and verified multi-audio');
 } finally { globalThis.fetch=old; }

@@ -1,9 +1,6 @@
 import { createBackendServer } from '../../dist/backend/index.js';
 
-const TARGETS = new Set([
-  'source-4', 'source-5', 'source-7', 'source-9', 'source-11',
-  'source-12', 'source-13', 'source-15', 'source-16',
-]);
+const TARGETS = new Set(['source-5', 'source-7', 'source-12']);
 const type = process.env.PROBE_TYPE === 'tv' ? 'tv' : 'movie';
 const tmdbId = process.env.PROBE_TMDB || '693134';
 const season = Number(process.env.PROBE_SEASON || 1);
@@ -19,14 +16,7 @@ const { registry } = createBackendServer({
   bindTokenIp: false,
   resolveTimeoutMs: 20_000,
 });
-const sourceHosts = new Map([
-  ['bingr.one', 'source-4'],
-  ['vixsrc.to', 'source-9'],
-  ['streamdata.vaplayer.ru', 'source-11'],
-  ['vidzen.fun', 'source-12'],
-  ['freakyniki.elaxo.lol', 'source-13'],
-  ['mapple.fun', 'source-15'],
-]);
+const sourceHosts = new Map([['vidzen.fun', 'source-12']]);
 const network = [];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
@@ -35,17 +25,7 @@ globalThis.fetch = async (input, init) => {
   catch { return originalFetch(input, init); }
   const source = sourceHosts.get(url.hostname);
   if (!source) return originalFetch(input, init);
-  const stage = source === 'source-4'
-    ? (url.pathname.startsWith('/watch/') ? 'watch-page' : url.pathname.startsWith('/api/') ? 'sources-api' : 'other')
-    : source === 'source-9'
-      ? (url.pathname.startsWith('/api/') ? 'title-api' : 'embed-page')
-      : source === 'source-11' ? 'title-api'
-        : source === 'source-12'
-          ? (url.pathname.startsWith('/api/sources') ? 'sources-api' : 'watch-page')
-          : source === 'source-13' ? 'title-api'
-            : url.pathname.includes('playback-init') ? 'playback-init'
-              : url.pathname.includes('encrypt') ? 'encrypt'
-                : url.pathname.includes('stream-encrypted') ? 'stream' : 'watch-page';
+  const stage = url.pathname.startsWith('/api/sources') ? 'sources-api' : 'watch-page';
   const start = Date.now();
   try {
     const response = await originalFetch(input, init);

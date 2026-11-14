@@ -15,19 +15,12 @@ import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
-import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import type { NxshaTransport } from './source5.js';
 import { createSource7Adapter } from './source7.js';
 import { createSource8Adapter } from './source8.js';
-import { createSource9Adapter } from './source9.js';
-import { createSource10Adapter } from './source10.js';
-import { createSource11Adapter } from './source11.js';
 import { createSource12Adapter } from './source12.js';
-import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
-import { createSource15Adapter } from './source15.js';
-import { createSource16Adapter } from './source16.js';
 import { createStremioAddonAdapter } from './source17.js';
 import { createSource18Adapter } from './source18.js';
 import { createSource19Adapter } from './source19.js';
@@ -74,18 +67,11 @@ export class SourceRegistry {
         },
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
-      createSource4Adapter(() => cfg.source4?.enabled ?? false),
       createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0', dependencies.nxshaTransport),
       createSource7Adapter(() => cfg.source7?.enabled ?? false, dependencies.nxshaTransport),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
-      createSource9Adapter(() => cfg.source9?.enabled ?? false),
-      createSource10Adapter(() => cfg.source10?.enabled ?? false),
-      createSource11Adapter(() => cfg.source11?.enabled ?? false),
       createSource12Adapter(() => cfg.source12?.enabled ?? false),
-      createSource13Adapter(() => cfg.source13?.enabled ?? false),
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
-      createSource15Adapter(() => cfg.source15?.enabled ?? false),
-      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
       createStremioAddonAdapter(cfg.stremioAddons ?? []),
       createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_VIDLOVE_ENABLED === '1'),
       createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_MOVIESAPI_ENABLED === '1'),
@@ -609,7 +595,6 @@ export class SourceRegistry {
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
-          Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
           qualityTierOf(a) - qualityTierOf(b) ||
           animeVariantTier(a) - animeVariantTier(b),
@@ -633,13 +618,12 @@ export class SourceRegistry {
           if (opt.multiAudio && !opt.availableAudioLangs?.length) return 1;
           return 2;
         };
-        const effectiveSpeedMs = (opt: UniformStreamOption): number => {
+          const effectiveSpeedMs = (opt: UniformStreamOption): number => {
           const base = opt.latencyHintMs ?? 550;
           return opt.multiAudio ? base - 65 : base;
         };
         uniformOptions.sort(
           (a, b) =>
-            Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
             scoreOpt(a) - scoreOpt(b) ||
             animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||

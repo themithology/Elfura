@@ -64,10 +64,8 @@ try {
   assert.equal(requests[0].url.searchParams.get('season'), '2');
   assert.equal(requests[0].url.searchParams.get('episode'), '3');
 
-  const enabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'xpass-test-secret', ELFURA_XPASS_ENABLED: '1' }));
-  const disabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'xpass-test-secret', ELFURA_XPASS_ENABLED: '0' }));
-  assert(enabled.listPublicSources().some(source => source.id === 'source-13'));
-  assert(!disabled.listPublicSources().some(source => source.id === 'source-13'));
+  const retired = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'xpass-test-secret', ELFURA_XPASS_ENABLED: '1' }));
+  assert(!retired.listPublicSources().some(source => source.id === 'source-13'),'retired zero-hit source stays out of the runtime registry even if an old env toggle remains');
   console.log('✓ Xpass bounded discovery, signed proxy and target validation, TV episode params, manifest check, and feature toggle');
 } finally {
   globalThis.fetch = originalFetch;

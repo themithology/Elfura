@@ -62,19 +62,12 @@ export interface BackendConfig {
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
   };
-  source4?: { enabled: boolean };
   source5?: { enabled: boolean };
   /** Experimental additional source controls. */
   source7?: { enabled: boolean };
   source8?: { enabled: boolean };
-  source9?: { enabled: boolean };
-  source10?: { enabled: boolean };
-  source11?: { enabled: boolean };
   source12?: { enabled: boolean };
-  source13?: { enabled: boolean };
   source14?: { enabled: boolean };
-  source15?: { enabled: boolean };
-  source16?: { enabled: boolean };
   source18?: { enabled: boolean };
   source19?: { enabled: boolean };
   source20?: { enabled: boolean };
@@ -211,18 +204,11 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // Only sources with a live upstream+media validation remain on by default.
     // Other experimental lanes require an explicit opt-in until they pass the
     // live-source coverage matrix from the deployment environment.
-    source4: { enabled: env.ELFURA_BINGR_ENABLED === '1' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
     source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
-    source9: { enabled: env.ELFURA_VIXSRC_ENABLED === '1' },
-    source10: { enabled: env.ELFURA_VIDNEST_ENABLED === '1' },
-    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED === '1' },
     source12: { enabled: env.ELFURA_VIDZEN_ENABLED === '1' },
-    source13: { enabled: env.ELFURA_XPASS_ENABLED === '1' },
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
-    source15: { enabled: env.ELFURA_MAPPLE_ENABLED === '1' },
-    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED === '1' },
     // Nuvio stack ports: VidLove (CineHD/CineJoy), MoviesAPI (FMovies), and Zenix.
     source18: { enabled: env.ELFURA_VIDLOVE_ENABLED === '1' },
     source19: { enabled: env.ELFURA_MOVIESAPI_ENABLED === '1' },

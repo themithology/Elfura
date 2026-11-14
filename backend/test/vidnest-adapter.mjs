@@ -47,8 +47,6 @@ try {
  assert.equal(result.candidates[1].audioLang,'ta');assert.equal(result.candidates[1].type,'mp4');
  assert.deepEqual(result.candidates[2].availableAudioLangs,['hi','en']);assert.equal(result.candidates[2].multiAudio,true);
  assert.deepEqual(await fetchFromVidNest({...q,tmdbId:'bad'}),[]);
- assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-10'));
- assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-10'));
- assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-10'));
+ assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'1'})).listPublicSources().some(s=>s.id==='source-10'),'retired zero-hit source stays out of the runtime registry even if an old env toggle remains');
  console.log('✓ VidNest authenticated encryption, bounded lanes, direct HLS and separate dubs');
 }finally{globalThis.fetch=old}

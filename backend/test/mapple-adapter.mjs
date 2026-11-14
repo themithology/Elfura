@@ -66,10 +66,8 @@ try {
   assert.equal(animeAdapter.candidates[0].multiAudio, true);
   assert.deepEqual(new Set(animeAdapter.candidates[0].availableAudioLangs), new Set(['hi', 'ja']));
 
-  const enabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'mapple-test-secret', ELFURA_MAPPLE_ENABLED: '1' }));
-  const disabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'mapple-test-secret', ELFURA_MAPPLE_ENABLED: '0' }));
-  assert(enabled.listPublicSources().some(source => source.id === 'source-15'));
-  assert(!disabled.listPublicSources().some(source => source.id === 'source-15'));
+  const retired = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'mapple-test-secret', ELFURA_MAPPLE_ENABLED: '1' }));
+  assert(!retired.listPublicSources().some(source => source.id === 'source-15'),'retired zero-hit source stays out of the runtime registry even if an old env toggle remains');
   console.log('✓ Mapple token, bounded PoW, cookie-bound API flow, movie/TV matching parameters, HLS/SSRF filtering, manifest check, and toggle');
 } finally {
   globalThis.fetch = originalFetch;

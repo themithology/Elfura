@@ -45,7 +45,7 @@ Latest 21-title audit, counting a source as a pass when at least one option pass
 | Source 12 / VidZen | 5/21 | 0 | Sparse, but demonstrably not dead. |
 | Source 14 / Citadel | 17/21 | 0 | Not removed; strong coverage, with language labels explicitly unverified. |
 | Source 17 / Stremio addons | 2/21 | 1 | Addon configuration/title dependent. |
-| Sources 4, 9, 10, 11, 13, 15, 16 | 0/21 | 2 on Source 10 | No successful option in this sample. These are already opt-in/off by default. A 21-title miss is not proof of global death; don't silently delete adapters on that basis. |
+| Sources 4, 9, 10, 11, 13, 15, 16 | 0/21 | 2 on Source 10 | No successful option in this sample; removed from the active runtime registry and deployment toggles. Their parser files remain in-tree but cannot be enabled by environment variables. |
 
 The latest matrix job itself is not fully green: some titles/providers return no result or have individual candidate failures. The useful result is per-source evidence above, not a blanket “all providers work” claim.
 
