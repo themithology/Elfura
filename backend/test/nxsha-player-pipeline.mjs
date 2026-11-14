@@ -41,7 +41,7 @@ globalThis.fetch = async input => {
     queryProviders.push(request.provider);
     const candidates = request.provider === 'nitro'
       ? [{ url: 'https://cdn-fixture.example/source5.m3u8', type: 'hls', label: 'Hindi', language: 'Hindi' }]
-      : request.provider === 'em-8'
+      : request.provider === 'vixolity'
         ? [{ url: 'https://cdn-fixture.example/source7.m3u8', type: 'hls', label: 'English' }]
         : [];
     return Response.json({ _hash: nxEncode({ sources: candidates }) });
@@ -109,8 +109,9 @@ try {
   assert.match(relayedManifest, /^#EXTM3U/);
   assert.match(relayedManifest, /\/api\/v1\/stream\?t=/, 'rewrite relative media segments back through the relay');
   assert(queryProviders.includes('nitro'));
-  assert(queryProviders.includes('em-8'));
-  assert.equal(queryProviders.some(provider => NXSHA_SERVER_PRIORITY.slice(0, 12).includes(provider) && provider === 'em-8'), false);
+  assert(queryProviders.includes('vixolity'));
+  assert.equal(NXSHA_SERVER_PRIORITY.slice(0, 12).includes('vixolity'), false,
+    'ScreenScape must use a distinct Nuvio-prioritized lane after Nxsha');
 
   console.log('✓ Nxsha/ScreenScape discovery reaches the player only as safe, manifest-verified sealed options');
 } finally {

@@ -209,8 +209,8 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // Other experimental lanes require an explicit opt-in until they pass the
     // live-source coverage matrix from the deployment environment.
     source4: { enabled: env.ELFURA_BINGR_ENABLED === '1' },
-    source5: { enabled: env.ELFURA_NXSHA_ENABLED === '1' },
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
+    source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED === '1' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED === '1' },

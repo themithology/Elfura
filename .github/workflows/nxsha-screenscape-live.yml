@@ -1,0 +1,32 @@
+name: Nxsha and ScreenScape live source check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/98a7882b-elfura]
+    paths:
+      - backend/src/sources/source5.ts
+      - backend/src/sources/source7.ts
+      - backend/test/nuvio-adapters-live.mjs
+      - .github/workflows/nxsha-screenscape-live.yml
+
+permissions:
+  contents: read
+
+jobs:
+  live-provider-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Check live sources and fetchable HLS manifests
+        run: node backend/test/nuvio-adapters-live.mjs
+        env:
+          ELFURA_NXSHA_ENABLED: '1'
+          ELFURA_SCREENSCAPE_ENABLED: '1'

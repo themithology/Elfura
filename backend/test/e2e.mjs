@@ -1,5 +1,7 @@
 process.env.ELFURA_VIDZEE_ENABLED = '0';
 process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
+process.env.ELFURA_NXSHA_ENABLED = '0';
+process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';

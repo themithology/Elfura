@@ -3,7 +3,7 @@ import { SourceRegistry } from '../../dist/backend/sources/registry.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
 const keepAlive=setInterval(()=>{},1000);
 const never=()=>new Promise(()=>{}), original=globalThis.fetch;
-const cfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',OPENSUBTITLES_ENABLED:'0'});
+const cfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',ELFURA_NXSHA_ENABLED:'0',ELFURA_SCREENSCAPE_ENABLED:'0',OPENSUBTITLES_ENABLED:'0'});
 const fake=(id,fn,segments=undefined)=>({id,label:id,enabled:()=>true,resolve:fn,...segments?{resolveSegments:segments}:{}});
 const good={key:'fast',url:'https://cdn.example.org/fast.mp4',type:'mp4',quality:'auto',rank:0};
 globalThis.fetch=async url=>String(url).startsWith('https://cdn.example.org/')?new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}):never();
@@ -17,7 +17,7 @@ try {
  globalThis.fetch=async()=>never();reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',async()=>({candidates:[{...good,key:'slow-probe',url:'https://cdn.example.org/stalled.mp4'}]})),fake('source-2',never)];start=Date.now();await reg.resolvePlayback({type:'movie',tmdbId:'999003'});const probeMs=Date.now()-start;assert(probeMs<5100,`Stalled verification took ${probeMs}ms`);
  // Exercise real newly registered adapters with hung discovery, not just fake adapters.
  globalThis.fetch=async url=>String(url).startsWith('https://cdn.example.org/')?new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}):never();
- const realCfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',OPENSUBTITLES_ENABLED:'0'});
+ const realCfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',ELFURA_NXSHA_ENABLED:'0',ELFURA_SCREENSCAPE_ENABLED:'0',OPENSUBTITLES_ENABLED:'0'});
  reg=new SourceRegistry(realCfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),...reg.adapters.filter(a=>['source-8','source-14'].includes(a.id))];
  start=Date.now();const mixed=await reg.resolvePlayback({type:'tv',tmdbId:'999004',season:1,episode:1});const newSourcesMs=Date.now()-start;
  assert(mixed?.sources.length,'Existing fast source must remain available');assert(newSourcesMs<2500,`New hung sources delayed startup to ${newSourcesMs}ms`);

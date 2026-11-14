@@ -10,11 +10,13 @@ const ORIGIN = 'https://nxsha.space';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
 // Public web-client protocol passphrase, not a private credential. May rotate.
 const PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
-// Ordered from the current ScreenScape/Nxsha plugin. Source 5 uses the first
-// 12 available lanes; Source 7 takes the next 6 so the two adapters don't
-// duplicate the same work. `ophim` is excluded per the plugin: its results are
-// Vietnamese hard-subbed/page-only, not direct streams suitable for Elfura.
-export const NXSHA_SERVER_PRIORITY = ['awsind', 'nitro', 'castle', 'streamflix', 'watchout', 'rive-citadel', 'rive-primevids', 'stvv', 'bdxs', 'showbox-online', 'purstream', 'vixolity', 'em-8', 'rive-hindicast', 'mbox', 'mhbox', 'imovr', 'yomovies', 'vidapi', 'rive-flowcast', 'toonstream', 'levi', 'tamilblasters', 'hdhub4u', 'hdhub4u-direct', 'k4khdhub-direct', 'k4khdhub', 'filmyfly', 'filmyfly-direct', 'moviesdrive', 'xdownloader', 'movone'];
+// Nuvio's ScreenScape host hook (Skywave22/Plugins-TJ, commit
+// 643cb268eab2c62a9f6017ee8ae928e188d39715) lists these 14 as the servers
+// empirically returning links on NuvioTV, in preferred order. Keep them first;
+// Source 5 probes the first 12 and ScreenScape the next six, without overlap.
+// Remaining names come from that plugin's server catalogue. `ophim` is
+// explicitly excluded there as hard-subbed/page/embed-only.
+export const NXSHA_SERVER_PRIORITY = ['mhbox', 'awsind', 'rive-citadel', 'nitro', 'em-8', 'xdownloader', 'castle', 'k4khdhub', 'streamflix', 'vidapi', 'hdhub4u-direct', 'rive-flowcast', 'vixolity', 'k4khdhub-direct', 'rive-primevids', 'stvv', 'bdxs', 'watchout', 'showbox-online', 'purstream', 'rive-hindicast', 'mbox', 'imovr', 'yomovies', 'levi', 'toonstream', 'tamilblasters', 'hdhub4u', 'filmyfly', 'filmyfly-direct', 'moviesdrive', 'movone'];
 const SKIP_PROVIDERS = new Set(['ophim']);
 type Server = { scraper?: string };
 type Stream = { url?: string; type?: string; label?: string; quality?: string; language?: string; isEmbed?: boolean; headers?: Record<string, unknown>; provider?: string };
@@ -40,6 +42,14 @@ export function nxDecode(input: string): NxPayload {
   const { key, iv } = derive(bytes.subarray(8, 16));
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(16)), decipher.final()]).toString('utf8')) as NxPayload;
+}
+function classifyStream(s: Stream, url: string): RawStreamCandidate['type'] | null {
+  const declared = String(s.type || '').toLowerCase().split(';')[0].trim();
+  const path = new URL(url).pathname.toLowerCase();
+  if (/\.m3u8$/i.test(path) || /^(hls|m3u8|application\/vnd\.apple\.mpegurl)$/.test(declared)) return 'hls';
+  if (/\.mpd$/i.test(path) || /^(dash|mpd|application\/dash\+xml)$/.test(declared)) return 'dash';
+  if (/\.mp4$/i.test(path) || /^(mp4|video\/mp4)$/.test(declared)) return 'mp4';
+  return null;
 }
 function headerHints(h: Record<string, unknown> | undefined): Record<string, string> {
   const headers: Record<string, string> = { 'User-Agent': UA, Referer: ORIGIN + '/' };
@@ -188,7 +198,8 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
         if (query.type === 'tv' && /hdhub4u|k4khdhub/i.test(s.provider || '')) continue;
         const url = s.url;
         if (typeof url !== 'string' || !isSafeUpstreamUrl(url) || seen.has(url) || /vidara/i.test(url) || s.isEmbed || /embed/i.test(s.type || '')) continue;
-        if (!/\.m3u8(?:[?#]|$)/i.test(url) && !/^(hls|m3u8|application\/vnd\.apple\.mpegurl)$/i.test(s.type || '')) continue;
+        const type = classifyStream(s, url);
+        if (!type) continue;
         const label = String(s.language || s.label || '');
         // The additional ScreenScape lanes accept only an unambiguous audio
         // language field/label; avoid promoting multi/subtitle labels as dubs.
@@ -196,7 +207,7 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
           ? (!/sub|caption|multi|dual/i.test(label) ? normalizeLang(label) : normalizeLang('und'))
           : /\bhindi\b/i.test(label) && !/multi|dual|hindi\s*sub/i.test(label) ? normalizeLang('Hindi') : normalizeLang(s.language || 'und');
         seen.add(url);
-        result.push({ key: url, type: 'hls', url, headers: headerHints(s.headers), quality: /\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))?.[1] ? `${/\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))![1]}p` : 'auto', ...(lang.code !== 'und' ? { claimedAudioLang: lang.code } : {}), rank: 15 + result.length });
+        result.push({ key: url, type, url, headers: headerHints(s.headers), quality: /\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))?.[1] ? `${/\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))![1]}p` : 'auto', ...(lang.code !== 'und' ? { claimedAudioLang: lang.code } : {}), rank: 15 + result.length });
         if (result.length >= 30) break;
       }
       return result;

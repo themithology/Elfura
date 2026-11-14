@@ -15,7 +15,7 @@ globalThis.fetch = async input => {
       {scraper:'ophim'}, {scraper:'vidara'},
     ]}) });
     asked.push(q.provider);
-    const file = q.provider === 'em-8' ? 'multi' : 'single';
+    const file = q.provider === 'vixolity' ? 'multi' : 'single';
     return Response.json({ _hash: nxEncode({sources: [
       {url:`https://screen-fixture.example/${file}.m3u8`,type:'hls',label:'Hindi English Multi'},
       {url:'http://127.0.0.1/private.m3u8',type:'hls'},
@@ -32,13 +32,17 @@ globalThis.fetch = async input => {
   throw new Error(`unexpected request ${u.hostname}`);
 };
 try {
-  const defaultRegistry = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_SCREENSCAPE_ENABLED:'0'}));
+  const implicitDefaults = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources();
+  assert(implicitDefaults.some(s=>s.id==='source-5'), 'Nxsha is enabled unless explicitly disabled');
+  assert(implicitDefaults.some(s=>s.id==='source-7'), 'ScreenScape is enabled unless explicitly disabled');
+  const defaultRegistry = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_NXSHA_ENABLED:'0',ELFURA_SCREENSCAPE_ENABLED:'0'}));
+  assert(!defaultRegistry.listPublicSources().some(s=>s.id==='source-5'));
   assert(!defaultRegistry.listPublicSources().some(s=>s.id==='source-7'));
   const cfg = loadBackendConfig({ELFURA_SECRET:'test', ELFURA_SCREENSCAPE_ENABLED:'1'});
   assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
   const diag = [];
   const result = await createSource7Adapter(() => true, {preferCurl:false}).resolve({type:'movie',tmdbId:'693134',diag});
-  assert.deepEqual(asked.sort(), ['em-8','imovr','mbox','mhbox','rive-hindicast','yomovies']);
+  assert.deepEqual(asked.sort(), NXSHA_SERVER_PRIORITY.slice(12, 18).slice().sort());
   assert.equal(asked.some(provider => NXSHA_SERVER_PRIORITY.slice(0, 12).includes(provider)), false,
     'ScreenScape only calls the next six available Nxsha lanes after Source 5');
   assert.equal(asked.includes('ophim'), false, 'skip the provider the upstream ScreenScape plugin excludes');
