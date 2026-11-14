@@ -2,7 +2,33 @@
 
 This audit checks title-specific resolution and, when a provider returns options, follows manifests/playlists and fetches recognizable media bytes through Elfura's normal relay. A green workflow is not treated as a provider pass: the matrix permits 404/unavailable cases, and a provider with zero options cannot pass playback verification.
 
-## Results in numeric order
+## Expanded 21-title matrix — run 43622324362
+
+This is the latest audit snapshot; exact per-title/per-source outcomes are recorded in [`live-source-coverage-43622324362.csv`](live-source-coverage-43622324362.csv) and the [GitHub Actions run](https://github.com/themithology/Elfura/actions/runs/43622324362). `PASS` means every advertised option for that source/title passed manifest and recognizable-media-byte checks. `FAIL` means at least one advertised option failed those checks (it does not imply every option failed). `UNAVAILABLE` means the source returned no match for that title; it is not evidence of a universal outage. The `combined` column is populated only for the five titles that explicitly tested the combined path.
+
+| ID | PASS | FAIL | UNAVAILABLE | Details |
+|---|---:|---:|---:|---|
+| 1 | 11 | 0 | 10 | Passed on Avengers: Infinity War, Oppenheimer, Spider-Verse, Inception, Stranger Things S1E1, John Wick: Chapter 4, Dune: Part Two, Interstellar, Avengers: Endgame, Breaking Bad S1E1, and Game of Thrones S1E1. |
+| 2 | 18 | 0 | 3 | 18 title-specific passes; see CSV for exact titles. |
+| 4 | 0 | 0 | 21 | Bingr returned no title matches in this matrix. |
+| 5 | 0 | 0 | 21 | Nxsha returned no title matches in this matrix. |
+| 7 | 0 | 0 | 21 | ScreenScape returned no title matches in this matrix. |
+| 8 | 5 | 0 | 16 | Passed on John Wick: Chapter 4, Interstellar, Avengers: Endgame, Jujutsu Kaisen S1E1, and Frieren S1E1. |
+| 9 | 0 | 0 | 21 | VixSrc returned no title matches in this matrix. |
+| 10 | 0 | 4 | 17 | Four titles returned options with variant-media HTTP 403; no title had a clean all-options pass. This is a bad-option/provider delivery result, not the same as a 404 miss. |
+| 11 | 0 | 0 | 21 | VAPlayer returned no title matches in this matrix. |
+| 12 | 0 | 0 | 21 | VidZen returned no title matches in this run (earlier runs differed; provider results are time-sensitive). |
+| 13 | 0 | 0 | 21 | Xpass returned no title matches in this matrix. |
+| 14 | 16 | 0 | 5 | Passed on Avatar: The Way of Water, Avengers: Infinity War, The Batman, Oppenheimer, Spider-Verse, Inception, Stranger Things S1E1, John Wick: Chapter 4, Dune: Part Two, Interstellar, Pushpa: The Rise, Avengers: Endgame, Breaking Bad S1E1, Jujutsu Kaisen S1E1, Re:Zero S1E1, and Frieren S1E1. Existing unverified-title/language caveats still apply. |
+| 15 | 0 | 0 | 21 | Mapple returned no title matches in this matrix. |
+| 16 | 0 | 0 | 21 | Anivexa returned no title matches in this matrix. |
+| 17 | 9 | 3 | 9 | Passed on Avatar: The Way of Water, Avengers: Infinity War, The Batman, Oppenheimer, Inception, Stranger Things S1E1, Breaking Bad S1E1, Game of Thrones S1E1, and One Piece S1E1. Jawan, Pushpa: The Rise, and Re:Zero had at least one variant request return HTTP 502. |
+
+The five combined-path checks yielded four passes and one failure. Overall, 13/21 title jobs succeeded and 8 failed; those job-level results are not a source health score. The matrix shows that previous no-match-only samples understated coverage for Sources 2, 8, 14, and especially 17. Conversely, Sources 4, 5, 7, 9, 11, 13, 15, and 16 still have no playable pass in this 21-title sample. Keep these as evidence for follow-up, not automatic removal decisions: a title-specific 404 remains a miss, not proof that a provider is universally dead.
+
+Source 10's repeated HTTP 403s and Source 17's HTTP 502s are now distinguished from title misses in the audit report. No adapter change or source removal was made on this evidence alone. Job summaries, title/source annotations, and raw per-title JSON artifacts are emitted by the updated coverage workflow so future runs retain the full option-level outcomes.
+
+## Earlier sampled results (before the 21-title matrix)
 
 | ID | Provider | Live result | Decision |
 |---|---|---|---|
