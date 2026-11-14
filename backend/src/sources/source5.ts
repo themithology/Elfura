@@ -8,8 +8,9 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 
 const ORIGIN = 'https://nxsha.space';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
-// Public web-client protocol passphrase, not a private credential. May rotate.
-const PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
+// Public web-client protocol passphrase, not a private credential. Nxsha rotates
+// it in its own Next.js bundle; refresh it against a failed encrypted response.
+let NX_PASS = '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120';
 // Nuvio's ScreenScape host hook (Skywave22/Plugins-TJ, commit
 // 643cb268eab2c62a9f6017ee8ae928e188d39715) lists these 14 as the servers
 // empirically returning links on NuvioTV, in preferred order. Keep them first;
@@ -21,25 +22,25 @@ const SKIP_PROVIDERS = new Set(['ophim']);
 type Server = { scraper?: string };
 type Stream = { url?: string; type?: string; label?: string; quality?: string; language?: string; isEmbed?: boolean; headers?: Record<string, unknown>; provider?: string };
 type NxPayload = { servers?: Server[]; sources?: Stream[] };
-function derive(salt: Buffer) {
+function derive(salt: Buffer, passphrase = NX_PASS) {
   let material = Buffer.alloc(0), previous = Buffer.alloc(0);
   while (material.length < 48) {
-    previous = crypto.createHash('md5').update(Buffer.concat([previous, Buffer.from(PASS), salt])).digest();
+    previous = crypto.createHash('md5').update(Buffer.concat([previous, Buffer.from(passphrase), salt])).digest();
     material = Buffer.concat([material, previous]);
   }
   return { key: material.subarray(0, 32), iv: material.subarray(32, 48) };
 }
-export function nxEncode(input: object): string {
-  const salt = crypto.randomBytes(8); const { key, iv } = derive(salt);
+export function nxEncode(input: object, passphrase = NX_PASS): string {
+  const salt = crypto.randomBytes(8); const { key, iv } = derive(salt, passphrase);
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
   const body = JSON.stringify({ ...input, _req_ts: Date.now(), _req_salt: crypto.randomBytes(6).toString('base64url') });
   return Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(body), cipher.final()]).toString('base64url');
 }
-export function nxDecode(input: string): NxPayload {
+export function nxDecode(input: string, passphrase = NX_PASS): NxPayload {
   if (!/^[A-Za-z0-9_-]+$/.test(input) || input.length > 1_000_000) throw new Error('invalid payload');
   const bytes = Buffer.from(input, 'base64url');
   if (bytes.length < 32 || bytes.subarray(0, 8).toString() !== 'Salted__') throw new Error('invalid envelope');
-  const { key, iv } = derive(bytes.subarray(8, 16));
+  const { key, iv } = derive(bytes.subarray(8, 16), passphrase);
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(16)), decipher.final()]).toString('utf8')) as NxPayload;
 }
@@ -101,12 +102,63 @@ function curlGet(url: string, signal: AbortSignal): Promise<CurlResult> {
   });
 }
 
-async function parseEnvelopeText(text: string): Promise<NxPayload | null> {
+let passphraseRefresh: Promise<boolean> | null = null;
+let lastPassphraseRefresh = 0;
+
+async function refreshPassphrase(sample: string, signal: AbortSignal, transport: NxshaTransport): Promise<boolean> {
+  if (passphraseRefresh) return passphraseRefresh;
+  if (Date.now() - lastPassphraseRefresh < 10 * 60_000) return false;
+  lastPassphraseRefresh = Date.now();
+  const previous = NX_PASS;
+  const fetcher = transport.fetch ?? globalThis.fetch;
+  const curl = transport.curl ?? curlGet;
+  const load = async (url: string): Promise<string> => {
+    try {
+      if (transport.preferCurl ?? true) {
+        const response = await curl(url, signal);
+        if (response?.status === 200 && response.body.length <= 2_000_000) return response.body;
+      }
+      const response = await fetcher(url, { redirect: 'error', headers: { 'User-Agent': UA, Referer: ORIGIN + '/', Accept: '*/*' }, signal });
+      if (!response.ok) return '';
+      const text = await response.text();
+      return text.length <= 2_000_000 ? text : '';
+    } catch { return ''; }
+  };
+  passphraseRefresh = (async () => {
+    try {
+      const html = await load(`${ORIGIN}/embed/movie/27205`);
+      const paths = [...html.matchAll(/\/_next\/(static\/chunks\/[A-Za-z0-9_.-]+\.js)/g)].map(match => match[1]);
+      const chunks = await Promise.all([...new Set(paths)].slice(0, 16).map(path => load(`${ORIGIN}/_next/${path}`)));
+      const childPaths = chunks.flatMap(body => [...body.matchAll(/['\"](static\/chunks\/[A-Za-z0-9_.-]+\.js)['\"]/g)].map(match => match[1]));
+      const childChunks = childPaths.length
+        ? await Promise.all([...new Set(childPaths)].slice(0, 16).map(path => load(`${ORIGIN}/_next/${path}`)))
+        : [];
+      const passphrases = new Set<string>();
+      for (const body of [...chunks, ...childChunks]) for (const match of body.matchAll(/['\"]([0-9a-f]{64})['\"]/gi)) passphrases.add(match[1]);
+      for (const candidate of passphrases) {
+        if (candidate === previous) continue;
+        try {
+          nxDecode(sample, candidate);
+          NX_PASS = candidate;
+          return true;
+        } catch { /* this bundle constant was unrelated */ }
+      }
+      return false;
+    } finally { passphraseRefresh = null; }
+  })();
+  return passphraseRefresh;
+}
+
+async function parseEnvelopeText(text: string, signal: AbortSignal, transport: NxshaTransport): Promise<NxPayload | null> {
   if (!text || text.length > 1_000_000) return null;
   try {
     const value = JSON.parse(text) as { _hash?: unknown };
     if (typeof value._hash !== 'string') return null;
-    return nxDecode(value._hash);
+    try { return nxDecode(value._hash); }
+    catch {
+      if (await refreshPassphrase(value._hash, signal, transport)) return nxDecode(value._hash);
+      return null;
+    }
   } catch { return null; }
 }
 
@@ -117,7 +169,7 @@ async function fetchEnvelope(url: string, signal: AbortSignal, transport: NxshaT
   if (curlFirst) {
     const response = await curl(url, signal);
     if (response?.status === 200) {
-      const decoded = await parseEnvelopeText(response.body);
+      const decoded = await parseEnvelopeText(response.body, signal, transport);
       if (decoded) return decoded;
     }
   }
@@ -140,7 +192,7 @@ async function fetchEnvelope(url: string, signal: AbortSignal, transport: NxshaT
           chunks.push(value);
         }
       } finally { await reader.cancel().catch(() => {}); }
-      const decoded = await parseEnvelopeText(Buffer.concat(chunks).toString('utf8'));
+      const decoded = await parseEnvelopeText(Buffer.concat(chunks).toString('utf8'), signal, transport);
       if (decoded) return decoded;
     } else {
       await response.body?.cancel().catch(() => {});
@@ -148,7 +200,7 @@ async function fetchEnvelope(url: string, signal: AbortSignal, transport: NxshaT
   } catch { /* try curl below when fetch was preferred */ }
   if (!curlFirst) {
     const response = await curl(url, signal);
-    if (response?.status === 200) return parseEnvelopeText(response.body);
+    if (response?.status === 200) return parseEnvelopeText(response.body, signal, transport);
   }
   return null;
 }
