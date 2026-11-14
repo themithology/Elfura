@@ -492,18 +492,16 @@ export class SourceRegistry {
 
     let verifiedBatch = await verifyCurrentSlots();
 
-    // An AniList lookup must not let Anivexa monopolize the startup window.
-    // If no candidate has verified yet, give every outstanding adapter most of
-    // the remaining budget; if playback is already verified, allow a short
-    // grace period for the standard sources to join the response.
-    if (params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
+    // The old early-release path returned as soon as the first fast source
+    // passed verification; slower providers never got a chance to join the
+    // server list. Give every title a bounded post-first-result discovery grace,
+    // while retaining extra headroom for the larger anime startup budget.
+    if (doneCount < activeAdapters.length && remaining() > 1200) {
+      const graceCap = params.anilistId ? 2600 : 1300;
       const waitBudget = verifiedBatch.verifiedLive > 0
-        ? Math.min(3000, Math.max(0, remaining() - 1300))
-        : Math.max(0, remaining() - 1300);
+        ? Math.min(graceCap, Math.max(0, remaining() - 1200))
+        : Math.max(0, remaining() - 1200);
       await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
-      verifiedBatch = await verifyCurrentSlots();
-    } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
-      await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
     }
 
@@ -513,7 +511,7 @@ export class SourceRegistry {
     // they're already close, without making their upstream timeout additive.
     if (remaining() > 0) await Promise.race([
       Promise.allSettled([mediaPromise, ...segmentTasks]),
-      wait(Math.min(1200, remaining())),
+      wait(Math.min(500, remaining())),
     ]);
     const media = readyMedia ?? {
       type: params.type, tmdbId: params.tmdbId, imdbId: null,

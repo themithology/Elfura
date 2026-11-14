@@ -11,6 +11,15 @@ try {
  let reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),fake('source-2',never)];
  let start=Date.now();const first=await reg.resolvePlayback({type:'movie',tmdbId:'999001'});const fastMs=Date.now()-start;
  assert(first?.sources.length,'Healthy source should not be held by a hung adapter, metadata or skip markers');assert(fastMs<2500,`Fast source took ${fastMs}ms`);
+ // A quick first adapter must not make slower healthy providers disappear.
+ reg=new SourceRegistry(cfg);reg.adapters=[
+  fake('source-1',async()=>({candidates:[good]})),
+  fake('source-2',async()=>{await new Promise(resolve=>setTimeout(resolve,700));return {candidates:[{...good,key:'late',url:'https://cdn.example.org/late.mp4'}]};}),
+ ];
+ start=Date.now();const joined=await reg.resolvePlayback({type:'movie',tmdbId:'999005'});const joinedMs=Date.now()-start;
+ assert(joined?.sources.some(source=>source.sourceId==='source-1'));
+ assert(joined?.sources.some(source=>source.sourceId==='source-2'),'a slower but healthy provider should join the response instead of vanishing after early release');
+ assert(joinedMs<2500,`Provider-coverage grace took ${joinedMs}ms`);
  reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',never),fake('source-2',never)];start=Date.now();const missing=await reg.resolvePlayback({type:'movie',tmdbId:'999002'});const failMs=Date.now()-start;
  assert.equal(missing,null);assert(failMs<5100,`Hung sources took ${failMs}ms`);
  // Unknown liveness must remain bounded even if a shared fetch ignores abort.

@@ -21,9 +21,12 @@ globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.ends
 try {
  const results=await verifyAndFilterCandidatesDetailed(entries.map(x=>x.candidate));assert.equal(results.verifiedAliveCount,6);
  const selected=selectPlaybackCandidates(entries);const multi=selected.filter(x=>x.candidate.multiAudio),single=selected.filter(x=>!x.candidate.multiAudio);
- assert.equal(multi.length,3);assert.equal(single.length,2);assert.deepEqual(multi[0].candidate.availableAudioLangs,['hi','en'],'unverified metadata must not create a fake third language');
+ assert.equal(multi.length,3);assert.equal(single.length,3);assert.deepEqual(multi[0].candidate.availableAudioLangs,['hi','en'],'unverified metadata must not create a fake third language');
  assert(!multi.some(x=>x.candidate.key==='single-b'),'single-track source must not be called multi-audio');
  assert.equal(new Set(single.map(x=>new URL(x.candidate.url).hostname)).size,2,'fallbacks should use different hosts');
+ const providerEntries=Array.from({length:15},(_,index)=>({adapter:adapter(`source-${index+1}`),candidate:cand(`provider-${index}.example`,`provider-${index}`)}));
+ await verifyAndFilterCandidatesDetailed(providerEntries.map(entry=>entry.candidate));
+ assert.equal(selectPlaybackCandidates(providerEntries).length,15,'retain all independently verified provider options instead of truncating the list to two');
  const preferred=selectPlaybackCandidates(entries.map(x=>x.candidate.key==='single-b'?{...x,candidate:{...x.candidate,audioLang:'hi'}}:x),'hi');assert(preferred.some(x=>x.candidate.key==='single-b'),'prefer a verified requested-language fallback');
  // Individually labelled dubs must survive selection without pretending they
  // are HLS alternate audio. Duplicate labels and unverified options stay bounded.
@@ -39,7 +42,7 @@ try {
  assert.deepEqual(defaultSourceIds,['source-1','source-2','source-5','source-7','source-8','source-14'],'Nxsha and ScreenScape are available by default unless explicitly disabled');
  const productionIds=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'production-default-test',NODE_ENV:'production'})).listPublicSources().map(source=>source.id);
  assert(productionIds.includes('source-17'),'production defaults to the live-verified public Stremio bridge');
- const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,eight,fourteen].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.deepEqual(playback.sourceGroups,['source-1','source-2','source-8','source-14']);assert.equal(playback.sources.filter(x=>!x.multiAudio).length,2);assert.equal(playback.sources.filter(x=>x.multiAudio).length,3);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
+ const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,eight,fourteen].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.deepEqual(playback.sourceGroups,['source-1','source-2','source-8','source-14']);assert.equal(playback.sources.filter(x=>!x.multiAudio).length,3);assert.equal(playback.sources.filter(x=>x.multiAudio).length,3);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
  const cfg=loadBackendConfig({ELFURA_SECRET:'test'});cfg.source1.riftOrigin='https://rift.example';cfg.source1.vidrockOrigin='';cfg.source1.vidboltOrigin='https://bolt.example';
  // Lane health must reflect actual manifest checks, not mere API candidates.
  globalThis.fetch=async input=>String(input).includes('diag-dead')?new Response('',{status:404}):String(input).includes('diag-unknown')?new Response('',{status:503}):new Response('#EXTM3U\n#EXTINF:5,\nseg.ts\n#EXT-X-ENDLIST');
@@ -54,5 +57,5 @@ try {
  assert.equal(deep.status,'manifest-and-playlists-reachable');assert.deepEqual(deep.manifestLanguages,['hi','en']);assert.deepEqual(new Set(deep.steps.map(s=>s.stage)),new Set(['master','video-playlist','audio-playlist']));assert(!JSON.stringify(deep).includes('secret.example'));
  globalThis.fetch=async input=>String(input).includes('/child.m3u8')?new Response('',{status:403}):new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');
  const failure=await diagnoseMultiAudioCandidate(cand('secret.example','multi'));assert.equal(failure.status,'incomplete');assert(failure.steps.some(s=>s.stage==='audio-playlist' && s.status==='http-error' && s.httpStatus===403));assert(!JSON.stringify(failure).includes('secret.example'));
- console.log('✓ Genuine multi-audio evidence, capped diverse fallback selection and unverified claims.');
+ console.log('✓ Genuine multi-audio evidence, all verified providers retained, and unverified claims kept separate.');
 }finally{globalThis.fetch=old}

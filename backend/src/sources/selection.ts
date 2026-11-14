@@ -3,7 +3,9 @@ import { cachedCandidateEvidence } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
 export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCandidate }
-export const MAX_SINGLE_TRACK_FALLBACKS = 2;
+// Keep the provider menu broad: there are currently around twenty adapters.
+// The old cap of two hid every other working source after verification.
+export const MAX_SINGLE_TRACK_FALLBACKS = 20;
 export const MAX_SEPARATE_DUBS = 12;
 
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
@@ -38,18 +40,23 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const selected: typeof single = [];
   const hosts = new Set<string>();
-  // A verified candidate always beats an unknown one. Within each confidence
-  // class, prefer independent hosts before taking a second from one host.
+  const providers = new Set<string>();
+  // A verified candidate always beats an unknown one. First retain one option
+  // per provider and prefer independent hosts; only then use spare slots for
+  // alternate candidates. This prevents fast adapters crowding out the menu.
   for (const alive of [true, false]) {
     const tier = ordinarySingle.filter(item => item.alive === alive);
     for (const item of tier) {
       if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
-      if (hosts.has(item.host)) continue;
-      selected.push(item); hosts.add(item.host);
+      if (providers.has(item.adapter.id) || hosts.has(item.host)) continue;
+      selected.push(item); hosts.add(item.host); providers.add(item.adapter.id);
     }
     for (const item of tier) {
       if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
-      if (!selected.includes(item)) selected.push(item);
+      if (!selected.includes(item)) {
+        selected.push(item);
+        providers.add(item.adapter.id);
+      }
     }
   }
   // Preserve individually labelled dubs like the older working build. They
