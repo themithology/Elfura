@@ -62,12 +62,6 @@ export interface BackendConfig {
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
   };
-  /** Retired VidSync adapter configuration, retained only by isolated tests. */
-  source3: {
-    enabled: boolean;
-    origin: string;
-  };
-
   source4?: { enabled: boolean };
   source5?: { enabled: boolean };
   /** Experimental additional source controls. */
@@ -211,9 +205,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       nxshaOrigin: '',
       vidstuckOrigin: '',
     },
-    // Retained only for isolated adapter tests; Source 3 VidSync was retired
-    // after repeated live title misses and is not registered for playback.
-    source3: { enabled: false, origin: 'https://vidsync.pro' },
     // Only sources with a live upstream+media validation remain on by default.
     // Other experimental lanes require an explicit opt-in until they pass the
     // live-source coverage matrix from the deployment environment.

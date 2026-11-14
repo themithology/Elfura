@@ -13,8 +13,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {type: movie, id: '693134', source: 'source-3', mode: hybrid}
-          - {type: movie, id: '693134', source: 'source-3', mode: full}
           - {type: tv, id: '93405', source: 'source-5', mode: hybrid}
           - {type: tv, id: '93405', source: 'source-5', mode: full}
     steps:

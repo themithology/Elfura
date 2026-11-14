@@ -2,7 +2,7 @@ name: Live playback startup audit
 on:
   push:
     branches: [arena/dcf86284-elfura]
-    paths: [backend/test/research-startup.mjs, .github/workflows/research-startup.yml, backend/src/sources/registry.ts, backend/src/sources/source1.ts, backend/src/sources/source3.ts, backend/src/sources/liveness.ts, backend/src/sources/selection.ts]
+    paths: [backend/test/research-startup.mjs, .github/workflows/research-startup.yml, backend/src/sources/registry.ts, backend/src/sources/source1.ts, backend/src/sources/liveness.ts, backend/src/sources/selection.ts]
 permissions:
   contents: read
 jobs:

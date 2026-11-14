@@ -1,8 +1,7 @@
-// Independent live corroboration of each Source 2 lane and VidSync.
+// Independent live corroboration of each Source 1 and Source 2 lane.
 // Runs outside the production host; no URLs, headers, credentials or tickets logged.
 import {loadBackendConfig} from '../../dist/backend/config.js';
 import {createSource1Adapter} from '../../dist/backend/sources/source1.js';
-import {createSource3Adapter} from '../../dist/backend/sources/source3.js';
 import {verifyAndFilterCandidatesDetailed,cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
 const cfg=loadBackendConfig();
 const samples=[['movie','533535'],['movie','872585'],['movie','693134'],['movie','157336'],['movie','299536'],['tv','95479'],['tv','93405'],['tv','289517'],['tv','1396'],['tv','1399']];
@@ -11,7 +10,6 @@ const providers={
   VidRift:()=>createSource1Adapter({...cfg.source1,vidboltOrigin:disabled,vidrockOrigin:''},2),
   VidBolt:()=>createSource1Adapter({...cfg.source1,riftOrigin:'',vidrockOrigin:''},2),
   VidRock:()=>createSource1Adapter({...cfg.source1,riftOrigin:'',vidboltOrigin:disabled},2),
-  VidSync:()=>createSource3Adapter({...cfg.source3,enabled:true}),
 };
 for(const [type,id] of samples){
  const results=await Promise.all(Object.entries(providers).map(async([name,make])=>{

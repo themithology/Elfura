@@ -30,15 +30,17 @@ jobs:
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            sources: 'source-1,source-8,source-14,combined'
-          - name: Spider-Man Across the Spider-Verse
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17,combined'
+          - name: Oppenheimer
             type: movie
             tmdb: '872585'
             season: '1'
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            sources: 'source-1,source-8,source-14,combined'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17,combined'
           - name: Interstellar
             type: movie
             tmdb: '157336'
@@ -46,48 +48,89 @@ jobs:
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            sources: 'source-1,source-8,source-14,combined'
-          - name: Dune Part Two Source 17 Nuvio Streams
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Spider-Man Across the Spider-Verse
             type: movie
-            tmdb: '693134'
+            tmdb: '569094'
             season: '1'
             episode: '1'
             anilist: ''
             anilist_episode: ''
             stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
-            sources: 'source-17,combined'
-          - name: Re Zero S1E1
-            type: tv
-            tmdb: '65942'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17,combined'
+          - name: Avengers Endgame
+            type: movie
+            tmdb: '299534'
             season: '1'
             episode: '1'
-            anilist: '21355'
-            anilist_episode: '1'
-            sources: 'source-1,source-8,source-14,combined'
-          - name: Jujutsu Kaisen S1E1
-            type: tv
-            tmdb: '95479'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Avengers Infinity War
+            type: movie
+            tmdb: '299536'
             season: '1'
             episode: '1'
-            anilist: '113415'
-            anilist_episode: '1'
-            sources: 'source-1,source-8,source-14,combined'
-          - name: Death Note S1E1
-            type: tv
-            tmdb: '13916'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Inception
+            type: movie
+            tmdb: '27205'
             season: '1'
             episode: '1'
-            anilist: '1535'
-            anilist_episode: '1'
-            sources: 'source-1,source-8,source-14,combined'
-          - name: Frieren S1E1
-            type: tv
-            tmdb: '209867'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: The Batman
+            type: movie
+            tmdb: '414906'
             season: '1'
             episode: '1'
-            anilist: '154587'
-            anilist_episode: '1'
-            sources: 'source-1,source-8,source-14,combined'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: John Wick Chapter 4
+            type: movie
+            tmdb: '603692'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Jawan
+            type: movie
+            tmdb: '1008392'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Pushpa The Rise
+            type: movie
+            tmdb: '690957'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Avatar The Way of Water
+            type: movie
+            tmdb: '76600'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
           - name: Breaking Bad S1E1
             type: tv
             tmdb: '1396'
@@ -95,7 +138,80 @@ jobs:
             episode: '1'
             anilist: ''
             anilist_episode: ''
-            sources: 'source-1,source-8,source-14,combined'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17,combined'
+          - name: Stranger Things S1E1
+            type: tv
+            tmdb: '66732'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Game of Thrones S1E1
+            type: tv
+            tmdb: '1399'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: One Piece S1E1
+            type: tv
+            tmdb: '37854'
+            season: '1'
+            episode: '1'
+            anilist: '21'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Jujutsu Kaisen S1E1
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17,combined'
+          - name: Demon Slayer S1E1
+            type: tv
+            tmdb: '85937'
+            season: '1'
+            episode: '1'
+            anilist: '101922'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Death Note S1E1
+            type: tv
+            tmdb: '13916'
+            season: '1'
+            episode: '1'
+            anilist: '1535'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Frieren S1E1
+            type: tv
+            tmdb: '209867'
+            season: '1'
+            episode: '1'
+            anilist: '154587'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
+          - name: Re Zero S1E1
+            type: tv
+            tmdb: '65942'
+            season: '1'
+            episode: '1'
+            anilist: '21355'
+            anilist_episode: '1'
+            stremio_addons: '["https://nuviostreams.hayd.uk","https://nodebrid.fly.dev","https://stremify.hayd.uk","https://webstreamr.hayd.uk","https://hdhub.thevolecitor.qzz.io","https://free.flixnest.app","https://pipe.boringways.workers.dev"]'
+            sources: 'source-1,source-2,source-4,source-5,source-7,source-8,source-9,source-10,source-11,source-12,source-13,source-14,source-15,source-16,source-17'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -113,8 +229,18 @@ jobs:
           RESOLVE_TIMEOUT_MS: '20000'
           TMDB_TIMEOUT_MS: '8000'
           SOURCE1_ENABLED: '1'
+          ELFURA_BINGR_ENABLED: '1'
+          ELFURA_NXSHA_ENABLED: '1'
+          ELFURA_SCREENSCAPE_ENABLED: '1'
           ELFURA_VIDZEE_ENABLED: '1'
+          ELFURA_VIXSRC_ENABLED: '1'
+          ELFURA_VIDNEST_ENABLED: '1'
+          ELFURA_VAPLAYER_ENABLED: '1'
+          ELFURA_VIDZEN_ENABLED: '1'
+          ELFURA_XPASS_ENABLED: '1'
           ELFURA_RIVE_CITADEL_ENABLED: '1'
+          ELFURA_MAPPLE_ENABLED: '1'
+          ELFURA_ANIVEXA_ENABLED: '1'
           ELFURA_STREMIO_ADDONS: ${{ matrix.stremio_addons }}
           AUDIT_TYPE: ${{ matrix.type }}
           AUDIT_TMDB: ${{ matrix.tmdb }}
@@ -124,6 +250,6 @@ jobs:
           AUDIT_ANILIST_EPISODE: ${{ matrix.anilist_episode }}
           AUDIT_TITLE: ${{ matrix.name }}
           AUDIT_SOURCES: ${{ matrix.sources }}
-          AUDIT_MAX_RESOLVE_MS: '18000'
+          AUDIT_MAX_RESOLVE_MS: '0'
           AUDIT_REQUIRE_MULTI_LANG: '0'
           AUDIT_ALLOW_UNAVAILABLE: '1'

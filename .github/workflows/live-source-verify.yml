@@ -89,5 +89,5 @@ jobs:
           AUDIT_EPISODE: ${{ matrix.episode }}
           AUDIT_TITLE: ${{ matrix.title }}
           AUDIT_MAX_RESOLVE_MS: 7000
-          AUDIT_SOURCES: source-1,source-2,source-3,combined
+          AUDIT_SOURCES: source-1,source-2,combined
           AUDIT_REQUIRE_MULTI_LANG: ${{ matrix.multi }}

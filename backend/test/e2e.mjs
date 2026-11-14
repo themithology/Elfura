@@ -187,7 +187,7 @@ assert.equal(rewrittenKai.match(/^#EXTM3U$/gm)?.length, 1);
 assert(rewrittenKai.includes('LANGUAGE="ja",NAME="Japanese",DEFAULT=YES'));
 assert(rewrittenKai.includes('LANGUAGE="kn",NAME="Kannada",DEFAULT=NO'));
 
-// Live Re:Zero S1E1 VidSync playlists escape underscores (`hls\_mps`). Preserve the
+// Playlist URLs may contain escaped underscores (`hls\_mps`). Preserve the
 // actual CDN key instead of letting WHATWG URL parsing turn it into `hls/_mps`.
 const escapedReZeroManifest = [
   '#EXTM3U',
@@ -2411,7 +2411,6 @@ try {
     'https://tgvid-rift-relay.vercel.app/api/relay?u=abc',
     'https://embed.vidrift.in/api/orion/abc/seg0.ts',
     'https://mb.vidrift.net/api/orion/abc/video.mp4',
-    'https://vidsync.pro/api/core/proxy?data=123',
     'https://img.rousav.tech/media/84ba/seg0.ts?api_key=secret123',
     'https://proxy.vidbolt.xyz/m/tok123',
     'https://embed.aethoflix.world/api/proxy-segment?url=https%3A%2F%2Fcdn.example.com%2Fa.ts',

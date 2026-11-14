@@ -220,7 +220,7 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1–17 adapters (16 is bundled Anivexa; 17 is the live-verified Stremio bridge)
+backend/src/sources/      isolated SourceAdapter registry + retained numbered adapters (1–2, 4–5, and 7–17; 16 is bundled Anivexa; 17 is the Stremio bridge)
 ```
 
 ## Roxy operator dashboard

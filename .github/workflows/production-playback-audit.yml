@@ -18,8 +18,6 @@ jobs:
             query: ''
           - path: movie/807
             query: '?source=source-2'
-          - path: movie/807
-            query: '?source=source-3'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

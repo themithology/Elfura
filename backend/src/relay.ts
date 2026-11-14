@@ -34,22 +34,22 @@ const DEFAULT_RELAY_UA =
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024; // 4 MiB safety ceiling for text manifests
 
 const UPSTREAM_TRACK_WATERMARK_RE =
-  /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|^(?:audio|track\s*\d*|sound|stream)$/i;
+  /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|^(?:audio|track\s*\d*|sound|stream)$/i;
 
 const HEVC_HINT_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
 
 const WEBVTT_SPAM_CUE_RE =
-  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|nxstream|tgflix|tgvid|moviehub|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
+  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidlink|vidrock|vidstuck|nxsha|nxstream|tgflix|tgvid|moviehub|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
 
 /* ------------------------------------------------------------------ */
 /* Hybrid Segment Offload — Anonymity & Browser-CORS Verifier          */
 /* ------------------------------------------------------------------ */
 
 const SOURCE_HOST_DENY_RE =
-  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidsync|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|vidlink|vidrock|vidbox|nxsha|nxstream|itsnitrox|vercetti|enc-dec|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|\bproxy\b|\brelay\b|\bbridge\b)/i;
+  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|vidlink|vidrock|vidbox|nxsha|nxstream|itsnitrox|vercetti|enc-dec|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|\bproxy\b|\brelay\b|\bbridge\b)/i;
 
 const SOURCE_PATH_DENY_RE =
-  /(?:^\/(?:api|backend|_serverFn)\b|\/(?:orion|tgkai|vidbolt|rousav|aetho|vidsync|vidrift|vidlink|vidrock|vidstuck|nxsha|proxy|relay)\b)/i;
+  /(?:^\/(?:api|backend|_serverFn)\b|\/(?:orion|tgkai|vidbolt|rousav|aetho|vidrift|vidlink|vidrock|vidstuck|nxsha|proxy|relay)\b)/i;
 
 const SOURCE_QUERY_DENY_RE =
   /(?:^|[?&])(?:api_?key|access_?token|auth_?token|secret|pltoken)=/i;

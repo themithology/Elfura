@@ -16,7 +16,6 @@ const adminSourceList = roxySourceWebsites(loadBackendConfig({
 }));
 assert(adminSourceList.some(site => site.id === 'citadel' && site.source === 'Source 14'));
 assert(adminSourceList.some(site => site.id === 'stremio-1' && site.source === 'Source 17'));
-assert(!adminSourceList.some(site => site.id === 'vidsync'), 'retired VidSync should not appear in the operator website inventory');
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
 const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};
