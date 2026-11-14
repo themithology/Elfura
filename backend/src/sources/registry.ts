@@ -15,7 +15,6 @@ import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
-import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import { createSource7Adapter } from './source7.js';
@@ -71,7 +70,6 @@ export class SourceRegistry {
         },
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
-      createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? false),
       createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
       createSource7Adapter(() => cfg.source7?.enabled ?? false),

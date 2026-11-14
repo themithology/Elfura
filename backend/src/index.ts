@@ -700,7 +700,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
         `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
-        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)}`,
+        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)}`,
     );
   });
   return { server, cfg, registry };

@@ -52,7 +52,6 @@ export interface BackendConfig {
     riftOrigin: string;
     vidboltOrigin?: string;
     riftRelay: string;
-    syncOrigin: string;
     vidrockOrigin?: string;
   };
   /** Source 2 configurable endpoints (kept purely server-side). */
@@ -63,7 +62,7 @@ export interface BackendConfig {
     nxshaOrigin?: string;
     vidstuckOrigin?: string;
   };
-  /** Source 3 configurable endpoint (kept purely server-side). */
+  /** Retired VidSync adapter configuration, retained only by isolated tests. */
   source3: {
     enabled: boolean;
     origin: string;
@@ -201,7 +200,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
       vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
-      syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
     },
     // Legacy Source 2 configuration is retained in the type only; old panel
@@ -213,17 +211,9 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       nxshaOrigin: '',
       vidstuckOrigin: '',
     },
-    source3: {
-      enabled: env.SOURCE3_ENABLED === '1',
-      // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
-      // used to be an internal Source 1 lane before becoming Source 3.
-      origin: (
-        env.SOURCE3_ORIGIN ||
-        env.VIDSYNC_ORIGIN ||
-        env.SOURCE1_SYNC_ORIGIN ||
-        'https://vidsync.pro'
-      ).replace(/\/+$/, ''),
-    },
+    // Retained only for isolated adapter tests; Source 3 VidSync was retired
+    // after repeated live title misses and is not registered for playback.
+    source3: { enabled: false, origin: 'https://vidsync.pro' },
     // Only sources with a live upstream+media validation remain on by default.
     // Other experimental lanes require an explicit opt-in until they pass the
     // live-source coverage matrix from the deployment environment.

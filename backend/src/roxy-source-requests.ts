@@ -9,7 +9,6 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     { id: 'vidbolt', name: 'VidBolt', source: 'Source 1', url: cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', enabled: cfg.source1.enabled },
     { id: 'vidrift', name: 'VidRift', source: 'Source 2', url: cfg.source1.riftOrigin, enabled: cfg.source1.enabled },
     { id: 'vidrock', name: 'VidRock', source: 'Source 2', url: cfg.source1.vidrockOrigin || 'https://vidrock.net', enabled: cfg.source1.enabled },
-    { id: 'vidsync', name: 'VidSync', source: 'Source 3', url: cfg.source3.origin || 'https://vidsync.pro', enabled: cfg.source3.enabled },
     { id: 'nxsha', name: 'Nxsha', source: 'Source 5', url: 'https://nxsha.space', enabled: cfg.source5?.enabled ?? true },
     ...(cfg.source7?.enabled ? [{ id: 'screenscape', name: 'ScreenScape', source: 'Source 7', url: 'https://screenscape.me', enabled: true }] : []),
     ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
