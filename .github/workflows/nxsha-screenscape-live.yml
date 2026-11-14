@@ -26,7 +26,24 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build:backend
       - name: Check live sources and fetchable HLS manifests
+        if: github.event_name == 'push'
         run: node backend/test/nuvio-adapters-live.mjs
         env:
           ELFURA_NXSHA_ENABLED: '1'
           ELFURA_SCREENSCAPE_ENABLED: '1'
+      - name: Resolve a Dune Part Two ScreenScape manifest URL
+        if: github.event_name == 'workflow_dispatch'
+        run: node backend/test/live-manifest-link.mjs
+        env:
+          SOURCE: screenscape
+          MEDIA_TYPE: movie
+          TMDB_ID: '693134'
+          OUTPUT_FILE: ${{ runner.temp }}/live-manifest.json
+      - name: Upload the manifest link without exposing it in logs
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-manifest-link
+          path: ${{ runner.temp }}/live-manifest.json
+          retention-days: 1
+          if-no-files-found: error
