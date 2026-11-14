@@ -22,7 +22,6 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     ...(mappleEnabled
       ? [{ id: 'mapple', name: 'Mapple', source: 'Source 15', url: 'https://mapple.fun', enabled: true }]
       : []),
-    ...(cfg.source18?.enabled ? [{ id: 'embed69', name: 'Embed69', source: 'Source 18', url: 'https://embed69.org', enabled: true }] : []),
     ...(cfg.stremioAddons ?? []).map((url, index) => ({ id: `stremio-${index + 1}`, name: `Stremio add-on ${index + 1}`, source: 'Source 17', url, enabled: true })),
   ];
 }

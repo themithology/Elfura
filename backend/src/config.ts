@@ -84,8 +84,6 @@ export interface BackendConfig {
   source16?: { enabled: boolean };
   /** User-configured Stremio-compatible addon manifest/base URLs (JSON array). */
   stremioAddons: string[];
-  /** Embed69 adapter opt-in; off until the operator enables it. */
-  source18: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -246,7 +244,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
         ? '["https://nuviostreams.hayd.uk"]'
         : env.ELFURA_STREMIO_ADDONS,
     ),
-    source18: { enabled: env.ELFURA_EMBED69_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
