@@ -32,7 +32,7 @@ jobs:
           ELFURA_NXSHA_ENABLED: '1'
           ELFURA_SCREENSCAPE_ENABLED: '1'
       - name: Resolve a Dune Part Two ScreenScape manifest URL
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[resolve-live-manifest]')
         run: node backend/test/live-manifest-link.mjs
         env:
           SOURCE: screenscape
@@ -40,7 +40,7 @@ jobs:
           TMDB_ID: '693134'
           OUTPUT_FILE: ${{ runner.temp }}/live-manifest.json
       - name: Upload the manifest link without exposing it in logs
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[resolve-live-manifest]')
         uses: actions/upload-artifact@v4
         with:
           name: live-manifest-link
