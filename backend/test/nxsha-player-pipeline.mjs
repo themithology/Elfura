@@ -103,6 +103,11 @@ try {
   assert.equal(ticketOf(source5).l, undefined);
   assert.equal(ticketOf(source7).u, 'https://cdn-fixture.example/source7.m3u8');
   assert.equal(ticketOf(source7).l, 'en');
+  const relayed = await originalFetch(new URL(source5.url, base));
+  assert.equal(relayed.status, 200, 'player-facing stream relay must fetch the sealed upstream manifest');
+  const relayedManifest = await relayed.text();
+  assert.match(relayedManifest, /^#EXTM3U/);
+  assert.match(relayedManifest, /\/api\/v1\/stream\?t=/, 'rewrite relative media segments back through the relay');
   assert(queryProviders.includes('nitro'));
   assert(queryProviders.includes('em-8'));
   assert.equal(queryProviders.some(provider => NXSHA_SERVER_PRIORITY.slice(0, 12).includes(provider) && provider === 'em-8'), false);
