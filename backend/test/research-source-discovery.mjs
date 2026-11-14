@@ -19,6 +19,43 @@ const { registry } = createBackendServer({
   bindTokenIp: false,
   resolveTimeoutMs: 20_000,
 });
+const sourceHosts = new Map([
+  ['bingr.one', 'source-4'],
+  ['vixsrc.to', 'source-9'],
+  ['streamdata.vaplayer.ru', 'source-11'],
+  ['vidzen.fun', 'source-12'],
+  ['freakyniki.elaxo.lol', 'source-13'],
+  ['mapple.fun', 'source-15'],
+]);
+const network = [];
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  let url;
+  try { url = new URL(input instanceof Request ? input.url : String(input)); }
+  catch { return originalFetch(input, init); }
+  const source = sourceHosts.get(url.hostname);
+  if (!source) return originalFetch(input, init);
+  const stage = source === 'source-4'
+    ? (url.pathname.startsWith('/watch/') ? 'watch-page' : url.pathname.startsWith('/api/') ? 'sources-api' : 'other')
+    : source === 'source-9'
+      ? (url.pathname.startsWith('/api/') ? 'title-api' : 'embed-page')
+      : source === 'source-11' ? 'title-api'
+        : source === 'source-12'
+          ? (url.pathname.startsWith('/api/sources') ? 'sources-api' : 'watch-page')
+          : source === 'source-13' ? 'title-api'
+            : url.pathname.includes('playback-init') ? 'playback-init'
+              : url.pathname.includes('encrypt') ? 'encrypt'
+                : url.pathname.includes('stream-encrypted') ? 'stream' : 'watch-page';
+  const start = Date.now();
+  try {
+    const response = await originalFetch(input, init);
+    network.push({ source, stage, status: response.status, ms: Date.now() - start });
+    return response;
+  } catch (error) {
+    network.push({ source, stage, error: error instanceof Error ? error.name : 'Error', ms: Date.now() - start });
+    throw error;
+  }
+};
 const report = await registry.diagnosePlayback({
   type,
   tmdbId,
@@ -43,6 +80,7 @@ const result = {
   ...(anilistId ? { anilistId, anilistEpisode } : {}),
   sources,
   lanes,
+  network,
 };
 console.log(`::notice title=SourceDiscovery::${JSON.stringify(result)}`);
 if (process.env.GITHUB_STEP_SUMMARY) {
