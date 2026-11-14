@@ -29,6 +29,7 @@ This audit checks title-specific resolution and, when a provider returns options
 
 - Expanded first-round matrix: [Actions run 43562065709](https://github.com/themithology/Elfura/actions/runs/43562065709).
 - Alternate-title matrix: [Actions run 43562303725](https://github.com/themithology/Elfura/actions/runs/43562303725). This run's overall conclusion was **failure** because isolated providers returned no options; the completed CI job is not a pass for those providers.
+- Post-retirement active-source regression matrix: [Actions run 43562991283](https://github.com/themithology/Elfura/actions/runs/43562991283) completed successfully. Its annotations still show provider-level title misses (for example VidZee on Dune) under the workflow's unavailable-allowed policy; the green workflow is not an assertion that every provider worked on every title.
 - VidSync API trace: [Actions run 43561839066](https://github.com/themithology/Elfura/actions/runs/43561839066).
 - A 404 means that provider did not resolve that particular title; it is not proof of a universal outage. Sources 4, 5, 7, and 9–13, 15–16 are already disabled by default and remain experimental. They have no passing live samples in this audit and must not be described as working.
 - Media-byte checks establish that bytes resembling media were served, not that the video/audio was watched or matched the requested title. This limitation is especially important for Source 14's unverified labels.
