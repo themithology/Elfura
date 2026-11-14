@@ -99,7 +99,7 @@ function collectStreams(payload: any): AnivexaStream[] {
   return [];
 }
 
-async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
+async function resolveAnivexa(query: SourceQuery, episodeDataOverride?: Record<string, AnivexaProvider>): Promise<RawSourceResult> {
   const empty: RawSourceResult = { candidates: [] };
   const anilistId = String(query.anilistId ?? '').trim();
   const episodeNumber = Number(query.anilistEpisode ?? query.episode);
@@ -108,12 +108,34 @@ async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
   }
 
   const started = Date.now();
-  const parent = query.signal ?? new AbortController().signal;
-  // Bound Anivexa's internal fan-out inside the registry's 12-second AniList
-  // budget. Its generated Worker may outlive an aborted incoming Request, so
-  // requestApi races the worker explicitly and can return usable early results.
-  const signal = AbortSignal.any([parent, AbortSignal.timeout(7_000)]);
-  const episodeData = await requestApi(`/episodes/${anilistId}`, signal) as Record<string, AnivexaProvider> | null;
+  // The generated Worker can outlive an aborted Request and its episode index
+  // occasionally takes longer than the playback response budget. Keep that
+  // work bounded, but detach it from the caller signal so a late index can warm
+  // the adapter cache instead of being discarded.
+  const signal = AbortSignal.timeout(30_000);
+  let episodeData = episodeDataOverride;
+  if (!episodeData) {
+    const indexTask = requestApi(`/episodes/${anilistId}`, signal) as Promise<Record<string, AnivexaProvider> | null>;
+    let indexTimer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = Symbol('episode-index-timeout');
+    const result = await Promise.race([
+      indexTask,
+      new Promise<typeof timedOut>(resolve => { indexTimer = setTimeout(() => resolve(timedOut), 7_000); }),
+    ]);
+    if (indexTimer) clearTimeout(indexTimer);
+    if (result === timedOut) {
+      query.diag?.push({ adapter: 'source-16', lane: 'E', ok: false, ms: Date.now() - started, detail: 'episode-index=still-pending' });
+      if (query.onLateResult) {
+        void indexTask.then(async lateIndex => {
+          if (!lateIndex) return;
+          const lateResult = await resolveAnivexa({ ...query, signal: AbortSignal.timeout(30_000) }, lateIndex);
+          query.onLateResult?.(lateResult);
+        }).catch(() => {});
+      }
+      return empty;
+    }
+    episodeData = result ?? undefined;
+  }
   if (!episodeData) {
     query.diag?.push({ adapter: 'source-16', lane: 'E', ok: false, ms: Date.now() - started, detail: 'episode-index=unavailable' });
     return empty;

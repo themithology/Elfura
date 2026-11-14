@@ -76,6 +76,30 @@ try {
   assert.equal(earlyResult.candidates.length, 1, 'return the fast provider without waiting for a slow sibling');
   await new Promise(resolve => setTimeout(resolve, 1350));
   assert.equal(lateResults.at(-1)?.candidates.length, 2, 'cache all provider results when the slower lanes finish');
+  anivexaWorker.fetch = async request => {
+    const url = new URL(request.url);
+    if (url.pathname === '/episodes/999992') {
+      await new Promise(resolve => setTimeout(resolve, 7300));
+      return Response.json({ anizone: { episodes: { sub: [{ id: 'watch/anizone/999992/sub/anizone-1', number: 1 }], dub: [] } } });
+    }
+    if (url.pathname === '/watch/anizone/999992/sub/anizone-1') {
+      return Response.json({ streams: [{ url: 'https://media.example/late-index.m3u8', type: 'hls' }] });
+    }
+    return new Response('not found', {status: 404});
+  };
+  const lateIndexResults = [];
+  const lateIndexStarted = Date.now();
+  const pendingIndexResult = await adapter.resolve({
+    type: 'tv', tmdbId: '999992', anilistId: '999992', anilistEpisode: 1, episode: 1,
+    signal: AbortSignal.timeout(5000), onLateResult: result => lateIndexResults.push(result),
+  });
+  const pendingIndexMs = Date.now() - lateIndexStarted;
+  assert(pendingIndexMs < 9000, `a slow episode index should not hold the request open (took ${pendingIndexMs}ms)`);
+  assert.equal(pendingIndexResult.candidates.length, 0, 'return promptly while the slow episode index continues in the background');
+  for (let i = 0; i < 20 && lateIndexResults.length === 0; i++) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(lateIndexResults.at(-1)?.candidates.length, 1, 'cache streams discovered after a slow episode index completes');
   anivexaWorker.fetch = regularWorkerFetch;
 
   const overrideResult = await adapter.resolve({...query, anilistEpisode: 3});
