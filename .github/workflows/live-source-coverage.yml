@@ -223,6 +223,7 @@ jobs:
       - name: Resolve active sources and verify real manifests and media bytes
         run: node backend/test/live-sources.mjs
         env:
+          AUDIT_REPORT_PATH: ${{ runner.temp }}/live-source-audit.json
           NODE_ENV: production
           ELFURA_SECRET: live-source-matrix-only-not-a-production-secret
           RELAY_MODE: hybrid
@@ -253,3 +254,53 @@ jobs:
           AUDIT_MAX_RESOLVE_MS: '0'
           AUDIT_REQUIRE_MULTI_LANG: '0'
           AUDIT_ALLOW_UNAVAILABLE: '1'
+      - name: Publish title-specific source verdicts
+        if: always()
+        env:
+          REPORT_PATH: ${{ runner.temp }}/live-source-audit.json
+          AUDIT_SOURCES: ${{ matrix.sources }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          report_path = os.environ['REPORT_PATH']
+          summary_path = os.environ['GITHUB_STEP_SUMMARY']
+          if not os.path.isfile(report_path):
+              with open(summary_path, 'a') as out:
+                  out.write('## Live-source audit\n\nNo audit report was produced (setup or resolver failure).\n')
+              raise SystemExit(0)
+          with open(report_path) as f:
+              audit = json.load(f)
+          rows = audit.get('report', [])
+          sources = [x.strip() for x in os.environ['AUDIT_SOURCES'].split(',') if x.strip()]
+          lines = [f"## Live-source audit: {audit.get('title', 'unknown title')}", '', '| Source | Verdict | Passed options | Failed options | Detail |', '|---|---:|---:|---:|---|']
+          for source in sources:
+              if source == 'combined':
+                  matched = [r for r in rows if r.get('id') == source or ':' in str(r.get('id', ''))]
+              else:
+                  matched = [r for r in rows if r.get('id') == source or str(r.get('id', '')).startswith(source + ':')]
+              unavailable = next((r for r in matched if r.get('status') == 'unavailable'), None)
+              hard_error = next((r for r in matched if r.get('status') == 'failed'), None)
+              options = [r for r in matched if r.get('id') != source and 'ok' in r]
+              passed = sum(r.get('ok') is True for r in options)
+              failed = sum(r.get('ok') is False for r in options)
+              if failed or hard_error:
+                  verdict = 'FAIL'
+              elif passed:
+                  verdict = 'PASS'
+              elif unavailable:
+                  verdict = 'UNAVAILABLE'
+              else:
+                  verdict = 'NO RESULT'
+              detail = (hard_error or unavailable or {}).get('error', '')
+              lines.append(f"| {source} | {verdict} | {passed} | {failed} | {detail.replace('|', '/')} |")
+          with open(summary_path, 'a') as out:
+              out.write('\\n'.join(lines) + '\\n')
+          PY
+      - name: Upload raw title audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-source-audit-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/live-source-audit.json
+          if-no-files-found: ignore
+          retention-days: 14

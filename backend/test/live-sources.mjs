@@ -7,6 +7,8 @@
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { createBackendServer } from '../../dist/backend/index.js';
 
 const AUDIT_LANG = process.env.AUDIT_LANG || '';
@@ -368,13 +370,20 @@ try {
   server.close();
 }
 
-console.log('[audit-summary] ' + JSON.stringify({
+const auditSummary = {
   title: TITLE_LABEL,
   type: TYPE,
   tmdb: TMDB_ID,
   passed: report.filter((row) => row.ok).length,
   failed,
   report,
-}));
+};
+console.log('[audit-summary] ' + JSON.stringify(auditSummary));
+
+const reportPath = process.env.AUDIT_REPORT_PATH;
+if (reportPath) {
+  mkdirSync(dirname(reportPath), { recursive: true });
+  writeFileSync(reportPath, `${JSON.stringify(auditSummary, null, 2)}\n`);
+}
 
 if (failed > 0 || !report.some((row) => row.ok)) process.exitCode = 1;
