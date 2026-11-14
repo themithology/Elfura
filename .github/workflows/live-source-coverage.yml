@@ -119,6 +119,86 @@ jobs:
             anilist: '113415'
             anilist_episode: '1'
             sources: 'source-16'
+          - name: Jujutsu Kaisen S1E1 Source 4 Bingr
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+            sources: 'source-4'
+          - name: Interstellar Source 5 Nxsha
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-5'
+          - name: Breaking Bad S1E1 Source 7 Screenscape
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-7'
+          - name: Interstellar Source 9 Vixsrc
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-9'
+          - name: Dune Part Two Source 10 Vidnest
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-10'
+          - name: Re Zero S1E1 Source 11 VAPlayer
+            type: tv
+            tmdb: '65942'
+            season: '1'
+            episode: '1'
+            anilist: '21355'
+            anilist_episode: '1'
+            sources: 'source-11'
+          - name: Frieren S1E1 Source 12 Vidzen
+            type: tv
+            tmdb: '209867'
+            season: '1'
+            episode: '1'
+            anilist: '154587'
+            anilist_episode: '1'
+            sources: 'source-12'
+          - name: Breaking Bad S1E1 Source 13 Xpass
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-13'
+          - name: Spider-Man Across the Spider-Verse Source 15 Mapple
+            type: movie
+            tmdb: '872585'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-15'
+          - name: Frieren S1E1 Source 16 Anivexa
+            type: tv
+            tmdb: '209867'
+            season: '1'
+            episode: '1'
+            anilist: '154587'
+            anilist_episode: '1'
+            sources: 'source-16'
           - name: Interstellar Source 3 VidSync
             type: movie
             tmdb: '157336'
