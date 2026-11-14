@@ -31,6 +31,14 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-1,source-8,source-14,combined'
+          - name: Dune Part Two Source 3 VidSync
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-3,combined'
           - name: Spider-Man Across the Spider-Verse
             type: movie
             tmdb: '872585'
@@ -113,6 +121,7 @@ jobs:
           RESOLVE_TIMEOUT_MS: '20000'
           TMDB_TIMEOUT_MS: '8000'
           SOURCE1_ENABLED: '1'
+          SOURCE3_ENABLED: ${{ contains(matrix.sources, 'source-3') && '1' || '0' }}
           ELFURA_VIDZEE_ENABLED: '1'
           ELFURA_RIVE_CITADEL_ENABLED: '1'
           ELFURA_STREMIO_ADDONS: ${{ matrix.stremio_addons }}
