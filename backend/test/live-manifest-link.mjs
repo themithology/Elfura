@@ -41,3 +41,6 @@ await fs.writeFile(outputFile, JSON.stringify({
   expiresNote: 'Provider links can be short-lived or require the supplied headers.',
 }, null, 2) + '\n', { mode: 0o600 });
 console.log(`Resolved a manifest-reachable HLS URL for ${source}; URL saved to the workflow artifact.`);
+if (process.env.REVEAL_URL === '1') {
+  console.log(`::notice title=LiveManifestLink::${JSON.stringify({ url: selected.url, headers: selected.headers })}`);
+}
