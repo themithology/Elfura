@@ -1,6 +1,11 @@
 name: Resolve one live HLS manifest
 
 on:
+  push:
+    branches: [arena/98a7882b-elfura]
+    paths:
+      - .github/workflows/resolve-live-manifest.yml
+      - backend/test/live-manifest-link.mjs
   workflow_dispatch:
     inputs:
       source:
