@@ -128,6 +128,11 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build:backend
+      - name: Trace VidSync upstream API safely
+        if: matrix.name == 'Dune Part Two Source 3 VidSync'
+        run: node backend/test/research-vidsync.mjs
+        env:
+          VS_TMDB: ${{ matrix.tmdb }}
       - name: Resolve active sources and verify real manifests and media bytes
         run: node backend/test/live-sources.mjs
         env:
