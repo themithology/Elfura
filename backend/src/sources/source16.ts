@@ -5,6 +5,12 @@ import type { RawSourceResult, RawStreamCandidate, RawTrackRef, SourceAdapter, S
 const INTERNAL_ORIGIN = 'https://anivexa.internal';
 const MAX_PROVIDERS = 12;
 const MAX_CANDIDATES = 24;
+// Anivexa exposes a filtered-provider endpoint. Request the same complete
+// provider set but skip its unrelated Anime-ID mapping work.
+const EPISODE_PROVIDERS = ['mkissa', 'reanime', 'anikoto', 'animegg', 'animenosub', 'anizone', 'aniwaves', 'senshi', 'kaa', 'animedunya', 'animeonsen', 'anipm'] as const;
+function episodeIndexPath(anilistId: string): string {
+  return `/episodes/${EPISODE_PROVIDERS.join('/')}/${anilistId}?map=false`;
+}
 
 type AnivexaStream = {
   url?: unknown;
@@ -115,7 +121,7 @@ async function resolveAnivexa(query: SourceQuery, episodeDataOverride?: Record<s
   const signal = AbortSignal.timeout(30_000);
   let episodeData = episodeDataOverride;
   if (!episodeData) {
-    const indexTask = requestApi(`/episodes/${anilistId}`, signal) as Promise<Record<string, AnivexaProvider> | null>;
+    const indexTask = requestApi(episodeIndexPath(anilistId), signal) as Promise<Record<string, AnivexaProvider> | null>;
     let indexTimer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = Symbol('episode-index-timeout');
     const result = await Promise.race([

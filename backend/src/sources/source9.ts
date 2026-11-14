@@ -6,6 +6,19 @@ const BASE = 'https://vixsrc.to';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
 const HEADERS = { 'User-Agent': UA, Referer: BASE + '/', Origin: BASE };
 
+function embeddedValue(html: string, pattern: RegExp): string | null {
+  const raw = pattern.exec(html)?.[1];
+  if (!raw) return null;
+  // VixSrc's server-rendered player sometimes JSON-escapes URL separators and
+  // query ampersands; mirror the upstream extractor's decoding before parsing.
+  const slash = String.fromCharCode(92);
+  return raw.replaceAll(slash.repeat(2) + 'u0026', '&')
+    .replaceAll(slash + 'u0026', '&')
+    .replaceAll(slash.repeat(2) + '/', '/')
+    .replaceAll(slash + '/', '/')
+    .replaceAll(slash.repeat(2), slash);
+}
+
 async function boundedText(res: Response, max: number): Promise<string> {
   if (!res.ok || !res.body || Number(res.headers.get('content-length') || 0) > max) { await res.body?.cancel(); throw new Error('upstream response'); }
   const reader = res.body.getReader(); let size = 0; const chunks: Uint8Array[] = [];
@@ -28,13 +41,15 @@ export async function fetchFromVixSrc(query: SourceQuery): Promise<RawStreamCand
     const page = await fetch(embedUrl, {headers:HEADERS, redirect:'error', signal});
     const html = await boundedText(page, 512_000);
     // Token values are kept server-side; never evaluate remote player JS.
-    const token = html.match(/['"]?token['"]?\s*:\s*['"]([^'"]{1,2048})['"]/)?.[1];
-    const expires = html.match(/['"]?expires['"]?\s*:\s*['"](\d{1,12})['"]/)?.[1];
-    const playlist = html.match(/\burl\s*:\s*['"]([^'"]{1,4096})['"]/)?.[1];
+    const token = embeddedValue(html, /['"]?token['"]?\s*:\s*['"]([^'"]{1,2048})['"]/)?.trim();
+    const expires = embeddedValue(html, /['"]?expires['"]?\s*:\s*['"](\d{1,12})['"]/)?.trim();
+    const playlist = embeddedValue(html, /\burl['"]?\s*:\s*['"]([^'"]{1,4096})['"]/)?.trim();
+    const langRaw = embeddedValue(html, /\blang(?:uage)?['"]?\s*:\s*['"]([a-z]{2,5})['"]/i);
+    const lang = langRaw && /^[a-z]{2,5}$/i.test(langRaw) ? langRaw.toLowerCase() : 'en';
     if (!token || !expires || Number(expires) * 1000 <= Date.now() + 30_000 || !playlist || !isSafeUpstreamUrl(playlist)) return [];
     const stream = new URL(playlist);
     if (stream.protocol !== 'https:' || !/\.m3u8$/i.test(stream.pathname)) return [];
-    stream.searchParams.set('token', token); stream.searchParams.set('expires', expires); stream.searchParams.set('h', '1');
+    stream.searchParams.set('token', token); stream.searchParams.set('expires', expires); stream.searchParams.set('h', '1'); stream.searchParams.set('lang', lang);
     const url = stream.toString();
     return [{key:url,url,type:'hls',quality:'auto',rank:25,headers:{...HEADERS,Referer:embedUrl.toString()}}];
   } catch { return []; }

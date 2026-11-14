@@ -31,6 +31,7 @@ import {
   verifyPlaybackToken,
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
+import type { NxshaTransport } from './sources/source5.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
@@ -113,9 +114,12 @@ export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
   return null;
 }
 
-export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
+export function createBackendServer(
+  overrides: Partial<BackendConfig> = {},
+  dependencies: { nxshaTransport?: NxshaTransport } = {},
+) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
-  const registry = new SourceRegistry(cfg);
+  const registry = new SourceRegistry(cfg, dependencies);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
   const roxy = new RoxyStore(cfg.secret);
   const loginLimiter = new SlidingWindowLimiter(5);

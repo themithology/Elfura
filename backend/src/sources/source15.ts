@@ -57,8 +57,11 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export function extractMappleRequestToken(html: string): string | null {
-  const match = /window\.__REQUEST_TOKEN__\s*=\s*(["'])([A-Za-z0-9._~-]{8,2048})\1/.exec(html);
-  return match?.[2] ?? null;
+  // The current player token is opaque (not guaranteed to be URL-safe); keep it
+  // bounded and quote-delimited rather than assuming a restricted alphabet.
+  const match = /window\.__REQUEST_TOKEN__\s*=\s*(["'])([^"'\r\n<>]{8,2048})\1/.exec(html);
+  const token = match?.[2]?.trim();
+  return token && token.length >= 8 ? token : null;
 }
 
 export async function solveMapplePow(

@@ -17,6 +17,7 @@ import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidat
 import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
+import type { NxshaTransport } from './source5.js';
 import { createSource7Adapter } from './source7.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
@@ -53,7 +54,7 @@ export class SourceRegistry {
   >();
   private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
 
-  constructor(cfg: BackendConfig) {
+  constructor(cfg: BackendConfig, dependencies: { nxshaTransport?: NxshaTransport } = {}) {
     this.cfg = cfg;
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
@@ -71,8 +72,8 @@ export class SourceRegistry {
       },
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource4Adapter(() => cfg.source4?.enabled ?? false),
-      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
-      createSource7Adapter(() => cfg.source7?.enabled ?? false),
+      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0', dependencies.nxshaTransport),
+      createSource7Adapter(() => cfg.source7?.enabled ?? false, dependencies.nxshaTransport),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),

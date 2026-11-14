@@ -10,9 +10,14 @@ const ORIGIN = 'https://nxsha.space';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
 // Public web-client protocol passphrase, not a private credential. May rotate.
 const PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
-const SERVER_PRIORITY = ['awsind', 'nitro', 'castle', 'streamflix', 'watchout', 'rive-citadel', 'rive-primevids', 'stvv', 'bdxs', 'showbox-online', 'purstream', 'vixolity', 'ophim', 'em-8', 'rive-hindicast', 'mbox', 'mhbox', 'imovr', 'yomovies', 'vidapi', 'rive-flowcast', 'toonstream'];
+// Ordered from the current ScreenScape/Nxsha plugin. Source 5 uses the first
+// 12 available lanes; Source 7 takes the next 6 so the two adapters don't
+// duplicate the same work. `ophim` is excluded per the plugin: its results are
+// Vietnamese hard-subbed/page-only, not direct streams suitable for Elfura.
+export const NXSHA_SERVER_PRIORITY = ['awsind', 'nitro', 'castle', 'streamflix', 'watchout', 'rive-citadel', 'rive-primevids', 'stvv', 'bdxs', 'showbox-online', 'purstream', 'vixolity', 'em-8', 'rive-hindicast', 'mbox', 'mhbox', 'imovr', 'yomovies', 'vidapi', 'rive-flowcast', 'toonstream', 'levi', 'tamilblasters', 'hdhub4u', 'hdhub4u-direct', 'k4khdhub-direct', 'k4khdhub', 'filmyfly', 'filmyfly-direct', 'moviesdrive', 'xdownloader', 'movone'];
+const SKIP_PROVIDERS = new Set(['ophim']);
 type Server = { scraper?: string };
-type Stream = { url?: string; type?: string; label?: string; quality?: string; language?: string; isEmbed?: boolean; headers?: Record<string, unknown> };
+type Stream = { url?: string; type?: string; label?: string; quality?: string; language?: string; isEmbed?: boolean; headers?: Record<string, unknown>; provider?: string };
 type NxPayload = { servers?: Server[]; sources?: Stream[] };
 function derive(salt: Buffer) {
   let material = Buffer.alloc(0), previous = Buffer.alloc(0);
@@ -138,7 +143,7 @@ async function fetchEnvelope(url: string, signal: AbortSignal, transport: NxshaT
   return null;
 }
 
-export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string[], transport: NxshaTransport = {}): Promise<RawStreamCandidate[]> {
+export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string[], transport: NxshaTransport = {}, laneOffset = 0): Promise<RawStreamCandidate[]> {
   if (!/^\d{1,12}$/.test(query.tmdbId)) return [];
   const season = query.type === 'tv' ? query.season ?? 1 : 0, episode = query.type === 'tv' ? query.episode ?? 1 : 0;
   if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 0 || (query.type === 'tv' && episode < 1)) return [];
@@ -153,18 +158,23 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
   try {
     const root = await get('servers', params);
     const available = Array.isArray(root.servers) ? root.servers : [];
-    const priority = lanes ?? SERVER_PRIORITY;
-    const ids = [...new Set(available
+    const priority = lanes ?? NXSHA_SERVER_PRIORITY;
+    const orderedIds = [...new Set(available
       .map(s => typeof s.scraper === 'string' ? s.scraper.trim().toLowerCase() : '')
-      .filter(x => /^[a-z0-9_-]{1,48}$/.test(x) && (!lanes || priority.includes(x))))]
+      .filter(x => /^[a-z0-9_-]{1,48}$/.test(x) && !SKIP_PROVIDERS.has(x) && (!lanes || priority.includes(x))))]
       .sort((a, b) => {
         const ai = priority.indexOf(a), bi = priority.indexOf(b);
         return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi) || a.localeCompare(b);
-      })
-      .slice(0, lanes ? 6 : 12);
+      });
+    const offset = Number.isSafeInteger(laneOffset) ? Math.max(0, Math.min(24, laneOffset)) : 0;
+    const laneLimit = lanes ? 6 : offset > 0 ? 6 : 12;
+    const ids = orderedIds.slice(offset, offset + laneLimit);
     const rows: Stream[] = []; let finished = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
     const all = Promise.all(ids.map(async provider => {
-      try { const res = await get('sources', { ...params, ex_lang: true, provider }); if (Array.isArray(res.sources)) rows.push(...res.sources.slice(0, 12)); } catch { /* one lane failing is expected */ }
+      try {
+        const res = await get('sources', { ...params, ex_lang: true, provider });
+        if (Array.isArray(res.sources)) rows.push(...res.sources.slice(0, 4).map(source => ({ ...source, provider })));
+      } catch { /* one lane failing is expected */ }
       finally { finished++; if (!query.diag && rows.length && !timer) timer = setTimeout(() => release?.(), 350); }
     }));
     if (query.diag) await all;
@@ -173,6 +183,9 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
     const build = () => {
       const result: RawStreamCandidate[] = [], seen = new Set<string>();
       for (const s of rows) {
+        // HDHub-family scrapers can return season packs or similarly titled
+        // movies for an episode request; don't expose those as episode links.
+        if (query.type === 'tv' && /hdhub4u|k4khdhub/i.test(s.provider || '')) continue;
         const url = s.url;
         if (typeof url !== 'string' || !isSafeUpstreamUrl(url) || seen.has(url) || /vidara/i.test(url) || s.isEmbed || /embed/i.test(s.type || '')) continue;
         if (!/\.m3u8(?:[?#]|$)/i.test(url) && !/^(hls|m3u8|application\/vnd\.apple\.mpegurl)$/i.test(s.type || '')) continue;
@@ -183,7 +196,7 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
           ? (!/sub|caption|multi|dual/i.test(label) ? normalizeLang(label) : normalizeLang('und'))
           : /\bhindi\b/i.test(label) && !/multi|dual|hindi\s*sub/i.test(label) ? normalizeLang('Hindi') : normalizeLang(s.language || 'und');
         seen.add(url);
-        result.push({ key: url, type: 'hls', url, headers: headerHints(s.headers), quality: /\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))?.[1] ? `${/\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))![1]}p` : 'auto', ...(lang.code !== 'und' ? { audioLang: lang.code, audioLabel: lang.label } : {}), rank: 15 + result.length });
+        result.push({ key: url, type: 'hls', url, headers: headerHints(s.headers), quality: /\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))?.[1] ? `${/\b(2160|1080|720|480)p?\b/i.exec(String(s.quality || s.label || ''))![1]}p` : 'auto', ...(lang.code !== 'und' ? { claimedAudioLang: lang.code } : {}), rank: 15 + result.length });
         if (result.length >= 30) break;
       }
       return result;

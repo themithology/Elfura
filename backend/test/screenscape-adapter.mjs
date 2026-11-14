@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { nxEncode, nxDecode } from '../../dist/backend/sources/source5.js';
+import { nxEncode, nxDecode, NXSHA_SERVER_PRIORITY } from '../../dist/backend/sources/source5.js';
 import { createSource7Adapter } from '../../dist/backend/sources/source7.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
 import { SourceRegistry } from '../../dist/backend/sources/registry.js';
@@ -11,10 +11,11 @@ globalThis.fetch = async input => {
   if (u.hostname === 'nxsha.space') {
     const q = nxDecode(u.searchParams.get('q'));
     if (u.pathname.endsWith('/servers')) return Response.json({ _hash: nxEncode({servers: [
-      {scraper:'mbox'}, {scraper:'bdxs'}, {scraper:'vidara'}, {scraper:'nitro'}
+      ...NXSHA_SERVER_PRIORITY.slice(0, 18).map(scraper => ({scraper})),
+      {scraper:'ophim'}, {scraper:'vidara'},
     ]}) });
     asked.push(q.provider);
-    const file = q.provider === 'mbox' ? 'multi' : 'single';
+    const file = q.provider === 'em-8' ? 'multi' : 'single';
     return Response.json({ _hash: nxEncode({sources: [
       {url:`https://screen-fixture.example/${file}.m3u8`,type:'hls',label:'Hindi English Multi'},
       {url:'http://127.0.0.1/private.m3u8',type:'hls'},
@@ -37,12 +38,16 @@ try {
   assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
   const diag = [];
   const result = await createSource7Adapter(() => true, {preferCurl:false}).resolve({type:'movie',tmdbId:'693134',diag});
-  assert.deepEqual(asked.sort(), ['bdxs','mbox']);
+  assert.deepEqual(asked.sort(), ['em-8','imovr','mbox','mhbox','rive-hindicast','yomovies']);
+  assert.equal(asked.some(provider => NXSHA_SERVER_PRIORITY.slice(0, 12).includes(provider)), false,
+    'ScreenScape only calls the next six available Nxsha lanes after Source 5');
+  assert.equal(asked.includes('ophim'), false, 'skip the provider the upstream ScreenScape plugin excludes');
   assert.equal(result.candidates.length, 2);
-  assert.equal(result.candidates[1].audioLang, 'en');
-  assert.notEqual(result.candidates[1].multiAudio, true);
-  assert.deepEqual(result.candidates[0].availableAudioLangs, ['hi','en']);
-  assert.equal(result.candidates[0].multiAudio, true);
+  const english = result.candidates.find(candidate => candidate.audioLang === 'en');
+  const multi = result.candidates.find(candidate => candidate.multiAudio === true);
+  assert(english, 'retain a reachable English single-audio stream');
+  assert(multi, 'retain manifest-verified multi-audio');
+  assert.deepEqual(multi.availableAudioLangs, ['hi','en']);
   assert.equal(result.candidates[0].diagnosticLane,'S');
   assert.equal(diag[0].ok,true);
   assert.deepEqual((await createSource7Adapter(()=>true).resolve({type:'movie',tmdbId:'bad'})).candidates,[]);

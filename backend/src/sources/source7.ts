@@ -1,13 +1,13 @@
 /** Experimental ScreenScape lanes, separate from the existing Nxsha source.
  * Retains manifest-proven multi-audio and reachable, explicitly labelled dubs. */
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
-import { fetchFromNxsha } from './source5.js';
+import { fetchFromNxsha, NXSHA_SERVER_PRIORITY } from './source5.js';
 import type { NxshaTransport } from './source5.js';
 import type { SourceAdapter } from './types.js';
 
-// Fixed and bounded: these are additional lanes seen in ScreenScape's plugin,
-// not proof that each returns HLS, a matching episode, or multiple languages.
-const LANES = ['mbox', 'bdxs', 'watchout', 'rive-hindicast', 'purstream', 'em-8'] as const;
+// Source 5 takes the first 12 available Nxsha lanes. ScreenScape takes the
+// next six from the same upstream list; this is genuinely additive and avoids
+// repeating Source 5's early lanes (as the previous hard-coded list did).
 
 export function createSource7Adapter(enabled: () => boolean, transport?: NxshaTransport): SourceAdapter {
   return { id: 'source-7', label: 'Source 7', enabled, async resolve(query) {
@@ -16,7 +16,12 @@ export function createSource7Adapter(enabled: () => boolean, transport?: NxshaTr
     const discoverySignal = query.signal
       ? AbortSignal.any([query.signal, AbortSignal.timeout(4000)])
       : AbortSignal.timeout(4000);
-    const candidates = await fetchFromNxsha({ ...query, signal: discoverySignal, diag: [], onLateResult: undefined }, LANES, transport);
+    const candidates = await fetchFromNxsha(
+      { ...query, signal: discoverySignal, diag: [], onLateResult: undefined },
+      NXSHA_SERVER_PRIORITY,
+      transport,
+      12,
+    );
     const verified = await verifyAndFilterCandidatesDetailed(candidates, query.signal);
     const usable = verified.candidates.filter(candidate => {
       const evidence = cachedCandidateEvidence(candidate);

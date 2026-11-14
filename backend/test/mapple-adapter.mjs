@@ -6,7 +6,7 @@ import { loadBackendConfig } from '../../dist/backend/config.js';
 const originalFetch = globalThis.fetch;
 const requests = [];
 let streamUrl = 'https://cdn.example.org/mapple/master.m3u8?sig=signed';
-const watchHtml = '<script>window.__REQUEST_TOKEN__ = "mapple-request-token-123";</script>';
+const watchHtml = '<script>window.__REQUEST_TOKEN__ = "mapple+request/token==123";</script>';
 const hls = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n';
 const animeMaster = '#EXTM3U\n' +
   '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Hindi",LANGUAGE="hi",DEFAULT=YES,AUTOSELECT=YES,URI="hindi.m3u8"\n' +
@@ -26,7 +26,7 @@ globalThis.fetch = async (input, init = {}) => {
 };
 
 try {
-  assert.equal(extractMappleRequestToken(watchHtml), 'mapple-request-token-123');
+  assert.equal(extractMappleRequestToken(watchHtml), 'mapple+request/token==123');
   assert.equal(extractMappleRequestToken('<html>no token</html>'), null);
   assert.equal(await solveMapplePow('fixture', 0, 1), '0');
   assert.equal(await solveMapplePow('fixture', 19), null, 'reject PoW difficulty above the CPU cap');
@@ -39,7 +39,7 @@ try {
   assert(requests.some(request => request.url.pathname === '/watch/movie/693134'));
   assert(requests.some(request => request.url.pathname === '/api/encrypt' && request.body.data.source === 's10'));
   assert(requests.filter(request => request.url.pathname === '/api/stream-encrypted').every(request => request.redirect === 'error'));
-  assert(requests.some(request => request.url.pathname === '/api/playback-init' && request.headers.get('cookie') === '_mapple_site=fixture-cookie'));
+  assert(requests.some(request => request.url.pathname === '/api/playback-init' && request.headers.get('cookie') === '_mapple_site=fixture-cookie' && request.body.requestToken === 'mapple+request/token==123'));
   assert(!JSON.stringify(movie).includes('fixture-stream-token-123'), 'Mapple auth tokens must not escape to stream candidates');
 
   requests.length = 0;

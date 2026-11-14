@@ -8,13 +8,16 @@ import {createBackendServer} from '../../dist/backend/index.js';
 const originalFetch = globalThis.fetch;
 const originalWorkerFetch = anivexaWorker.fetch;
 const requests = [];
+const episodeIndexUrls = [];
 const streamManifest = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nsegment.ts\n#EXT-X-ENDLIST\n';
 
 try {
   anivexaWorker.fetch = async request => {
     const url = new URL(request.url);
     requests.push(url.pathname);
-    if (url.pathname === '/episodes/16498') {
+    if (url.pathname.startsWith('/episodes/')) episodeIndexUrls.push(url);
+    if (url.pathname.startsWith('/episodes/') && url.pathname.endsWith('/16498')) {
+      assert.equal(url.searchParams.get('map'), 'false', 'use Anivexa filtered endpoint without unrelated ID mapping');
       return Response.json({
         mappings: { id: 16498 },
         anizone: { episodes: { sub: [{ id: 'watch/anizone/16498/sub/anizone-1', number: 1 }, { id: 'watch/anizone/16498/sub/anizone-3', number: 3 }], dub: [] } },
@@ -45,17 +48,20 @@ try {
   assert.deepEqual(result.candidates.map(candidate => candidate.audioLabel), ['Japanese SUB', 'English DUB']);
   assert.deepEqual(result.candidates.map(candidate => candidate.audioVariant), ['sub', 'dub']);
   assert(result.candidates.every(candidate => candidate.type === 'hls' && candidate.audioLang === undefined));
-  assert(requests.includes('/episodes/16498'));
+  assert(episodeIndexUrls.some(url => url.pathname.endsWith('/16498') && url.searchParams.get('map') === 'false'));
   assert(requests.includes('/watch/anizone/16498/sub/anizone-1'));
   assert(requests.includes('/watch/reanime/16498/dub/reanime-1'));
 
   const regularWorkerFetch = anivexaWorker.fetch;
   anivexaWorker.fetch = async request => {
     const url = new URL(request.url);
-    if (url.pathname === '/episodes/999991') return Response.json({
-      anizone: { episodes: { sub: [{ id: 'watch/anizone/999991/sub/anizone-1', number: 1 }], dub: [] } },
-      reanime: { episodes: { sub: [], dub: [{ id: 'watch/reanime/999991/dub/reanime-1', number: 1 }] } },
-    });
+    if (url.pathname.startsWith('/episodes/') && url.pathname.endsWith('/999991')) {
+      assert.equal(url.searchParams.get('map'), 'false');
+      return Response.json({
+        anizone: { episodes: { sub: [{ id: 'watch/anizone/999991/sub/anizone-1', number: 1 }], dub: [] } },
+        reanime: { episodes: { sub: [], dub: [{ id: 'watch/reanime/999991/dub/reanime-1', number: 1 }] } },
+      });
+    }
     if (url.pathname === '/watch/anizone/999991/sub/anizone-1') {
       return Response.json({ streams: [{ url: 'https://media.example/early.m3u8', type: 'hls' }] });
     }
@@ -78,7 +84,8 @@ try {
   assert.equal(lateResults.at(-1)?.candidates.length, 2, 'cache all provider results when the slower lanes finish');
   anivexaWorker.fetch = async request => {
     const url = new URL(request.url);
-    if (url.pathname === '/episodes/999992') {
+    if (url.pathname.startsWith('/episodes/') && url.pathname.endsWith('/999992')) {
+      assert.equal(url.searchParams.get('map'), 'false');
       await new Promise(resolve => setTimeout(resolve, 7300));
       return Response.json({ anizone: { episodes: { sub: [{ id: 'watch/anizone/999992/sub/anizone-1', number: 1 }], dub: [] } } });
     }

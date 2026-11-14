@@ -9,11 +9,15 @@ globalThis.fetch = async (input, options) => {
   if (u.hostname === 'vixsrc.to') {
     assert.equal(options.redirect,'error');
     if (u.pathname === '/api/movie/693134') return Response.json(apiResult);
-    if (u.pathname === '/embed/221474') return new Response(`window.masterPlaylist={url: '${playlist}', 'token': 'secret+token', 'expires': '${Math.floor(Date.now()/1000)+3600}'};`);
+    if (u.pathname === '/embed/221474') {
+      const slash = String.fromCharCode(92);
+      const escapedPlaylist = playlist.replaceAll('/', `${slash}/`).replaceAll('&', `${slash}u0026`);
+      return new Response(`window.masterPlaylist={url: '${escapedPlaylist}', 'token': 'secret+token', 'expires': '${Math.floor(Date.now()/1000)+3600}', 'language': 'it'};`);
+    }
   }
   if (u.hostname === 'vix-fixture.example') {
     if (u.pathname === '/child.m3u8') return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
-    assert.equal(u.searchParams.get('token'),'secret+token'); assert(['1','2'].includes(u.searchParams.get('b')));
+    assert.equal(u.searchParams.get('token'),'secret+token'); assert.equal(u.searchParams.get('lang'),'it'); assert(['1','2'].includes(u.searchParams.get('b')));
     return new Response('#EXTM3U\n' + audioLanguages.map(lang=>`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="${lang}",URI="/child.m3u8"`).join('\n') + '\n#EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="x"\n/child.m3u8');
   }
   throw new Error('unexpected host');
