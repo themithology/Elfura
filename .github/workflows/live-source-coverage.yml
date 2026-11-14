@@ -39,6 +39,86 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-3,combined'
+          - name: Dune Part Two Source 4 Bingr
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-4'
+          - name: Dune Part Two Source 5 Nxsha
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-5'
+          - name: Interstellar Source 7 Screenscape
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-7'
+          - name: Dune Part Two Source 9 Vixsrc
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-9'
+          - name: Interstellar Source 10 Vidnest
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-10'
+          - name: Breaking Bad S1E1 Source 11 VAPlayer
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-11'
+          - name: Jujutsu Kaisen S1E1 Source 12 Vidzen
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+            sources: 'source-12'
+          - name: Interstellar Source 13 Xpass
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-13'
+          - name: Dune Part Two Source 15 Mapple
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-15'
+          - name: Jujutsu Kaisen S1E1 Source 16 Anivexa
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+            sources: 'source-16'
           - name: Interstellar Source 3 VidSync
             type: movie
             tmdb: '157336'
@@ -143,7 +223,17 @@ jobs:
           TMDB_TIMEOUT_MS: '8000'
           SOURCE1_ENABLED: '1'
           SOURCE3_ENABLED: ${{ contains(matrix.sources, 'source-3') && '1' || '0' }}
+          ELFURA_BINGR_ENABLED: '1'
+          ELFURA_NXSHA_ENABLED: '1'
+          ELFURA_SCREENSCAPE_ENABLED: '1'
           ELFURA_VIDZEE_ENABLED: '1'
+          ELFURA_VIXSRC_ENABLED: '1'
+          ELFURA_VIDNEST_ENABLED: '1'
+          ELFURA_VAPLAYER_ENABLED: '1'
+          ELFURA_VIDZEN_ENABLED: '1'
+          ELFURA_XPASS_ENABLED: '1'
+          ELFURA_MAPPLE_ENABLED: '1'
+          ELFURA_ANIVEXA_ENABLED: '1'
           ELFURA_RIVE_CITADEL_ENABLED: '1'
           ELFURA_STREMIO_ADDONS: ${{ matrix.stremio_addons }}
           AUDIT_TYPE: ${{ matrix.type }}
