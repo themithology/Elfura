@@ -80,9 +80,12 @@ const result = {
   ...(anilistId ? { anilistId, anilistEpisode } : {}),
   sources,
   lanes,
-  network,
 };
 console.log(`::notice title=SourceDiscovery::${JSON.stringify(result)}`);
+for (const source of TARGETS) {
+  const events = network.filter((event) => event.source === source).slice(0, 24);
+  if (events.length) console.log(`::notice title=SourceNetwork::${source} ${JSON.stringify(events)}`);
+}
 if (process.env.GITHUB_STEP_SUMMARY) {
   const lines = [
     `## Live source discovery: ${result.title}`,

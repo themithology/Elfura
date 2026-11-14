@@ -49,6 +49,35 @@ try {
   assert(requests.includes('/watch/anizone/16498/sub/anizone-1'));
   assert(requests.includes('/watch/reanime/16498/dub/reanime-1'));
 
+  const regularWorkerFetch = anivexaWorker.fetch;
+  anivexaWorker.fetch = async request => {
+    const url = new URL(request.url);
+    if (url.pathname === '/episodes/999991') return Response.json({
+      anizone: { episodes: { sub: [{ id: 'watch/anizone/999991/sub/anizone-1', number: 1 }], dub: [] } },
+      reanime: { episodes: { sub: [], dub: [{ id: 'watch/reanime/999991/dub/reanime-1', number: 1 }] } },
+    });
+    if (url.pathname === '/watch/anizone/999991/sub/anizone-1') {
+      return Response.json({ streams: [{ url: 'https://media.example/early.m3u8', type: 'hls' }] });
+    }
+    if (url.pathname === '/watch/reanime/999991/dub/reanime-1') {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      return Response.json({ streams: [{ url: 'https://media.example/late.m3u8', type: 'hls' }] });
+    }
+    return new Response('not found', {status: 404});
+  };
+  const lateResults = [];
+  const discoveryStarted = Date.now();
+  const earlyResult = await adapter.resolve({
+    type: 'tv', tmdbId: '999991', anilistId: '999991', anilistEpisode: 1, episode: 1,
+    signal: AbortSignal.timeout(5000), onLateResult: result => lateResults.push(result),
+  });
+  const earlyMs = Date.now() - discoveryStarted;
+  assert(earlyMs < 900, `a fast provider should release Anivexa promptly (took ${earlyMs}ms)`);
+  assert.equal(earlyResult.candidates.length, 1, 'return the fast provider without waiting for a slow sibling');
+  await new Promise(resolve => setTimeout(resolve, 1350));
+  assert.equal(lateResults.at(-1)?.candidates.length, 2, 'cache all provider results when the slower lanes finish');
+  anivexaWorker.fetch = regularWorkerFetch;
+
   const overrideResult = await adapter.resolve({...query, anilistEpisode: 3});
   assert.equal(overrideResult.candidates.length, 2, 'the AniList episode override controls Anivexa lookup independently of the TMDB route episode');
   assert(overrideResult.candidates.every(candidate => candidate.url.includes('-3.m3u8')));

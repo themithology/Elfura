@@ -24,16 +24,29 @@ type AnivexaEpisode = { id?: unknown; number?: unknown };
 type AnivexaProvider = { episodes?: { sub?: AnivexaEpisode[]; dub?: AnivexaEpisode[] } };
 
 async function requestApi(path: string, signal: AbortSignal): Promise<unknown | null> {
+  if (signal.aborted) return null;
+  let onAbort: (() => void) | undefined;
   try {
     const request = new Request(new URL(path, INTERNAL_ORIGIN), {
       headers: { Accept: 'application/json' },
       signal,
     });
-    const response = await anivexaWorker.fetch(request, { API_VERSION: '2.3' });
-    if (!response.ok) return null;
-    return await response.json();
+    // The bundled Worker can fan out to many provider fetches and does not
+    // consistently propagate the incoming Request's abort signal downstream.
+    // Race it explicitly so an unavailable provider cannot hold playback open.
+    const responsePromise = anivexaWorker.fetch(request, { API_VERSION: '2.3' })
+      .then(async response => response.ok ? await response.json() as unknown : null)
+      .catch(() => null);
+    const aborted = new Promise<null>(resolve => {
+      onAbort = () => resolve(null);
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
+    return await Promise.race([responsePromise, aborted]);
   } catch {
     return null;
+  } finally {
+    if (onAbort) signal.removeEventListener('abort', onAbort);
   }
 }
 
@@ -94,33 +107,42 @@ async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
     return empty;
   }
 
+  const started = Date.now();
   const parent = query.signal ?? new AbortController().signal;
-  const signal = AbortSignal.any([parent, AbortSignal.timeout(14_000)]);
+  // Bound Anivexa's internal fan-out inside the registry's 12-second AniList
+  // budget. Its generated Worker may outlive an aborted incoming Request, so
+  // requestApi races the worker explicitly and can return usable early results.
+  const signal = AbortSignal.any([parent, AbortSignal.timeout(7_000)]);
   const episodeData = await requestApi(`/episodes/${anilistId}`, signal) as Record<string, AnivexaProvider> | null;
-  if (!episodeData) return empty;
+  if (!episodeData) {
+    query.diag?.push({ adapter: 'source-16', lane: 'E', ok: false, ms: Date.now() - started, detail: 'episode-index=unavailable' });
+    return empty;
+  }
 
   const providerEntries = Object.entries(episodeData)
     .filter(([key, value]) => key !== 'mappings' && key !== 'page' && key !== 'type' && value && typeof value === 'object')
     .slice(0, MAX_PROVIDERS);
-  const jobs = providerEntries.flatMap(([provider, result]) =>
+  const jobs = providerEntries.flatMap(([provider, result], providerIndex) =>
     (['sub', 'dub'] as const).flatMap((audio) => {
       const episode = result.episodes?.[audio]?.find((item) => Number(item.number) === episodeNumber);
       const episodePath = typeof episode?.id === 'string' ? episode.id.replace(/^\/+/, '') : '';
       return episodePath && /^watch\/[a-z0-9-]+\/\d+\/(?:sub|dub)\/[a-z0-9-]+-\d+$/i.test(episodePath)
-        ? [{ provider, audio, episodePath }]
+        ? [{ provider, audio, episodePath, providerIndex }]
         : [];
     }),
   );
-  const watchResults = await Promise.all(jobs.map(async (job) => ({
-    ...job,
-    payload: await requestApi(`/${job.episodePath}`, signal) as Record<string, unknown> | null,
-  })));
+  query.diag?.push({ adapter: 'source-16', lane: 'E', ok: true, ms: Date.now() - started,
+    detail: `episode-index=ok,providers=${providerEntries.length},watchJobs=${jobs.length}` });
+
   const candidates: RawStreamCandidate[] = [];
   const seen = new Set<string>();
-
-  for (const { provider, audio, payload } of watchResults) {
-    if (!payload) continue;
-    for (const stream of collectStreams(payload)) {
+  let completed = 0;
+  let releaseEarly: (() => void) | undefined;
+  let graceTimer: ReturnType<typeof setTimeout> | undefined;
+  const early = new Promise<void>(resolve => { releaseEarly = resolve; });
+  const addPayload = (provider: string, audio: 'sub' | 'dub', providerIndex: number, payload: Record<string, unknown> | null) => {
+    if (!payload || candidates.length >= MAX_CANDIDATES) return;
+    for (const [streamIndex, stream] of collectStreams(payload).entries()) {
       const rawUrl = typeof stream.url === 'string' ? stream.url : typeof stream.file === 'string' ? stream.file : '';
       if (!rawUrl || stream.embed === true || /\b(?:embed|iframe)\b/i.test(rawUrl) || !isSafeUpstreamUrl(rawUrl)) continue;
       const url = new URL(rawUrl);
@@ -138,12 +160,44 @@ async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
         audioVariant: audio,
         audioLabel: audio === 'sub' ? 'Japanese SUB' : 'English DUB',
         subtitles: subtitleTracks(stream.subtitles),
-        rank: Number.isFinite(rankRaw) ? Math.max(1, Math.min(999, Math.round(rankRaw))) : candidates.length + 1,
+        rank: Number.isFinite(rankRaw) ? Math.max(1, Math.min(999, Math.round(rankRaw))) : providerIndex * 16 + (audio === 'dub' ? 8 : 0) + streamIndex,
       });
-      if (candidates.length >= MAX_CANDIDATES) return { candidates };
+      if (candidates.length >= MAX_CANDIDATES) break;
     }
+    if (candidates.length && !graceTimer) {
+      // Give SUB/DUB siblings a short chance to join, but don't wait for every
+      // slow provider once at least one playable route is known.
+      graceTimer = setTimeout(() => releaseEarly?.(), 180);
+    }
+  };
+
+  const allWatchJobs = Promise.all(jobs.map(async job => {
+    try {
+      const payload = await requestApi(`/${job.episodePath}`, signal) as Record<string, unknown> | null;
+      addPayload(job.provider, job.audio, job.providerIndex, payload);
+    } finally {
+      completed++;
+      if (completed >= jobs.length) releaseEarly?.();
+    }
+  }));
+  const remainingBudget = Math.max(0, 5_200 - (Date.now() - started));
+  let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    allWatchJobs,
+    early,
+    new Promise<void>(resolve => { budgetTimer = setTimeout(resolve, remainingBudget); }),
+  ]);
+  if (graceTimer) clearTimeout(graceTimer);
+  if (budgetTimer) clearTimeout(budgetTimer);
+
+  const sortedCandidates = () => [...candidates].sort((a, b) => a.rank - b.rank).slice(0, MAX_CANDIDATES);
+  const current = sortedCandidates();
+  query.diag?.push({ adapter: 'source-16', lane: 'W', ok: current.length > 0, ms: Date.now() - started,
+    detail: `watchJobs=${jobs.length},completed=${completed},candidates=${current.length}` });
+  if (completed < jobs.length && query.onLateResult) {
+    void allWatchJobs.then(() => query.onLateResult?.({ candidates: sortedCandidates() })).catch(() => {});
   }
-  return { candidates };
+  return { candidates: current };
 }
 
 export function createSource16Adapter(enabled: () => boolean): SourceAdapter {
