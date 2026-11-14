@@ -1,0 +1,80 @@
+name: Research unavailable source discovery
+
+on:
+  push:
+    branches: [arena/98a7882b-elfura]
+    paths:
+      - backend/src/sources/**
+      - backend/test/research-source-discovery.mjs
+      - .github/workflows/research-source-discovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: ${{ matrix.title }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - title: Dune Part Two
+            type: movie
+            tmdb: '693134'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+          - title: Breaking Bad S1E1
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+          - title: Jujutsu Kaisen S1E1
+            type: tv
+            tmdb: '95479'
+            season: '1'
+            episode: '1'
+            anilist: '113415'
+            anilist_episode: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Probe adapter discovery and manifest stages without exposing URLs
+        run: node backend/test/research-source-discovery.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: live-source-discovery-audit-only-not-a-production-secret
+          RESOLVE_TIMEOUT_MS: '20000'
+          TMDB_TIMEOUT_MS: '8000'
+          SOURCE1_ENABLED: '0'
+          ELFURA_BINGR_ENABLED: '1'
+          ELFURA_NXSHA_ENABLED: '1'
+          ELFURA_SCREENSCAPE_ENABLED: '1'
+          ELFURA_VIDZEE_ENABLED: '0'
+          ELFURA_VIXSRC_ENABLED: '1'
+          ELFURA_VIDNEST_ENABLED: '0'
+          ELFURA_VAPLAYER_ENABLED: '1'
+          ELFURA_VIDZEN_ENABLED: '1'
+          ELFURA_XPASS_ENABLED: '1'
+          ELFURA_RIVE_CITADEL_ENABLED: '0'
+          ELFURA_MAPPLE_ENABLED: '1'
+          ELFURA_ANIVEXA_ENABLED: '1'
+          ELFURA_STREMIO_ADDONS: '[]'
+          PROBE_TITLE: ${{ matrix.title }}
+          PROBE_TYPE: ${{ matrix.type }}
+          PROBE_TMDB: ${{ matrix.tmdb }}
+          PROBE_SEASON: ${{ matrix.season }}
+          PROBE_EPISODE: ${{ matrix.episode }}
+          PROBE_ANILIST: ${{ matrix.anilist }}
+          PROBE_ANILIST_EPISODE: ${{ matrix.anilist_episode }}
