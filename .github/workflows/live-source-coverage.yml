@@ -39,6 +39,22 @@ jobs:
             anilist: ''
             anilist_episode: ''
             sources: 'source-3,combined'
+          - name: Interstellar Source 3 VidSync
+            type: movie
+            tmdb: '157336'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-3,combined'
+          - name: Breaking Bad S1E1 Source 3 VidSync
+            type: tv
+            tmdb: '1396'
+            season: '1'
+            episode: '1'
+            anilist: ''
+            anilist_episode: ''
+            sources: 'source-3,combined'
           - name: Spider-Man Across the Spider-Verse
             type: movie
             tmdb: '872585'
