@@ -133,10 +133,28 @@ for (const spec of specs) {
       console.log(`  season[0] dump: ${JSON.stringify(redactDeep(season)).slice(0, 700)}`);
     }
     if (Array.isArray(watch.json?.available_servers)) console.log(`  available_servers: ${watch.json.available_servers.slice(0, 5).map((item) => item?.key ?? item).join(',')}`);
+    // Locate the episode-id route: playback requires episode_id.
+    const seasonId = watch.json?.seasons?.[0]?.id;
+    const episodeRoutes = [
+      seasonId ? `/api/v1/seasons/${seasonId}/episodes` : null,
+      seasonId ? `/api/v1/seasons/${seasonId}` : null,
+      `/api/v1/titles/${match.id}/episodes`,
+      `/api/v1/titles/${match.id}/watch?season=1`,
+    ].filter(Boolean);
+    for (const route of episodeRoutes) {
+      const [routePath, queryString] = route.split('?');
+      const query = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : {};
+      const result = await call(routePath, query);
+      report('episodes', route, result);
+      const json = result.json;
+      const firstEpisode = json?.episodes?.[0] ?? json?.season?.episodes?.[0] ?? json?.items?.[0] ?? json?.seasons?.[0]?.episodes?.[0];
+      if (firstEpisode) console.log(`    first episode: ${JSON.stringify(redactDeep(firstEpisode)).slice(0, 400)}`);
+    }
   }
 
+  // Try the announced alternate servers too (moviebox_web is a separate lane).
   const attempts = type === 'movie'
-    ? [{}, { season: '1', episode: '1' }]
+    ? [{}, { server: 'moviebox_web' }, { language: 'hi' }]
     : [{ season: String(season || 1), episode: String(episode || 1) }, {}, { episode: String(episode || 1) }];
   for (const attempt of attempts) {
     const playback = await call(`/api/v1/titles/${match.id}/playback`, attempt);
