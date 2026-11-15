@@ -1231,8 +1231,11 @@ export class ElfuraPlayer {
             if (!isCurrent()) return;
             // The first group result may precede a slower lane. Retry once
             // after it has had time to warm the shared adapter cache.
-            for (let attempt = 0; attempt < 2; attempt++) {
-            if (attempt) await new Promise((resolve) => setTimeout(resolve, 1400));
+            // Three attempts over ~6 s: a slow adapter may still be on its
+            // catalogue fetch when the first recovery call goes out, and this
+            // pass is the only thing that can still add it to the list.
+            for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt === 1 ? 1400 : 2400));
             const response = await fetchForRecovery(recoveryUrl.toString(), { headers, signal: AbortSignal.timeout(12000) });
             if (!response.ok) continue;
             const raw = (await response.json()) as PlaybackPayloadShape;

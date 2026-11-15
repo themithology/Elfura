@@ -687,8 +687,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
-    const sources = registry.listPublicSources().map((s) => s.id).join(', ') || 'none';
-    console.log(`[elfura-backend] listening on http://${cfg.host}:${cfg.port} (sources: ${sources}; roxy: enabled)`);
+    const state = registry.describeSources();
+    const sources = state.enabled.join(', ') || 'none';
+    console.log(
+      `[elfura-backend] listening on http://${cfg.host}:${cfg.port} (${state.enabled.length}/${state.enabled.length + state.disabled.length} sources: ${sources}; roxy: enabled)`,
+    );
+    if (state.disabled.length) {
+      console.warn(
+        `[elfura-backend] disabled sources: ${state.disabled
+          .map((d) => `${d.id} (${d.flag}=0)`)
+          .join(', ')} — remove those lines from .env to race every lane`,
+      );
+    }
     // Operator-only boot diagnostics (server console; never sent to clients).
     // Hostnames/booleans only — no keys, tokens, or secrets.
     const hostOf = (raw?: string) => {

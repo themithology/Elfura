@@ -60,7 +60,32 @@ const RESCUE_EXTENSION_MS = 700;
 const RESCUE_CEILING_MS = 5200;
 /** Upper bound for the adapter race when nothing has candidates yet. */
 const ADAPTER_RACE_MS = 3600;
+/** Window for a single-adapter recovery call (`?source=source-N`). */
+const SINGLE_SOURCE_BUDGET_MS = 9000;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
+/** Diagnostics only: the environment variable that can switch each source off. */
+const SOURCE_ENV_FLAGS: Record<string, string> = {
+  'source-1': 'SOURCE1_ENABLED',
+  'source-3': 'SOURCE3_ENABLED',
+  'source-4': 'ELFURA_BINGR_ENABLED',
+  'source-5': 'ELFURA_NXSHA_ENABLED',
+  'source-7': 'ELFURA_SCREENSCAPE_ENABLED',
+  'source-8': 'ELFURA_VIDZEE_ENABLED',
+  'source-9': 'ELFURA_VIXSRC_ENABLED',
+  'source-10': 'ELFURA_VIDNEST_ENABLED',
+  'source-11': 'ELFURA_VAPLAYER_ENABLED',
+  'source-12': 'ELFURA_VIDZEN_ENABLED',
+  'source-13': 'ELFURA_XPASS_ENABLED',
+  'source-14': 'ELFURA_RIVE_CITADEL_ENABLED',
+  'source-15': 'ELFURA_MAPPLE_ENABLED',
+  'source-16': 'ELFURA_ANIVEXA_ENABLED',
+  'source-17': 'ELFURA_ANIVORTEX_ENABLED',
+  'source-18': 'ELFURA_SUBDUB_ENABLED',
+  'source-19': 'ELFURA_DESIDUB_ENABLED',
+  'source-20': 'ELFURA_VIDORA_ENABLED',
+  'source-21': 'ELFURA_WATCHOUT_ENABLED',
+};
+
 const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
@@ -117,6 +142,21 @@ export class SourceRegistry {
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
     ];
+  }
+
+  /**
+   * Which adapters are off, and which environment variable turned each one off.
+   * A stale `.env` kept from an older install is the single most common reason a
+   * source "disappears", so the answer belongs in the boot log.
+   */
+  describeSources(): { enabled: string[]; disabled: { id: string; flag: string }[] } {
+    const enabled: string[] = [];
+    const disabled: { id: string; flag: string }[] = [];
+    for (const adapter of this.adapters) {
+      if (adapter.enabled()) enabled.push(adapter.id);
+      else disabled.push({ id: adapter.id, flag: SOURCE_ENV_FLAGS[adapter.id] ?? '(configured off)' });
+    }
+    return { enabled, disabled };
   }
 
   listPublicSources(): { id: string; label: string }[] {
@@ -389,7 +429,14 @@ export class SourceRegistry {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
     const lateOnly = params.late === true;
-    const deadline = resolveStartedAt + (lateOnly ? 2_200 : params.anilistId ? 12_000 : resolveBudgetMs());
+    // A recovery call for one adapter is not first paint: nothing is waiting on
+    // it, and its only job is completeness. Cutting it at the shared 3.6 s race
+    // meant slow-but-working adapters (a 2.6 s catalogue fetch plus a lane fetch)
+    // never appeared in the list at all.
+    const singleSource = typeof params.sourceId === 'string' && params.sourceId.length > 0;
+    const deadline =
+      resolveStartedAt +
+      (lateOnly ? 2_200 : params.anilistId ? 12_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
@@ -508,7 +555,7 @@ export class SourceRegistry {
         new Promise<void>((r) => {
           earlyRelease = r;
         }),
-        wait(Math.min(ADAPTER_RACE_MS, remaining())),
+        wait(singleSource ? remaining() : Math.min(ADAPTER_RACE_MS, remaining())),
       ]);
     }
     if (lagTimer) clearTimeout(lagTimer);
