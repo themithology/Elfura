@@ -21,6 +21,8 @@
  */
 
 import crypto from 'node:crypto';
+import { loadBackendConfig } from '../dist/backend/config.js';
+import { SourceRegistry } from '../dist/backend/sources/registry.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from '../dist/backend/sources/liveness.js';
 import { fetchFromSubDub } from '../dist/backend/sources/source18.js';
 import { fetchFromDesiDub } from '../dist/backend/sources/source19.js';
@@ -300,3 +302,53 @@ for (const [id, adapter, query] of adapterCases) {
   const qualities = [...new Set(resolved.map((candidate) => candidate.quality))].join('/');
   console.log(`    quality: ${qualities || 'none'} · hosts: ${[...new Set(resolved.map((c) => hostOf(c.url)))].slice(0, 4).join(',')}`);
 }
+
+/* ───────────────── every lane, one title (the honest "will it work" check) ───────────────── */
+
+console.log('## 5. Every registered lane, Breaking Bad S1E1 (tt0903747)');
+const probeCfg = loadBackendConfig({ ELFURA_SECRET: 'probe-secret', OPENSUBTITLES_ENABLED: '0' });
+const probeRegistry = new SourceRegistry(probeCfg);
+const meta = {
+  title: 'Breaking Bad',
+  rawTitle: 'Breaking Bad',
+  year: '2008',
+  releaseDate: '2008-01-20',
+  latestDate: '2013-09-29',
+  originalLanguage: 'en',
+  imdbId: 'tt0903747',
+};
+const laneResults = [];
+const laneQueue = [...probeRegistry.adapters];
+const laneWorker = async () => {
+  while (laneQueue.length) {
+    const adapter = laneQueue.shift();
+    const started = Date.now();
+    let raw = [];
+    let error = '';
+    try {
+      raw = (await adapter.resolve({
+        type: 'tv',
+        tmdbId: '1396',
+        season: 1,
+        episode: 1,
+        imdbId: 'tt0903747',
+        title: meta.title,
+        year: meta.year,
+        resolveMetaFallback: async () => meta,
+        signal: AbortSignal.timeout(20_000),
+      })).candidates;
+    } catch (err) {
+      error = err instanceof Error ? err.name : 'Error';
+    }
+    const alive = raw.filter((candidate) => cachedCandidateEvidence(candidate)?.alive).length;
+    const hosts = [...new Set(raw.map((candidate) => hostOf(candidate.url)))].slice(0, 3);
+    laneResults.push({ id: adapter.id, raw: raw.length, alive, ms: Date.now() - started, error, hosts });
+  }
+};
+await Promise.all([laneWorker(), laneWorker(), laneWorker(), laneWorker()]);
+for (const lane of laneResults.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))) {
+  const status = lane.error ? `error ${lane.error}` : `${lane.raw} row(s), ${lane.alive} alive`;
+  console.log(`- ${lane.id}: ${status} in ${lane.ms}ms${lane.hosts.length ? ` · ${lane.hosts.join(',')}` : ''}`);
+}
+const producing = laneResults.filter((lane) => lane.raw > 0).length;
+console.log(`- summary: ${producing}/${laneResults.length} lanes produced rows for this episode from a US runner`);
