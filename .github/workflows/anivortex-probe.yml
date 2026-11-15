@@ -12,7 +12,7 @@ on:
       - 'backend/src/anivortex-auth.ts'
       - 'backend/src/sources/source17.ts'
 permissions:
-  contents: read
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -35,3 +35,22 @@ jobs:
             cat /tmp/anivortex-probe.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish probe report to this branch
+        # Artifact/log downloads are not always reachable from the agent sandbox,
+        # so the report is committed instead of uploaded.
+        run: |
+          mkdir -p research
+          {
+            echo '# AniVortex live probe report'
+            echo
+            echo "Run: $GITHUB_RUN_ID on $GITHUB_REF_NAME at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo '```'
+            cat /tmp/anivortex-probe.log
+            echo '```'
+          } > research/anivortex-probe-report.md
+          git config user.name 'elfura-probe'
+          git config user.email 'probe@users.noreply.github.com'
+          git add research/anivortex-probe-report.md
+          git commit -m 'research: AniVortex live probe report [skip ci]' || exit 0
+          git push origin "HEAD:$GITHUB_REF_NAME"
