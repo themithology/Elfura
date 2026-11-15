@@ -30,6 +30,24 @@ jobs:
             tail -n 200 /tmp/provenance.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Source health (movie 550)
+        if: always()
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ELFURA_SECRET: ci-probe-secret
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/source-selftest.mjs movie 550 2>&1 | tee /tmp/selftest-550.log || true
+          { echo '### Source health — movie 550 (Fight Club)'; echo '```'; cat /tmp/selftest-550.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Source health (tv 1396 S1E1)
+        if: always()
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ELFURA_SECRET: ci-probe-secret
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/source-selftest.mjs tv 1396 1 1 2>&1 | tee /tmp/selftest-1396.log || true
+          { echo '### Source health — tv 1396 S1E1 (Breaking Bad)'; echo '```'; cat /tmp/selftest-1396.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Publish report
         if: always()
         run: |
