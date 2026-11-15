@@ -371,6 +371,8 @@ console.log('## 6. Source 21 — Vidout catalogue, live');
 for (const [label, query] of [
   ['tv 1396 S1E1', { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
   ['tv 1396 S1E4', { type: 'tv', tmdbId: '1396', season: 1, episode: 4 }],
+  ['tv 66732 S4E1', { type: 'tv', tmdbId: '66732', season: 4, episode: 1 }],
+  ['tv 76479 S1E1', { type: 'tv', tmdbId: '76479', season: 1, episode: 1 }],
   ['movie 10138', { type: 'movie', tmdbId: '10138' }],
   ['movie 27205', { type: 'movie', tmdbId: '27205' }],
 ]) {
