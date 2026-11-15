@@ -253,7 +253,21 @@ export async function fetchFromKmMovies(query: SourceQuery, trace?: string[]): P
 
   const post = await getPage(best.url, signal, {}, trace);
   if (!post) return [];
-  trace?.push(`dlbtn=${(post.body.match(/class="dl-btn/g) || []).length} kmcloud=${(post.body.match(/kmcloud\.[a-z]+\/s\//gi) || []).length} dlsection=${post.body.includes('id="download-links"')} seasons=${(post.body.match(/season-block/g) || []).length}`);
+  const dlHosts = new Map<string, number>();
+  for (const href of post.body.matchAll(/<a href="([^"]+)" class="dl-btn/g)) {
+    let host = 'relative';
+    try {
+      host = new URL(href[1], SITE).hostname;
+    } catch {
+      /* keep relative */
+    }
+    dlHosts.set(host, (dlHosts.get(host) ?? 0) + 1);
+  }
+  trace?.push(
+    `dlbtn=${(post.body.match(/class="dl-btn/g) || []).length} kmcloud=${(post.body.match(/kmcloud\.[a-z]+\/s\//gi) || []).length}` +
+      ` dlsection=${post.body.includes('id="download-links"')} seasons=${(post.body.match(/season-block/g) || []).length}` +
+      ` hosts=${[...dlHosts.entries()].slice(0, 4).map(([host, count]) => `${host}:${count}`).join(',') || 'none'}`,
+  );
 
   let files: KmFile[] = [];
   if (query.type === 'tv') {

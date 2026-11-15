@@ -26,7 +26,6 @@ import { normalizeLang } from './lang.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://blakiteapi.xyz';
-const SITE = 'https://subdubanime.site/';
 const CDN = 'https://hugh.cdn.rumble.cloud/video/';
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -112,7 +111,9 @@ async function readJson(
 ): Promise<unknown> {
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: SITE, Origin: SITE },
+      // The provider gateway answers 403 unless the referer is its own origin
+      // (the site itself never calls this route). Credentials never leave here.
+      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `${API}/`, Origin: API },
       redirect: 'error',
       signal,
     });
