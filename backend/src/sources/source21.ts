@@ -80,6 +80,7 @@ async function getPage(
   url: string,
   signal: AbortSignal,
   extra: Record<string, string> = {},
+  trace?: string[],
 ): Promise<{ body: string; url: string } | null> {
   try {
     const response = await fetch(url, {
@@ -94,11 +95,13 @@ async function getPage(
       signal,
     });
     const body = await readBounded(response, MAX_HTML_BYTES);
+    trace?.push(`http=${response.status} bytes=${body === null ? 'over-cap' : body.length} ${new URL(url).pathname.slice(0, 40)}`);
     if (body === null) return null;
     const finalUrl = response.url || url;
     if (!isSafeUpstreamUrl(finalUrl)) return null;
     return { body, url: finalUrl };
-  } catch {
+  } catch (err) {
+    trace?.push(`net=${err instanceof Error ? err.name : 'error'}`);
     return null;
   }
 }
@@ -231,7 +234,7 @@ export async function fetchFromKmMovies(query: SourceQuery, trace?: string[]): P
   const wanted = titleKey(title);
   if (!wanted) return [];
 
-  const search = await getPage(`${SITE}/?s=${encodeURIComponent(title)}`, signal);
+  const search = await getPage(`${SITE}/?s=${encodeURIComponent(title)}`, signal, {}, trace);
   if (!search) return [];
   const cards = parseCards(search.body, SITE);
   trace?.push(`cards=${cards.length}`);
@@ -248,8 +251,9 @@ export async function fetchFromKmMovies(query: SourceQuery, trace?: string[]): P
   if (!best) return [];
   trace?.push(`match=${best.score}`);
 
-  const post = await getPage(best.url, signal);
+  const post = await getPage(best.url, signal, {}, trace);
   if (!post) return [];
+  trace?.push(`dlbtn=${(post.body.match(/class="dl-btn/g) || []).length} kmcloud=${(post.body.match(/kmcloud\.[a-z]+\/s\//gi) || []).length} dlsection=${post.body.includes('id="download-links"')} seasons=${(post.body.match(/season-block/g) || []).length}`);
 
   let files: KmFile[] = [];
   if (query.type === 'tv') {
@@ -268,6 +272,7 @@ export async function fetchFromKmMovies(query: SourceQuery, trace?: string[]): P
   const resolved = await Promise.all(
     ranked.map(async (file, index) => {
       const url = await resolveKmFile(file, signal).catch(() => null);
+      trace?.push(`file${index}=${url ? 'ok' : 'none'}`);
       if (!url) return null;
       return {
         key: url,

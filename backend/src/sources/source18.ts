@@ -104,17 +104,31 @@ async function readBounded(response: Response, maxBytes: number): Promise<Buffer
   }
 }
 
-async function readJson(url: string, signal: AbortSignal, maxBytes: number): Promise<unknown> {
+async function readJson(
+  url: string,
+  signal: AbortSignal,
+  maxBytes: number,
+  trace?: string[],
+): Promise<unknown> {
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: SITE },
+      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: SITE, Origin: SITE },
       redirect: 'error',
       signal,
     });
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
     const buffer = await readBounded(response, maxBytes);
+    trace?.push(`http=${response.status}${contentType ? `/${contentType}` : ''}${buffer ? '' : '/no-body'}`);
     if (!buffer) return null;
-    return JSON.parse(buffer.toString('utf8')) as unknown;
-  } catch {
+    const text = buffer.toString('utf8');
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      trace?.push(`body=${text.slice(0, 40).replace(/\s+/g, ' ')}`);
+      return null;
+    }
+  } catch (err) {
+    trace?.push(`net=${err instanceof Error ? err.name : 'error'}`);
     return null;
   }
 }
@@ -240,7 +254,7 @@ async function fetchPayload(
     const episode = query.episode ?? 1;
     endpoint.searchParams.set('id', `${season}-${episode}`);
   }
-  const body = await readJson(endpoint.href, signal, MAX_JSON_BYTES);
+  const body = await readJson(endpoint.href, signal, MAX_JSON_BYTES, trace);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
   const root = body as { data?: unknown; success?: unknown; error?: unknown };
   const data = root.data;
