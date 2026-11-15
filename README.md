@@ -220,7 +220,7 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/sources/      isolated SourceAdapter registry + Source 1–17 adapters (16 bundled Anivexa anime aggregator — pass both `tmdb` and `anilist`; 17 AniVortex catalogue, opt-in and needs installation credentials from `scripts/anivortex-register.mjs`)
+backend/src/sources/      isolated SourceAdapter registry + Source 1–21 adapters (16 bundled Anivexa anime aggregator — pass both `tmdb` and `anilist`; 17 AniVortex catalogue, opt-in and needs installation credentials from `scripts/anivortex-register.mjs`; 18 SubDubAnime Hindi/English sub+dub anime; 19 DesiDubAnime Hindi/Tamil/Telugu dubs; 20 Vidora TMDB-keyed HLS + subtitles; 21 KMMovies Bollywood/Hollywood/K-drama)
 ```
 
 ## Roxy operator dashboard

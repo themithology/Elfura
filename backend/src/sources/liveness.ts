@@ -19,6 +19,7 @@ import {
 } from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
 
 const DEFAULT_PROBE_UA =
@@ -673,7 +674,7 @@ export async function verifyAndFilterCandidatesDetailed(
  * server. This still cannot prove that a viewer's browser can play the stream.
  */
 export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, relayMode: 'hybrid' | 'full' = 'hybrid') {
-  type Check = { stage: string; status: string; ms: number; httpStatus?: number; contentType?: string; bytes?: number; error?: string };
+  type Check = { stage: string; status: string; ms: number; httpStatus?: number; contentType?: string; bytes?: number; error?: string; mediaEncoding?: string };
   const started = Date.now();
   const checks: Check[] = [];
   const languages = new Set<string>();
@@ -772,24 +773,42 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
       const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
       const clearlyNotMedia = contentType.startsWith('image/') || contentType.startsWith('text/') ||
         contentType.startsWith('font/') || /(?:html|json|xml)/i.test(contentType);
-      if (!(res.status === 200 || res.status === 206) || clearlyNotMedia) {
+      if (!(res.status === 200 || res.status === 206)) {
         await res.body?.cancel().catch(() => {});
-        checks.push({ stage, status: clearlyNotMedia ? 'unexpected-content-type' : 'media-http-error',
+        checks.push({ stage, status: 'media-http-error',
           httpStatus: res.status, ms: Date.now() - t0,
           ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
         return null;
       }
+      // Content-Type alone cannot condemn a segment: some CDNs wrap the
+      // transport stream in a PNG container (image/png with a private `tsDa`
+      // chunk), and others mislabel TS as image/jpeg. Sniff the leading bytes
+      // so a playable stream is never reported dead because of a header.
+      let head = new Uint8Array(0);
       let bytes = 0;
       if (res.body) {
         const reader = res.body.getReader();
         try {
           const { value } = await reader.read();
-          bytes = Math.min(value?.byteLength ?? 0, 1024);
+          if (value) { head = value; bytes = Math.min(value.byteLength, 1024); }
         } finally { await reader.cancel().catch(() => {}); }
+      }
+      const sniff = bytes > 0 ? sniffMediaBytes(head) : 'unknown';
+      const wrappedTransport = sniff === 'png-wrapped-ts';
+      const sniffedMedia = sniff === 'mpeg-ts' || sniff === 'mp4' || wrappedTransport;
+      const lookalikeImage = isImageContentType(contentType) && !sniffedMedia;
+      if (clearlyNotMedia && !sniffedMedia) {
+        checks.push({ stage, status: 'unexpected-content-type',
+          httpStatus: res.status, ms: Date.now() - t0,
+          ...(contentType ? { contentType: contentType.slice(0, 80) } : {}),
+          ...(lookalikeImage ? { mediaEncoding: 'image-error-page' } : {}) });
+        return null;
       }
       const ok = bytes > 0;
       checks.push({ stage, status: ok ? 'ok' : 'empty-media-response', httpStatus: res.status,
-        ms: Date.now() - t0, bytes, ...(contentType ? { contentType: contentType.slice(0, 80) } : {}) });
+        ms: Date.now() - t0, bytes,
+        ...(contentType ? { contentType: contentType.slice(0, 80) } : {}),
+        ...(wrappedTransport ? { mediaEncoding: 'png-wrapped-ts' } : {}) });
       return { url, ok };
     } catch (err) {
       const error = err instanceof Error ? err.name : 'Error';

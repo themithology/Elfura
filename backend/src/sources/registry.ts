@@ -29,6 +29,10 @@ import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
 import { createSource16Adapter } from './source16.js';
 import { createSource17Adapter } from './source17.js';
+import { createSource18Adapter } from './source18.js';
+import { createSource19Adapter } from './source19.js';
+import { createSource20Adapter } from './source20.js';
+import { createSource21Adapter } from './source21.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -85,6 +89,10 @@ export class SourceRegistry {
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
       createSource17Adapter(() => cfg.source17?.enabled === true),
+      createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
+      createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
+      createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
+      createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_KMMOVIES_ENABLED !== '0'),
     ];
   }
 

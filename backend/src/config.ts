@@ -85,6 +85,11 @@ export interface BackendConfig {
   source16?: { enabled: boolean };
   /** AniVortex (signed installation) — off unless explicitly enabled AND credentials exist. */
   source17?: { enabled: boolean };
+  /** Experimental additional source controls (sources 18-21). */
+  source18?: { enabled: boolean };
+  source19?: { enabled: boolean };
+  source20?: { enabled: boolean };
+  source21?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -229,6 +234,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // AniVortex is opt-in: the API rejects unsigned requests, so enabling it
     // without installation credentials would only add dead latency.
     source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED === '1' },
+    source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
+    source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
+    source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
+    source21: { enabled: env.ELFURA_KMMOVIES_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
