@@ -4,6 +4,13 @@ name: AniVortex feasibility probe
 # no full upstream URLs. Run manually from the Actions tab.
 on:
   workflow_dispatch:
+  push:
+    branches: [arena/399224d8-elfura]
+    paths:
+      - '.github/workflows/anivortex-probe.yml'
+      - 'scripts/anivortex-probe.mjs'
+      - 'backend/src/anivortex-auth.ts'
+      - 'backend/src/sources/source17.ts'
 permissions:
   contents: read
 jobs:
