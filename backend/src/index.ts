@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
+import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
@@ -132,6 +133,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
   const roxy = new RoxyStore(cfg.secret);
+  // Pop-under ads live in the embed player only; this decides per request.
+  const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
   const sameOrigin = (req: http.IncomingMessage) => {
@@ -213,6 +216,35 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (!authenticated(req)) { reply(401,{error:'Sign in required'}); return; }
       if (pathname === '/roxy/api/logout' && method === 'POST') { res.setHeader('Set-Cookie',`roxy_session=; ${cookieFlags(req)}; Max-Age=0`); reply(200,{ok:true}); return; }
       if (pathname === '/roxy/api/overview' && method === 'GET') { reply(200,roxy.snapshot()); return; }
+      if (pathname === '/roxy/api/ads' && method === 'GET') {
+        reply(200, {
+          ...ads.get(),
+          src: popunderSrc(),
+          alwaysAdFree: ALWAYS_AD_FREE,
+          localhostExempt: true,
+          sitesSeen: roxy.snapshot().sites.map((row) => row.key).filter((key) => key && key !== '(direct / unknown)'),
+        });
+        return;
+      }
+      if (pathname === '/roxy/api/ads' && method === 'POST') {
+        try {
+          const body = await readJsonBody(req, 4096);
+          if (typeof body.enabled === 'boolean') {
+            ads.setEnabled(body.enabled);
+            reply(200, { ok: true, ...ads.get() });
+            return;
+          }
+          if (typeof body.site === 'string' && typeof body.adFree === 'boolean') {
+            const next = ads.setSiteAdFree(body.site, body.adFree);
+            reply(200, { ok: true, ...next });
+            return;
+          }
+          reply(400, { ok: false, error: 'expected {enabled} or {site, adFree}' });
+        } catch {
+          reply(400, { ok: false, error: 'Invalid request' });
+        }
+        return;
+      }
       if (pathname === '/roxy/api/clear' && method === 'POST') { roxy.clear(); const ok=await roxy.flush(); reply(ok?200:500,ok?{ok:true}:{error:'Could not persist deletion'}); return; }
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
@@ -693,10 +725,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
         // Escape `<` inside JSON to prevent script breakout
         const safeJson = JSON.stringify(bootData).replace(/</g, '\\u003c');
-        const injected = tpl.replace(
+        // Ads: embed player only. The decision uses the referring site, the
+        // request host, the admin switches and the always-free brand domains.
+        const adDecision = decideAds(
+          { parentSite, requestHost: String(req.headers['x-forwarded-host'] || req.headers.host || '') },
+          ads.get(),
+        );
+        const adTag = adDecision.serve ? popunderTag(adDecision.src) : '';
+        let injected = tpl.replace(
           '</head>',
           `  <script>window.__ELFURA_BOOT__=${safeJson};</script>\n</head>`,
         );
+        if (adTag) injected = injected.replace('</body>', `  ${adTag}\n</body>`);
         const buf = Buffer.from(injected, 'utf8');
         setCloudflareCache(res, 'no-store');
         res.writeHead(200, {
