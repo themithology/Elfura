@@ -101,7 +101,7 @@ export class SourceRegistry {
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
-      createSource17Adapter(() => cfg.source17?.enabled === true),
+      createSource17Adapter(() => cfg.source17?.enabled !== false),
       createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
       createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
@@ -443,11 +443,16 @@ export class SourceRegistry {
         .then((value) => { segmentResults[idx] = value; }).catch(() => {}),
     );
 
+    // Per-adapter outcome, kept for the "nothing resolved" report: with ten
+    // sources, "which one failed and why" must be readable from the log.
+    const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
     const adapterTasks = activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
+      const startedAt = Date.now();
       try {
         const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
         slots[idx] = { adapter, result };
+        adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
@@ -459,8 +464,11 @@ export class SourceRegistry {
             lagTimer = setTimeout(() => earlyRelease?.(), grace);
           }
         }
-      } catch {
-        /* adapter failed */
+      } catch (err) {
+        adapterReport.set(adapter.id, {
+          ms: Date.now() - startedAt,
+          error: err instanceof Error ? err.name : 'Error',
+        });
       } finally {
         doneCount++;
         if (doneCount >= activeAdapters.length) {
@@ -609,14 +617,19 @@ export class SourceRegistry {
 
     if (!uniformOptions.length) {
       // Operator-only diagnostics (server console; never sent to clients).
-      const detail = verifiedEntries
-        .map(
-          (e) =>
-            `${e.adapter.id}: raw=${e.result.candidates.length} verified=${e.liveCandidates.length}`,
-        )
-        .join(' ');
+      const detail = activeAdapters
+        .map((adapter) => {
+          const hit = verifiedEntries.find((e) => e.adapter.id === adapter.id);
+          const report = adapterReport.get(adapter.id);
+          if (hit) {
+            return `${adapter.id}: raw=${hit.result.candidates.length} verified=${hit.liveCandidates.length}`;
+          }
+          if (!report) return `${adapter.id}: no-result (still running at ${Date.now() - resolveStartedAt}ms)`;
+          return `${adapter.id}: raw=${report.raw ?? '?'} ${report.error ? `error=${report.error}` : 'returned-empty'} ${report.ms}ms`;
+        })
+        .join(' | ');
       console.warn(
-        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} :: ${detail}`,
+        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} meta=${media.title ? 'ok' : 'missing'} ms=${Date.now() - resolveStartedAt} :: ${detail}`,
       );
       return null;
     }

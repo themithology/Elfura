@@ -26,6 +26,43 @@ export interface DiagnosticsProbe {
   lang?: string;
 }
 
+/**
+ * Bounded outbound-connectivity check. When every source reports "no rows",
+ * the first question is whether this host can reach the internet at all, so the
+ * report answers it directly. Labels stay generic: no provider hostnames are
+ * ever exposed to the client.
+ */
+export async function probeOutbound(cfg: BackendConfig): Promise<Record<string, { ok: boolean; ms: number; status?: number; code?: string }>> {
+  const targets: Record<string, string> = {
+    // Title metadata (TMDB) — a 401 still proves DNS + TLS + egress work.
+    metadata: `${cfg.tmdb.apiBase.replace(/\/$/, '')}/3/configuration`,
+  };
+  const out: Record<string, { ok: boolean; ms: number; status?: number; code?: string }> = {};
+  await Promise.all(
+    Object.entries(targets).map(async ([label, target]) => {
+      const started = Date.now();
+      try {
+        const res = await fetch(target, {
+          method: 'GET',
+          redirect: 'manual',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        });
+        await res.body?.cancel().catch(() => {});
+        out[label] = { ok: true, ms: Date.now() - started, status: res.status };
+      } catch (err) {
+        const cause = (err as { cause?: { code?: string } })?.cause;
+        out[label] = {
+          ok: false,
+          ms: Date.now() - started,
+          code: (err instanceof Error ? err.name : 'Error') + (cause?.code ? `/${cause.code}` : ''),
+        };
+      }
+    }),
+  );
+  return out;
+}
+
 let buildInfoCache: { commit: string } | null = null;
 /** Commit stamp written into the deployment ZIP at packaging time. */
 export function readBuildInfo(): { commit: string } {
@@ -123,6 +160,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       candidateChecks: playback.playbackChecks,
       policy: playback.policy,
     },
+    network: await probeOutbound(cfg),
     diagnosis: {
       hints,
       scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/v1/stream relay response, device decoder, and audible language are not exercised by this endpoint.',

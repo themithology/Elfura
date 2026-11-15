@@ -9,6 +9,7 @@
  *   - Zero local disk writes, logs, SQLite files, or temp media caches
  */
 
+import './compat.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -18,7 +19,8 @@ import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './co
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
+import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
+import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -700,8 +702,19 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
         `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
-        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)}`,
+        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)} ${runtimeSummary()}`,
     );
+    // One bounded outbound check, logged once per boot. When every source
+    // reports "no rows" the first question is whether this container can reach
+    // the internet at all — this answers it without opening a browser.
+    void probeOutbound(cfg)
+      .then((net) => {
+        const parts = Object.entries(net).map(
+          ([label, r]) => `${label}=${r.ok ? `ok/${r.status}` : `fail(${r.code})`} ${r.ms}ms`,
+        );
+        console.log(`[elfura-net] ${parts.join(' ')}`);
+      })
+      .catch(() => {});
   });
   return { server, cfg, registry };
 }

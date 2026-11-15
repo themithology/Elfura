@@ -230,9 +230,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
     source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
-    // AniVortex is opt-in: the API rejects unsigned requests, so enabling it
-    // without installation credentials would only add dead latency.
-    source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED === '1' },
+    // AniVortex signs every request with installation credentials. Without them
+    // the adapter returns in microseconds, so it simply stays on: no toggles to
+    // maintain, no cost when the credentials are absent.
+    source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED !== '0' },
     source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
     source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
