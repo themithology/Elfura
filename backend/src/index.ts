@@ -692,6 +692,11 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
     console.log(
       `[elfura-backend] listening on http://${cfg.host}:${cfg.port} (${state.enabled.length}/${state.enabled.length + state.disabled.length} sources: ${sources}; roxy: enabled)`,
     );
+    if (process.env.ELFURA_SELF_TEST !== '0') {
+      void import('./sources/self-test.js')
+        .then((mod) => mod.runSourceSelfTest(registry))
+        .catch(() => {});
+    }
     if (state.disabled.length) {
       console.warn(
         `[elfura-backend] disabled sources: ${state.disabled

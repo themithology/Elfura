@@ -34,6 +34,7 @@ import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
 import { durationFits, durationToleranceSec } from './duration.js';
+import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -108,6 +109,10 @@ export class SourceRegistry {
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
+    // Record what each adapter actually talked to, so a resolve that yields
+    // nothing can explain itself in the console.
+    installNetTap();
+
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
       // Source 1 contains direct upstreams independently identified in Aethoflix.
@@ -157,6 +162,45 @@ export class SourceRegistry {
       else disabled.push({ id: adapter.id, flag: SOURCE_ENV_FLAGS[adapter.id] ?? '(configured off)' });
     }
     return { enabled, disabled };
+  }
+
+  /**
+   * Ask every enabled adapter for one title directly, with a fresh request log.
+   * Used by the boot self-test and by operators diagnosing an empty list.
+   */
+  async selfTestAll(
+    params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
+  ): Promise<{ id: string; raw: number; ms: number; net: string }[]> {
+    return Promise.all(
+      this.adapters
+        .filter((adapter) => adapter.enabled())
+        .map(async (adapter) => {
+          const started = Date.now();
+          const query: SourceQuery = {
+            type: params.type,
+            tmdbId: params.tmdbId,
+            season: params.season,
+            episode: params.episode,
+            signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
+          };
+          try {
+            const tapped = await tapRequests(() => adapter.resolve(query));
+            return {
+              id: adapter.id,
+              raw: tapped.value.candidates.length,
+              ms: Date.now() - started,
+              net: summarizeNet(tapped.net),
+            };
+          } catch (err) {
+            return {
+              id: adapter.id,
+              raw: 0,
+              ms: Date.now() - started,
+              net: `threw ${err instanceof Error ? err.name : 'Error'}`,
+            };
+          }
+        }),
+    );
   }
 
   listPublicSources(): { id: string; label: string }[] {
@@ -512,6 +556,7 @@ export class SourceRegistry {
     // Per-adapter outcome, kept for the "nothing resolved" report: with ten
     // sources, "which one failed and why" must be readable from the log.
     const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
+    const adapterNet = new Map<string, NetRecord[]>();
     if (lateOnly) {
       activeAdapters.forEach((adapter, idx) => {
         const cached = this.getCachedAdapterResult(cacheKeys[idx]);
@@ -522,9 +567,17 @@ export class SourceRegistry {
       const cacheKey = cacheKeys[idx];
       const startedAt = Date.now();
       try {
-        const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
+        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query));
+        const result = tapped.value;
+        adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
         adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
+        if (!result.candidates.length) {
+          console.warn(
+            `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
+              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)}`,
+          );
+        }
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
