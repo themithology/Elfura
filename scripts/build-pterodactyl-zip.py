@@ -277,7 +277,7 @@ def main() -> None:
 
         # Operator tooling that depends on the pre-built dist/: mint per-install
         # AniVortex credentials inside the container, and probe them.
-        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs"):
+        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs", "env-audit.mjs"):
             helper_path = ROOT / "scripts" / helper
             if helper_path.is_file():
                 write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
