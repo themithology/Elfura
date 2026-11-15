@@ -340,7 +340,18 @@ const laneWorker = async () => {
     } catch (err) {
       error = err instanceof Error ? err.name : 'Error';
     }
-    const alive = raw.filter((candidate) => cachedCandidateEvidence(candidate)?.alive).length;
+    // Adapters that verify internally already carry evidence. The rest (1, 2,
+    // 3, ...) do not, so an unverified row must not be reported as dead — run
+    // the same bounded liveness pass the registry uses before judging it.
+    let alive = raw.filter((candidate) => cachedCandidateEvidence(candidate)?.alive).length;
+    if (raw.length && alive === 0) {
+      try {
+        const checked = await verifyAndFilterCandidatesDetailed(raw, AbortSignal.timeout(5_000));
+        alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive).length;
+      } catch {
+        alive = 0;
+      }
+    }
     const hosts = [...new Set(raw.map((candidate) => hostOf(candidate.url)))].slice(0, 3);
     laneResults.push({ id: adapter.id, raw: raw.length, alive, ms: Date.now() - started, error, hosts });
   }
