@@ -391,3 +391,48 @@ for (const [label, query] of [
     console.log(`- ${label}: error ${err instanceof Error ? err.name : 'unknown'}`);
   }
 }
+
+/* ───────────────── source 21: why a verified row is not "alive" ───────────────── */
+
+console.log('## 7. Source 21 transport checks (status codes only)');
+{
+  const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+  const probe = async (url, headers) => {
+    try {
+      const res = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+      const body = await res.text().catch(() => '');
+      return { status: res.status, ct: (res.headers.get('content-type') || '').split(';')[0], head: body.slice(0, 40).replace(/\n/g, '\\n') };
+    } catch (err) {
+      return { status: 0, ct: '', head: err instanceof Error ? err.name : 'Error' };
+    }
+  };
+  for (const headers of [{ 'User-Agent': UA }, { 'User-Agent': UA, Referer: 'https://vidout.pages.dev/', Origin: 'https://vidout.pages.dev' }]) {
+    const label = headers.Referer ? 'with vidout referer' : 'plain UA';
+    const rows = await fetchFromWatchout({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 });
+    if (!rows.length) { console.log(`- ${label}: no catalogue row`); continue; }
+    const master = rows[0].url;
+    const m = await probe(master, headers);
+    console.log(`- ${label}: master ${m.status} ${m.ct} ${m.head}`);
+    const variantRel = (await (async () => {
+      const res = await fetch(master, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
+      const text = res ? await res.text().catch(() => '') : '';
+      const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+      return lines.find((line) => line && !line.startsWith('#') && !line.includes('URI=')) || '';
+    })());
+    if (!variantRel) { console.log('    (no variant line parsed)'); continue; }
+    const variantUrl = new URL(variantRel, master).toString();
+    const v = await probe(variantUrl, headers);
+    console.log(`    variant ${v.status} ${v.ct} ${v.head.slice(0, 30)}`);
+    const segRel = (await (async () => {
+      const res = await fetch(variantUrl, { headers, signal: AbortSignal.timeout(8000) }).catch(() => null);
+      const text = res ? await res.text().catch(() => '') : '';
+      return text.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('#')) || '';
+    })());
+    if (segRel) {
+      const segUrl = new URL(segRel, variantUrl).toString();
+      const seg = await fetch(segUrl, { headers: { ...headers, Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(8000) }).catch(() => null);
+      const bytes = seg ? (await seg.arrayBuffer().catch(() => new ArrayBuffer(0))).byteLength : 0;
+      console.log(`    segment ${seg ? seg.status : 0} ${seg ? (seg.headers.get('content-type') || '').split(';')[0] : ''} ${bytes}b`);
+    }
+  }
+}
