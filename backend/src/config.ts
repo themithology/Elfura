@@ -122,7 +122,7 @@ function deriveSecret(raw?: string): Buffer {
   return crypto.createHash('sha256').update(seed).digest();
 }
 
-function readDotEnvOverlay(): Record<string, string> {
+export function readDotEnvOverlay(): Record<string, string> {
   const out: Record<string, string> = {};
   const candidates = [
     path.resolve(__dirname, '../../.env'),

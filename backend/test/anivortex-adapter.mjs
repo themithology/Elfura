@@ -6,6 +6,7 @@ import {
   buildSelfSignedCertificate,
   canonicalQuery,
   encodeQueryValue,
+  describeAnivortexCredentials,
   readAnivortexCredentials,
   registerAnivortexInstallation,
 } from '../../dist/backend/anivortex-auth.js';
@@ -219,6 +220,18 @@ process.env.ELFURA_ANIVORTEX_INSTALL_ID = CREDENTIALS.installationId;
 process.env.ELFURA_ANIVORTEX_KEY_ID = CREDENTIALS.keyId;
 process.env.ELFURA_ANIVORTEX_PRIVATE_KEY = privateKeyB64;
 assert.ok(readAnivortexCredentials(), 'credentials load from environment variables');
+assert.equal(
+  describeAnivortexCredentials({ ELFURA_ANIVORTEX_INSTALL_ID: 'i', ELFURA_ANIVORTEX_KEY_ID: 'k' }),
+  'incomplete installation credentials (one of INSTALL_ID / KEY_ID / PRIVATE_KEY is empty)',
+);
+assert.match(
+  describeAnivortexCredentials({ ELFURA_ANIVORTEX_INSTALL_ID: 'i', ELFURA_ANIVORTEX_KEY_ID: 'k', ELFURA_ANIVORTEX_PRIVATE_KEY: 'not-a-pkcs8-key' }),
+  /invalid installation private key/,
+);
+assert.equal(
+  describeAnivortexCredentials({ ELFURA_ANIVORTEX_INSTALL_ID: 'i', ELFURA_ANIVORTEX_KEY_ID: 'k', ELFURA_ANIVORTEX_PRIVATE_KEY: privateKeyB64 }),
+  'ok',
+);
 
 const webMaster =
   '#EXTM3U\n' +

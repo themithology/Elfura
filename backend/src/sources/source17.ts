@@ -17,7 +17,7 @@
  * `ELFURA_ANIVORTEX_TRUST_LABELS=0` to fall back to claim-only labels.
  */
 
-import { anivortexRequest, readAnivortexCredentials, type AnivortexCredentials } from '../anivortex-auth.js';
+import { anivortexEnv, anivortexRequest, describeAnivortexCredentials, readAnivortexCredentials, type AnivortexCredentials } from '../anivortex-auth.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
@@ -29,7 +29,7 @@ const MAX_EXTRA_SERVERS = 2;
 const MAX_SUBTITLES = 16;
 const RESOLVE_BUDGET_MS = 4200;
 /** Operator decision: trust AniVortex language labels (see module docstring). */
-const TRUST_LABELS = process.env.ELFURA_ANIVORTEX_TRUST_LABELS !== '0';
+const trustLabels = (): boolean => anivortexEnv().ELFURA_ANIVORTEX_TRUST_LABELS !== '0';
 
 export interface AnivortexTitle {
   id: string;
@@ -191,7 +191,7 @@ function serverRows(server: any, subtitles: RawTrackRef[]): RawStreamCandidate[]
         // Separate per-language stream with its own URL: the label is the only
         // language signal that exists, so it is promoted to `audioLang` unless
         // the operator opts out.
-        ...(TRUST_LABELS && code ? { audioLang: code } : {}),
+        ...(trustLabels() && code ? { audioLang: code } : {}),
         audioLabel: label || undefined,
         audioVariant: /\bsub\b/i.test(label) ? 'sub' : /\bdub\b/i.test(label) ? 'dub' : undefined,
         subtitles,
@@ -388,7 +388,7 @@ export function createSource17Adapter(enabled: () => boolean): SourceAdapter {
           lane: 'V',
           ok: false,
           ms: 0,
-          detail: 'no installation credentials (ELFURA_ANIVORTEX_INSTALL_ID / _KEY_ID / _PRIVATE_KEY)',
+          detail: describeAnivortexCredentials(),
         });
         return { candidates: [] };
       }

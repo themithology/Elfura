@@ -16,6 +16,7 @@
  * upstream base URLs stay inside the backend (RULES.md §1).
  */
 
+import { readDotEnvOverlay } from './config.js';
 import {
   createHash,
   createPrivateKey,
@@ -402,13 +403,23 @@ export function publicKeyFor(privateKeyB64: string): KeyObject {
   return createPublicKey(loadPrivateKey(privateKeyB64));
 }
 
-/** Parse installation credentials from environment variables (never from disk). */
+/**
+ * Effective environment: `/home/container/.env` (the Pterodactyl layout) overlaid
+ * by the process environment, matching `loadBackendConfig`. Credentials live in
+ * `.env` on the panel, so raw `process.env` alone would never see them.
+ */
+export function anivortexEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...readDotEnvOverlay(), ...env };
+}
+
+/** Parse installation credentials from the environment (never from a separate file). */
 export function readAnivortexCredentials(
   env: NodeJS.ProcessEnv = process.env,
 ): AnivortexCredentials | null {
-  const installationId = (env.ELFURA_ANIVORTEX_INSTALL_ID || '').trim();
-  const keyId = (env.ELFURA_ANIVORTEX_KEY_ID || '').trim();
-  const privateKeyB64 = (env.ELFURA_ANIVORTEX_PRIVATE_KEY || '').trim();
+  const merged = anivortexEnv(env);
+  const installationId = (merged.ELFURA_ANIVORTEX_INSTALL_ID || '').trim();
+  const keyId = (merged.ELFURA_ANIVORTEX_KEY_ID || '').trim();
+  const privateKeyB64 = (merged.ELFURA_ANIVORTEX_PRIVATE_KEY || '').trim();
   if (!installationId || !keyId || !privateKeyB64) return null;
   if (installationId.length > 128 || keyId.length > 128 || privateKeyB64.length > 4096) return null;
   try {
@@ -417,6 +428,25 @@ export function readAnivortexCredentials(
     return null;
   }
   return { installationId, keyId, privateKeyB64 };
+}
+
+/** Explain credential state for diagnostics without ever echoing a value. */
+export function describeAnivortexCredentials(env: NodeJS.ProcessEnv = process.env): string {
+  const merged = anivortexEnv(env);
+  const installationId = (merged.ELFURA_ANIVORTEX_INSTALL_ID || '').trim();
+  const keyId = (merged.ELFURA_ANIVORTEX_KEY_ID || '').trim();
+  const privateKeyB64 = (merged.ELFURA_ANIVORTEX_PRIVATE_KEY || '').trim();
+  const present = [installationId, keyId, privateKeyB64].filter(Boolean).length;
+  if (present === 0) {
+    return 'no installation credentials (run scripts/anivortex-register.mjs, then set ELFURA_ANIVORTEX_INSTALL_ID / _KEY_ID / _PRIVATE_KEY in /home/container/.env)';
+  }
+  if (present < 3) return 'incomplete installation credentials (one of INSTALL_ID / KEY_ID / PRIVATE_KEY is empty)';
+  try {
+    loadPrivateKey(privateKeyB64);
+  } catch {
+    return 'invalid installation private key (expected base64 PKCS#8 EC P-256)';
+  }
+  return 'ok';
 }
 
 /** Constant-time comparison helper for installation ids used in diagnostics. */
