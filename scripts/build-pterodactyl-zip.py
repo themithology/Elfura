@@ -275,6 +275,13 @@ def main() -> None:
         write_entry(zf, "README.md", (ROOT / "README.md").read_bytes())
         write_entry(zf, "RULES.md", (ROOT / "RULES.md").read_bytes())
 
+        # Operator tooling that depends on the pre-built dist/: mint per-install
+        # AniVortex credentials inside the container, and probe them.
+        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs"):
+            helper_path = ROOT / "scripts" / helper
+            if helper_path.is_file():
+                write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
+
         for ep in ROOT_ENTRYPOINTS:
             write_entry(zf, ep, ROOT_SHIM.encode("utf-8"))
         for ep in SRC_ENTRYPOINTS:
