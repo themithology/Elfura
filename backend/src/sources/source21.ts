@@ -33,6 +33,13 @@ const CATALOG_MIRRORS = [
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const MAX_CATALOG_BYTES = 128 * 1024;
+/**
+ * The media CDNs serve 404 to a bare request and a 200 master only when the
+ * player origin is presented (verified against the live hosts: plain UA → 404
+ * text/html, with this referer → 200 application/vnd.apple.mpegurl). The header
+ * rides on the candidate, so the liveness probe and the relay both send it.
+ */
+const PLAYER_ORIGIN = 'https://vidout.pages.dev';
 const FETCH_TIMEOUT_MS = 2600;
 
 async function readBounded(response: Response, maxBytes: number): Promise<string | null> {
@@ -87,7 +94,11 @@ function candidateFrom(url: string, key: string, rank: number): RawStreamCandida
     url,
     type: 'hls',
     quality: 'auto',
-    headers: { 'User-Agent': UA },
+    headers: {
+      'User-Agent': UA,
+      Referer: `${PLAYER_ORIGIN}/`,
+      Origin: PLAYER_ORIGIN,
+    },
     rank: rank + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
   };
 }
@@ -136,7 +147,12 @@ export async function fetchFromWatchout(query: SourceQuery): Promise<RawStreamCa
   for (const mirror of CATALOG_MIRRORS) {
     try {
       const response = await fetch(`${mirror}${path}`, {
-        headers: { 'User-Agent': UA, Accept: 'text/plain, application/json' },
+        headers: {
+          'User-Agent': UA,
+          Accept: 'text/plain, application/json',
+          Referer: `${PLAYER_ORIGIN}/`,
+          Origin: PLAYER_ORIGIN,
+        },
         redirect: 'follow',
         signal,
       });
