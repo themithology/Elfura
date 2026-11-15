@@ -11,6 +11,16 @@
  * Needs TMDB_API_KEY for adapters that fall back to title/year lookups; without
  * it the probe still runs and says so. Always exits 0 — it is a report, not a gate.
  */
+import dns from 'node:dns';
+
+// Same IPv6-without-a-route guard as the server: without it a container can
+// look like "every host is down" while a plain curl works.
+try {
+  if (process.env.ELFURA_DNS_ORDER !== 'verbatim') dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* older runtimes */
+}
+
 import { loadBackendConfig } from '../dist/backend/config.js';
 import { SourceRegistry } from '../dist/backend/sources/registry.js';
 

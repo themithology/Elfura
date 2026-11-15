@@ -9,6 +9,12 @@
  *   - Zero local disk writes, logs, SQLite files, or temp media caches
  */
 
+// Container networks very often advertise IPv6 without routing it. Node then
+// hands the AAAA record to the socket first and every request stalls until its
+// timeout — which looks exactly like "every source is down". Prefer A records;
+// ELFURA_DNS_ORDER=verbatim restores the platform default.
+import dns from 'node:dns';
+
 import './compat.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -113,6 +119,12 @@ export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
     };
   }
   return null;
+}
+
+try {
+  if (process.env.ELFURA_DNS_ORDER !== 'verbatim') dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* older runtimes: keep the default order */
 }
 
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
@@ -687,6 +699,12 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
+    console.log(
+      `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
+        ` · adapter timeout: ${cfg.resolveTimeoutMs}ms` +
+        ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
+        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 4600}ms`,
+    );
     const state = registry.describeSources();
     const sources = state.enabled.join(', ') || 'none';
     console.log(
