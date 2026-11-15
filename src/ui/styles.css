@@ -2654,3 +2654,54 @@
 /* Keep the next-episode card clear of the outro action. */
 .elf-next-ep-wrap[data-outro='true'] { bottom: 190px; }
 @media (max-width: 600px) { .elf-next-ep-wrap[data-outro='true'] { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); } }
+
+/* ── Startup DVD bounce (the title logo, not a spinner) ───────────────────── */
+.elf-loading-dvd {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 420ms ease;
+}
+.elf-loading-screen[data-visible='true'] .elf-loading-dvd { opacity: 0.92; }
+
+.elf-dvd-art,
+.elf-dvd-wordmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform, filter;
+  transition: filter 260ms ease;
+}
+
+.elf-dvd-art {
+  max-width: min(34vw, 260px);
+  max-height: 118px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
+}
+
+.elf-dvd-wordmark {
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-family: 'Bebas Neue', 'Anton', Impact, sans-serif;
+  font-size: clamp(20px, 3.2vw, 34px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f6f7fb;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+@media (max-width: 720px) {
+  .elf-dvd-art { max-width: 58vw; max-height: 84px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elf-loading-dvd { opacity: 0.28; }
+  .elf-dvd-art,
+  .elf-dvd-wordmark { transition: none; }
+}

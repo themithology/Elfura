@@ -56,8 +56,8 @@ const MIN_JOIN_MS = 1400;
 const ADAPTER_RACE_MS = 3600;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 const resolveBudgetMs = (): number => {
-  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
-  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 3600);
+  return Number.isFinite(raw) ? Math.max(2500, Math.min(20_000, raw)) : 3600;
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 28;

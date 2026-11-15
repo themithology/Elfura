@@ -30,6 +30,7 @@ import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
+import { mountDvdBounce, type DvdBounce } from './dvd-bounce';
 
 /* ---------------------------------------------------------------------- */
 /* Brand Mark (`icon-maskable-512.png`, lossless 64x64 RGBA, 377 bytes)   */
@@ -267,6 +268,8 @@ export class PlayerUI {
   private loadingQuoteSession = 0;
   private loadingQuoteHistory = new Set<string>();
   private loadingActive = false;
+  private dvdBounce: DvdBounce | null = null;
+  private loadingDvdLayer!: HTMLElement;
   private slowNoticeShown = false;
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
@@ -698,7 +701,12 @@ export class PlayerUI {
     this.loadingQuoteAuthor = el('figcaption', 'elf-loading-quote-author');
     quoteCard.append(this.loadingQuote, this.loadingQuoteAuthor);
     loadingContent.append(this.loadingLogoSlot, loadingRule, this.loadingStatus, quoteCard);
-    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingContent);
+    // DVD-style bounce layer: the title logo drifts and knocks off the edges
+    // while playback is prepared. It sits under the content so text stays legible.
+    const loadingDvdLayer = el('div', 'elf-loading-dvd');
+    loadingDvdLayer.setAttribute('aria-hidden', 'true');
+    this.loadingDvdLayer = loadingDvdLayer;
+    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingDvdLayer, loadingContent);
 
     this.unavailableScreen = el('div', 'elf-unavailable-screen');
     this.unavailableScreen.dataset.visible = 'false';
@@ -800,6 +808,17 @@ export class PlayerUI {
     this.loadingLogoSlot.hidden = !visual;
   }
 
+  private startDvdBounce(): void {
+    const dm = this.resolveDisplayMedia();
+    if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer, dm.mainTitle || 'Loading');
+    this.dvdBounce.setImage(dm.logo ?? null, dm.mainTitle || 'Loading');
+    this.dvdBounce.start();
+  }
+
+  private stopDvdBounce(): void {
+    this.dvdBounce?.stop();
+  }
+
   private showInitialLoading(): void {
     this.loadingActive = true;
     this.slowLoadingActive = false;
@@ -835,6 +854,7 @@ export class PlayerUI {
     }, 45000);
     this.loadingStatus.textContent = 'Finding the best available source…';
     this.syncStateArtwork(this.resolveDisplayMedia());
+    this.startDvdBounce();
     this.showNextFallbackQuote();
     clearInterval(this.loadingQuoteTimer);
     void this.fetchLoadingQuote(session);
@@ -903,6 +923,7 @@ export class PlayerUI {
 
   private hideInitialLoading(keepHardStop = false): void {
     this.loadingActive = false;
+    this.stopDvdBounce();
     this.loadingQuoteSession++;
     clearInterval(this.loadingQuoteTimer);
     clearTimeout(this.loadingDeadlineTimer);
