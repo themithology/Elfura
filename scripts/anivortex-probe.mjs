@@ -213,7 +213,7 @@ for (const spec of specs) {
   if (rows.length > 0) {
     console.log(`    types=${[...new Set(rows.map((row) => row.type))].join(',')} audioRows=${JSON.stringify(Object.fromEntries(byAudio))}`);
   }
-  const dead = checked.candidates.filter((candidate) => !cachedCandidateEvidence(candidate)?.alive);
+  const dead = rows.filter((row) => !checked.candidates.some((candidate) => candidate.url === row.url));
   for (const candidate of dead.slice(0, 3)) {
     // Explain the failure: status code and first bytes of the manifest body.
     let detail = 'no-response';
