@@ -23,6 +23,16 @@ const redactUrl = (value) => {
   }
 };
 
+const redactDeep = (value, depth = 0) => {
+  if (depth > 4) return '…';
+  if (typeof value === 'string') return /^https?:\/\//.test(value) ? redactUrl(value) : value.slice(0, 120);
+  if (Array.isArray(value)) return value.slice(0, 3).map((item) => redactDeep(item, depth + 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).slice(0, 14).map(([key, item]) => [key, redactDeep(item, depth + 1)]));
+  }
+  return value;
+};
+
 const describe = (json) => {
   if (json === null || json === undefined) return 'null';
   if (Array.isArray(json)) return `array(${json.length})`;
@@ -117,6 +127,12 @@ for (const spec of specs) {
   if (type === 'tv') {
     const watch = await call(`/api/v1/titles/${match.id}/watch`);
     report('watch', `/api/v1/titles/${match.id}/watch`, watch);
+    const season = watch.json?.seasons?.[0];
+    if (season) {
+      console.log(`  season[0] keys: ${describe(season)}`);
+      console.log(`  season[0] dump: ${JSON.stringify(redactDeep(season)).slice(0, 700)}`);
+    }
+    if (Array.isArray(watch.json?.available_servers)) console.log(`  available_servers: ${watch.json.available_servers.slice(0, 5).map((item) => item?.key ?? item).join(',')}`);
   }
 
   const attempts = type === 'movie'
@@ -133,7 +149,8 @@ for (const spec of specs) {
     if (Array.isArray(json.server_options)) console.log(`  server_options=${json.server_options.length}: ${json.server_options.slice(0, 5).map((option) => option?.key ?? option).join(',')}`);
     for (const entry of servers) {
       console.log(`  server=${entry.key ?? '?'} languages=${(entry.languages ?? []).length}`);
-      for (const language of (entry.languages ?? []).slice(0, 4)) {
+      for (const language of (entry.languages ?? []).slice(0, 2)) {
+        console.log(`    language dump: ${JSON.stringify(redactDeep(language))}`);
         const qualities = language?.playback?.qualities ?? [];
         console.log(`    lang=${language.code ?? '?'}/${language.name ?? '?'} qualities=${qualities.length}` +
           (qualities[0] ? ` first=${qualities[0].quality ?? '?'}/${qualities[0].type ?? '?'} ${qualities[0].url ? redactUrl(qualities[0].url) : 'no-url'}` : ''));
