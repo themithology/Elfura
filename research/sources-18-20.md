@@ -133,3 +133,57 @@ a wrapped segment anyway.
   accepted and reported.
 - Live: `.github/workflows/sources-probe.yml` runs `scripts/newsources-probe.mjs` from a GitHub runner (the agent
   sandbox has no egress to these hosts) and commits `research/sources-probe-report.md`.
+
+## Sources 12 and 14 — verified after the fix (GitHub runner, 2026-11-15 09:0x UTC)
+
+Both were suspected of leaving lane capacity on the table. Probing found concrete bugs, not just tuning.
+
+### Source 14 (RiveStream backends)
+
+The adapter asked the source API for **one** backend (`citadel`) and threw away everything else. The API keys are
+unprefixed (`citadel`, `primevids`, `flowcast`, `quasar`, `guru`, `hindicast`), and each backend publishes its own CDN:
+
+| Backend | Shape observed | Decision |
+|---|---|---|
+| `citadel` | signed HLS on `img*.hscow.com` / `fcxmb.com`, label `"720p | Hindi"` | kept, signature validation unchanged |
+| `primevids` | unsigned HLS on `cdn{,1,2}.slowcloud.live`, label `"tcloud"` (no language) | kept, no audio claim invented |
+| `flowcast` | MP4 on `cors.corsflix.net/proxy` | **rejected** — a public CORS relay, not the provider's CDN |
+| `quasar`, `hindicast` | timeout from a US runner | asked anyway; region-gated lanes cost nothing when silent |
+| `guru` | answers `200` with zero rows | asked, contributes nothing |
+| mhbox/awsind/vidapi/stvv/streamflix | `root=error` | not exposed for this API key |
+
+Result (adapter end-to-end, not the raw API):
+
+| Title | Before | After |
+|---|---|---|
+| Dune Part Two | 2 (citadel only) | **11** — audio `en, hi, kn, ta, te` + 1 unlabelled, hosts `img1.fcxmb.com`, `img1.hscow.com`, `cdn2.slowcloud.live` |
+| Jawan | 2 | **11** — audio `bn, hi, ta, te, en` + 2 unlabelled |
+| Breaking Bad S1E1 | 2 | **4** — `hi:2` (citadel) + `unlabelled:2` (primevids) |
+
+### Source 12 (VidZen/Vidme)
+
+Two defects:
+
+1. The pool was capped at **8 raw candidates before liveness**. On Breaking Bad, `hyperion` alone contributed 4 dead
+   rows, so the only live `uranus` lane (9th position) never reached verification. The pool is now collected to 24 and
+   capped to 12 **after** verification: the same title now reports **3 live lanes** instead of 2, from 15 raw rows.
+2. A rejected server list (401/403) looked identical to a dead server. The token is now re-minted once and those
+   servers are retried.
+
+Known provider gap: the movie case (`Oppenheimer`) returns 7 raw rows and **0 alive** on every server, while the TV
+case is healthy — that is VidZen's own coverage/liveness, not an adapter bug. Provenance on the live lanes:
+`mars`/`mercury` serve segments from `vidzen.fun` itself (direct origin), `uranus` from a `*.workers.dev` relay, which
+now ranks behind the direct lanes.
+
+### Provenance classification (new `provenance.ts`)
+
+Hostnames are classified as **direct** or **relay** (`*.workers.dev`, `*.pages.dev`, `*.vercel.app`, `cors.*`,
+`prx-*`, `proxy*`, `relay*`, `mirror*`). A relay still plays when it is the only option, but it is ranked 40 places
+behind any origin CDN lane, and adapters may reject relay-only rows outright (FlowCast above). This answers the
+"are these raw sources?" question per lane:
+
+| Lane | Provenance |
+|---|---|
+| Source 18 SubDubAnime | `hugh.cdn.rumble.cloud` — Rumble's own CDN serving both manifest and segments; MP4 rows are direct objects |
+| Source 19 DesiDubAnime | `prx-*.vmpx.online` — the provider's **relay** front serving segments itself; playable but relayed |
+| Source 20 Vidora | `paretocdn.site` on some titles, `*.workerscloud32.workers.dev` on others — the API hands back whichever it has, so relays are now ranked last |
