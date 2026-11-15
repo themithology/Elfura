@@ -214,17 +214,30 @@ for (const spec of specs) {
     console.log(`    types=${[...new Set(rows.map((row) => row.type))].join(',')} audioRows=${JSON.stringify(Object.fromEntries(byAudio))}`);
   }
   const dead = rows.filter((row) => !checked.candidates.some((candidate) => candidate.url === row.url));
-  for (const candidate of dead.slice(0, 3)) {
-    // Explain the failure: status code and first bytes of the manifest body.
-    let detail = 'no-response';
-    try {
-      const response = await fetch(candidate.url, { headers: candidate.headers ?? {}, redirect: 'error', signal: AbortSignal.timeout(6000) });
-      const text = (await response.text()).slice(0, 120).replace(/\s+/g, ' ');
-      detail = `HTTP ${response.status} type=${response.headers.get('content-type') ?? '?'} body="${text}"`;
-    } catch (error) {
-      detail = `threw ${error?.message ?? error}`;
+  const HEADER_COMBOS = [
+    ['as-provided', {}],
+    ['referer-moviebox', { Referer: 'https://moviebox.ph/', Origin: 'https://moviebox.ph' }],
+    ['referer-api', { Referer: 'https://api.anivortex.in/' }],
+    ['iphone-ua', { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E1 Safari/604.1' }],
+    ['range-zero', { Range: 'bytes=0-1' }],
+  ];
+  for (const candidate of dead.slice(0, 2)) {
+    console.log(`    DEAD ${candidate.type} ${candidate.claimedAudioLang ?? 'und'} ${redactUrl(candidate.url)}`);
+    for (const [label, extra] of HEADER_COMBOS) {
+      let outcome = 'no-response';
+      try {
+        const response = await fetch(candidate.url, {
+          headers: { ...(candidate.headers ?? {}), ...extra },
+          redirect: 'error',
+          signal: AbortSignal.timeout(6000),
+        });
+        const text = (await response.text()).slice(0, 60).replace(/\s+/g, ' ');
+        outcome = `HTTP ${response.status} type=${response.headers.get('content-type') ?? '?'} body="${text}"`;
+      } catch (error) {
+        outcome = `threw ${error?.message ?? error}`;
+      }
+      console.log(`      ${label}: ${outcome}`);
     }
-    console.log(`    DEAD ${candidate.type} ${candidate.claimedAudioLang ?? 'und'} ${redactUrl(candidate.url)} → ${detail}`);
   }
   for (const candidate of alive.slice(0, 4)) {
     const evidence = cachedCandidateEvidence(candidate);
