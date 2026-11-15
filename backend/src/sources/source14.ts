@@ -28,6 +28,7 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 const API = 'https://scrapper.rivestream.app/api/provider';
 const ORIGIN = 'https://www.rivestream.app';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const PROVIDER_TIMEOUT_MS = 1100;
 const MAX_ROWS = 40;
 const MAX_CANDIDATES = 16;
 const MAX_PROVIDER_JSON_BYTES = 384_000;
@@ -221,9 +222,12 @@ export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Pr
   if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1)) {
     return [];
   }
+  // Each provider gets its own short leash: the registry only waits ~2.7 s for
+  // adapters, so a region-gated backend that never answers must not hold the
+  // whole lane (and the sources around it) hostage.
   const signal = query.signal
-    ? AbortSignal.any([query.signal, AbortSignal.timeout(3500)])
-    : AbortSignal.timeout(3500);
+    ? AbortSignal.any([query.signal, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)])
+    : AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
   const bucket = Math.floor(Date.now() / 3_000_000);
 
   const results = await Promise.all(

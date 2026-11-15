@@ -46,6 +46,15 @@ import type {
 const MAX_ADAPTER_CACHE_ENTRIES = 256;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
 
+/** Extra time given to still-running adapters once the first source has candidates. */
+const EARLY_GRACE_MS = 800;
+/** No adapter may be cut before this point, however fast the first one was. */
+const MIN_JOIN_MS = 1500;
+/** Upper bound for the adapter race when nothing has candidates yet. */
+const ADAPTER_RACE_MS = 3000;
+/** Candidates probed in the shared verification batch, spread across sources. */
+const VERIFY_BREADTH_TARGET = 28;
+
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
@@ -357,6 +366,7 @@ export class SourceRegistry {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
     const deadline = resolveStartedAt + (params.anilistId ? 12_000 : 4800);
+    // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
@@ -436,7 +446,12 @@ export class SourceRegistry {
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
-            lagTimer = setTimeout(() => earlyRelease?.(), 450);
+            // Never let the fastest source decide the window for everyone else:
+            // wait out a minimum join period, then a short grace, so a source
+            // that needs ~2 s is not cut because another answered in 700 ms.
+            const elapsed = Date.now() - resolveStartedAt;
+            const grace = Math.max(EARLY_GRACE_MS, MIN_JOIN_MS - elapsed);
+            lagTimer = setTimeout(() => earlyRelease?.(), grace);
           }
         }
       } catch {
@@ -454,7 +469,7 @@ export class SourceRegistry {
       new Promise<void>((r) => {
         earlyRelease = r;
       }),
-      wait(Math.min(3400, remaining())),
+      wait(Math.min(ADAPTER_RACE_MS, remaining())),
     ]);
     if (lagTimer) clearTimeout(lagTimer);
 
@@ -462,14 +477,20 @@ export class SourceRegistry {
       const ready = slots.filter(
         (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
       );
-      const tagged = ready.flatMap((entry, adapterIdx) =>
-        entry.result.candidates.map((cand) => ({
-          ...cand,
-          key: `${adapterIdx}::${cand.key}`,
-        })),
-      );
+      // Breadth first: probe each adapter's best lanes before any adapter's
+      // leftovers. A single source with 20 candidates must not starve every
+      // other source out of the shared verification budget.
+      const perAdapter = ready.map((entry) => entry.result.candidates);
+      const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
+      const tagged: RawStreamCandidate[] = [];
+      for (let i = 0; i < breadth; i += 1) {
+        for (let adapterIdx = 0; adapterIdx < perAdapter.length; adapterIdx += 1) {
+          const cand = perAdapter[adapterIdx][i];
+          if (cand) tagged.push({ ...cand, key: `${adapterIdx}::${cand.key}` });
+        }
+      }
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
+        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(2000, remaining()))));
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -512,16 +533,33 @@ export class SourceRegistry {
     // first playable stream hostage. Their requests continue warming caches.
     // A brief opportunistic window retains metadata and skip markers when
     // they're already close, without making their upstream timeout additive.
-    if (remaining() > 0) await Promise.race([
-      Promise.allSettled([mediaPromise, ...segmentTasks]),
-      wait(Math.min(1200, remaining())),
-    ]);
+    if (remaining() > 0) {
+      // Once something is playable, metadata is pure polish: keep the window
+      // short so a slow TMDB call cannot add a second of dead air to a stream
+      // that is already verified. With nothing playable yet, wait longer.
+      const enrichmentWindow = verifiedBatch.verifiedLive > 0 ? 700 : 1200;
+      await Promise.race([
+        Promise.allSettled([mediaPromise, ...segmentTasks]),
+        wait(Math.min(enrichmentWindow, remaining())),
+      ]);
+    }
     const media = readyMedia ?? {
       type: params.type, tmdbId: params.tmdbId, imdbId: null,
       ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
       title: '', year: '', overview: '', poster: null, backdrop: null, logo: null,
     };
     const verifiedEntries = verifiedBatch.entries;
+    if (process.env.ELFURA_DEBUG_SOURCES === '1') {
+      const perSource = activeAdapters.map((adapter) => {
+        const hit = verifiedEntries.find((e) => e.adapter.id === adapter.id);
+        return hit
+          ? `${adapter.id}:raw=${hit.result.candidates.length},live=${hit.liveCandidates.length}`
+          : `${adapter.id}:no-result`;
+      });
+      console.warn(
+        `[elfura-sources] ${Date.now() - resolveStartedAt}ms ${params.type}/${params.tmdbId} ${perSource.join(' ')}`,
+      );
+    }
 
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;

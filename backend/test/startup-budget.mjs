@@ -21,5 +21,17 @@ try {
  reg=new SourceRegistry(realCfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),...reg.adapters.filter(a=>['source-7','source-8','source-9','source-10','source-11','source-12','source-13','source-14','source-15','source-16','source-17'].includes(a.id))];
  start=Date.now();const mixed=await reg.resolvePlayback({type:'tv',tmdbId:'999004',season:1,episode:1});const newSourcesMs=Date.now()-start;
  assert(mixed?.sources.length,'Existing fast source must remain available');assert(newSourcesMs<2500,`New hung sources delayed startup to ${newSourcesMs}ms`);
- console.log(`✓ Startup budget: fast ${fastMs}ms, no sources ${failMs}ms, stalled verification ${probeMs}ms, new sources stalled ${newSourcesMs}ms.`);
+ // Fairness: a fast source answering first must not silence a source that
+ // needs ~1.2 s. Both lanes have to be in the very first response.
+ const slow={key:'slow',url:'https://cdn.example.org/slow.mp4',type:'mp4',quality:'auto',rank:0};
+ const sleeper=ms=>new Promise(r=>setTimeout(r,ms));
+ globalThis.fetch=async url=>String(url).startsWith('https://cdn.example.org/')?new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}):never();
+ reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]})),fake('source-14',async()=>{await sleeper(1200);return{candidates:[slow]};})];
+ start=Date.now();const fair=await reg.resolvePlayback({type:'movie',tmdbId:'999005'});const fairMs=Date.now()-start;
+ const fairIds=(fair?.sources??[]).map(s=>s.sourceId);
+ assert(fairIds.includes('source-1'),`Fast source missing: ${fairIds.join(',')}`);
+ assert(fairIds.includes('source-14'),`Slow source must not be cut by a fast one: ${fairIds.join(',')}`);
+ assert(fairMs<3000,`Fairness window too slow: ${fairMs}ms`);
+
+ console.log(`✓ Startup budget: fast ${fastMs}ms, no sources ${failMs}ms, stalled verification ${probeMs}ms, new sources stalled ${newSourcesMs}ms, fair join ${fairMs}ms (${fairIds.join(',')}).`);
 }finally{globalThis.fetch=original;clearInterval(keepAlive)}
