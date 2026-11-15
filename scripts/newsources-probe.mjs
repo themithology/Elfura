@@ -43,6 +43,7 @@ const DEFAULT_SPECS = [
 
 const specs = process.argv.slice(2).length > 0 ? process.argv.slice(2) : DEFAULT_SPECS;
 
+const TRACED = new Set(['source-18 SubDubAnime', 'source-21 KMMovies']);
 const lanes = [
   ['source-18 SubDubAnime', fetchFromSubDub],
   ['source-19 DesiDubAnime', fetchFromDesiDub],
@@ -59,9 +60,10 @@ let totalChecked = 0;
 
 for (const spec of specs) {
   const [type, tmdbId, ...rest] = spec.split(':');
-  const season = rest.length >= 2 ? Number(rest[rest.length - 2]) : undefined;
-  const episode = rest.length >= 2 ? Number(rest[rest.length - 1]) : undefined;
-  const title = (rest.length >= 2 ? rest.slice(0, -2) : rest).join(':').trim();
+  const isSeries = type === 'tv' && rest.length >= 2;
+  const season = isSeries ? Number(rest[rest.length - 2]) : undefined;
+  const episode = isSeries ? Number(rest[rest.length - 1]) : undefined;
+  const title = (isSeries ? rest.slice(0, -2) : rest).join(':').trim();
   if (!/^\d{1,12}$/.test(tmdbId) || !['movie', 'tv'].includes(type)) {
     console.log(`## ${spec}\nskipped: malformed spec\n`);
     continue;
@@ -79,8 +81,9 @@ for (const spec of specs) {
     const started = Date.now();
     let raw = [];
     let error = '';
+    const trace = [];
     try {
-      raw = await lane(query);
+      raw = TRACED.has(label) ? await lane(query, trace) : await lane(query);
     } catch (err) {
       error = err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 120) : 'error';
     }
@@ -90,7 +93,7 @@ for (const spec of specs) {
       continue;
     }
     if (raw.length === 0) {
-      console.log(`- ${label}: 0 candidates (${ms} ms)`);
+      console.log(`- ${label}: 0 candidates (${ms} ms)${trace.length ? ` — ${trace.join(' ')}` : ''}`);
       continue;
     }
     const verified = await verifyAndFilterCandidatesDetailed(raw);

@@ -231,6 +231,7 @@ async function fetchPayload(
   query: SourceQuery,
   tmdbId: string,
   signal: AbortSignal,
+  trace?: string[],
 ): Promise<RawStreamCandidate[]> {
   const endpoint = new URL(`${API}/api/get.php`);
   endpoint.searchParams.set('tmdbId', tmdbId);
@@ -241,11 +242,16 @@ async function fetchPayload(
   }
   const body = await readJson(endpoint.href, signal, MAX_JSON_BYTES);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
-  const data = (body as { data?: unknown }).data;
+  const root = body as { data?: unknown; success?: unknown; error?: unknown };
+  const data = root.data;
+  const dataShape = data && typeof data === 'object' && !Array.isArray(data)
+    ? Object.keys(data as Record<string, unknown>).slice(0, 8).join('|')
+    : String(data === undefined ? 'undefined' : typeof data);
+  trace?.push(`api(tmdb=${tmdbId})=${dataShape}`);
   return renditionsFromPayload(data);
 }
 
-export async function fetchFromSubDub(query: SourceQuery): Promise<RawStreamCandidate[]> {
+export async function fetchFromSubDub(query: SourceQuery, trace?: string[]): Promise<RawStreamCandidate[]> {
   if (!/^\d{1,12}$/.test(query.tmdbId) || !['movie', 'tv'].includes(query.type)) return [];
   const season = query.season ?? 1;
   const episode = query.episode ?? 1;
@@ -256,20 +262,23 @@ export async function fetchFromSubDub(query: SourceQuery): Promise<RawStreamCand
     ? AbortSignal.any([query.signal, AbortSignal.timeout(6000)])
     : AbortSignal.timeout(6000);
 
-  const base = await fetchPayload(query, query.tmdbId, deadline);
+  const base = await fetchPayload(query, query.tmdbId, deadline, trace);
   const collected = new Map<string, RawStreamCandidate>();
   for (const candidate of base) collected.set(candidate.url, candidate);
+  trace?.push(`base=${base.length}`);
 
   // Separate-language catalogue entries are the only way this provider exposes
   // a Hindi dub and an English dub as distinct streams.
   const catalog = await loadSubDubCatalog(deadline);
+  if (!catalog) trace?.push('catalog=unavailable');
   if (catalog) {
     const variants = catalogVariants(catalog, query.type, query.tmdbId);
+    trace?.push(`catalog=${query.type === 'movie' ? Object.keys(catalog.movies).length : Object.keys(catalog.series).length + Object.keys(catalog.dramas).length},variants=${variants.length}`);
     for (const variant of variants) {
       const variantId = typeof variant.tmdbId === 'string' ? variant.tmdbId : '';
       if (!/^\d{1,12}$/.test(variantId)) continue;
       const audio = audioFromLabel(variant.language) ?? audioFromLabel(variant.title);
-      const rows = await fetchPayload(query, variantId, deadline);
+      const rows = await fetchPayload(query, variantId, deadline, trace);
       for (const candidate of rows) {
         if (collected.has(candidate.url)) continue;
         const enriched: RawStreamCandidate = audio
@@ -294,7 +303,8 @@ export function createSource18Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromSubDub(query);
+      const trace: string[] = [];
+      const raw = await fetchFromSubDub(query, trace);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
       const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
       query.diag?.push({
@@ -302,7 +312,7 @@ export function createSource18Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'S',
         ok: usable.length > 0,
         ms: Date.now() - started,
-        detail: `candidates=${raw.length},reachable=${usable.length}`,
+        detail: `candidates=${raw.length},reachable=${usable.length}${trace.length ? ` ${trace.join(' ')}` : ''}`,
       });
       return {
         candidates: usable.map((candidate) =>

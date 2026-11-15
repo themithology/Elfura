@@ -215,7 +215,7 @@ export async function resolveKmFile(file: KmFile, signal: AbortSignal): Promise<
   return isSafeUpstreamUrl(url) ? url : null;
 }
 
-export async function fetchFromKmMovies(query: SourceQuery): Promise<RawStreamCandidate[]> {
+export async function fetchFromKmMovies(query: SourceQuery, trace?: string[]): Promise<RawStreamCandidate[]> {
   const season = query.season ?? 1;
   const episode = query.episode ?? 1;
   if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 1 || !Number.isSafeInteger(episode) || episode < 1)) {
@@ -234,6 +234,7 @@ export async function fetchFromKmMovies(query: SourceQuery): Promise<RawStreamCa
   const search = await getPage(`${SITE}/?s=${encodeURIComponent(title)}`, signal);
   if (!search) return [];
   const cards = parseCards(search.body, SITE);
+  trace?.push(`cards=${cards.length}`);
   let best: { url: string; score: number } | null = null;
   for (const card of cards) {
     const key = titleKey(card.title);
@@ -245,6 +246,7 @@ export async function fetchFromKmMovies(query: SourceQuery): Promise<RawStreamCa
     if (!best || score > best.score) best = { url: card.url, score };
   }
   if (!best) return [];
+  trace?.push(`match=${best.score}`);
 
   const post = await getPage(best.url, signal);
   if (!post) return [];
@@ -256,6 +258,7 @@ export async function fetchFromKmMovies(query: SourceQuery): Promise<RawStreamCa
   } else {
     files = parseDlButtons(post.body);
   }
+  trace?.push(`files=${files.length}`);
   if (!files.length) return [];
 
   const ranked = [...files]
@@ -277,6 +280,7 @@ export async function fetchFromKmMovies(query: SourceQuery): Promise<RawStreamCa
     }),
   );
 
+  trace?.push(`resolved=${resolved.filter(Boolean).length}`);
   const out: RawStreamCandidate[] = [];
   const seen = new Set<string>();
   for (const candidate of resolved) {
@@ -295,7 +299,8 @@ export function createSource21Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromKmMovies(query);
+      const trace: string[] = [];
+      const raw = await fetchFromKmMovies(query, trace);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
       const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
       query.diag?.push({
@@ -303,7 +308,7 @@ export function createSource21Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'KM',
         ok: usable.length > 0,
         ms: Date.now() - started,
-        detail: `candidates=${raw.length},reachable=${usable.length}`,
+        detail: `candidates=${raw.length},reachable=${usable.length}${trace.length ? ` ${trace.join(' ')}` : ''}`,
       });
       return {
         candidates: usable.map((candidate) =>
