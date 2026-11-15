@@ -34,7 +34,7 @@ import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
 import { durationFits, durationToleranceSec } from './duration.js';
-import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
+import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -66,7 +66,9 @@ const resolveBudgetMs = (): number => {
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
-const VERIFY_BREADTH_TARGET = 28;
+const VERIFY_BREADTH_TARGET = 36;
+/** Lanes any single source may contribute to one response. */
+const MAX_LANES_PER_SOURCE = 4;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
@@ -267,7 +269,7 @@ export class SourceRegistry {
         manifestUnknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
         manifestMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, playbackChecks, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
+    return { adapters, lanes, selected, playbackChecks, policy: { maxListedSources: MAX_LISTED_SOURCES, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -652,6 +654,9 @@ export class SourceRegistry {
     const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
     const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
     const droppedByRuntime: { id: string; measuredSec: number }[] = [];
+    // Lanes the runtime guard rejected stay rejected: the coverage pass below
+    // must not smuggle a wrong-length clip back into the list.
+    const blockedByRuntime = new Set<string>();
     const allLiveCandidates: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
     // Escape hatch for an operator who would rather see a wrong-length stream
     // than no stream at all.
@@ -669,6 +674,7 @@ export class SourceRegistry {
         const measuredSec = cachedCandidateEvidence(cand)?.durationSec ?? null;
         if (runtimeGuardEnabled && !durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
           droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
+          blockedByRuntime.add(cand.url);
           continue;
         }
         candidateEntries.push({adapter,candidate:cand});
@@ -690,37 +696,38 @@ export class SourceRegistry {
       );
       for (const entry of allLiveCandidates) candidateEntries.push(entry);
       droppedByRuntime.length = 0;
+      blockedByRuntime.clear();
     }
 
-    // Final rail: an aborted verification window used to leave every candidate
-    // unprobed, and unprobed candidates were silently treated as dead — a title
-    // that was merely slow came back with "no sources". Listing a couple of
-    // unverified lanes is always better than an empty player: the client tries
-    // them in order and moves on if one is stale.
-    if (!candidateEntries.length) {
-      const fallback: { adapter: SourceAdapter; candidate: RawStreamCandidate }[] = [];
-      const seenUrls = new Set<string>();
+    // Coverage pass: every adapter that answered contributes its usable lanes,
+    // not only the ones whose probe finished inside the budget. Verified lanes
+    // are already in `candidateEntries` and sort first downstream; these fill in
+    // behind them so a title never shows two streams when nineteen sources
+    // actually replied. Candidates probed and found dead are never added, and
+    // the last rail keeps a total verification blackout from emptying the list.
+    {
+      const seenUrls = new Set(candidateEntries.map((entry) => entry.candidate.url));
+      let appended = 0;
       for (const slot of slots) {
         if (!slot) continue;
-        for (const cand of slot.result.candidates.slice(0, 2)) {
-          // Only never-probed lanes qualify: a candidate that was actually
-          // probed and came back dead stays dead.
+        let added = 0;
+        for (const cand of slot.result.candidates) {
+          if (added >= MAX_LANES_PER_SOURCE) break;
+          if (seenUrls.has(cand.url) || blockedByRuntime.has(cand.url)) continue;
           const evidence = cachedCandidateEvidence(cand);
           if (evidence && !evidence.alive) continue;
-          if (seenUrls.has(cand.url)) continue;
+          if (evidence && !durationFits(evidence.durationSec ?? null, expectedRuntimeSec, runtimeToleranceSec)) continue;
           seenUrls.add(cand.url);
-          fallback.push({ adapter: slot.adapter, candidate: cand });
-          if (fallback.length >= 6) break;
+          candidateEntries.push({ adapter: slot.adapter, candidate: cand });
+          added += 1;
+          appended += 1;
         }
-        if (fallback.length >= 6) break;
       }
-      if (fallback.length) {
-        console.warn(
-          `[elfura-resolve] verification did not finish in time for ${params.type}/${params.tmdbId}; ` +
-            `listing ${fallback.length} unverified candidate(s) from ` +
-            `${[...new Set(fallback.map((f) => f.adapter.id))].join(',')} instead of returning nothing.`,
+      if (appended) {
+        console.info(
+          `[elfura-resolve] ${params.type}/${params.tmdbId}: listed ${appended} extra lane(s) ` +
+            `beyond the verified set (per-source cap ${MAX_LANES_PER_SOURCE}, verified first).`,
         );
-        candidateEntries.push(...fallback);
       }
     }
 
