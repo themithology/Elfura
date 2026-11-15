@@ -809,10 +809,16 @@ export class PlayerUI {
   }
 
   private startDvdBounce(): void {
-    const dm = this.resolveDisplayMedia();
-    if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer, dm.mainTitle || 'Loading');
-    this.dvdBounce.setImage(dm.logo ?? null, dm.mainTitle || 'Loading');
-    this.dvdBounce.start();
+    // Decoration only: a bug in the loader must never take the player with it.
+    try {
+      const dm = this.resolveDisplayMedia();
+      const label = dm.mainTitle || 'Loading';
+      if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer, label);
+      this.dvdBounce.setImage(dm.logo ?? null, label);
+      this.dvdBounce.start();
+    } catch {
+      /* the loading screen and source list stay fully functional without it */
+    }
   }
 
   private stopDvdBounce(): void {

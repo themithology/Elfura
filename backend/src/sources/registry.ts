@@ -52,12 +52,18 @@ const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
 const EARLY_GRACE_MS = 700;
 /** No adapter may be cut before this point, however fast the first one was. */
 const MIN_JOIN_MS = 1400;
+/** Floor for a single verification probe window (ms), independent of the budget. */
+const PROBE_MIN_WINDOW_MS = 1200;
+/** One-off extension granted when nothing has verified at the end of the budget. */
+const RESCUE_EXTENSION_MS = 700;
+/** Wall-clock ceiling for a resolve that has not verified anything yet (ms). */
+const RESCUE_CEILING_MS = 5200;
 /** Upper bound for the adapter race when nothing has candidates yet. */
 const ADAPTER_RACE_MS = 3600;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 const resolveBudgetMs = (): number => {
-  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 3600);
-  return Number.isFinite(raw) ? Math.max(2500, Math.min(20_000, raw)) : 3600;
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
+  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 28;
@@ -505,7 +511,7 @@ export class SourceRegistry {
     }
     if (lagTimer) clearTimeout(lagTimer);
 
-    const verifyCurrentSlots = async () => {
+    const verifyCurrentSlots = async (probeFloorMs = PROBE_MIN_WINDOW_MS) => {
       const ready = slots.filter(
         (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
       );
@@ -524,7 +530,15 @@ export class SourceRegistry {
       const { candidates: vFlat, verifiedAliveCount } =
         await verifyAndFilterCandidatesDetailed(
           tagged,
-          AbortSignal.timeout(Math.max(1, Math.min(lateOnly ? 1_300 : 2_000, remaining()))),
+          // The probe decides whether a title is playable at all, so it gets a
+          // real floor even when the response budget is nearly spent. Collapsing
+          // this to a few milliseconds turned short budgets into empty lists.
+          AbortSignal.timeout(
+            Math.max(
+              lateOnly ? 900 : probeFloorMs,
+              Math.min(lateOnly ? 1_300 : 2_000, remaining()),
+            ),
+          ),
         );
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
@@ -575,6 +589,26 @@ export class SourceRegistry {
     } else if (!lateOnly && doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
+    }
+
+    // Rescue pass. If the clock is the only reason the list is empty, buy one
+    // bounded extension instead of reporting "no sources" for a title that is
+    // merely late. Deliberately unconditional on the remaining budget: an empty
+    // answer is always worse than ~1.2 s of extra wait.
+    if (
+      !lateOnly &&
+      !params.anilistId &&
+      verifiedBatch.verifiedLive === 0 &&
+      doneCount < activeAdapters.length
+    ) {
+      const slack = RESCUE_CEILING_MS - (Date.now() - resolveStartedAt);
+      if (slack > 300) {
+        await Promise.race([
+          Promise.allSettled(adapterTasks),
+          wait(Math.min(RESCUE_EXTENSION_MS, slack)),
+        ]);
+        verifiedBatch = await verifyCurrentSlots(Math.min(800, slack));
+      }
     }
 
     // Metadata, skip markers and subtitles are enrichments; none may hold the
@@ -656,6 +690,38 @@ export class SourceRegistry {
       );
       for (const entry of allLiveCandidates) candidateEntries.push(entry);
       droppedByRuntime.length = 0;
+    }
+
+    // Final rail: an aborted verification window used to leave every candidate
+    // unprobed, and unprobed candidates were silently treated as dead — a title
+    // that was merely slow came back with "no sources". Listing a couple of
+    // unverified lanes is always better than an empty player: the client tries
+    // them in order and moves on if one is stale.
+    if (!candidateEntries.length) {
+      const fallback: { adapter: SourceAdapter; candidate: RawStreamCandidate }[] = [];
+      const seenUrls = new Set<string>();
+      for (const slot of slots) {
+        if (!slot) continue;
+        for (const cand of slot.result.candidates.slice(0, 2)) {
+          // Only never-probed lanes qualify: a candidate that was actually
+          // probed and came back dead stays dead.
+          const evidence = cachedCandidateEvidence(cand);
+          if (evidence && !evidence.alive) continue;
+          if (seenUrls.has(cand.url)) continue;
+          seenUrls.add(cand.url);
+          fallback.push({ adapter: slot.adapter, candidate: cand });
+          if (fallback.length >= 6) break;
+        }
+        if (fallback.length >= 6) break;
+      }
+      if (fallback.length) {
+        console.warn(
+          `[elfura-resolve] verification did not finish in time for ${params.type}/${params.tmdbId}; ` +
+            `listing ${fallback.length} unverified candidate(s) from ` +
+            `${[...new Set(fallback.map((f) => f.adapter.id))].join(',')} instead of returning nothing.`,
+        );
+        candidateEntries.push(...fallback);
+      }
     }
 
     const counts = new Map<string, Map<string, number>>();
