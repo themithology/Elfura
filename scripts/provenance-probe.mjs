@@ -84,8 +84,13 @@ async function provenance(candidate) {
       .find((line) => line && !line.startsWith('#'));
     if (!segment) return `manifest ok, no segment line (${hostOf(target)})`;
     const absolute = new URL(segment, target).href;
-    const same = hostOf(absolute) === hostOf(candidate.url);
-    return `manifest ${hostOf(candidate.url)} → segment ${hostOf(absolute)} ${same ? '(same host: proxied)' : '(origin CDN)'}`;
+    const manifestHost = hostOf(candidate.url);
+    const segmentHost = hostOf(absolute);
+    const relayish = /(^|\.)(workers\.dev|pages\.dev|vercel\.app|netlify\.app)$|^prx[-.]|proxy|relay|mirror/i;
+    const verdict = segmentHost === manifestHost
+      ? relayish.test(manifestHost) ? 'relay host serving its own segments' : 'CDN serving its own segments (single origin)'
+      : relayish.test(manifestHost) ? 'relay front → origin CDN segments' : 'edge → different segment host';
+    return `manifest ${manifestHost} → segment ${segmentHost} (${verdict})`;
   } catch (err) {
     return `error ${err instanceof Error ? err.name : 'unknown'}`;
   }
@@ -137,14 +142,9 @@ console.log('');
 /* ───────────────────────── Source 14 sweep ───────────────────────── */
 
 const SCRAPPER = 'https://scrapper.rivestream.app/api/provider';
-const RIVE_PROVIDERS = [
-  'rive-citadel',
-  'rive-primevids',
-  'rive-flowcast',
-  'rive-quasar',
-  'rive-guru',
-  'rive-hindicast',
-];
+// The scrapper API keys providers WITHOUT the site's `rive-` prefix (the
+// working citadel lane proves it); the site-side names are kept for reference.
+const RIVE_PROVIDERS = ['citadel', 'primevids', 'flowcast', 'quasar', 'guru', 'hindicast'];
 const FALLBACK_PROVIDERS = ['mhbox', 'awsind', 'vidapi', 'stvv', 'streamflix'];
 
 console.log('## 2. Source 14 provider sweep (scrapper API)');
@@ -165,6 +165,7 @@ for (const provider of [...RIVE_PROVIDERS, ...FALLBACK_PROVIDERS]) {
       /* not json */
     }
     const rows = Array.isArray(body?.data?.sources) ? body.data.sources : [];
+    const rootKeys = body && typeof body === 'object' ? Object.keys(body).slice(0, 6).join('|') : typeof body;
     const hosts = new Map();
     const formats = new Map();
     const labels = [];
@@ -175,7 +176,7 @@ for (const provider of [...RIVE_PROVIDERS, ...FALLBACK_PROVIDERS]) {
       if (labels.length < 4) labels.push(`${String(row.quality).slice(0, 28)}|${String(row.source)}`);
     }
     console.log(
-      `- ${provider}: http=${response.status} ${Date.now() - started}ms rows=${rows.length} ` +
+      `- ${provider}: http=${response.status} ${Date.now() - started}ms rows=${rows.length} root=${rootKeys} ` +
         `formats=${[...formats.entries()].map(([k, v]) => `${k}:${v}`).join(',') || 'none'} ` +
         `hosts=${[...hosts.entries()].map(([k, v]) => `${k}:${v}`).join(',') || 'none'}`,
     );
@@ -220,17 +221,25 @@ try {
           /* not json */
         }
         const rows = Array.isArray(body?.sources) ? body.sources : [];
+        const absolute = (raw) => {
+          try {
+            return new URL(String(raw), VZ).href;
+          } catch {
+            return '';
+          }
+        };
         const shapes = rows.slice(0, 3).map((row) => {
-          const host = hostOf(row?.url);
-          return `${String(row?.type)}@${host === 'vidzen.fun' ? 'self' : host}${pathShape(row?.url).slice(0, 24)}`;
+          const url = absolute(row?.url);
+          const host = hostOf(url);
+          return `${String(row?.type)}@${host === 'vidzen.fun' ? 'self' : host}${pathShape(url).slice(0, 24)}`;
         });
         console.log(`- ${server}: http=${response.status} rows=${rows.length} ${shapes.join(' | ')}`);
         if (rows.length) {
           const candidates = rows
-            .filter((row) => row && typeof row.url === 'string' && /^https?:/.test(row.url))
+            .filter((row) => row && typeof row.url === 'string' && row.url)
             .map((row, index) => ({
               key: row.url,
-              url: new URL(row.url, VZ).href,
+              url: absolute(row.url),
               type: /mp4/i.test(String(row.type)) ? 'mp4' : 'hls',
               quality: 'auto',
               headers: { 'User-Agent': UA, Referer: `${VZ}/` },
@@ -239,7 +248,8 @@ try {
           if (candidates.length) {
             const checked = await verifyAndFilterCandidatesDetailed(candidates);
             const alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive);
-            console.log(`    liveness: ${alive.length}/${candidates.length} alive`);
+            console.log(`    liveness: ${alive.length}/${candidates.length} alive` +
+              ` (${candidates.filter((c) => cachedCandidateEvidence(c)?.confirmedDead).length} confirmed dead)`);
             for (const candidate of alive.slice(0, 1)) {
               console.log(`    provenance: ${await provenance(candidate)}`);
             }
