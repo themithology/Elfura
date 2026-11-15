@@ -24,7 +24,6 @@ export interface DvdBounce {
 }
 
 const SPEED_PX_PER_SEC = 118;
-const HUE_STEP_DEG = 47;
 
 export function mountDvdBounce(layer: HTMLElement): DvdBounce {
   const reducedMotion = (): boolean =>
@@ -47,8 +46,6 @@ export function mountDvdBounce(layer: HTMLElement): DvdBounce {
   let y = 0;
   let vx = SPEED_PX_PER_SEC;
   let vy = SPEED_PX_PER_SEC * 0.72;
-  let hue = 0;
-  let tilt = -6;
   // Non-browser harnesses (and very old engines) may lack rAF: then the logo is
   // simply placed once instead of animating.
   const canAnimate = typeof window.requestAnimationFrame === 'function';
@@ -68,8 +65,9 @@ export function mountDvdBounce(layer: HTMLElement): DvdBounce {
     const boundsH = Math.max(0, layer.clientHeight - h);
     if (x > boundsW) x = boundsW;
     if (y > boundsH) y = boundsH;
-    node.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) rotate(${tilt}deg)`;
-    node.style.filter = hue ? `hue-rotate(${hue}deg) saturate(1.15)` : 'none';
+    // Movement only. No hue shift, no rotation filter, no glow tricks — the
+    // logo keeps its own artwork and simply travels.
+    node.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
   };
 
   const placeCentre = (): void => {
@@ -77,9 +75,6 @@ export function mountDvdBounce(layer: HTMLElement): DvdBounce {
     const { w, h } = size(node);
     x = Math.max(0, (layer.clientWidth - w) / 2);
     y = Math.max(0, (layer.clientHeight - h) / 2);
-    tilt = 0;
-    hue = 0;
-    node.style.filter = 'none';
     node.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
   };
 
@@ -97,28 +92,19 @@ export function mountDvdBounce(layer: HTMLElement): DvdBounce {
     x += vx * dt;
     y += vy * dt;
 
-    let bounced = false;
     if (x <= 0) {
       x = 0;
       vx = Math.abs(vx);
-      bounced = true;
     } else if (x >= boundsW) {
       x = boundsW;
       vx = -Math.abs(vx);
-      bounced = true;
     }
     if (y <= 0) {
       y = 0;
       vy = Math.abs(vy);
-      bounced = true;
     } else if (y >= boundsH) {
       y = boundsH;
       vy = -Math.abs(vy);
-      bounced = true;
-    }
-    if (bounced) {
-      hue = (hue + HUE_STEP_DEG) % 360;
-      tilt = tilt === 0 ? -6 : 0;
     }
 
     paint();
