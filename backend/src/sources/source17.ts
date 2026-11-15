@@ -8,9 +8,13 @@
  *
  * Every route is gated by a signed installation (see `../anivortex-auth.ts`),
  * so the adapter is disabled unless `ELFURA_ANIVORTEX_ENABLED=1` *and*
- * installation credentials exist. Language names in playback responses are
- * provider labels: they become `claimedAudioLang`/`audioLabel` only, never
- * verified `audioLang` — the liveness probe supplies real manifest evidence.
+ * installation credentials exist.
+ *
+ * Audio labels are TRUSTED here (operator decision, 2026-11-15): AniVortex emits
+ * one separate stream per language with its own URL, and its DASH manifests
+ * carry a single audio adaptation set, so manifest rendition discovery cannot
+ * corroborate them. Provider labels therefore set `audioLang` directly; set
+ * `ELFURA_ANIVORTEX_TRUST_LABELS=0` to fall back to claim-only labels.
  */
 
 import { anivortexRequest, readAnivortexCredentials, type AnivortexCredentials } from '../anivortex-auth.js';
@@ -24,6 +28,8 @@ const MAX_CANDIDATES = 12;
 const MAX_EXTRA_SERVERS = 2;
 const MAX_SUBTITLES = 16;
 const RESOLVE_BUDGET_MS = 4200;
+/** Operator decision: trust AniVortex language labels (see module docstring). */
+const TRUST_LABELS = process.env.ELFURA_ANIVORTEX_TRUST_LABELS !== '0';
 
 export interface AnivortexTitle {
   id: string;
@@ -182,7 +188,11 @@ function serverRows(server: any, subtitles: RawTrackRef[]): RawStreamCandidate[]
         ...(safeHeaders(row?.headers) ? { headers: safeHeaders(row?.headers) } : {}),
         quality: String(row?.quality ?? 'auto').trim().slice(0, 24) || 'auto',
         claimedAudioLang: code,
-        audioLabel: label ? `${label} (provider label)` : undefined,
+        // Separate per-language stream with its own URL: the label is the only
+        // language signal that exists, so it is promoted to `audioLang` unless
+        // the operator opts out.
+        ...(TRUST_LABELS && code ? { audioLang: code } : {}),
+        audioLabel: label || undefined,
         audioVariant: /\bsub\b/i.test(label) ? 'sub' : /\bdub\b/i.test(label) ? 'dub' : undefined,
         subtitles,
         rank: 60,

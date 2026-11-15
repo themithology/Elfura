@@ -1,9 +1,16 @@
 # AniVortex audit and Source 17
 
-Audit: 14 November 2026. Research and a prototype adapter. **No live playback, spoken-language or
-latency verification was possible from the sandbox**: direct egress to `api.anivortex.in` is blocked
-here (`curl` returns status `000`), so only GET route probing through an external page fetcher was
-performed. Nothing below claims a working multi-audio source.
+Audit: 14–15 November 2026. Research plus a working, live-verified adapter.
+
+The sandbox here cannot reach `api.anivortex.in` directly (`curl` → status `000`), so route discovery
+used GET probing through an external page fetcher and every live test ran on a GitHub Actions runner via
+`.github/workflows/anivortex-probe.yml`. Results are committed by the workflow to
+`research/anivortex-probe-report.md`.
+
+**Live status (2026-11-15):** registration succeeds from a datacenter IP with the software
+(self-signed) certificate path, all catalogue routes answer, and playback returns manifest-reachable
+DASH streams with separate English/Hindi rows. No browser playback or spoken-language check has been
+performed.
 
 ## What AniVortex is
 
@@ -105,13 +112,41 @@ separate audio rendition or the spoken language.
   and proof verification against the presented certificate, title matching, episode-id extraction,
   SSRF rejection, label-only audio handling, and the no-credentials path. **No live upstream test.**
 
+## Live results (GitHub Actions run 43688997936)
+
+| Probe | Result |
+|---|---|
+| `install/challenge` + `install/register` (software key, CI IP) | **success** — `installation_id` and `key_id` returned |
+| `/api/v1/search?q=Dune: Part Two` | 200, `{query, items[]}`; `items[]` carries `audio_badge`, `content_type`, `release_year` |
+| `/api/v1/titles/{id}` | 200, metadata only (no TMDB id, no episode list) |
+| `/api/v1/titles/{id}/watch` | 200, `{seasons:[{id, season_number, episode_count}], available_servers}` — **no episode ids** |
+| `/api/v1/seasons/{seasonId}/episodes` | 200, `{episodes:[{id, episode_number, available_servers}], next_cursor, has_more}` |
+| `/api/v1/titles/{id}/playback` (movie) | 200, `server` + `server_options` (`ok_video`, `moviebox_web`) |
+| `/api/v1/titles/{id}/playback?season=&episode=` | **400** `invalid_query: only episode_id, include_adult, server, and language are supported` |
+| `/api/v1/titles/{id}/playback` (TV, no id) | **400** `episode_required` |
+| Adapter + liveness, Dune: Part Two | 9 rows (en 3, hi 3, und 2, te 1), 6 manifest-reachable DASH, ~3.5 s |
+| Adapter + liveness, Oppenheimer | 4 rows (en 2, hi 2), 4 manifest-reachable DASH, ~3.1 s |
+| Adapter + liveness, Breaking Bad S1E1 | 2 rows (en, hi) via the episode route, **0 manifest-reachable** |
+
+Streams live at `language.playback.sources[]` (`format: "dash"`, per-language URL, UA header) with
+progressive MP4s in `language.download_options[]` (4K/2K/1080p). Media hosts are `*.okcdn.ru` /
+`ok6-*.vkuser.net` — OK.ru-family CDNs, not AniVortex's own edges.
+
+**DASH manifests report zero audio renditions** (`audioRenditions=0`, `langs=[]`) because each language is
+its own stream with a single audio adaptation set. Manifest rendition discovery therefore cannot
+corroborate the language, which is why the operator decided on 2026-11-15 that these labels are trusted:
+`audioLang` is set from the label, and `ELFURA_ANIVORTEX_TRUST_LABELS=0` reverts to claim-only. This is
+the documented exception in `RULES.md` §5.1, and it does mean a mislabelled upstream row would be offered
+as that language.
+
 ## Open questions / next steps
 
-1. Does `install/register` accept a software (non-attested) chain from a datacenter IP, or does it require
-   hardware attestation? Run `.github/workflows/anivortex-probe.yml`.
-2. Which playback query shape does the API accept (`episode_id` vs `season`+`episode`, `server`), and what
-   does `server_options` contain?
-3. Do returned manifests carry real selectable audio renditions (Hindi prioritised), and are segments
-   reachable through the relay from the deployment?
-4. Title mapping is name-based because the catalogue exposes no TMDB id; verify mismatch rates on a sample.
-5. Rate limits: the client handles HTTP 429 on challenge, so registration must not be retried in a loop.
+1. Breaking Bad S1E1 returned two rows that failed the manifest probe (the TV lane resolves through
+   `moviebox_web`); determine whether that lane needs a different header or is simply dead for the episode.
+2. The `moviebox_web` server (labelled "Spiral" in episode payloads) is reachable in `server_options` but
+   was never separately parsed — decide whether it adds independent coverage.
+3. Verify real browser playback and spoken language for at least one Hindi row.
+4. Title mapping is name-based because the catalogue exposes no TMDB id; measure mismatch rates on a sample.
+5. Rate limits: the client handles HTTP 429 on challenge, so registration must never be retried in a loop.
+6. Installation credentials must be minted per deployment with `node scripts/anivortex-register.mjs`; the
+   CI probe deliberately uses throwaway installations.
