@@ -25,7 +25,8 @@ import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from '../d
 import { fetchFromSubDub } from '../dist/backend/sources/source18.js';
 import { fetchFromDesiDub } from '../dist/backend/sources/source19.js';
 import { fetchFromVidora } from '../dist/backend/sources/source20.js';
-import { extractVidZenToken } from '../dist/backend/sources/source12.js';
+import { extractVidZenToken, createSource12Adapter } from '../dist/backend/sources/source12.js';
+import { createSource14Adapter } from '../dist/backend/sources/source14.js';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -262,4 +263,37 @@ try {
   }
 } catch (err) {
   console.log(`- vidzen page error ${err instanceof Error ? err.name : 'unknown'}`);
+}
+
+/* ───────────────── adapters end-to-end (the code paths that ship) ───────────────── */
+
+const adapterCases = [
+  ['source-14', createSource14Adapter(() => true), { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
+  ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '693134' }],
+  ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '913290' }],
+  ['source-12', createSource12Adapter(() => true), { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
+  ['source-12', createSource12Adapter(() => true), { type: 'movie', tmdbId: '872585' }],
+];
+
+console.log('## 4. Adapter-level results (what actually ships)');
+for (const [id, adapter, query] of adapterCases) {
+  const diag = [];
+  const started = Date.now();
+  let resolved = [];
+  try {
+    resolved = (await adapter.resolve({ ...query, diag })).candidates;
+  } catch (err) {
+    console.log(`- ${id} ${query.type}:${query.tmdbId}: error ${err instanceof Error ? err.name : 'unknown'}`);
+    continue;
+  }
+  console.log(`- ${id} ${query.type}:${query.tmdbId}: ${resolved.length} candidate(s) in ${Date.now() - started}ms`);
+  if (diag[0]?.detail) console.log(`    diag: ${diag[0].detail}`);
+  const languages = new Map();
+  for (const candidate of resolved) {
+    const key = candidate.claimedAudioLang ?? candidate.audioLang ?? 'unlabelled';
+    languages.set(key, (languages.get(key) ?? 0) + 1);
+  }
+  console.log(`    audio: ${[...languages.entries()].map(([key, count]) => `${key}:${count}`).join(' ')}`);
+  const qualities = [...new Set(resolved.map((candidate) => candidate.quality))].join('/');
+  console.log(`    quality: ${qualities || 'none'} · hosts: ${[...new Set(resolved.map((c) => hostOf(c.url)))].slice(0, 4).join(',')}`);
 }
