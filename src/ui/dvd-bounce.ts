@@ -35,6 +35,7 @@ export function mountDvdBounce(layer: HTMLElement): DvdBounce {
   art.className = 'elf-dvd-art';
   art.alt = '';
   art.decoding = 'async';
+  art.fetchPriority = 'high';
   art.draggable = false;
   // Hidden until the image actually decodes; the backdrop carries the screen
   // meanwhile, so there is never an empty frame.

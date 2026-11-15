@@ -40,7 +40,7 @@ import {
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
-import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
+import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -370,6 +370,54 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     // 4. Single Uniform Playback Endpoint
+    // Artwork bootstrap. The player needs the backdrop and the title logo in
+    // the first few hundred milliseconds; waiting for the whole playback
+    // response (which races twenty adapters) is what left the startup screen
+    // blank for four seconds. TMDB-only, RAM cached, shares the same cache the
+    // later resolve uses, so it costs nothing and warms it.
+    if (method === 'GET' && (pathname === '/api/v1/art' || pathname === '/api/v1/metadata')) {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+        return;
+      }
+      if (!rateLimiter.allow(`art:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
+        return;
+      }
+      const type = (url.searchParams.get('type') || url.searchParams.get('mediaType') || 'movie').toLowerCase() === 'tv' ? 'tv' : 'movie';
+      const tmdbId = (url.searchParams.get('tmdb') || url.searchParams.get('tmdbId') || url.searchParams.get('id') || '').trim();
+      if (!/^[A-Za-z0-9_-]{1,24}$/.test(tmdbId)) {
+        sendJson(res, 400, { ok: false, error: 'valid tmdb parameter is required' }, allowOrigin);
+        return;
+      }
+      const season = type === 'tv' ? Math.max(1, Number(url.searchParams.get('s') || url.searchParams.get('season')) || 1) : undefined;
+      const episode = type === 'tv' ? Math.max(1, Number(url.searchParams.get('e') || url.searchParams.get('episode')) || 1) : undefined;
+      try {
+        const media = await fetchTmdbMetadata(cfg.tmdb, { type, tmdbId, season, episode });
+        sendJson(
+          res,
+          200,
+          {
+            ok: true,
+            media: {
+              type,
+              tmdbId,
+              title: media.title,
+              year: media.year,
+              logo: media.logo,
+              backdrop: media.backdrop,
+              poster: media.poster,
+            },
+          },
+          allowOrigin,
+        );
+      } catch {
+        sendJson(res, 200, { ok: false }, allowOrigin);
+      }
+      return;
+    }
+
     if ((method === 'GET' || method === 'POST') && pathname === '/api/v1/playback') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
       if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {

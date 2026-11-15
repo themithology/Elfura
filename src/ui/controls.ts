@@ -693,6 +693,8 @@ export class PlayerUI {
     this.loadingBackdrop.className = 'elf-state-backdrop';
     this.loadingBackdrop.alt = '';
     this.loadingBackdrop.decoding = 'async';
+    // Start screen art is the first thing a viewer sees: give it the bandwidth.
+    this.loadingBackdrop.fetchPriority = 'high';
     this.loadingBackdrop.addEventListener('load', () => {
       this.loadingBackdrop.dataset.ready = 'true';
     });
@@ -811,6 +813,15 @@ export class PlayerUI {
   }
 
   private syncStateArtwork(dm: DisplayMedia): void {
+    // TMDB may deliver the logo a few hundred milliseconds after the screen
+    // appears; without this the bounce would never start and the logo would
+    // never be seen at all.
+    if (this.loadingActive && dm.logo && this.dvdBounce) {
+      const art = this.loadingDvdLayer.querySelector('.elf-dvd-art') as HTMLImageElement | null;
+      if (art && art.getAttribute('src') !== dm.logo) this.startDvdBounce();
+    } else if (this.loadingActive && !this.dvdBounce && dm.logo) {
+      this.startDvdBounce();
+    }
     const backdrop = dm.backdrop;
     for (const img of [this.loadingBackdrop, this.unavailableBackdrop]) {
       if (backdrop) {
