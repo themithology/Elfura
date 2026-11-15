@@ -255,7 +255,6 @@ export class PlayerUI {
   /* Branded startup / unavailable states */
   private loadingScreen!: HTMLElement;
   private loadingBackdrop!: HTMLImageElement;
-  private loadingLogoSlot!: HTMLElement;
   private loadingStatus!: HTMLElement;
   private loadingQuote!: HTMLElement;
   private loadingQuoteAuthor!: HTMLElement;
@@ -356,6 +355,7 @@ export class PlayerUI {
   constructor(player: ElfuraPlayer) {
     this.player = player;
     this.build();
+    this.preloadStateArtwork();
     this.wire();
     // Initial intro/outro configuration can predate UI construction. Render it
     // immediately; loadedmetadata/durationchange will refine it once known.
@@ -686,27 +686,29 @@ export class PlayerUI {
     this.loadingScreen = el('div', 'elf-loading-screen');
     this.loadingScreen.dataset.visible = 'false';
     this.loadingScreen.setAttribute('role', 'status');
+    // Nothing is written on this screen, so the accessible name carries it.
+    this.loadingScreen.setAttribute('aria-label', 'Loading');
     this.loadingScreen.setAttribute('aria-live', 'polite');
     this.loadingBackdrop = document.createElement('img');
     this.loadingBackdrop.className = 'elf-state-backdrop';
     this.loadingBackdrop.alt = '';
     this.loadingBackdrop.decoding = 'async';
+    this.loadingBackdrop.addEventListener('load', () => {
+      this.loadingBackdrop.dataset.ready = 'true';
+    });
     const loadingShade = el('div', 'elf-state-shade');
-    const loadingContent = el('div', 'elf-loading-content');
-    this.loadingLogoSlot = el('div', 'elf-loading-logo');
-    const loadingRule = el('div', 'elf-loading-rule', '<span></span>');
-    this.loadingStatus = el('div', 'elf-loading-status', 'Finding the best available source…');
-    const quoteCard = el('figure', 'elf-loading-quote-card');
-    this.loadingQuote = el('blockquote', 'elf-loading-quote');
-    this.loadingQuoteAuthor = el('figcaption', 'elf-loading-quote-author');
-    quoteCard.append(this.loadingQuote, this.loadingQuoteAuthor);
-    loadingContent.append(this.loadingLogoSlot, loadingRule, this.loadingStatus, quoteCard);
-    // DVD-style bounce layer: the title logo drifts and knocks off the edges
-    // while playback is prepared. It sits under the content so text stays legible.
+    // The startup screen is artwork only: the title's backdrop with its logo
+    // bouncing across it like a DVD screensaver. No status line, no quotes, no
+    // progress rule — nothing to read while you wait.
     const loadingDvdLayer = el('div', 'elf-loading-dvd');
     loadingDvdLayer.setAttribute('aria-hidden', 'true');
     this.loadingDvdLayer = loadingDvdLayer;
-    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingDvdLayer, loadingContent);
+    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingDvdLayer);
+    // Kept for state logic, never attached: nothing on the loading screen is
+    // text any more.
+    this.loadingStatus = el('div', 'elf-loading-status', 'Finding the best available source…');
+    this.loadingQuote = el('blockquote', 'elf-loading-quote');
+    this.loadingQuoteAuthor = el('figcaption', 'elf-loading-quote-author');
 
     this.unavailableScreen = el('div', 'elf-unavailable-screen');
     this.unavailableScreen.dataset.visible = 'false';
@@ -768,7 +770,7 @@ export class PlayerUI {
       m?.rawTitle || (epPattern ? epPattern[1] : '') || m?.title || rawCfgTitle || '',
     ).trim();
 
-    const logo = m?.logo && m.logo !== this.failedLogoUrl ? m.logo : null;
+    const logo = (m?.logo || cfg.logo) && (m?.logo || cfg.logo) !== this.failedLogoUrl ? String(m?.logo || cfg.logo) : null;
     const year = String(m?.year ?? '').trim();
     const tagline = String(m?.tagline ?? '').trim();
     const rating = typeof m?.rating === 'number' && Number.isFinite(m.rating) && m.rating > 0 ? m.rating : null;
@@ -787,8 +789,25 @@ export class PlayerUI {
       genres,
       overview,
       logo,
-      backdrop: String(m?.backdrop || m?.poster || cfg.poster || '').trim(),
+      // Wide art wins, and the URL the app already gave us is available a frame
+      // after construction — waiting for TMDB is what made the screen black.
+      backdrop: String(m?.backdrop || cfg.backdrop || m?.poster || cfg.poster || '').trim(),
     };
+  }
+
+  /** Warm the browser cache for the startup art before the screen is shown. */
+  private preloadStateArtwork(): void {
+    try {
+      const cfg = this.player.config;
+      for (const url of [cfg.backdrop, cfg.logo, cfg.poster]) {
+        if (!url) continue;
+        const img = document.createElement('img');
+        img.decoding = 'async';
+        img.src = url;
+      }
+    } catch {
+      /* preloading is an optimisation only */
+    }
   }
 
   private syncStateArtwork(dm: DisplayMedia): void {
@@ -802,19 +821,22 @@ export class PlayerUI {
         img.hidden = true;
       }
     }
-    this.loadingLogoSlot.replaceChildren();
-    const visual = this.createTitleVisual(dm, 'pause');
-    if (visual) this.loadingLogoSlot.appendChild(visual);
-    this.loadingLogoSlot.hidden = !visual;
+    // The startup screen has no text and no docked logo: the backdrop is the
+    // whole picture and the logo bounces over it (see startDvdBounce).
   }
 
   private startDvdBounce(): void {
     // Decoration only: a bug in the loader must never take the player with it.
     try {
       const dm = this.resolveDisplayMedia();
-      const label = dm.mainTitle || 'Loading';
-      if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer, label);
-      this.dvdBounce.setImage(dm.logo ?? null, label);
+      const logo = dm.logo;
+      if (!logo) {
+        // Nothing to bounce. Better an honest backdrop than invented text.
+        this.dvdBounce?.stop();
+        return;
+      }
+      if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer);
+      this.dvdBounce.setImage(logo);
       this.dvdBounce.start();
     } catch {
       /* the loading screen and source list stay fully functional without it */
@@ -861,9 +883,7 @@ export class PlayerUI {
     this.loadingStatus.textContent = 'Finding the best available source…';
     this.syncStateArtwork(this.resolveDisplayMedia());
     this.startDvdBounce();
-    this.showNextFallbackQuote();
     clearInterval(this.loadingQuoteTimer);
-    void this.fetchLoadingQuote(session);
     this.loadingQuoteTimer = window.setInterval(() => {
       if (!this.loadingActive || session !== this.loadingQuoteSession) return;
       // Keep something fresh on screen immediately, then replace it with a new

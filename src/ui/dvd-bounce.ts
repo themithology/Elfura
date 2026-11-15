@@ -15,7 +15,7 @@
 
 export interface DvdBounce {
   /** Swap the artwork (metadata often arrives after the screen opens). */
-  setImage(url: string | null, label?: string): void;
+  setImage(url: string | null): void;
   /** Start or resume the loop. */
   start(): void;
   /** Stop the loop without removing the artwork. */
@@ -26,7 +26,7 @@ export interface DvdBounce {
 const SPEED_PX_PER_SEC = 118;
 const HUE_STEP_DEG = 47;
 
-export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce {
+export function mountDvdBounce(layer: HTMLElement): DvdBounce {
   const reducedMotion = (): boolean =>
     typeof window.matchMedia === 'function' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -36,15 +36,11 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
   art.alt = '';
   art.decoding = 'async';
   art.draggable = false;
-  art.hidden = true;
-
-  const fallback = document.createElement('span');
-  fallback.className = 'elf-dvd-wordmark';
-  fallback.textContent = label;
-  fallback.hidden = true;
+  // Hidden until the image actually decodes; the backdrop carries the screen
+  // meanwhile, so there is never an empty frame.
+  art.style.visibility = 'hidden';
 
   layer.appendChild(art);
-  layer.appendChild(fallback);
 
   let x = 0;
   let y = 0;
@@ -65,7 +61,7 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
   };
 
   const paint = (): void => {
-    const node = art.hidden ? fallback : art;
+    const node = art;
     const { w, h } = size(node);
     const boundsW = Math.max(0, layer.clientWidth - w);
     const boundsH = Math.max(0, layer.clientHeight - h);
@@ -76,7 +72,7 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
   };
 
   const placeCentre = (): void => {
-    const node = art.hidden ? fallback : art;
+    const node = art;
     const { w, h } = size(node);
     x = Math.max(0, (layer.clientWidth - w) / 2);
     y = Math.max(0, (layer.clientHeight - h) / 2);
@@ -92,7 +88,7 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    const node = art.hidden ? fallback : art;
+    const node = art;
     const { w, h } = size(node);
     const boundsW = Math.max(0, layer.clientWidth - w);
     const boundsH = Math.max(0, layer.clientHeight - h);
@@ -159,30 +155,26 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
   window.addEventListener('resize', onResize);
 
   return {
-    setImage(url: string | null, nextLabel?: string): void {
-      if (nextLabel) fallback.textContent = nextLabel;
+    setImage(url: string | null): void {
       if (!url) {
         art.removeAttribute('src');
-        art.hidden = true;
-        fallback.hidden = false;
+        art.style.visibility = 'hidden';
         if (reducedMotion()) placeCentre();
         return;
       }
-      if (art.src !== url) {
-        art.onload = () => {
-          art.hidden = false;
-          fallback.hidden = true;
-          layer.dataset.ready = 'true';
-          if (reducedMotion()) placeCentre();
-          else paint();
-        };
-        art.onerror = () => {
-          art.hidden = true;
-          fallback.hidden = false;
-          if (reducedMotion()) placeCentre();
-        };
-        art.src = url;
-      }
+      if (art.getAttribute('src') === url) return;
+      art.onload = () => {
+        art.style.visibility = 'visible';
+        layer.dataset.ready = 'true';
+        if (reducedMotion()) placeCentre();
+        else paint();
+      };
+      // No text fallback by design: if the logo never arrives, the backdrop is
+      // the screen. Nothing else is shown.
+      art.onerror = () => {
+        art.style.visibility = 'hidden';
+      };
+      art.src = url;
     },
     start,
     stop,
@@ -191,7 +183,6 @@ export function mountDvdBounce(layer: HTMLElement, label = 'Loading'): DvdBounce
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
       art.remove();
-      fallback.remove();
     },
   };
 }
