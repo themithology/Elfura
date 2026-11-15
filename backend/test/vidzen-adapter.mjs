@@ -129,7 +129,36 @@ try {
   assert(refreshed.some(candidate => candidate.url.includes('after-refresh')),
     'a rejected server list is retried with a freshly minted token');
 
-  console.log('✓ VidZen token extraction/refresh, same-origin filtering, TV episode path, post-verification capping, relay ranking, and toggle');
+  // A draw that yields only dead ids is retried once with a fresh token.
+  let draw = 0;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/movie/693134') {
+      draw += 1;
+      return new Response(`{"apiToken":"draw-token-${draw}-abcd"}`, { status: 200, headers: { 'Content-Type': 'text/html' } });
+    }
+    if (url.pathname === '/api/sources') {
+      const token = url.searchParams.get('token');
+      const server = url.searchParams.get('server');
+      if (server !== 'mars') return Response.json({ sources: [] });
+      if (token.startsWith('draw-token-1')) {
+        return Response.json({ sources: [{ type: 'hls', url: 'https://vidzen.fun/api/stream/stale/master.m3u8' }] });
+      }
+      return Response.json({ sources: [{ type: 'hls', url: 'https://vidzen.fun/api/stream/second-draw/master.m3u8' }] });
+    }
+    if (url.pathname === '/api/stream/stale/master.m3u8') return new Response('gone', { status: 404 });
+    if (url.pathname === '/api/stream/second-draw/master.m3u8') {
+      return new Response('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\nseg.ts\n#EXT-X-ENDLIST', { status: 200 });
+    }
+    throw new Error(`Unexpected VidZen request: ${url.pathname}`);
+  };
+  const retryAdapter = createSource12Adapter(() => true);
+  const retriedResult = await retryAdapter.resolve({ type: 'movie', tmdbId: '693134', diag: [] });
+  assert.equal(retriedResult.candidates.length, 1, 'a second draw rescues a title whose first draw was dead');
+  assert(retriedResult.candidates[0].url.includes('second-draw'));
+  assert.equal(draw, 2, 'exactly one extra token mint is spent on the retry');
+
+  console.log('✓ VidZen token extraction/refresh, same-origin filtering, TV episode path, post-verification capping, empty-draw retry, relay ranking, and toggle');
 } finally {
   globalThis.fetch = originalFetch;
 }

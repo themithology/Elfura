@@ -190,6 +190,14 @@ export async function fetchFromVidZen(query: SourceQuery): Promise<RawStreamCand
   return [...unique.values()];
 }
 
+/**
+ * VidZen mints a different stream id per page token, and some of those ids are
+ * dead while others play. A single draw can therefore come back empty on a title
+ * that is perfectly available, so a second draw is taken when nothing survives —
+ * bounded, and only when the lane would otherwise contribute nothing.
+ */
+const RETRY_ON_EMPTY = () => process.env.ELFURA_VIDZEN_RETRY !== '0';
+
 export function createSource12Adapter(enabled: () => boolean): SourceAdapter {
   return {
     id: 'source-12',
@@ -197,12 +205,22 @@ export function createSource12Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromVidZen(query);
-      const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
+      let raw = await fetchFromVidZen(query);
+      let checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
+      let alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      if (alive.length === 0 && raw.length > 0 && RETRY_ON_EMPTY() && !query.signal?.aborted) {
+        const second = await fetchFromVidZen(query).catch(() => [] as RawStreamCandidate[]);
+        const retried = second.length ? await verifyAndFilterCandidatesDetailed(second, query.signal) : null;
+        if (retried) {
+          raw = [...raw, ...second];
+          checked = retried;
+          alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+        }
+      }
+      const verified = alive;
       // Verified-only, then capped: a playable lane from a late server must
       // never be cut by a pool that is still full of unverified rows.
-      const candidates = checked.candidates
-        .filter(candidate => !!cachedCandidateEvidence(candidate)?.alive)
+      const candidates = verified
         .sort((a, b) => a.rank - b.rank)
         .slice(0, MAX_VERIFIED_CANDIDATES);
       query.diag?.push({
