@@ -8,9 +8,10 @@ used GET probing through an external page fetcher and every live test ran on a G
 `research/anivortex-probe-report.md`.
 
 **Live status (2026-11-15):** registration succeeds from a datacenter IP with the software
-(self-signed) certificate path, all catalogue routes answer, and playback returns manifest-reachable
-DASH streams with separate English/Hindi rows. No browser playback or spoken-language check has been
-performed.
+(self-signed) certificate path, all catalogue routes answer, and **movie** playback returns
+manifest-reachable DASH streams with separate English/Hindi rows (Dune: Part Two 9 rows / 6 reachable;
+Oppenheimer 4 rows / 4 reachable). **TV** rows resolve through the episode route but their CDN rejects
+datacenter traffic with HTTP 426. No browser playback or spoken-language check has been performed.
 
 ## What AniVortex is
 
@@ -126,7 +127,7 @@ separate audio rendition or the spoken language.
 | `/api/v1/titles/{id}/playback` (TV, no id) | **400** `episode_required` |
 | Adapter + liveness, Dune: Part Two | 9 rows (en 3, hi 3, und 2, te 1), 6 manifest-reachable DASH, ~3.5 s |
 | Adapter + liveness, Oppenheimer | 4 rows (en 2, hi 2), 4 manifest-reachable DASH, ~3.1 s |
-| Adapter + liveness, Breaking Bad S1E1 | 2 rows (en, hi) via the episode route, **0 manifest-reachable** |
+| Adapter + liveness, Breaking Bad S1E1 | 2 rows (en, hi) via the episode route, **0 manifest-reachable** — CDN returns HTTP 426 |
 
 Streams live at `language.playback.sources[]` (`format: "dash"`, per-language URL, UA header) with
 progressive MP4s in `language.download_options[]` (4K/2K/1080p). Media hosts are `*.okcdn.ru` /
@@ -141,8 +142,12 @@ as that language.
 
 ## Open questions / next steps
 
-1. Breaking Bad S1E1 returned two rows that failed the manifest probe (the TV lane resolves through
-   `moviebox_web`); determine whether that lane needs a different header or is simply dead for the episode.
+1. **TV playback is blocked from datacenter IPs.** Episode rows resolve correctly (the season/episode
+   route works) but their media host `sbcdnw.hakunaymatata.com` answers `HTTP 426 Forbidden` to every
+   header combination tried (as-provided, moviebox referer/origin, iPhone UA, byte-range, API referer —
+   the last even produced `429`). That is an edge/IP gate, not a header bug, so Source 17 currently
+   contributes movies and dies quietly on TV. Worth re-testing from the Pterodactyl host IP; if it holds
+   there too, TV support needs a different upstream lane.
 2. The `moviebox_web` server (labelled "Spiral" in episode payloads) is reachable in `server_options` but
    was never separately parsed — decide whether it adds independent coverage.
 3. Verify real browser playback and spoken language for at least one Hindi row.
