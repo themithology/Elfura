@@ -403,10 +403,23 @@ console.log('## 7. Source 21 transport checks (status codes only)');
       const body = await res.text().catch(() => '');
       return { status: res.status, ct: (res.headers.get('content-type') || '').split(';')[0], head: body.slice(0, 40).replace(/\n/g, '\\n') };
     } catch (err) {
-      return { status: 0, ct: '', head: err instanceof Error ? err.name : 'Error' };
+      const cause = err && typeof err === 'object' ? err.cause : undefined;
+      const detail = cause?.code || cause?.message || (err instanceof Error ? err.message : 'Error');
+      return { status: 0, ct: '', head: `${err instanceof Error ? err.name : 'Error'}:${String(detail).slice(0, 60)}` };
     }
   };
-  for (const headers of [{ 'User-Agent': UA }, { 'User-Agent': UA, Referer: 'https://vidout.pages.dev/', Origin: 'https://vidout.pages.dev' }]) {
+  const movieRows = await fetchFromWatchout({ type: 'movie', tmdbId: '10138' }).catch(() => []);
+  for (const seed of [
+    { label: 'tv host', url: (await fetchFromWatchout({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 }).catch(() => []))[0]?.url || '' },
+    { label: 'movie host', url: movieRows[0]?.url || '' },
+  ]) {
+    if (!seed.url) { console.log(`- ${seed.label}: no catalogue row`); continue; }
+    const plain = await probe(seed.url, { 'User-Agent': UA });
+    console.log(`- ${seed.label} plain: ${plain.status} ${plain.ct} ${plain.head}`);
+    const referred = await probe(seed.url, { 'User-Agent': UA, Referer: 'https://vidout.pages.dev/', Origin: 'https://vidout.pages.dev' });
+    console.log(`- ${seed.label} referred: ${referred.status} ${referred.ct} ${referred.head}`);
+  }
+  for (const headers of []) {
     const label = headers.Referer ? 'with vidout referer' : 'plain UA';
     const rows = await fetchFromWatchout({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 });
     if (!rows.length) { console.log(`- ${label}: no catalogue row`); continue; }
