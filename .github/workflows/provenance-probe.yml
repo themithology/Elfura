@@ -8,6 +8,7 @@ on:
       - 'scripts/provenance-probe.mjs'
       - 'backend/src/sources/source12.ts'
       - 'backend/src/sources/source14.ts'
+      - 'backend/src/sources/source21.ts'
 permissions:
   contents: write
 jobs:

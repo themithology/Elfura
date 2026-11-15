@@ -29,6 +29,7 @@ import { fetchFromDesiDub } from '../dist/backend/sources/source19.js';
 import { fetchFromVidora } from '../dist/backend/sources/source20.js';
 import { extractVidZenToken, createSource12Adapter } from '../dist/backend/sources/source12.js';
 import { createSource14Adapter } from '../dist/backend/sources/source14.js';
+import { fetchFromWatchout } from '../dist/backend/sources/source21.js';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -363,3 +364,30 @@ for (const lane of laneResults.sort((a, b) => a.id.localeCompare(b.id, 'en', { n
 }
 const producing = laneResults.filter((lane) => lane.raw > 0).length;
 console.log(`- summary: ${producing}/${laneResults.length} lanes produced rows for this episode from a US runner`);
+
+/* ───────────────── source 21 (Vidout catalogue) against the live mirrors ───────────────── */
+
+console.log('## 6. Source 21 — Vidout catalogue, live');
+for (const [label, query] of [
+  ['tv 1396 S1E1', { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
+  ['tv 1396 S1E4', { type: 'tv', tmdbId: '1396', season: 1, episode: 4 }],
+  ['movie 10138', { type: 'movie', tmdbId: '10138' }],
+  ['movie 27205', { type: 'movie', tmdbId: '27205' }],
+]) {
+  const started = Date.now();
+  try {
+    const raw = await fetchFromWatchout(query);
+    if (!raw.length) {
+      console.log(`- ${label}: no catalogue entry (${Date.now() - started}ms)`);
+      continue;
+    }
+    const checked = await verifyAndFilterCandidatesDetailed(raw, AbortSignal.timeout(9000));
+    const alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive);
+    console.log(`- ${label}: ${raw.length} row(s), ${alive.length} alive in ${Date.now() - started}ms · host ${hostOf(raw[0].url)}`);
+    for (const candidate of alive) {
+      console.log(`    audio: ${(candidate.availableAudioLangs ?? []).join(',') || 'unlabelled'} · multiAudio=${!!candidate.multiAudio}`);
+    }
+  } catch (err) {
+    console.log(`- ${label}: error ${err instanceof Error ? err.name : 'unknown'}`);
+  }
+}

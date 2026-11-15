@@ -200,10 +200,12 @@ try {
 
 const on = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test' }));
 const ids = on.listPublicSources().map((source) => source.id);
-for (const id of ['source-18', 'source-19', 'source-20']) {
+for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
   assert(ids.includes(id), `${id} should be enabled by default`);
 }
-assert(!ids.includes('source-21'), 'the retired KMMovies lane never appears');
+// 21 used to be reserved for the retired KMMovies lane; the number is now the
+// Vidout catalogue lane, so only the retired behaviour (Cloudflare solving) must
+// stay absent — nothing here depends on KMMovies.`
 const off = new SourceRegistry(
   loadBackendConfig({
     ELFURA_SECRET: 'test',
