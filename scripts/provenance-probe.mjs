@@ -1,0 +1,255 @@
+#!/usr/bin/env node
+/**
+ * Provenance + expansion probe (run from CI; the agent sandbox has no egress).
+ * =====================================================================
+ * Three questions, answered with evidence instead of assumptions:
+ *
+ *  1. Provenance — when Sources 18/19/20 return a stream, does the playlist
+ *     point at a real CDN object, or is everything funnelled through a proxy?
+ *     For each sample we print `<manifest host> → <segment host(s)>` and whether
+ *     the segment host equals the manifest host.
+ *
+ *  2. Source 14 — the adapter only asks the scrapper API for `citadel`. Sweep
+ *     every Rive server (and a few fallbacks) and report status, row counts,
+ *     CDN hosts and label shapes so the adapter can be widened safely.
+ *
+ *  3. Source 12 — the adapter only accepts `vidzen.fun/api/stream/...`. Report
+ *     per-server counts, URL shapes and liveness so we know whether the other
+ *     servers return something usable (different host/path/type) or nothing.
+ *
+ * No credentials, no full URLs: scheme + host + path shape only.
+ */
+
+import crypto from 'node:crypto';
+import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from '../dist/backend/sources/liveness.js';
+import { fetchFromSubDub } from '../dist/backend/sources/source18.js';
+import { fetchFromDesiDub } from '../dist/backend/sources/source19.js';
+import { fetchFromVidora } from '../dist/backend/sources/source20.js';
+import { extractVidZenToken } from '../dist/backend/sources/source12.js';
+
+const UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+
+const hostOf = (value) => {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return '<invalid>';
+  }
+};
+const pathShape = (value) => {
+  try {
+    const url = new URL(value);
+    return url.pathname
+      .replace(/[a-f0-9]{16,}/gi, '<hex>')
+      .replace(/\d{4,}/g, '<n>')
+      .split('/')
+      .slice(0, 5)
+      .join('/');
+  } catch {
+    return '<invalid>';
+  }
+};
+const fingerprint = (value) => crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 8);
+
+async function get(url, headers = {}) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': UA, ...headers },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(12_000),
+  });
+  const text = await response.text().catch(() => '');
+  return { status: response.status, ct: (response.headers.get('content-type') || '').split(';')[0], text };
+}
+
+/**
+ * Where does a stream actually live? Reads the manifest, resolves the first
+ * variant playlist, then reports the host of the first media segment.
+ */
+async function provenance(candidate) {
+  if (candidate.type === 'mp4') {
+    return `direct mp4 object on ${hostOf(candidate.url)}`;
+  }
+  const headers = { 'User-Agent': UA, ...(candidate.headers || {}) };
+  try {
+    const master = await get(candidate.url, headers);
+    if (master.status >= 400) return `manifest http=${master.status}`;
+    const lines = master.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const variant = lines.find((line) => line && !line.startsWith('#') && /\.m3u8|\.mpd/i.test(line));
+    const target = variant ? new URL(variant, candidate.url).href : candidate.url;
+    const leaf = variant ? await get(target, headers) : master;
+    const segment = leaf.text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith('#'));
+    if (!segment) return `manifest ok, no segment line (${hostOf(target)})`;
+    const absolute = new URL(segment, target).href;
+    const same = hostOf(absolute) === hostOf(candidate.url);
+    return `manifest ${hostOf(candidate.url)} → segment ${hostOf(absolute)} ${same ? '(same host: proxied)' : '(origin CDN)'}`;
+  } catch (err) {
+    return `error ${err instanceof Error ? err.name : 'unknown'}`;
+  }
+}
+
+const samples = [
+  ['movie:872585:Oppenheimer', 'source-20'],
+  ['tv:46260:Naruto:1:1', 'source-18'],
+  ['tv:95479:Jujutsu Kaisen:1:1', 'source-18'],
+  ['tv:46260:Naruto:1:1', 'source-19'],
+  ['tv:95479:Jujutsu Kaisen:1:1', 'source-19'],
+];
+
+const lanes = {
+  'source-18': fetchFromSubDub,
+  'source-19': fetchFromDesiDub,
+  'source-20': fetchFromVidora,
+};
+
+console.log(`# provenance + expansion probe — ${new Date().toISOString()}`);
+console.log('');
+
+console.log('## 1. Provenance of Sources 18-20');
+for (const [spec, sourceId] of samples) {
+  const [type, tmdbId, ...rest] = spec.split(':');
+  const isSeries = type === 'tv' && rest.length >= 2;
+  const title = (isSeries ? rest.slice(0, -2) : rest).join(':').trim();
+  const query = {
+    type,
+    tmdbId,
+    title,
+    ...(isSeries ? { season: Number(rest[rest.length - 2]), episode: Number(rest[rest.length - 1]) } : {}),
+  };
+  let rows = [];
+  try {
+    rows = await lanes[sourceId](query);
+  } catch {
+    rows = [];
+  }
+  const checked = rows.length ? await verifyAndFilterCandidatesDetailed(rows) : { candidates: [] };
+  const alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive);
+  console.log(`- ${sourceId} ${spec}: ${rows.length} row(s), ${alive.length} alive`);
+  for (const candidate of alive.slice(0, 2)) {
+    console.log(`    · ${candidate.type} ${candidate.quality} ${fingerprint(candidate.url)} — ${await provenance(candidate)}`);
+  }
+}
+console.log('');
+
+/* ───────────────────────── Source 14 sweep ───────────────────────── */
+
+const SCRAPPER = 'https://scrapper.rivestream.app/api/provider';
+const RIVE_PROVIDERS = [
+  'rive-citadel',
+  'rive-primevids',
+  'rive-flowcast',
+  'rive-quasar',
+  'rive-guru',
+  'rive-hindicast',
+];
+const FALLBACK_PROVIDERS = ['mhbox', 'awsind', 'vidapi', 'stvv', 'streamflix'];
+
+console.log('## 2. Source 14 provider sweep (scrapper API)');
+for (const provider of [...RIVE_PROVIDERS, ...FALLBACK_PROVIDERS]) {
+  const url = new URL(SCRAPPER);
+  url.searchParams.set('provider', provider);
+  url.searchParams.set('id', '1396');
+  url.searchParams.set('season', '1');
+  url.searchParams.set('episode', '1');
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
+  const started = Date.now();
+  try {
+    const response = await get(url.href, { Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' });
+    let body = null;
+    try {
+      body = JSON.parse(response.text);
+    } catch {
+      /* not json */
+    }
+    const rows = Array.isArray(body?.data?.sources) ? body.data.sources : [];
+    const hosts = new Map();
+    const formats = new Map();
+    const labels = [];
+    for (const row of rows.slice(0, 40)) {
+      if (!row || typeof row !== 'object') continue;
+      hosts.set(hostOf(row.url), (hosts.get(hostOf(row.url)) ?? 0) + 1);
+      formats.set(String(row.format), (formats.get(String(row.format)) ?? 0) + 1);
+      if (labels.length < 4) labels.push(`${String(row.quality).slice(0, 28)}|${String(row.source)}`);
+    }
+    console.log(
+      `- ${provider}: http=${response.status} ${Date.now() - started}ms rows=${rows.length} ` +
+        `formats=${[...formats.entries()].map(([k, v]) => `${k}:${v}`).join(',') || 'none'} ` +
+        `hosts=${[...hosts.entries()].map(([k, v]) => `${k}:${v}`).join(',') || 'none'}`,
+    );
+    if (labels.length) console.log(`    labels: ${labels.join(' ; ')}`);
+    const first = rows.find((row) => typeof row?.url === 'string' && /^https:/.test(row.url));
+    if (first) {
+      console.log(`    first url: ${hostOf(first.url)}${pathShape(first.url)}`);
+      const probe = await provenance({ url: first.url, type: 'hls', headers: { Referer: 'https://www.rivestream.app/' } });
+      console.log(`    provenance: ${probe}`);
+    }
+  } catch (err) {
+    console.log(`- ${provider}: error ${err instanceof Error ? err.name : 'unknown'}`);
+  }
+}
+console.log('');
+
+/* ───────────────────────── Source 12 sweep ───────────────────────── */
+
+const VZ = 'https://vidzen.fun';
+const VZ_SERVERS = ['hyperion', 'mars', 'jupiter', 'venus', 'saturn', 'mercury', 'neptune', 'earth', 'uranus', 'pluto', 'helios'];
+
+console.log('## 3. Source 12 per-server sweep (Breaking Bad S1E1)');
+try {
+  const page = await get(`${VZ}/tv/1396/1/1`, { Referer: `${VZ}/`, Accept: 'text/html' });
+  const token = extractVidZenToken(page.text);
+  console.log(`- page http=${page.status} bytes=${page.text.length} token=${token ? 'yes' : 'no'}`);
+  if (token) {
+    for (const server of VZ_SERVERS) {
+      const endpoint = new URL('/api/sources', VZ);
+      endpoint.searchParams.set('type', 'tv');
+      endpoint.searchParams.set('id', '1396');
+      endpoint.searchParams.set('season', '1');
+      endpoint.searchParams.set('episode', '1');
+      endpoint.searchParams.set('server', server);
+      endpoint.searchParams.set('token', token);
+      try {
+        const response = await get(endpoint.href, { Referer: `${VZ}/`, Accept: 'application/json' });
+        let body = null;
+        try {
+          body = JSON.parse(response.text);
+        } catch {
+          /* not json */
+        }
+        const rows = Array.isArray(body?.sources) ? body.sources : [];
+        const shapes = rows.slice(0, 3).map((row) => {
+          const host = hostOf(row?.url);
+          return `${String(row?.type)}@${host === 'vidzen.fun' ? 'self' : host}${pathShape(row?.url).slice(0, 24)}`;
+        });
+        console.log(`- ${server}: http=${response.status} rows=${rows.length} ${shapes.join(' | ')}`);
+        if (rows.length) {
+          const candidates = rows
+            .filter((row) => row && typeof row.url === 'string' && /^https?:/.test(row.url))
+            .map((row, index) => ({
+              key: row.url,
+              url: new URL(row.url, VZ).href,
+              type: /mp4/i.test(String(row.type)) ? 'mp4' : 'hls',
+              quality: 'auto',
+              headers: { 'User-Agent': UA, Referer: `${VZ}/` },
+              rank: 12 + index,
+            }));
+          if (candidates.length) {
+            const checked = await verifyAndFilterCandidatesDetailed(candidates);
+            const alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive);
+            console.log(`    liveness: ${alive.length}/${candidates.length} alive`);
+            for (const candidate of alive.slice(0, 1)) {
+              console.log(`    provenance: ${await provenance(candidate)}`);
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`- ${server}: error ${err instanceof Error ? err.name : 'unknown'}`);
+      }
+    }
+  }
+} catch (err) {
+  console.log(`- vidzen page error ${err instanceof Error ? err.name : 'unknown'}`);
+}
