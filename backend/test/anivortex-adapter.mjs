@@ -11,7 +11,6 @@ import {
 } from '../../dist/backend/anivortex-auth.js';
 import {
   createSource17Adapter,
-  episodeIdsFromWatchPayload,
   pickBestTitle,
   playbackQueryAttempts,
 } from '../../dist/backend/sources/source17.js';
@@ -201,15 +200,15 @@ assert.equal(pickBestTitle(titles, { type: 'tv', title: 'Dune: Prophecy', year: 
 assert.equal(pickBestTitle(titles, { type: 'tv', title: 'Dune', year: '2021' }), null, 'a movie never satisfies a TV query');
 assert.equal(pickBestTitle([{ id: '9', title: 'Unrelated', originalTitle: '', contentType: 'movie', releaseYear: 2020 }], { type: 'movie', title: 'Dune' }), null);
 
-assert.deepEqual(playbackQueryAttempts({ type: 'movie', tmdbId: '1' }, ['ep-7']), [{}, { episode_id: 'ep-7' }]);
 assert.deepEqual(
-  playbackQueryAttempts({ type: 'tv', tmdbId: '1', season: 2, episode: 3 }, ['ep-7']),
-  [{ episode_id: 'ep-7' }, { season: '2', episode: '3' }],
+  playbackQueryAttempts({ type: 'movie', tmdbId: '1' }, null),
+  [{}],
+  'movies need no query parameters',
 );
 assert.deepEqual(
-  episodeIdsFromWatchPayload({ seasons: [{ season_number: 1, episodes: [{ episode_number: 2, id: 42 }, { episode_number: 3, episode_id: 'ep-9' }] }] }, 1, 2),
-  ['42'],
-  'episode ids are read from the watch payload',
+  playbackQueryAttempts({ type: 'tv', tmdbId: '1', season: 2, episode: 3 }, '1567', ['moviebox_web']),
+  [{ episode_id: '1567' }, { episode_id: '1567', server: 'moviebox_web' }],
+  'TV playback sends only the documented episode_id/server parameters',
 );
 
 /* ------------------------------------------------------------------ */
@@ -229,16 +228,26 @@ const webMaster =
 
 let playbackServers = [
   {
-    key: 'server-a',
-    name: 'Server A',
+    key: 'ok_video',
+    name: 'OK Video',
     languages: [
       {
         code: 'hi',
         name: 'Hindi',
-        playback: { qualities: [
-          { quality: '720p', type: 'hls', url: 'https://cdn.example.org/anivortex/master.m3u8' },
-          { quality: '720p', type: 'hls', url: 'http://127.0.0.1/private.m3u8' },
-        ] },
+        playback: {
+          quality_mode: 'adaptive',
+          sources: [
+            { id: 'ok-hi-dash', quality: 'Auto', format: 'dash', url: 'https://cdn.example.org/anivortex/master.mpd', headers: { 'user-agent': 'okhttp/4.9' } },
+            { id: 'ok-hi-private', quality: 'Auto', format: 'dash', url: 'http://127.0.0.1/private.mpd' },
+          ],
+        },
+        download_options: [{ id: 'ok-hi-full', quality: '1080p', format: 'mp4', url: 'https://cdn.example.org/anivortex/full.mp4' }],
+      },
+      {
+        code: 'en',
+        name: 'English',
+        playback: { quality_mode: 'adaptive', sources: [{ id: 'ok-en-dash', quality: 'Auto', format: 'dash', url: 'https://cdn.example.org/anivortex/en.mpd' }] },
+        download_options: [],
       },
     ],
     subtitles: [{ code: 'en', name: 'English', url: 'https://cdn.example.org/anivortex/en.vtt' }],
@@ -254,12 +263,34 @@ globalThis.fetch = async (input, init = {}) => {
       return Response.json(searchFixture);
     }
     if (/^\/api\/v1\/titles\/\d+\/watch$/.test(url.pathname)) {
-      return Response.json({ seasons: [{ season_number: 1, episodes: [{ episode_number: 2, id: 'ep-2' }] }] });
+      return Response.json({
+        title: 'Dune: Prophecy',
+        default_server_key: 'server-a',
+        seasons: [{ id: 183, season_number: 1, episode_count: 7 }],
+        available_servers: [],
+      });
+    }
+    if (/^\/api\/v1\/seasons\/\d+\/episodes$/.test(url.pathname)) {
+      return Response.json({
+        season_id: 183,
+        episodes: [
+          { id: 1566, season_number: 1, episode_number: 1, title: 'One' },
+          { id: 1567, season_number: 1, episode_number: 2, title: 'Two', available_servers: [{ key: 'moviebox_web' }] },
+        ],
+        has_more: false,
+      });
     }
     if (/^\/api\/v1\/titles\/\d+\/playback$/.test(url.pathname)) {
-      return Response.json({ server: playbackServers[0], server_options: [{ key: 'server-b' }], selected_server_key: 'server-a' });
+      return Response.json({ server: playbackServers[0], server_options: [{ key: 'moviebox_web' }], selected_server_key: 'server-a' });
     }
     throw new Error(`Unexpected AniVortex request: ${url.pathname}`);
+  }
+  if (url.hostname === 'cdn.example.org' && url.pathname.endsWith('.mpd')) {
+    return new Response(
+      '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static">' +
+      '<Period><AdaptationSet contentType="video"><Representation id="v1" bandwidth="1600000" width="1280" height="720"/></AdaptationSet></Period></MPD>',
+      { status: 200, headers: { 'Content-Type': 'application/dash+xml' } },
+    );
   }
   if (url.hostname === 'cdn.example.org') {
     if (url.pathname.endsWith('master.m3u8')) return new Response(webMaster, { status: 200, headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } });
@@ -273,27 +304,34 @@ const adapter = createSource17Adapter(() => true);
 const diag = [];
 const resolved = await adapter.resolve({ type: 'movie', tmdbId: '693134', title: 'Dune: Part Two', year: '2024', diag });
 
-assert.equal(resolved.candidates.length, 1, 'only the public manifest survives liveness + SSRF checks');
-assert.equal(resolved.candidates[0].url, 'https://cdn.example.org/anivortex/master.m3u8');
-assert.equal(resolved.candidates[0].type, 'hls');
-assert.equal(resolved.candidates[0].audioLabel, 'Hindi (provider label)', 'language names stay provider labels');
-assert.equal(resolved.candidates[0].audioLang, undefined, 'labels are never asserted as verified audio');
-assert.equal(resolved.candidates[0].diagnosticLane, 'V');
-assert.equal(resolved.candidates[0].subtitles.length, 1);
+assert.ok(resolved.candidates.length >= 1, 'a public manifest survives liveness + SSRF checks');
+const hindi = resolved.candidates.find((candidate) => candidate.claimedAudioLang === 'hi');
+const english = resolved.candidates.find((candidate) => candidate.claimedAudioLang === 'en');
+assert.ok(hindi, 'separate Hindi stream is offered');
+assert.ok(english, 'separate English stream is offered');
+assert.equal(hindi.url, 'https://cdn.example.org/anivortex/master.mpd');
+assert.equal(hindi.type, 'dash');
+assert.equal(hindi.audioLabel, 'Hindi (provider label)', 'language names stay provider labels');
+assert.equal(hindi.audioLang, undefined, 'labels are never asserted as verified audio');
+assert.equal(hindi.diagnosticLane, 'V');
+assert.equal(hindi.subtitles.length, 1);
+assert.ok(resolved.candidates.every((candidate) => !candidate.url.includes('127.0.0.1')), 'private targets are rejected');
 assert.equal(diag.length, 1);
 assert.equal(diag[0].adapter, 'source-17');
 assert.equal(diag[0].ok, true);
 assert.ok(requests.every((request) => new URL(String(request.url)).hostname !== 'api.anivortex.in' || request.headers.get('x-anivortex-signature')), 'every API call is signed');
 assert.ok(!JSON.stringify(resolved).includes('inst-fixture-1'), 'installation credentials never leak into results');
-assert.ok(requests.some((request) => { const url = new URL(String(request.url)); return url.pathname === '/api/v1/titles/1/playback' && url.searchParams.get('server') === 'server-b'; }), 'announced extra servers are queried');
+assert.ok(requests.some((request) => { const url = new URL(String(request.url)); return url.pathname === '/api/v1/titles/1/playback' && url.searchParams.get('server') === 'moviebox_web'; }), 'announced extra servers are queried');
 
 // TV: episode_id is preferred, then season/episode.
 requests.length = 0;
-playbackServers = [{ key: 'server-a', name: 'Server A', languages: [{ code: 'hi', name: 'Hindi', playback: { qualities: [{ quality: '720p', type: 'hls', url: 'https://cdn.example.org/anivortex/master.m3u8' }] } }] }];
+playbackServers = [{ key: 'ok_video', name: 'OK Video', languages: [{ code: 'hi', name: 'Hindi', playback: { sources: [{ id: 'ok-hi-dash', quality: 'Auto', format: 'dash', url: 'https://cdn.example.org/anivortex/master.mpd' }] } }] }];
 const tvResolved = await createSource17Adapter(() => true).resolve({ type: 'tv', tmdbId: '1396', title: 'Dune: Prophecy', year: '2024', season: 1, episode: 2 });
 assert.equal(tvResolved.candidates.length, 1);
-assert.ok(requests.some((request) => new URL(String(request.url)).pathname === '/api/v1/titles/3/watch'), 'TV matches the series entry and resolves its watch payload first');
-assert.ok(requests.some((request) => { const url = new URL(String(request.url)); return url.pathname === '/api/v1/titles/3/playback' && url.searchParams.get('episode_id') === 'ep-2'; }));
+assert.ok(requests.some((request) => new URL(String(request.url)).pathname === '/api/v1/titles/3/watch'), 'TV matches the series entry and reads its season list first');
+assert.ok(requests.some((request) => new URL(String(request.url)).pathname === '/api/v1/seasons/183/episodes'), 'the season episode route supplies the episode id');
+assert.ok(requests.some((request) => { const url = new URL(String(request.url)); return url.pathname === '/api/v1/titles/3/playback' && url.searchParams.get('episode_id') === '1567'; }), 'playback is asked with episode_id only');
+assert.ok(requests.every((request) => { const url = new URL(String(request.url)); return !url.pathname.startsWith('/api/v1/titles/3/playback') || (!url.searchParams.has('season') && !url.searchParams.has('episode')); }), 'season/episode query parameters are never sent (the API rejects them)');
 
 // Missing credentials: no upstream traffic at all.
 delete process.env.ELFURA_ANIVORTEX_INSTALL_ID;

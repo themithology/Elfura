@@ -150,44 +150,66 @@ function subtitleTracks(raw: unknown): RawTrackRef[] {
   return tracks;
 }
 
-type PlaybackRow = { url: string; type: RawStreamCandidate['type']; quality: string; headers?: Record<string, string> };
-
-/** Flatten one playback server into rows, preserving provider language labels. */
+/**
+ * Flatten one playback server into rows.
+ *
+ * Live shape (verified 2026-11-15): each language carries
+ *   `playback.sources[]` → `{ quality, format: 'dash'|'mp4', url, headers }`
+ * plus `download_options[]` → progressive MP4s with real quality labels.
+ * Languages are separate streams per dub, never one multi-audio manifest, so
+ * they are surfaced as distinct candidates with label-only audio claims.
+ */
 function serverRows(server: any, subtitles: RawTrackRef[]): RawStreamCandidate[] {
   const rows: RawStreamCandidate[] = [];
   const languages = Array.isArray(server?.languages) ? server.languages : [];
   for (const language of languages.slice(0, 24)) {
     const label = String(language?.name ?? language?.code ?? '').trim().slice(0, 60);
     const code = normalizeLang(String(language?.code ?? ''), label).code || undefined;
-    const qualities = Array.isArray(language?.playback?.qualities)
-      ? language.playback.qualities
+    const sources = Array.isArray(language?.playback?.sources)
+      ? language.playback.sources
       : Array.isArray(language?.qualities) ? language.qualities : [];
-    for (const quality of qualities.slice(0, 12)) {
-      const url = safeMediaUrl(quality?.url);
-      if (!url) continue;
-      const type = streamType(url, quality?.type ?? quality?.format);
-      if (!type) continue;
-      const row: PlaybackRow = {
-        url,
-        type,
-        quality: String(quality?.quality ?? 'auto').trim().slice(0, 24) || 'auto',
-        headers: safeHeaders(quality?.headers),
-      };
+    const downloads = Array.isArray(language?.download_options) ? language.download_options : [];
+
+    const push = (row: any): void => {
+      const url = safeMediaUrl(row?.url);
+      if (!url) return;
+      const type = streamType(url, row?.format ?? row?.type);
+      if (!type) return;
       rows.push({
-        key: `${server?.key ?? 'srv'}:${code ?? 'und'}:${row.quality}:${row.url}`,
-        type: row.type,
-        url: row.url,
-        ...(row.headers ? { headers: row.headers } : {}),
-        quality: row.quality,
+        key: `${server?.key ?? 'srv'}:${code ?? 'und'}:${row?.id ?? row?.quality ?? ''}:${url}`,
+        type,
+        url,
+        ...(safeHeaders(row?.headers) ? { headers: safeHeaders(row?.headers) } : {}),
+        quality: String(row?.quality ?? 'auto').trim().slice(0, 24) || 'auto',
         claimedAudioLang: code,
         audioLabel: label ? `${label} (provider label)` : undefined,
         audioVariant: /\bsub\b/i.test(label) ? 'sub' : /\bdub\b/i.test(label) ? 'dub' : undefined,
         subtitles,
         rank: 60,
       });
+    };
+
+    for (const source of sources.slice(0, 8)) push(source);
+    // Progressive MP4 options are a fallback only: they are whole files, so they
+    // are not promoted ahead of adaptive streams but do keep a lane alive.
+    if (sources.length === 0) {
+      const preferred = [...downloads]
+        .sort((a: any, b: any) => qualityWeight(a?.quality) - qualityWeight(b?.quality))
+        .slice(0, 1);
+      for (const option of preferred) push(option);
     }
   }
   return rows;
+}
+
+function qualityWeight(label: unknown): number {
+  const text = String(label ?? '').toLowerCase();
+  if (/4k|2160/.test(text)) return 0;
+  if (/2k|1440/.test(text)) return 1;
+  if (/1080/.test(text)) return 2;
+  if (/720/.test(text)) return 3;
+  if (/480/.test(text)) return 4;
+  return 5;
 }
 
 function playbackServers(payload: any): any[] {
@@ -207,41 +229,53 @@ function serverOptions(payload: any): string[] {
   return keys;
 }
 
-/** Episode ids are optional: playback accepts season/episode, or an episode id. */
-export function episodeIdsFromWatchPayload(payload: any, season: number, episode: number): string[] {
-  const ids: string[] = [];
-  const visit = (node: any, inheritedSeason?: number): void => {
-    if (!node || typeof node !== 'object') return;
-    if (Array.isArray(node)) {
-      for (const item of node) visit(item, inheritedSeason);
-      return;
-    }
-    const nodeSeason = Number(node.season_number ?? node.seasonNumber ?? inheritedSeason);
-    const nodeEpisode = Number(node.episode_number ?? node.episodeNumber ?? node.number);
-    if (Number.isFinite(nodeEpisode) && nodeEpisode === episode && nodeSeason === season) {
-      const direct = node.episode_id ?? node.id ?? node.episodeId;
-      if (typeof direct === 'string' || typeof direct === 'number') ids.push(String(direct));
-    }
-    for (const value of Object.values(node)) {
-      if (value && typeof value === 'object') visit(value, Number.isFinite(nodeSeason) ? nodeSeason : inheritedSeason);
-    }
-  };
-  for (const value of Object.values(payload ?? {})) visit(value);
-  return [...new Set(ids)].slice(0, 3);
+/**
+ * Resolve the upstream episode id for a TV query.
+ *
+ * Verified protocol: `/titles/{id}/watch` returns seasons `{ id, season_number,
+ * episode_count }` only, and `/seasons/{seasonId}/episodes` returns the episodes
+ * with their ids. Playback then REQUIRES `episode_id`; `season`/`episode` query
+ * parameters are rejected with `invalid_query`.
+ */
+export async function resolveEpisode(
+  credentials: AnivortexCredentials,
+  titleId: string,
+  seasonNumber: number,
+  episodeNumber: number,
+  signal: AbortSignal,
+): Promise<{ episodeId: string; servers: string[] } | null> {
+  const watch = await signedJson(credentials, `/api/v1/titles/${titleId}/watch`, {}, signal) as any;
+  const seasons = Array.isArray(watch?.seasons) ? watch.seasons : [];
+  const season = seasons.find((entry: any) => Number(entry?.season_number) === seasonNumber)
+    ?? seasons[0];
+  const seasonId = Number(season?.id);
+  if (!Number.isSafeInteger(seasonId) || seasonId < 1) return null;
+
+  const listing = await signedJson(credentials, `/api/v1/seasons/${seasonId}/episodes`, {}, signal) as any;
+  const episodes = Array.isArray(listing?.episodes) ? listing.episodes : [];
+  const episode = episodes.find((entry: any) => Number(entry?.episode_number) === episodeNumber);
+  const episodeId = Number(episode?.id);
+  if (!Number.isSafeInteger(episodeId) || episodeId < 1) return null;
+
+  const servers = (Array.isArray(episode?.available_servers) ? episode.available_servers : [])
+    .map((entry: any) => String(entry?.key ?? ''))
+    .filter((key: string) => /^[A-Za-z0-9._-]{1,64}$/.test(key));
+  return { episodeId: String(episodeId), servers };
 }
 
-/** Query shapes to try, best first; the signed canonical string covers whichever we send. */
+/**
+ * Playback accepts only `episode_id`, `include_adult`, `server` and `language`
+ * (the API rejects anything else with `invalid_query`).
+ */
 export function playbackQueryAttempts(
   query: SourceQuery,
-  episodeIds: string[],
+  episodeId: string | null,
+  serverKeys: string[] = [],
 ): Array<Record<string, string>> {
-  if (query.type === 'movie') return [{}, ...episodeIds.slice(0, 1).map((id) => ({ episode_id: id }))];
-  const season = String(query.season ?? 1);
-  const episode = String(query.episode ?? 1);
-  const attempts: Array<Record<string, string>> = [];
-  for (const id of episodeIds) attempts.push({ episode_id: id });
-  attempts.push({ season, episode });
-  return attempts.slice(0, 3);
+  const base: Record<string, string> = query.type === 'tv' && episodeId ? { episode_id: episodeId } : {};
+  const attempts: Array<Record<string, string>> = [base];
+  for (const key of serverKeys.slice(0, MAX_EXTRA_SERVERS)) attempts.push({ ...base, server: key });
+  return attempts;
 }
 
 async function signedJson(
@@ -282,27 +316,40 @@ export async function fetchFromAnivortex(
   const match = pickBestTitle(titles, { type: query.type, title: searchTitle, year: query.year });
   if (!match) return [];
 
-  let episodeIds: string[] = [];
+  let episodeId: string | null = null;
+  let episodeServers: string[] = [];
   if (query.type === 'tv') {
-    const watch = await signedJson(credentials, `/api/v1/titles/${match.id}/watch`, {}, signal);
-    episodeIds = episodeIdsFromWatchPayload(watch, Number(query.season ?? 1), Number(query.episode ?? 1));
+    const episode = await resolveEpisode(
+      credentials,
+      match.id,
+      Number(query.season ?? 1),
+      Number(query.episode ?? 1),
+      signal,
+    );
+    // Playback rejects season/episode for TV; without an episode id there is
+    // nothing to ask for, so stop instead of provoking a 400.
+    if (!episode) return [];
+    episodeId = episode.episodeId;
+    episodeServers = episode.servers;
   }
 
   const candidates: RawStreamCandidate[] = [];
   const seen = new Set<string>();
-  const attempts = playbackQueryAttempts(query, episodeIds);
+  const primary = await signedJson(
+    credentials,
+    `/api/v1/titles/${match.id}/playback`,
+    playbackQueryAttempts(query, episodeId)[0],
+    signal,
+  );
+  const attempts = playbackQueryAttempts(query, episodeId, [...episodeServers, ...serverOptions(primary)]);
   for (const attempt of attempts) {
-    const payload = await signedJson(credentials, `/api/v1/titles/${match.id}/playback`, attempt, signal);
+    const payload = attempt.server
+      ? await signedJson(credentials, `/api/v1/titles/${match.id}/playback`, attempt, signal)
+      : primary;
     const servers = playbackServers(payload);
     if (servers.length === 0) continue;
 
-    // Pull up to two additional announced servers, bounded and signed.
-    const extras = await Promise.all(serverOptions(payload).map(async (key) => {
-      const extra = await signedJson(credentials, `/api/v1/titles/${match.id}/playback`, { ...attempt, server: key }, signal);
-      return playbackServers(extra);
-    }));
-
-    for (const server of [...servers, ...extras.flat()]) {
+    for (const server of servers) {
       const subtitles = subtitleTracks(server?.subtitles);
       for (const candidate of serverRows(server, subtitles)) {
         if (seen.has(candidate.url)) continue;
@@ -312,9 +359,8 @@ export async function fetchFromAnivortex(
         if (candidates.length >= MAX_CANDIDATES) return candidates;
       }
     }
-    // A responding server already gave us rows; do not probe alternate query shapes.
-    if (candidates.length > 0) break;
   }
+  if (candidates.length === 0) return [];
   return candidates;
 }
 

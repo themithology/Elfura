@@ -12,7 +12,8 @@
  */
 
 import { anivortexRequest, readAnivortexCredentials, registerAnivortexInstallation } from '../dist/backend/anivortex-auth.js';
-import { pickBestTitle } from '../dist/backend/sources/source17.js';
+import { fetchFromAnivortex, pickBestTitle } from '../dist/backend/sources/source17.js';
+import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from '../dist/backend/sources/liveness.js';
 
 const redactUrl = (value) => {
   try {
@@ -175,5 +176,47 @@ for (const spec of specs) {
       }
     }
     if (servers.length > 0) break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// End-to-end: run the real adapter + liveness probe.
+// ---------------------------------------------------------------------------
+console.log('\n=== adapter + liveness (Source 17 as Elfura would run it)');
+for (const spec of specs) {
+  const parts = spec.split(':');
+  const type = parts.shift() === 'tv' ? 'tv' : 'movie';
+  const episode = type === 'tv' ? parts.pop() : undefined;
+  const season = type === 'tv' ? parts.pop() : undefined;
+  const year = parts.pop();
+  const title = parts.join(':').trim();
+  const query = {
+    type,
+    tmdbId: '1',
+    title,
+    year,
+    ...(type === 'tv' ? { season: Number(season || 1), episode: Number(episode || 1) } : {}),
+  };
+  const started = Date.now();
+  const rows = await fetchFromAnivortex(query, credentials).catch((error) => {
+    console.log(`  ${title}: adapter threw ${error?.message ?? error}`);
+    return [];
+  });
+  const checked = await verifyAndFilterCandidatesDetailed(rows, undefined);
+  const alive = checked.candidates.filter((candidate) => cachedCandidateEvidence(candidate)?.alive);
+  console.log(`  ${type} "${title}" → rows=${rows.length} manifestReachable=${alive.length} in ${Date.now() - started}ms`);
+  const byAudio = new Map();
+  for (const candidate of rows) {
+    const key = candidate.claimedAudioLang ?? 'und';
+    byAudio.set(key, (byAudio.get(key) ?? 0) + 1);
+  }
+  if (rows.length > 0) {
+    console.log(`    types=${[...new Set(rows.map((row) => row.type))].join(',')} audioRows=${JSON.stringify(Object.fromEntries(byAudio))}`);
+  }
+  for (const candidate of alive.slice(0, 4)) {
+    const evidence = cachedCandidateEvidence(candidate);
+    console.log(`    alive ${candidate.type} ${candidate.claimedAudioLang ?? 'und'} ${redactUrl(candidate.url)}` +
+      ` manifest=${evidence?.manifestKind ?? '?'} audioRenditions=${evidence?.manifestAudioRenditions ?? 0}` +
+      ` langs=${JSON.stringify(evidence?.discoveredAudioLangs ?? [])}`);
   }
 }
