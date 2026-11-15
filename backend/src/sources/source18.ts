@@ -166,7 +166,7 @@ export function renditionsFromPayload(payload: unknown): RawStreamCandidate[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const data = payload as StreamPayload;
   const id = typeof data.dataId === 'string' || typeof data.dataId === 'number' ? String(data.dataId).trim() : '';
-  if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return [];
+  if (!/^[A-Za-z0-9._-]{2,128}$/.test(id)) return [];
 
   const out: RawStreamCandidate[] = [];
   const format = typeof data.format === 'string' ? data.format.trim().toUpperCase() : '';
@@ -263,7 +263,16 @@ async function fetchPayload(
     ? Object.keys(data as Record<string, unknown>).slice(0, 8).join('|')
     : String(data === undefined ? 'undefined' : typeof data);
   trace?.push(`api(tmdb=${tmdbId})=${dataShape}`);
-  return renditionsFromPayload(data);
+  const rows = renditionsFromPayload(data);
+  if (rows.length === 0 && trace && data && typeof data === 'object' && !Array.isArray(data)) {
+    // Types only, never values: enough to see which fields the payload carries.
+    const fields = Object.entries(data as Record<string, unknown>)
+      .slice(0, 12)
+      .map(([key, value]) => `${key}:${Array.isArray(value) ? 'array' : typeof value}`)
+      .join(',');
+    trace.push(`fields=${fields}`);
+  }
+  return rows;
 }
 
 export async function fetchFromSubDub(query: SourceQuery, trace?: string[]): Promise<RawStreamCandidate[]> {
