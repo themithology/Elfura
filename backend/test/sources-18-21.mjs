@@ -69,6 +69,11 @@ assert.equal(mp4Candidates[0].type, 'mp4');
 assert.match(mp4Candidates[0].url, /\.caa\.mp4$/, 'qid 3 caps the ladder at 480p');
 
 assert.deepEqual(renditionsFromPayload({ dataId: '../../evil' }), []);
+assert.deepEqual(renditionsFromPayload({ dataId: 'nested/../evil', format: 'MP4', qid: 2 }), [], 'no traversal segments');
+assert.deepEqual(renditionsFromPayload({ dataId: 'a//b', format: 'MP4' }), [], 'no empty segments');
+const nested = renditionsFromPayload({ dataId: 'streams/2025/abc', format: 'M3U8', ranges: '0-10 (720p)' });
+assert.equal(nested.length, 1, 'provider ids may be slash-separated paths');
+assert.match(nested[0].url, /\/video\/streams\/2025\/abc\.gaa\.tar\?/);
 assert.deepEqual(renditionsFromPayload(null), []);
 
 const catalog = {
@@ -233,9 +238,10 @@ assert.equal(seasons.get(1)[0].id, 'SeasonOne');
 
 const on = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test' }));
 const ids = on.listPublicSources().map((source) => source.id);
-for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
+for (const id of ['source-18', 'source-19', 'source-20']) {
   assert(ids.includes(id), `${id} should be enabled by default`);
 }
+assert(!ids.includes('source-21'), 'Source 21 is opt-in until KMCLOUD shares return');
 const off = new SourceRegistry(
   loadBackendConfig({
     ELFURA_SECRET: 'test',
@@ -246,12 +252,15 @@ const off = new SourceRegistry(
   }),
 );
 const offIds = off.listPublicSources().map((source) => source.id);
-for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
+for (const id of ['source-18', 'source-19', 'source-20']) {
   assert(!offIds.includes(id), `${id} should honour its opt-out flag`);
 }
+const optIn = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test', ELFURA_KMMOVIES_ENABLED: '1' }));
+assert(optIn.listPublicSources().some((source) => source.id === 'source-21'), 'Source 21 enables when asked');
 for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
-  const entry = on.listPublicSources().find((source) => source.id === id);
-  assert(/^Source \d+$/.test(entry.label), `${id} keeps a generic label`);
+  const entry = optIn.listPublicSources().find((source) => source.id === id)
+    ?? on.listPublicSources().find((source) => source.id === id);
+  assert(entry && /^Source \d+$/.test(entry.label), `${id} keeps a generic label`);
 }
 
 console.log('✓ Sources 18-21 payload parsing, AES lane, bounded HTML parsing, opt-out flags and PNG-wrapped TS sniffing');

@@ -92,7 +92,7 @@ export class SourceRegistry {
       createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
       createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
-      createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_KMMOVIES_ENABLED !== '0'),
+      createSource21Adapter(() => cfg.source21?.enabled === true),
     ];
   }
 

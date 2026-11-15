@@ -62,6 +62,18 @@ interface Catalog {
   dramas: Record<string, CatalogEntry>;
 }
 
+/**
+ * The CDN path segment is provider-issued and may itself contain slashes
+ * (`streams/2025/<id>`), so it is validated as a relative path of safe
+ * segments rather than a single token — no empty, `.` or `..` segments, no
+ * query/fragment characters.
+ */
+export function isSafeDataId(id: string): boolean {
+  if (!id || id.length > 128) return false;
+  const segments = id.split('/');
+  return segments.every((segment) => /^[A-Za-z0-9._-]{1,64}$/.test(segment) && segment !== '.' && segment !== '..');
+}
+
 interface StreamPayload {
   dataId?: unknown;
   quality?: unknown;
@@ -166,7 +178,7 @@ export function renditionsFromPayload(payload: unknown): RawStreamCandidate[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const data = payload as StreamPayload;
   const id = typeof data.dataId === 'string' || typeof data.dataId === 'number' ? String(data.dataId).trim() : '';
-  if (!/^[A-Za-z0-9._-]{2,128}$/.test(id)) return [];
+  if (id.length < 2 || !isSafeDataId(id)) return [];
 
   const out: RawStreamCandidate[] = [];
   const format = typeof data.format === 'string' ? data.format.trim().toUpperCase() : '';
@@ -271,7 +283,7 @@ async function fetchPayload(
     const fmt = typeof record.format === 'string' ? record.format.trim().toUpperCase() : '';
     const ranges = typeof record.ranges === 'string' ? record.ranges : '';
     trace.push(
-      `idLen=${id.length} idSafe=${/^[A-Za-z0-9._-]{2,128}$/.test(id)} idChars=${[...new Set(id.replace(/[A-Za-z0-9]/g, ''))].join('') || 'alnum'}` +
+      `idLen=${id.length} idSafe=${isSafeDataId(id)}` +
         ` fmt=${fmt || 'none'} lines=${ranges ? ranges.split('\n').length : 0} qid=${String(record.qid ?? 'none')}`,
     );
   }
