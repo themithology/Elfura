@@ -60,6 +60,16 @@ jobs:
             echo '```'
             cat /tmp/provenance.log 2>/dev/null || echo 'no output'
             echo '```'
+            echo
+            echo '## Source health — movie 550 (Fight Club)'
+            echo '```'
+            cat /tmp/selftest-550.log 2>/dev/null || echo 'no output'
+            echo '```'
+            echo
+            echo '## Source health — tv 1396 S1E1 (Breaking Bad)'
+            echo '```'
+            cat /tmp/selftest-1396.log 2>/dev/null || echo 'no output'
+            echo '```'
           } > research/provenance-report.md
           git config user.name 'elfura-probe'
           git config user.email 'probe@users.noreply.github.com'
