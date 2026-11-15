@@ -236,3 +236,25 @@ The resolver is now two-phase:
 Adapters that were cut by the first phase keep running under their own 9 s
 signal and land in cache, so a lane that needs 5 s still appears — just after
 the list is usable instead of instead of it.
+
+## Coverage, measured (not promised)
+
+`scripts/provenance-probe.mjs` section 5 resolves **every registered lane** for
+Breaking Bad S1E1 from a clean US runner (synthetic TMDB metadata, unverified
+rows probed before being judged). Latest run:
+
+| Lanes with live rows | Rows |
+|---|---|
+| Source 1 | 1 (`gzip.rousav.tech`) |
+| Source 2 | 5 (`embed.vidrift.in`, `gzip.rousav.tech`) |
+| Source 8 | 1 (`img1.hscow.com`) |
+| Source 14 | 3 (`img1.hscow.com`, `cdn.slowcloud.live`) |
+
+4 of 19. Everything else returned nothing for that episode, and that is
+expected: 18/19/20 are anime/Indian-dub catalogues (they carry Naruto, Jawan,
+Oppenheimer — not a 2008 AMC drama), 16 needs an AniList id, 17 needs
+installation credentials, and the remainder simply did not have the episode that
+minute. Source 12 is genuinely erratic — 4 live lanes on one run, 0 on the next.
+
+The pipeline can guarantee that no lane is dropped mid-flight. It cannot
+manufacture coverage; that is a catalogue question, answered per lane.
