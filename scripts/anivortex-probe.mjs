@@ -213,6 +213,19 @@ for (const spec of specs) {
   if (rows.length > 0) {
     console.log(`    types=${[...new Set(rows.map((row) => row.type))].join(',')} audioRows=${JSON.stringify(Object.fromEntries(byAudio))}`);
   }
+  const dead = checked.candidates.filter((candidate) => !cachedCandidateEvidence(candidate)?.alive);
+  for (const candidate of dead.slice(0, 3)) {
+    // Explain the failure: status code and first bytes of the manifest body.
+    let detail = 'no-response';
+    try {
+      const response = await fetch(candidate.url, { headers: candidate.headers ?? {}, redirect: 'error', signal: AbortSignal.timeout(6000) });
+      const text = (await response.text()).slice(0, 120).replace(/\s+/g, ' ');
+      detail = `HTTP ${response.status} type=${response.headers.get('content-type') ?? '?'} body="${text}"`;
+    } catch (error) {
+      detail = `threw ${error?.message ?? error}`;
+    }
+    console.log(`    DEAD ${candidate.type} ${candidate.claimedAudioLang ?? 'und'} ${redactUrl(candidate.url)} → ${detail}`);
+  }
   for (const candidate of alive.slice(0, 4)) {
     const evidence = cachedCandidateEvidence(candidate);
     console.log(`    alive ${candidate.type} ${candidate.claimedAudioLang ?? 'und'} ${redactUrl(candidate.url)}` +
