@@ -51,6 +51,8 @@ export interface MediaMetadata {
   /** Original ISO 639-1 language code reported by TMDB (e.g. 'ja', 'en', 'ko'). */
   originalLanguage?: string;
   tagline?: string;
+  /** Runtime in minutes: the movie's, or this episode's (falls back to the series average). */
+  runtime?: number | null;
   rating?: number | null;
   genres?: string[];
   overview: string;
@@ -286,6 +288,13 @@ export async function fetchTmdbMetadata(
       let overview = String(data.overview ?? '').trim();
       let backdrop = fullImageUrl(cfg.imageBase, data.backdrop_path ?? data.backdrop, 'w1280');
       let latestDateRaw = String(data.last_air_date ?? '').trim();
+      // Runtime in minutes, used to reject streams that are obviously the wrong
+      // cut (a 3-minute clip, a double episode) instead of listing them.
+      let runtimeMinutes: number | null = null;
+      const seriesRunTime = Array.isArray(data.episode_run_time)
+        ? Number((data.episode_run_time as unknown[])[0])
+        : Number(data.runtime);
+      if (Number.isFinite(seriesRunTime) && seriesRunTime > 0) runtimeMinutes = Math.round(seriesRunTime);
 
       if (params.type === 'tv' && params.season && params.episode) {
         const epData = unwrapPayload(rawEpJson);
@@ -302,6 +311,8 @@ export async function fetchTmdbMetadata(
           if (typeof epData.air_date === 'string' && epData.air_date.trim()) {
             latestDateRaw = epData.air_date.trim();
           }
+          const episodeRuntime = Number(epData.runtime);
+          if (Number.isFinite(episodeRuntime) && episodeRuntime > 0) runtimeMinutes = Math.round(episodeRuntime);
           const still = fullImageUrl(cfg.imageBase, epData.still_path, 'w1280');
           if (still) backdrop = still;
         } else if (baseTitle) {
@@ -395,6 +406,7 @@ export async function fetchTmdbMetadata(
         ...(latestDateRaw.length >= 8 ? { latestDate: latestDateRaw.slice(0, 10) } : {}),
         ...(originalLanguage ? { originalLanguage } : {}),
         ...(tagline ? { tagline } : {}),
+        ...(runtimeMinutes ? { runtime: runtimeMinutes } : {}),
         ...(rating !== null ? { rating } : {}),
         ...(genres.length ? { genres } : {}),
         overview,

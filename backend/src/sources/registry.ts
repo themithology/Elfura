@@ -33,6 +33,7 @@ import { createSource18Adapter } from './source18.js';
 import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
+import { durationFits, durationToleranceSec } from './duration.js';
 import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
@@ -612,6 +613,11 @@ export class SourceRegistry {
     let mergedSegments: SkipSegments | undefined;
     for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
     const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
+    // Wrong-cut guard: a stream that plays but is a trailer, a recap or a double
+    // episode is worse than no stream, because it looks like a working source.
+    const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
+    const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
+    const droppedByRuntime: { id: string; measuredSec: number }[] = [];
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
       if (!mergedSegments && result.segments) mergedSegments = result.segments;
       if (!media.title && result.metaHint?.title) {
@@ -621,6 +627,11 @@ export class SourceRegistry {
       if (!media.year && result.metaHint?.year) media.year = result.metaHint.year;
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
       for (const cand of liveCandidates) {
+        const measuredSec = cachedCandidateEvidence(cand)?.durationSec ?? null;
+        if (!durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
+          droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
+          continue;
+        }
         candidateEntries.push({adapter,candidate:cand});
         if (cand.standbyUrl && cachedCandidateEvidence({ ...cand, url:cand.standbyUrl, headers:cand.standbyHeaders ?? cand.headers })?.alive) {
           candidateEntries.push({adapter,candidate:{...cand,key:`${cand.key}#standby`,fingerprint:`${cand.fingerprint || cand.key}#standby`,url:cand.standbyUrl,headers:cand.standbyHeaders ?? cand.headers,standbyUrl:undefined,standbyHeaders:undefined}});
@@ -634,6 +645,15 @@ export class SourceRegistry {
       const seq = (sequences.get(adapter.id) ?? 0) + 1;
       sequences.set(adapter.id,seq);
       uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
+    }
+
+    if (droppedByRuntime.length) {
+      console.warn(
+        `[elfura-resolve] runtime guard dropped ${droppedByRuntime.length} stream(s) for ` +
+          `${params.type}/${params.tmdbId} (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ±` +
+          `${Math.round(runtimeToleranceSec / 60)}min) :: ` +
+          droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
+      );
     }
 
     if (!uniformOptions.length) {

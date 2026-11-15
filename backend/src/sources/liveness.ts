@@ -42,6 +42,31 @@ export interface LivenessProbeOutcome {
   qualityLadder?: number[];
   /** Number of quality options when known (1 = single fixed quality). */
   qualityOptions?: number;
+  /** Total runtime of the stream when it can be measured from a VOD playlist. */
+  durationSec?: number;
+}
+
+/**
+ * Total duration of a VOD HLS media playlist, in seconds.
+ *
+ * Only closed playlists (`#EXT-X-ENDLIST`) are trusted: for a live/event
+ * playlist the sum is just "how much has happened so far" and would wrongly
+ * condemn a perfectly good stream. Returns null when it cannot be measured, and
+ * a null measurement never filters anything.
+ */
+export function sumHlsDurationSec(bodyText: string): number | null {
+  if (!/#EXT-X-ENDLIST\b/i.test(bodyText)) return null;
+  let total = 0;
+  let segments = 0;
+  for (const match of bodyText.matchAll(/#EXTINF:\s*([0-9]+(?:\.[0-9]+)?)/gi)) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0) {
+      total += value;
+      segments += 1;
+    }
+  }
+  if (!segments || !Number.isFinite(total) || total <= 0) return null;
+  return Math.round(total);
 }
 
 /** Extract the ABR ladder (distinct heights, desc) from an HLS master or DASH MPD. */
@@ -206,7 +231,7 @@ async function verifyChildHlsPlaylist(
   childUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
-): Promise<'alive' | 'dead' | 'unknown'> {
+): Promise<{ state: 'alive' | 'dead' | 'unknown'; bodyText?: string }> {
   const res = await fetch(childUrl, {
     method: 'GET',
     headers,
@@ -214,8 +239,8 @@ async function verifyChildHlsPlaylist(
     signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
   });
   const finalUrl = res.url || childUrl;
-  if (!isSafeUpstreamUrl(finalUrl)) return 'dead';
-  if (!res.ok) return res.status === 429 || res.status >= 500 ? 'unknown' : 'dead';
+  if (!isSafeUpstreamUrl(finalUrl)) return { state: 'dead' };
+  if (!res.ok) return { state: res.status === 429 || res.status >= 500 ? 'unknown' : 'dead' };
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (ct.includes('text/html') || ct.includes('application/xhtml')) {
@@ -224,13 +249,13 @@ async function verifyChildHlsPlaylist(
     } catch {
       /* ignore */
     }
-    return 'dead';
+    return { state: 'dead' };
   }
 
   const text = await readBoundedManifest(res, MAX_PROBE_MANIFEST_BYTES);
   const lead = text.trimStart();
-  if (!lead.startsWith('#EXTM3U')) return 'dead';
-  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return 'dead';
+  if (!lead.startsWith('#EXTM3U')) return { state: 'dead' };
+  if (!/#EXTINF\b|#EXT-X-STREAM-INF\b|#EXT-X-MAP\b/i.test(text)) return { state: 'dead' };
 
   if (/#EXT-X-ENDLIST\b/i.test(text)) {
     seedManifestRamCache(childUrl, headers, {
@@ -239,7 +264,7 @@ async function verifyChildHlsPlaylist(
       bodyText: text,
     });
   }
-  return 'alive';
+  return { state: 'alive', bodyText: text };
 }
 
 // A caller with a shorter deadline must not wait for an existing shared
@@ -412,20 +437,31 @@ async function runSingleProbe(
 
       // Verify child variant & default audio playlists so master-alive / child-dead streams
       // (e.g. `cdn.mhbdtv.top` redirecting `audio0.m3u8` to an HTML page) are caught immediately.
+      let masterDurationSec: number | undefined;
       if (isMaster) {
         const childTargets = pickHlsChildCheckTargets(bodyText, finalUrl);
         if (childTargets.length > 0) {
           const childChecks = await Promise.all(
             childTargets.map((cu) =>
-              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(() => 'unknown' as const),
+              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(
+                () => ({ state: 'unknown' as const, bodyText: undefined }),
+              ),
             ),
           );
-          if (childChecks.includes('dead')) {
+          const childStates = childChecks.map((check) => check.state);
+          // The first target is the video variant: its segment list is the
+          // stream's real runtime when the playlist is closed.
+          const variantBody = childChecks.find((check) => check.state === 'alive' && check.bodyText)?.bodyText;
+          if (variantBody) {
+            const measured = sumHlsDurationSec(variantBody);
+            if (measured) masterDurationSec = measured;
+          }
+          if (childStates.includes('dead')) {
             const dead = { alive: false, confirmedDead: true };
             setCachedLiveness(key, dead);
             return dead;
           }
-          if (childChecks.includes('unknown')) {
+          if (childStates.includes('unknown')) {
             // A slow child is not a dead child; do not poison the cache.
             return { alive: false, confirmedDead: false };
           }
@@ -454,6 +490,10 @@ async function runSingleProbe(
         qualityOptions: hlsLadder.options,
         ...(hlsLadder.ladder.length ? { qualityLadder: hlsLadder.ladder } : {}),
         ...(hlsLangs.length ? { discoveredAudioLangs: hlsLangs } : {}),
+        ...(() => {
+          const measured = isMaster ? masterDurationSec : sumHlsDurationSec(bodyText) ?? undefined;
+          return measured ? { durationSec: measured } : {};
+        })(),
       };
       setCachedLiveness(key, ok);
       return ok;
