@@ -83,6 +83,13 @@ export interface BackendConfig {
   source14?: { enabled: boolean };
   source15?: { enabled: boolean };
   source16?: { enabled: boolean };
+  /** AniVortex (signed installation) — off unless explicitly enabled AND credentials exist. */
+  source17?: { enabled: boolean };
+  /** Experimental additional source controls (sources 18-21). */
+  source18?: { enabled: boolean };
+  source19?: { enabled: boolean };
+  source20?: { enabled: boolean };
+  source21?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -120,7 +127,7 @@ function deriveSecret(raw?: string): Buffer {
   return crypto.createHash('sha256').update(seed).digest();
 }
 
-function readDotEnvOverlay(): Record<string, string> {
+export function readDotEnvOverlay(): Record<string, string> {
   const out: Record<string, string> = {};
   const candidates = [
     path.resolve(__dirname, '../../.env'),
@@ -224,6 +231,14 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
     source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
+    // AniVortex signs every request with installation credentials. Without them
+    // the adapter returns in microseconds, so it simply stays on: no toggles to
+    // maintain, no cost when the credentials are absent.
+    source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED !== '0' },
+    source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
+    source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
+    source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
+    source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

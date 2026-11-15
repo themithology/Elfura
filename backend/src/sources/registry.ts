@@ -28,7 +28,14 @@ import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
 import { createSource16Adapter } from './source16.js';
-import { selectPlaybackCandidates, MAX_SINGLE_TRACK_FALLBACKS, MAX_SEPARATE_DUBS } from './selection.js';
+import { createSource17Adapter } from './source17.js';
+import { createSource18Adapter } from './source18.js';
+import { createSource19Adapter } from './source19.js';
+import { createSource20Adapter } from './source20.js';
+import { createSource21Adapter } from './source21.js';
+import { durationFits, durationToleranceSec } from './duration.js';
+import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
+import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -41,6 +48,53 @@ import type {
 
 const MAX_ADAPTER_CACHE_ENTRIES = 256;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
+
+/** Extra time given to still-running adapters once the first source has candidates. */
+const EARLY_GRACE_MS = 700;
+/** No adapter may be cut before this point, however fast the first one was. */
+const MIN_JOIN_MS = 1400;
+/** Floor for a single verification probe window (ms), independent of the budget. */
+const PROBE_MIN_WINDOW_MS = 1200;
+/** One-off extension granted when nothing has verified at the end of the budget. */
+const RESCUE_EXTENSION_MS = 700;
+/** Wall-clock ceiling for a resolve that has not verified anything yet (ms). */
+const RESCUE_CEILING_MS = 5200;
+/** Upper bound for the adapter race when nothing has candidates yet. */
+const ADAPTER_RACE_MS = 3600;
+/** Window for a single-adapter recovery call (`?source=source-N`). */
+const SINGLE_SOURCE_BUDGET_MS = 9000;
+/** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
+/** Diagnostics only: the environment variable that can switch each source off. */
+const SOURCE_ENV_FLAGS: Record<string, string> = {
+  'source-1': 'SOURCE1_ENABLED',
+  'source-3': 'SOURCE3_ENABLED',
+  'source-4': 'ELFURA_BINGR_ENABLED',
+  'source-5': 'ELFURA_NXSHA_ENABLED',
+  'source-7': 'ELFURA_SCREENSCAPE_ENABLED',
+  'source-8': 'ELFURA_VIDZEE_ENABLED',
+  'source-9': 'ELFURA_VIXSRC_ENABLED',
+  'source-10': 'ELFURA_VIDNEST_ENABLED',
+  'source-11': 'ELFURA_VAPLAYER_ENABLED',
+  'source-12': 'ELFURA_VIDZEN_ENABLED',
+  'source-13': 'ELFURA_XPASS_ENABLED',
+  'source-14': 'ELFURA_RIVE_CITADEL_ENABLED',
+  'source-15': 'ELFURA_MAPPLE_ENABLED',
+  'source-16': 'ELFURA_ANIVEXA_ENABLED',
+  'source-17': 'ELFURA_ANIVORTEX_ENABLED',
+  'source-18': 'ELFURA_SUBDUB_ENABLED',
+  'source-19': 'ELFURA_DESIDUB_ENABLED',
+  'source-20': 'ELFURA_VIDORA_ENABLED',
+  'source-21': 'ELFURA_WATCHOUT_ENABLED',
+};
+
+const resolveBudgetMs = (): number => {
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
+  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
+};
+/** Candidates probed in the shared verification batch, spread across sources. */
+const VERIFY_BREADTH_TARGET = 36;
+/** Lanes any single source may contribute to one response. */
+const MAX_LANES_PER_SOURCE = 4;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
@@ -55,6 +109,10 @@ export class SourceRegistry {
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
+    // Record what each adapter actually talked to, so a resolve that yields
+    // nothing can explain itself in the console.
+    installNetTap();
+
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
       // Source 1 contains direct upstreams independently identified in Aethoflix.
@@ -83,7 +141,66 @@ export class SourceRegistry {
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
+      createSource17Adapter(() => cfg.source17?.enabled !== false),
+      createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
+      createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
+      createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
+      createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
     ];
+  }
+
+  /**
+   * Which adapters are off, and which environment variable turned each one off.
+   * A stale `.env` kept from an older install is the single most common reason a
+   * source "disappears", so the answer belongs in the boot log.
+   */
+  describeSources(): { enabled: string[]; disabled: { id: string; flag: string }[] } {
+    const enabled: string[] = [];
+    const disabled: { id: string; flag: string }[] = [];
+    for (const adapter of this.adapters) {
+      if (adapter.enabled()) enabled.push(adapter.id);
+      else disabled.push({ id: adapter.id, flag: SOURCE_ENV_FLAGS[adapter.id] ?? '(configured off)' });
+    }
+    return { enabled, disabled };
+  }
+
+  /**
+   * Ask every enabled adapter for one title directly, with a fresh request log.
+   * Used by the boot self-test and by operators diagnosing an empty list.
+   */
+  async selfTestAll(
+    params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
+  ): Promise<{ id: string; raw: number; ms: number; net: string }[]> {
+    return Promise.all(
+      this.adapters
+        .filter((adapter) => adapter.enabled())
+        .map(async (adapter) => {
+          const started = Date.now();
+          const query: SourceQuery = {
+            type: params.type,
+            tmdbId: params.tmdbId,
+            season: params.season,
+            episode: params.episode,
+            signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
+          };
+          try {
+            const tapped = await tapRequests(() => adapter.resolve(query));
+            return {
+              id: adapter.id,
+              raw: tapped.value.candidates.length,
+              ms: Date.now() - started,
+              net: summarizeNet(tapped.net),
+            };
+          } catch (err) {
+            return {
+              id: adapter.id,
+              raw: 0,
+              ms: Date.now() - started,
+              net: `threw ${err instanceof Error ? err.name : 'Error'}`,
+            };
+          }
+        }),
+    );
   }
 
   listPublicSources(): { id: string; label: string }[] {
@@ -236,7 +353,7 @@ export class SourceRegistry {
         manifestUnknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
         manifestMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, playbackChecks, policy: { maxSingleTrackFallbacks: MAX_SINGLE_TRACK_FALLBACKS, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
+    return { adapters, lanes, selected, playbackChecks, policy: { maxListedSources: MAX_LISTED_SOURCES, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -345,10 +462,26 @@ export class SourceRegistry {
     anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
+    /**
+     * "Late join" pass: only sources whose discovery already finished (their
+     * result is in the RAM cache) are reported. Nothing is started and nothing
+     * is waited for, so a client can call this a second time and merge whatever
+     * arrived after the first response.
+     */
+    late?: boolean;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
-    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : 4800);
+    const lateOnly = params.late === true;
+    // A recovery call for one adapter is not first paint: nothing is waiting on
+    // it, and its only job is completeness. Cutting it at the shared 3.6 s race
+    // meant slow-but-working adapters (a 2.6 s catalogue fetch plus a lane fetch)
+    // never appeared in the list at all.
+    const singleSource = typeof params.sourceId === 'string' && params.sourceId.length > 0;
+    const deadline =
+      resolveStartedAt +
+      (lateOnly ? 2_200 : params.anilistId ? 12_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
+    // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
     const activeAdapters = this.adapters.filter(
@@ -420,19 +553,47 @@ export class SourceRegistry {
         .then((value) => { segmentResults[idx] = value; }).catch(() => {}),
     );
 
-    const adapterTasks = activeAdapters.map(async (adapter, idx) => {
+    // Per-adapter outcome, kept for the "nothing resolved" report: with ten
+    // sources, "which one failed and why" must be readable from the log.
+    const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
+    const adapterNet = new Map<string, NetRecord[]>();
+    if (lateOnly) {
+      activeAdapters.forEach((adapter, idx) => {
+        const cached = this.getCachedAdapterResult(cacheKeys[idx]);
+        if (cached) slots[idx] = { adapter, result: cached };
+      });
+    }
+    const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
+      const startedAt = Date.now();
       try {
-        const result = await this.resolveAdapterWithCache(adapter, cacheKey, query);
+        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query));
+        const result = tapped.value;
+        adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
+        adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
+        if (!result.candidates.length) {
+          console.warn(
+            `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
+              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)}`,
+          );
+        }
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
           firstWithCandidatesDone = true;
           if (activeAdapters.length > 1 && doneCount + 1 < activeAdapters.length) {
-            lagTimer = setTimeout(() => earlyRelease?.(), 450);
+            // Never let the fastest source decide the window for everyone else:
+            // wait out a minimum join period, then a short grace, so a source
+            // that needs ~2 s is not cut because another answered in 700 ms.
+            const elapsed = Date.now() - resolveStartedAt;
+            const grace = Math.max(EARLY_GRACE_MS, MIN_JOIN_MS - elapsed);
+            lagTimer = setTimeout(() => earlyRelease?.(), grace);
           }
         }
-      } catch {
-        /* adapter failed */
+      } catch (err) {
+        adapterReport.set(adapter.id, {
+          ms: Date.now() - startedAt,
+          error: err instanceof Error ? err.name : 'Error',
+        });
       } finally {
         doneCount++;
         if (doneCount >= activeAdapters.length) {
@@ -441,27 +602,46 @@ export class SourceRegistry {
       }
     });
 
-    await Promise.race([
-      Promise.allSettled(adapterTasks),
-      new Promise<void>((r) => {
-        earlyRelease = r;
-      }),
-      wait(Math.min(3400, remaining())),
-    ]);
+    if (!lateOnly) {
+      await Promise.race([
+        Promise.allSettled(adapterTasks),
+        new Promise<void>((r) => {
+          earlyRelease = r;
+        }),
+        wait(singleSource ? remaining() : Math.min(ADAPTER_RACE_MS, remaining())),
+      ]);
+    }
     if (lagTimer) clearTimeout(lagTimer);
 
-    const verifyCurrentSlots = async () => {
+    const verifyCurrentSlots = async (probeFloorMs = PROBE_MIN_WINDOW_MS) => {
       const ready = slots.filter(
         (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
       );
-      const tagged = ready.flatMap((entry, adapterIdx) =>
-        entry.result.candidates.map((cand) => ({
-          ...cand,
-          key: `${adapterIdx}::${cand.key}`,
-        })),
-      );
+      // Breadth first: probe each adapter's best lanes before any adapter's
+      // leftovers. A single source with 20 candidates must not starve every
+      // other source out of the shared verification budget.
+      const perAdapter = ready.map((entry) => entry.result.candidates);
+      const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
+      const tagged: RawStreamCandidate[] = [];
+      for (let i = 0; i < breadth; i += 1) {
+        for (let adapterIdx = 0; adapterIdx < perAdapter.length; adapterIdx += 1) {
+          const cand = perAdapter[adapterIdx][i];
+          if (cand) tagged.push({ ...cand, key: `${adapterIdx}::${cand.key}` });
+        }
+      }
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(1300, remaining()))));
+        await verifyAndFilterCandidatesDetailed(
+          tagged,
+          // The probe decides whether a title is playable at all, so it gets a
+          // real floor even when the response budget is nearly spent. Collapsing
+          // this to a few milliseconds turned short budgets into empty lists.
+          AbortSignal.timeout(
+            Math.max(
+              lateOnly ? 900 : probeFloorMs,
+              Math.min(lateOnly ? 1_300 : 2_000, remaining()),
+            ),
+          ),
+        );
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -483,42 +663,104 @@ export class SourceRegistry {
       };
     };
 
+    // A short source list is worse than a slightly slower start: when fewer than
+    // three sources have produced candidates, keep listening for the adapters
+    // that are still working instead of shipping what happened to arrive first.
+    const readySources = () =>
+      slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
+    const stillPending = lateOnly ? 0 : activeAdapters.length - doneCount;
+    if (stillPending >= 2 && readySources() < 3 && remaining() > 1500) {
+      await Promise.race([
+        Promise.allSettled(adapterTasks),
+        wait(Math.min(1300, Math.max(0, remaining() - 1400))),
+      ]);
+    }
+
     let verifiedBatch = await verifyCurrentSlots();
 
     // An AniList lookup must not let Anivexa monopolize the startup window.
     // If no candidate has verified yet, give every outstanding adapter most of
     // the remaining budget; if playback is already verified, allow a short
     // grace period for the standard sources to join the response.
-    if (params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
+    if (!lateOnly && params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
       const waitBudget = verifiedBatch.verifiedLive > 0
         ? Math.min(3000, Math.max(0, remaining() - 1300))
         : Math.max(0, remaining() - 1300);
       await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
       verifiedBatch = await verifyCurrentSlots();
-    } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+    } else if (!lateOnly && doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
+    }
+
+    // Rescue pass. If the clock is the only reason the list is empty, buy one
+    // bounded extension instead of reporting "no sources" for a title that is
+    // merely late. Deliberately unconditional on the remaining budget: an empty
+    // answer is always worse than ~1.2 s of extra wait.
+    if (
+      !lateOnly &&
+      !params.anilistId &&
+      verifiedBatch.verifiedLive === 0 &&
+      doneCount < activeAdapters.length
+    ) {
+      const slack = RESCUE_CEILING_MS - (Date.now() - resolveStartedAt);
+      if (slack > 300) {
+        await Promise.race([
+          Promise.allSettled(adapterTasks),
+          wait(Math.min(RESCUE_EXTENSION_MS, slack)),
+        ]);
+        verifiedBatch = await verifyCurrentSlots(Math.min(800, slack));
+      }
     }
 
     // Metadata, skip markers and subtitles are enrichments; none may hold the
     // first playable stream hostage. Their requests continue warming caches.
     // A brief opportunistic window retains metadata and skip markers when
     // they're already close, without making their upstream timeout additive.
-    if (remaining() > 0) await Promise.race([
-      Promise.allSettled([mediaPromise, ...segmentTasks]),
-      wait(Math.min(1200, remaining())),
-    ]);
+    if (!lateOnly && remaining() > 0) {
+      // Once something is playable, metadata is pure polish: keep the window
+      // short so a slow TMDB call cannot add a second of dead air to a stream
+      // that is already verified. With nothing playable yet, wait longer.
+      const enrichmentWindow = verifiedBatch.verifiedLive > 0 ? 700 : 1200;
+      await Promise.race([
+        Promise.allSettled([mediaPromise, ...segmentTasks]),
+        wait(Math.min(enrichmentWindow, remaining())),
+      ]);
+    }
     const media = readyMedia ?? {
       type: params.type, tmdbId: params.tmdbId, imdbId: null,
       ...(params.type === 'tv' ? { season: params.season ?? 1, episode: params.episode ?? 1 } : {}),
       title: '', year: '', overview: '', poster: null, backdrop: null, logo: null,
     };
     const verifiedEntries = verifiedBatch.entries;
+    if (process.env.ELFURA_DEBUG_SOURCES === '1') {
+      const perSource = activeAdapters.map((adapter) => {
+        const hit = verifiedEntries.find((e) => e.adapter.id === adapter.id);
+        return hit
+          ? `${adapter.id}:raw=${hit.result.candidates.length},live=${hit.liveCandidates.length}`
+          : `${adapter.id}:no-result`;
+      });
+      console.warn(
+        `[elfura-sources] ${Date.now() - resolveStartedAt}ms ${params.type}/${params.tmdbId} ${perSource.join(' ')}`,
+      );
+    }
 
     const uniformOptions: UniformStreamOption[] = [];
     let mergedSegments: SkipSegments | undefined;
     for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
     const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
+    // Wrong-cut guard: a stream that plays but is a trailer, a recap or a double
+    // episode is worse than no stream, because it looks like a working source.
+    const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
+    const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
+    const droppedByRuntime: { id: string; measuredSec: number }[] = [];
+    // Lanes the runtime guard rejected stay rejected: the coverage pass below
+    // must not smuggle a wrong-length clip back into the list.
+    const blockedByRuntime = new Set<string>();
+    const allLiveCandidates: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
+    // Escape hatch for an operator who would rather see a wrong-length stream
+    // than no stream at all.
+    const runtimeGuardEnabled = process.env.ELFURA_RUNTIME_GUARD !== '0';
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
       if (!mergedSegments && result.segments) mergedSegments = result.segments;
       if (!media.title && result.metaHint?.title) {
@@ -528,12 +770,67 @@ export class SourceRegistry {
       if (!media.year && result.metaHint?.year) media.year = result.metaHint.year;
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
       for (const cand of liveCandidates) {
+        allLiveCandidates.push({ adapter, candidate: cand });
+        const measuredSec = cachedCandidateEvidence(cand)?.durationSec ?? null;
+        if (runtimeGuardEnabled && !durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
+          droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
+          blockedByRuntime.add(cand.url);
+          continue;
+        }
         candidateEntries.push({adapter,candidate:cand});
         if (cand.standbyUrl && cachedCandidateEvidence({ ...cand, url:cand.standbyUrl, headers:cand.standbyHeaders ?? cand.headers })?.alive) {
           candidateEntries.push({adapter,candidate:{...cand,key:`${cand.key}#standby`,fingerprint:`${cand.fingerprint || cand.key}#standby`,url:cand.standbyUrl,headers:cand.standbyHeaders ?? cand.headers,standbyUrl:undefined,standbyHeaders:undefined}});
         }
       }
     }
+    // A filter must never be able to empty the list. If the runtime guard would
+    // remove every verified stream, the measurement or the expected runtime is
+    // wrong — keep them all and say so, because "no sources" is never better.
+    if (droppedByRuntime.length && !candidateEntries.length && allLiveCandidates.length) {
+      console.warn(
+        `[elfura-resolve] runtime guard DISABLED for ${params.type}/${params.tmdbId}: it would have ` +
+          `removed every verified stream (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ` +
+          `±${Math.round(runtimeToleranceSec / 60)}min; measured ` +
+          `${droppedByRuntime.map((row) => `${Math.round(row.measuredSec / 60)}min`).join(',') || 'none'}). ` +
+          `Keeping them all.`,
+      );
+      for (const entry of allLiveCandidates) candidateEntries.push(entry);
+      droppedByRuntime.length = 0;
+      blockedByRuntime.clear();
+    }
+
+    // Coverage pass: every adapter that answered contributes its usable lanes,
+    // not only the ones whose probe finished inside the budget. Verified lanes
+    // are already in `candidateEntries` and sort first downstream; these fill in
+    // behind them so a title never shows two streams when nineteen sources
+    // actually replied. Candidates probed and found dead are never added, and
+    // the last rail keeps a total verification blackout from emptying the list.
+    {
+      const seenUrls = new Set(candidateEntries.map((entry) => entry.candidate.url));
+      let appended = 0;
+      for (const slot of slots) {
+        if (!slot) continue;
+        let added = 0;
+        for (const cand of slot.result.candidates) {
+          if (added >= MAX_LANES_PER_SOURCE) break;
+          if (seenUrls.has(cand.url) || blockedByRuntime.has(cand.url)) continue;
+          const evidence = cachedCandidateEvidence(cand);
+          if (evidence && !evidence.alive) continue;
+          if (evidence && !durationFits(evidence.durationSec ?? null, expectedRuntimeSec, runtimeToleranceSec)) continue;
+          seenUrls.add(cand.url);
+          candidateEntries.push({ adapter: slot.adapter, candidate: cand });
+          added += 1;
+          appended += 1;
+        }
+      }
+      if (appended) {
+        console.info(
+          `[elfura-resolve] ${params.type}/${params.tmdbId}: listed ${appended} extra lane(s) ` +
+            `beyond the verified set (per-source cap ${MAX_LANES_PER_SOURCE}, verified first).`,
+        );
+      }
+    }
+
     const counts = new Map<string, Map<string, number>>();
     const sequences = new Map<string, number>();
     for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
@@ -543,16 +840,30 @@ export class SourceRegistry {
       uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
     }
 
+    if (droppedByRuntime.length) {
+      console.warn(
+        `[elfura-resolve] runtime guard dropped ${droppedByRuntime.length} stream(s) for ` +
+          `${params.type}/${params.tmdbId} (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ±` +
+          `${Math.round(runtimeToleranceSec / 60)}min) :: ` +
+          droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
+      );
+    }
+
     if (!uniformOptions.length) {
       // Operator-only diagnostics (server console; never sent to clients).
-      const detail = verifiedEntries
-        .map(
-          (e) =>
-            `${e.adapter.id}: raw=${e.result.candidates.length} verified=${e.liveCandidates.length}`,
-        )
-        .join(' ');
+      const detail = activeAdapters
+        .map((adapter) => {
+          const hit = verifiedEntries.find((e) => e.adapter.id === adapter.id);
+          const report = adapterReport.get(adapter.id);
+          if (hit) {
+            return `${adapter.id}: raw=${hit.result.candidates.length} verified=${hit.liveCandidates.length}`;
+          }
+          if (!report) return `${adapter.id}: no-result (still running at ${Date.now() - resolveStartedAt}ms)`;
+          return `${adapter.id}: raw=${report.raw ?? '?'} ${report.error ? `error=${report.error}` : 'returned-empty'} ${report.ms}ms`;
+        })
+        .join(' | ');
       console.warn(
-        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} :: ${detail}`,
+        `[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} meta=${media.title ? 'ok' : 'missing'} ms=${Date.now() - resolveStartedAt} :: ${detail}`,
       );
       return null;
     }
@@ -656,6 +967,11 @@ export class SourceRegistry {
       primary: uniformOptions[0],
       sources: uniformOptions,
       sourceGroups: activeAdapters.map(adapter => adapter.id),
+      // Sources that have not produced anything yet. The client uses this to
+      // decide whether a late-join pass is worth making.
+      pendingSources: activeAdapters
+        .filter((_adapter, idx) => slots[idx] === null)
+        .map((adapter) => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
   }

@@ -3,7 +3,15 @@ import { cachedCandidateEvidence } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
 export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCandidate }
-export const MAX_SINGLE_TRACK_FALLBACKS = 2;
+/**
+ * Coverage first: every adapter that answered contributes its usable lanes, so
+ * a title shows as many streams as the sources actually returned. Two is the
+ * old value, and it silently hid whole sources: twenty adapters resolved, two
+ * streams listed, and the player looked like it had lost most of them.
+ * The cap exists only as a sanity bound on the response size.
+ */
+export const MAX_LISTED_SOURCES = 48;
+export const MAX_SINGLE_TRACK_FALLBACKS = MAX_LISTED_SOURCES;
 export const MAX_SEPARATE_DUBS = 12;
 
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
@@ -36,22 +44,22 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
   const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
   single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.latency-b.latency||a.order-b.order);
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
-  const selected: typeof single = [];
+  const ordered: typeof single = [];
   const hosts = new Set<string>();
   // A verified candidate always beats an unknown one. Within each confidence
-  // class, prefer independent hosts before taking a second from one host.
+  // class, independent hosts come first — but nothing is thrown away for being
+  // on a host that already answered: max coverage, ordered by confidence.
   for (const alive of [true, false]) {
     const tier = ordinarySingle.filter(item => item.alive === alive);
     for (const item of tier) {
-      if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
       if (hosts.has(item.host)) continue;
-      selected.push(item); hosts.add(item.host);
+      ordered.push(item); hosts.add(item.host);
     }
     for (const item of tier) {
-      if (selected.length >= MAX_SINGLE_TRACK_FALLBACKS) break;
-      if (!selected.includes(item)) selected.push(item);
+      if (!ordered.includes(item)) ordered.push(item);
     }
   }
+  const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);
   // Preserve individually labelled dubs like the older working build. They
   // remain separate streams, never synthetic tracks in a multi-audio manifest.
   const languages = new Set(selected.map(item => normalizeLang(item.candidate.audioLang || 'und').code).filter(lang => lang !== 'und'));

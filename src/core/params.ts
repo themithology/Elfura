@@ -241,6 +241,18 @@ export const PARAM_SCHEMA: readonly ParamSpec[] = [
     desc: 'Poster image shown before playback starts.',
   },
   {
+    key: 'backdrop',
+    type: 'string',
+    group: 'source',
+    desc: 'Wide backdrop art for the startup screen (falls back to `poster`).',
+  },
+  {
+    key: 'logo',
+    type: 'string',
+    group: 'source',
+    desc: 'Transparent title logo; the startup screen bounces it like a DVD screensaver.',
+  },
+  {
     key: 'title',
     type: 'string',
     group: 'source',

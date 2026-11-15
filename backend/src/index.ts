@@ -9,6 +9,13 @@
  *   - Zero local disk writes, logs, SQLite files, or temp media caches
  */
 
+// Container networks very often advertise IPv6 without routing it. Node then
+// hands the AAAA record to the socket first and every request stalls until its
+// timeout — which looks exactly like "every source is down". Prefer A records;
+// ELFURA_DNS_ORDER=verbatim restores the platform default.
+import dns from 'node:dns';
+
+import './compat.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -18,7 +25,8 @@ import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './co
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
+import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
+import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -111,6 +119,12 @@ export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
     };
   }
   return null;
+}
+
+try {
+  if (process.env.ELFURA_DNS_ORDER !== 'verbatim') dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* older runtimes: keep the default order */
 }
 
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
@@ -440,6 +454,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         anilistEpisode,
         sourceId,
         preferredLang,
+        late: url.searchParams.get('late') === '1',
       });
 
       if (!resolved) {
@@ -684,8 +699,29 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
-    const sources = registry.listPublicSources().map((s) => s.id).join(', ') || 'none';
-    console.log(`[elfura-backend] listening on http://${cfg.host}:${cfg.port} (sources: ${sources}; roxy: enabled)`);
+    console.log(
+      `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
+        ` · adapter timeout: ${cfg.resolveTimeoutMs}ms` +
+        ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
+        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 4600}ms`,
+    );
+    const state = registry.describeSources();
+    const sources = state.enabled.join(', ') || 'none';
+    console.log(
+      `[elfura-backend] listening on http://${cfg.host}:${cfg.port} (${state.enabled.length}/${state.enabled.length + state.disabled.length} sources: ${sources}; roxy: enabled)`,
+    );
+    if (process.env.ELFURA_SELF_TEST !== '0') {
+      void import('./sources/self-test.js')
+        .then((mod) => mod.runSourceSelfTest(registry))
+        .catch(() => {});
+    }
+    if (state.disabled.length) {
+      console.warn(
+        `[elfura-backend] disabled sources: ${state.disabled
+          .map((d) => `${d.id} (${d.flag}=0)`)
+          .join(', ')} — remove those lines from .env to race every lane`,
+      );
+    }
     // Operator-only boot diagnostics (server console; never sent to clients).
     // Hostnames/booleans only — no keys, tokens, or secrets.
     const hostOf = (raw?: string) => {
@@ -700,8 +736,19 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
         `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
-        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)}`,
+        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)} ${runtimeSummary()}`,
     );
+    // One bounded outbound check, logged once per boot. When every source
+    // reports "no rows" the first question is whether this container can reach
+    // the internet at all — this answers it without opening a browser.
+    void probeOutbound(cfg)
+      .then((net) => {
+        const parts = Object.entries(net).map(
+          ([label, r]) => `${label}=${r.ok ? `ok/${r.status}` : `fail(${r.code})`} ${r.ms}ms`,
+        );
+        console.log(`[elfura-net] ${parts.join(' ')}`);
+      })
+      .catch(() => {});
   });
   return { server, cfg, registry };
 }

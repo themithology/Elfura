@@ -1,0 +1,49 @@
+name: source-health
+
+# Real-network source probe. Runners see the public internet the same way a
+# player host does (they are datacenter IPs), so this answers "is it my box or
+# is it the adapter?" without touching the production server.
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: 'movie or tv'
+        default: movie
+      tmdb:
+        description: 'TMDB id (550 = Fight Club)'
+        default: '550'
+      season:
+        description: 'season (tv only)'
+        default: ''
+      episode:
+        description: 'episode (tv only)'
+        default: ''
+  schedule:
+    - cron: '0 4 * * *'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Probe sources
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ELFURA_SECRET: ci-probe-secret
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/source-selftest.mjs \
+            "${{ github.event.inputs.type || 'movie' }}" \
+            "${{ github.event.inputs.tmdb || '550' }}" \
+            "${{ github.event.inputs.season }}" \
+            "${{ github.event.inputs.episode }}"
+      - name: Summarise
+        if: always()
+        run: echo "Probe finished. Rows above show each adapter's candidates and the hosts it reached."

@@ -79,6 +79,7 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
    - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
    - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
    - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
+   - Sources that require per-installation credentials (e.g. `source-17` / AniVortex) must stay **off by default**, enable only when `ELFURA_*_ENABLED=1` **and** their credentials are present in the environment, hold those credentials in `.env` key/value form (never on disk, never in logs, never in diagnostics), and emit a single diagnostic instead of making any request when unconfigured.
 
 ---
 
@@ -88,6 +89,7 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
    - **Never** hardcode audio track lists or pre-populate languages that a title's streams do not actually offer.
    - Audio tracks must be discovered **100% dynamically** at runtime from parsed HLS/DASH manifests (`#EXT-X-MEDIA:TYPE=AUDIO` / `<AdaptationSet contentType="audio">`), dynamic sidecar `audioTracks`, and the actual audio languages dynamically reported across resolved raw stream candidates for that TMDB title.
    - Language tag canonicalization (ISO 639-1 / ISO 639-2 / BCP-47) and human display labels must rely on runtime `Intl.Locale` + `Intl.DisplayNames` rather than hardcoded language dictionaries.
+   - **Separate per-language streams are the one explicit exception:** when an upstream returns one distinct stream URL per language (e.g. `source-17` AniVortex DASH lanes, which carry a single audio adaptation set and no rendition list), that stream's declared language is authoritative for that candidate. Expose one candidate per language, canonicalize the tag, and keep the behaviour behind the adapter's own `ELFURA_*_TRUST_LABELS` switch so it can be reverted to claim-only.
 2. **Dynamic Language-Aware Server Hierarchy & Multi-Audio Speed Priority:**
    - Source adapters must harvest **all online upstream servers** (including all 30+ `byServer` nodes and distinct language/quality variants on `Source 2`, plus true CDN manifest RTTs on `Source 1`) without leaking upstream server names or domains.
    - **Never neglect Multi-Audio streams when ranking or racing a language (e.g., Hindi):** Multi-Audio streams (`multiAudio: true`, carrying `#EXT-X-MEDIA:TYPE=AUDIO` tracks or untagged Multi-Audio masters) must enter the **top race wave alongside direct language streams**, always ranked ahead of single-language sources when compatible, and locked onto the target audio track synchronously (`hls.audioTrack`) before downloading initial segments.

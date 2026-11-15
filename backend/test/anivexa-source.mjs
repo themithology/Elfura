@@ -61,7 +61,7 @@ try {
   });
   const registry = new SourceRegistry(cfg);
   assert(registry.listPublicSources().some(source => source.id === 'source-16' && source.label === 'Anivexa'));
-  assert(!registry.listPublicSources().some(source => source.id === 'source-17'));
+  assert(registry.listPublicSources().some(source => source.id === 'source-17'), 'AniVortex lane registers without any .env toggle; it self-skips when credentials are absent');
 
   const serverApp = createBackendServer({
     ...loadBackendConfig({

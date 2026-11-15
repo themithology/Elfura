@@ -2315,7 +2315,11 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #080a0f;
+  /* Never a black rectangle: a deep cinema gradient shows instantly, and the
+     backdrop fades in on top as soon as it decodes. */
+  background:
+    radial-gradient(circle at 30% 25%, rgba(38, 44, 66, 0.95), rgba(8, 10, 16, 0.98) 70%),
+    #0a0c12;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -2337,7 +2341,10 @@
   filter: blur(2px) saturate(0.76);
   transform: scale(1.02);
   animation: elf-state-drift 18s ease-in-out infinite alternate;
+  opacity: 0;
+  transition: opacity 520ms ease;
 }
+.elf-state-backdrop[data-ready='true'] { opacity: 1; }
 @keyframes elf-state-drift { to { transform: scale(1.065); } }
 .elf-state-shade {
   position: absolute;
@@ -2654,3 +2661,62 @@
 /* Keep the next-episode card clear of the outro action. */
 .elf-next-ep-wrap[data-outro='true'] { bottom: 190px; }
 @media (max-width: 600px) { .elf-next-ep-wrap[data-outro='true'] { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); } }
+
+/* ── Startup DVD bounce (the title logo, not a spinner) ───────────────────── */
+.elf-loading-dvd {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 420ms ease;
+}
+.elf-loading-screen[data-visible='true'] .elf-loading-dvd { opacity: 0.92; }
+
+.elf-dvd-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform, filter;
+  transition: filter 260ms ease;
+}
+
+.elf-dvd-art {
+  max-width: min(34vw, 260px);
+  max-height: 118px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
+}
+
+@media (max-width: 720px) {
+  .elf-dvd-art { max-width: 58vw; max-height: 84px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .elf-loading-dvd { opacity: 0.28; }
+  .elf-dvd-art { transition: none; }
+}
+
+/* ── Startup screen: artwork only ─────────────────────────────────────────── */
+/* No status text, no quotes, no progress bar. A backdrop and a bouncing logo. */
+.elf-loading-screen .elf-state-shade {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(6, 8, 13, 0.18), rgba(6, 8, 13, 0.82) 74%),
+    linear-gradient(to top, rgba(4, 6, 10, 0.94), rgba(4, 6, 10, 0.28) 60%, rgba(4, 6, 10, 0.72));
+}
+@keyframes elf-dvd-idle {
+  0% { opacity: 0.85; }
+  50% { opacity: 1; }
+  100% { opacity: 0.85; }
+}
+.elf-loading-dvd { opacity: 0; transition: opacity 320ms ease; }
+.elf-loading-screen[data-visible='true'] .elf-loading-dvd { opacity: 1; }
+.elf-dvd-art {
+  max-width: min(40vw, 320px);
+  max-height: 140px;
+  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.7));
+}
+@media (max-width: 720px) {
+  .elf-dvd-art { max-width: 62vw; max-height: 96px; }
+}

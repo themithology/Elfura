@@ -27,11 +27,14 @@ import {
   setCloudflareCache,
 } from './security.js';
 import { normalizeLang } from './sources/lang.js';
+import { isImageContentType, unwrapPngTransportStream } from './sources/media-sniff.js';
 
 const DEFAULT_RELAY_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024; // 4 MiB safety ceiling for text manifests
+// Bounded in-RAM ceiling for unwrapping PNG-wrapped transport segments.
+const MAX_WRAPPED_SEGMENT_BYTES = 8 * 1024 * 1024;
 
 const UPSTREAM_TRACK_WATERMARK_RE =
   /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|^(?:audio|track\s*\d*|sound|stream)$/i;
@@ -779,6 +782,31 @@ async function readBoundedText(res: Response, maxBytes: number): Promise<string>
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * Read a binary body into memory with a hard ceiling. Used only for the
+ * PNG-wrapped transport-stream unwrap path, where the bytes must be inspected
+ * before anything is sent to the browser. Returns null when the ceiling is hit.
+ */
+async function readBoundedBinary(res: Response, maxBytes: number): Promise<Buffer | null> {
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      size += value.byteLength;
+      if (size > maxBytes) return null;
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
 const MAX_MANIFEST_RAM_ENTRIES = 256;
 const MAX_CACHEABLE_MANIFEST_BYTES = 262_144;
 const MANIFEST_RAM_TTL_MS = 180_000;
@@ -1103,6 +1131,47 @@ export async function handleStreamRelay(
       setCloudflareCache(res, 'no-store');
       res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
+      return;
+    }
+
+    // PNG-wrapped transport segments: some CDNs return a 1x1 PNG whose payload
+    // is the real MPEG-TS (`tsDa` chunk). A browser cannot play that, so unwrap
+    // it here under a hard RAM ceiling. Anything that is not a wrapped stream is
+    // relayed byte-for-byte as before.
+    if (
+      ticket.k === 'a' &&
+      req.method !== 'HEAD' &&
+      upstreamRes.body &&
+      isImageContentType(ct) &&
+      !(Number(upstreamRes.headers.get('content-length') || 0) > MAX_WRAPPED_SEGMENT_BYTES)
+    ) {
+      const original = await readBoundedBinary(upstreamRes, MAX_WRAPPED_SEGMENT_BYTES);
+      if (original) {
+        const payload = unwrapPngTransportStream(original, MAX_WRAPPED_SEGMENT_BYTES);
+        if (payload) {
+          setCloudflareCache(res, 'segment');
+          res.writeHead(upstreamRes.status === 206 ? 206 : 200, {
+            'Content-Type': 'video/mp2t',
+            'Content-Length': String(payload.byteLength),
+            'X-Content-Type-Options': 'nosniff',
+          });
+          res.end(Buffer.from(payload));
+          return;
+        }
+        // Not a wrapped stream: fall through with the bytes we already read so
+        // the client still sees the upstream response untouched.
+        setCloudflareCache(res, 'segment');
+        res.writeHead(upstreamRes.status, {
+          'Content-Type': upstreamRes.headers.get('content-type') || 'application/octet-stream',
+          'Content-Length': String(original.byteLength),
+          'X-Content-Type-Options': 'nosniff',
+        });
+        res.end(original);
+        return;
+      }
+      setCloudflareCache(res, 'no-store');
+      res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: 'wrapped segment exceeded the unwrap ceiling' }));
       return;
     }
 

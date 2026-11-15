@@ -88,9 +88,11 @@ try {
   assert.equal(mp4.delivery.route, 'backend-relay');
   assert(mp4Calls.some(call => call.range === 'bytes=0-1023'));
 
+  // A genuine 1x1 poster/error image: still rejected, and never offloaded.
+  const jpegBody = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
   globalThis.fetch = async (input, init = {}) => {
     const headers = new Headers(init.headers);
-    return new Response(media, { status: headers.has('range') ? 206 : 200, headers: {
+    return new Response(jpegBody, { status: headers.has('range') ? 206 : 200, headers: {
       'Content-Type': 'image/jpeg', 'Access-Control-Allow-Origin': '*',
     } });
   };
@@ -101,7 +103,49 @@ try {
   assert.equal(imageResponse.delivery.route, 'backend-relay', 'image responses must not be accepted for browser offload');
   assert(imageResponse.checks.some(step => step.status === 'unexpected-content-type' && step.contentType === 'image/jpeg'));
 
-  console.log('✓ Playback diagnostics test actual manifests, child playlists, media byte-ranges, relay policy, and rejects image payloads');
+  // The same header over real transport bytes (some CDNs mislabel TS as JPEG):
+  // the bytes decide, not the header.
+  globalThis.fetch = async (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    return new Response(media, { status: headers.has('range') ? 206 : 200, headers: {
+      'Content-Type': 'image/jpeg', 'Access-Control-Allow-Origin': '*',
+    } });
+  };
+  const disguised = await diagnoseCandidatePlayback({
+    key: 'disguised-fixture', url: 'https://cdn.example.com/disguised.mp4', type: 'mp4', quality: 'auto', rank: 0,
+  }, 'hybrid');
+  assert.equal(disguised.media.status, 'ok', 'transport bytes under an image content-type are playable media');
+
+  // PNG-wrapped transport stream (1x1 PNG carrying the TS in a `tsDa` chunk).
+  const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const chunk = (type, payload) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(payload.length, 0);
+    head.write(type, 4, 'latin1');
+    return Buffer.concat([head, payload, Buffer.alloc(4)]);
+  };
+  const wrapped = Buffer.concat([
+    PNG_SIG,
+    chunk('IHDR', Buffer.alloc(13)),
+    chunk('tsDa', media),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+  globalThis.fetch = async (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    return new Response(wrapped, { status: headers.has('range') ? 206 : 200, headers: {
+      'Content-Type': 'image/png', 'Access-Control-Allow-Origin': '*',
+    } });
+  };
+  const pngWrapped = await diagnoseCandidatePlayback({
+    key: 'png-wrapped-fixture', url: 'https://cdn.example.com/wrapped.ts', type: 'mp4', quality: 'auto', rank: 0,
+  }, 'hybrid');
+  assert.equal(pngWrapped.media.status, 'ok', 'PNG-wrapped transport segments are playable media');
+  assert(
+    pngWrapped.checks.some(step => step.mediaEncoding === 'png-wrapped-ts'),
+    'the diagnostic reports that the segment was PNG-wrapped',
+  );
+
+  console.log('✓ Playback diagnostics test actual manifests, child playlists, media byte-ranges, relay policy, and reject real poster images');
 } finally {
   globalThis.fetch = originalFetch;
 }

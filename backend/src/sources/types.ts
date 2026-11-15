@@ -172,5 +172,7 @@ export interface UniformPlaybackResponse {
   sources: UniformStreamOption[];
   /** Enabled generic source ids for asynchronous recovery, never provider details. */
   sourceGroups?: string[];
+  /** Source ids that had not produced anything when this response was sealed. */
+  pendingSources?: string[];
   segments?: SkipSegments;
 }
