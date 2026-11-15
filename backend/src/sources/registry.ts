@@ -54,8 +54,8 @@ const MIN_JOIN_MS = 1400;
 const ADAPTER_RACE_MS = 3600;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 const resolveBudgetMs = (): number => {
-  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 6200);
-  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 6200;
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
+  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 28;
@@ -367,10 +367,18 @@ export class SourceRegistry {
     anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
+    /**
+     * "Late join" pass: only sources whose discovery already finished (their
+     * result is in the RAM cache) are reported. Nothing is started and nothing
+     * is waited for, so a client can call this a second time and merge whatever
+     * arrived after the first response.
+     */
+    late?: boolean;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
-    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : resolveBudgetMs());
+    const lateOnly = params.late === true;
+    const deadline = resolveStartedAt + (lateOnly ? 2_200 : params.anilistId ? 12_000 : resolveBudgetMs());
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
@@ -446,7 +454,13 @@ export class SourceRegistry {
     // Per-adapter outcome, kept for the "nothing resolved" report: with ten
     // sources, "which one failed and why" must be readable from the log.
     const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
-    const adapterTasks = activeAdapters.map(async (adapter, idx) => {
+    if (lateOnly) {
+      activeAdapters.forEach((adapter, idx) => {
+        const cached = this.getCachedAdapterResult(cacheKeys[idx]);
+        if (cached) slots[idx] = { adapter, result: cached };
+      });
+    }
+    const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
       const startedAt = Date.now();
       try {
@@ -477,13 +491,15 @@ export class SourceRegistry {
       }
     });
 
-    await Promise.race([
-      Promise.allSettled(adapterTasks),
-      new Promise<void>((r) => {
-        earlyRelease = r;
-      }),
-      wait(Math.min(ADAPTER_RACE_MS, remaining())),
-    ]);
+    if (!lateOnly) {
+      await Promise.race([
+        Promise.allSettled(adapterTasks),
+        new Promise<void>((r) => {
+          earlyRelease = r;
+        }),
+        wait(Math.min(ADAPTER_RACE_MS, remaining())),
+      ]);
+    }
     if (lagTimer) clearTimeout(lagTimer);
 
     const verifyCurrentSlots = async () => {
@@ -503,7 +519,10 @@ export class SourceRegistry {
         }
       }
       const { candidates: vFlat, verifiedAliveCount } =
-        await verifyAndFilterCandidatesDetailed(tagged, AbortSignal.timeout(Math.max(1, Math.min(2000, remaining()))));
+        await verifyAndFilterCandidatesDetailed(
+          tagged,
+          AbortSignal.timeout(Math.max(1, Math.min(lateOnly ? 1_300 : 2_000, remaining()))),
+        );
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
         const sep = vc.key.indexOf('::');
@@ -530,7 +549,7 @@ export class SourceRegistry {
     // that are still working instead of shipping what happened to arrive first.
     const readySources = () =>
       slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
-    const stillPending = activeAdapters.length - doneCount;
+    const stillPending = lateOnly ? 0 : activeAdapters.length - doneCount;
     if (stillPending >= 2 && readySources() < 3 && remaining() > 1500) {
       await Promise.race([
         Promise.allSettled(adapterTasks),
@@ -544,13 +563,13 @@ export class SourceRegistry {
     // If no candidate has verified yet, give every outstanding adapter most of
     // the remaining budget; if playback is already verified, allow a short
     // grace period for the standard sources to join the response.
-    if (params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
+    if (!lateOnly && params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
       const waitBudget = verifiedBatch.verifiedLive > 0
         ? Math.min(3000, Math.max(0, remaining() - 1300))
         : Math.max(0, remaining() - 1300);
       await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
       verifiedBatch = await verifyCurrentSlots();
-    } else if (doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
+    } else if (!lateOnly && doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
       await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
       verifiedBatch = await verifyCurrentSlots();
     }
@@ -559,7 +578,7 @@ export class SourceRegistry {
     // first playable stream hostage. Their requests continue warming caches.
     // A brief opportunistic window retains metadata and skip markers when
     // they're already close, without making their upstream timeout additive.
-    if (remaining() > 0) {
+    if (!lateOnly && remaining() > 0) {
       // Once something is playable, metadata is pure polish: keep the window
       // short so a slow TMDB call cannot add a second of dead air to a stream
       // that is already verified. With nothing playable yet, wait longer.
@@ -733,6 +752,11 @@ export class SourceRegistry {
       primary: uniformOptions[0],
       sources: uniformOptions,
       sourceGroups: activeAdapters.map(adapter => adapter.id),
+      // Sources that have not produced anything yet. The client uses this to
+      // decide whether a late-join pass is worth making.
+      pendingSources: activeAdapters
+        .filter((_adapter, idx) => slots[idx] === null)
+        .map((adapter) => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
   }

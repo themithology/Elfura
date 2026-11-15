@@ -442,6 +442,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         anilistEpisode,
         sourceId,
         preferredLang,
+        late: url.searchParams.get('late') === '1',
       });
 
       if (!resolved) {

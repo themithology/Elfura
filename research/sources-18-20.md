@@ -215,3 +215,24 @@ New timing model:
 `ELFURA_DEBUG_SOURCES=1` prints `[elfura-sources] <ms> <type>/<tmdb> source-N:raw=X,live=Y …`
 for every resolve, which is how a missing lane should be diagnosed instead of
 guessing.
+
+## Pipeline v2: late join
+
+A single sealed response could never show every source: twenty adapters, each
+doing a multi-server sweep, do not finish together. Cutting them off meant the
+list was whatever answered first — the "less sources / sometimes none" report.
+
+The resolver is now two-phase:
+
+1. **First response** is bounded (4.6 s default, `ELFURA_RESOLVE_BUDGET_MS`) and
+   carries `pendingSources` — the ids that had not produced anything yet.
+2. **Late join.** The client replays the request with `late=1` at 1.2 s, 2.6 s
+   and 5 s. That pass starts nothing and waits for nothing: it reports only the
+   adapters whose result is already in the server's RAM cache, so it answers in
+   ~2 ms. New sources are appended to the list, re-ranked, and the panel is
+   refreshed through `sourcesUpdated` (which, unlike `sources`, does not reset
+   the control surface — playback is never disturbed).
+
+Adapters that were cut by the first phase keep running under their own 9 s
+signal and land in cache, so a lane that needs 5 s still appears — just after
+the list is usable instead of instead of it.

@@ -195,6 +195,8 @@ export class ElfuraPlayer {
   private sources: SourceOption[] = [];
   // Generic source groups supplied by the backend; fallback supports older servers.
   private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+  private pendingSourceGroups: string[] = [];
+  private lateHydrationToken = 0;
   private currentSource: SourceOption | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
@@ -511,6 +513,115 @@ export class ElfuraPlayer {
     });
 
     this.emit('sources', this.sources);
+  }
+
+  /** Same ranking as {@link reorderSourcesHierarchy}, without the list-reset event. */
+  private sortSourcesForDisplay(preferredLang?: string | null): void {
+    if (this.sources.length <= 1) return;
+    const lang = canonLang(preferredLang ?? this.desiredAudioLang ?? this.currentAudio?.lang ?? '');
+    const tierFor = (s: SourceOption): number => {
+      if (this.isCandidateFailed(s)) return 9;
+      if (lang && lang !== 'und') {
+        if (this.currentSource?.id === s.id && this.desiredAudioLang === lang) return -1;
+        const hasConfirmedMatch =
+          (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
+          (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+          (s.availableAudioLangs ?? []).some((l) => matchScore(lang, l) >= 0) ||
+          (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
+        if (hasConfirmedMatch || s.multiAudio) return 0;
+        return 2;
+      }
+      if (s.multiAudio) return 0;
+      const c = canonLang(s.audioLang);
+      if (c === 'und' || c === 'en') return 0;
+      return 1;
+    };
+    this.sources.sort((a, b) => {
+      const tDiff = tierFor(a) - tierFor(b);
+      if (tDiff !== 0) return tDiff;
+      const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
+      if (multiDiff !== 0) return multiDiff;
+      const qDiff = this.qualityTier(a) - this.qualityTier(b);
+      if (qDiff !== 0) return qDiff;
+      const sDiff = this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b);
+      if (Math.abs(sDiff) > 4) return sDiff;
+      return this.qualityRank(b) - this.qualityRank(a);
+    });
+  }
+
+  /**
+   * Late-join pass. Sources that were still resolving when the first response
+   * was sealed keep working on the server and land in its RAM cache; a follow-up
+   * request with `late=1` returns just those, without starting or waiting for
+   * anything. Three attempts at 1.2 s / 2.6 s / 5 s cover every lane that can
+   * possibly finish inside the server's own 9 s resolve window.
+   */
+  private scheduleLateSourceHydration(resolveOption: (opt: SourceOption) => SourceOption): void {
+    const token = ++this.lateHydrationToken;
+    const cfg = this.input.config;
+    const delays = [1_200, 2_600, 5_000];
+    const run = async (attempt: number): Promise<void> => {
+      if (token !== this.lateHydrationToken || this.destroyed) return;
+      const known = new Set(this.sources.map((source) => source.sourceId).filter(Boolean));
+      const missing = this.pendingSourceGroups.filter((id) => !known.has(id));
+      if (!missing.length || attempt >= delays.length) return;
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      if (token !== this.lateHydrationToken || this.destroyed) return;
+      try {
+        const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
+        const mediaType = cfg.mediaType || (cfg.anilist ? 'tv' : 'movie');
+        url.searchParams.set('type', mediaType);
+        url.searchParams.set('tmdb', String(cfg.tmdb));
+        if (cfg.anilist) url.searchParams.set('anilist', String(cfg.anilist));
+        if (cfg.anilist && cfg.anilistEpisode !== undefined) url.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
+        if (mediaType === 'tv') {
+          url.searchParams.set('s', String(cfg.season ?? 1));
+          url.searchParams.set('e', String(cfg.episode ?? 1));
+        }
+        url.searchParams.set('late', '1');
+        if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
+        if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
+        if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') {
+          headers['X-Elfura-Envelope'] = '1';
+        }
+        const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(6_000) });
+        if (!res.ok) return;
+        const raw = (await res.json()) as { s?: number; p?: string; sources?: SourceOption[]; pendingSources?: string[] };
+        const payload = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
+          ? await openSealedEnvelope<{ sources?: SourceOption[]; pendingSources?: string[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce))
+          : raw;
+        if (token !== this.lateHydrationToken || this.destroyed) return;
+        const ids = new Set(this.sources.map((source) => source.id));
+        const fingerprints = new Set(this.sources.map((source) => source.fingerprint).filter(Boolean));
+        let added = 0;
+        for (const candidate of payload.sources ?? []) {
+          if (!candidate?.url) continue;
+          if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
+          if (this.failedSourceIds.has(candidate.id)) continue;
+          let id = candidate.id;
+          let n = 0;
+          while (ids.has(id)) id = `${candidate.id}:late-${++n}`;
+          const option = resolveOption({ ...candidate, id });
+          ids.add(option.id);
+          if (option.fingerprint) fingerprints.add(option.fingerprint);
+          this.sources.push(option);
+          added += 1;
+        }
+        this.pendingSourceGroups = (payload.pendingSources ?? []).filter((id) => typeof id === 'string');
+        if (added) {
+          // Re-rank without emitting 'sources' — that event resets the control
+          // surface, and playback must not be disturbed by a list refresh.
+          this.sortSourcesForDisplay(this.desiredAudioLang ?? this.currentAudio?.lang ?? null);
+          this.emit('sourcesUpdated', this.sources);
+        }
+        if (this.pendingSourceGroups.length) void run(attempt + 1);
+      } catch {
+        void run(attempt + 1);
+      }
+    };
+    void run(0);
   }
 
   private isCandidateFailed(opt: SourceOption): boolean {
@@ -998,6 +1109,7 @@ export class ElfuraPlayer {
         primary?: SourceOption;
         sources?: SourceOption[];
         sourceGroups?: string[];
+        pendingSources?: string[];
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
@@ -1062,6 +1174,15 @@ export class ElfuraPlayer {
       });
       if (data.primary) data.primary = resolveSource(data.primary);
       this.sources = data.sources.map(resolveSource);
+      // Slow sources keep resolving server-side after this response is sealed.
+      // Ask for them a moment later and append whatever finished, so the list
+      // fills in instead of being frozen at whatever answered first.
+      if (Array.isArray(data.pendingSources) && data.pendingSources.length) {
+        this.pendingSourceGroups = data.pendingSources.filter((id): id is string => typeof id === 'string');
+        this.scheduleLateSourceHydration(resolveSource);
+      } else {
+        this.pendingSourceGroups = [];
+      }
       this.failedSourceIds.clear();
       this.failedFingerprints.clear();
       this.measuredRttByFp.clear();
