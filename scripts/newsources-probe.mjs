@@ -18,7 +18,6 @@ import { diagnoseCandidatePlayback, cachedCandidateEvidence, verifyAndFilterCand
 import { fetchFromSubDub } from '../dist/backend/sources/source18.js';
 import { fetchFromDesiDub } from '../dist/backend/sources/source19.js';
 import { fetchFromVidora } from '../dist/backend/sources/source20.js';
-import { fetchFromKmMovies } from '../dist/backend/sources/source21.js';
 
 const redactUrl = (value) => {
   try {
@@ -43,12 +42,11 @@ const DEFAULT_SPECS = [
 
 const specs = process.argv.slice(2).length > 0 ? process.argv.slice(2) : DEFAULT_SPECS;
 
-const TRACED = new Set(['source-18 SubDubAnime', 'source-21 KMMovies']);
+const TRACED = new Set(['source-18 SubDubAnime']);
 const lanes = [
   ['source-18 SubDubAnime', fetchFromSubDub],
   ['source-19 DesiDubAnime', fetchFromDesiDub],
   ['source-20 Vidora', fetchFromVidora],
-  ['source-21 KMMovies', fetchFromKmMovies],
 ];
 
 console.log(`# Sources 18-21 live probe — ${new Date().toISOString()}`);

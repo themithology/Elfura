@@ -89,7 +89,6 @@ export interface BackendConfig {
   source18?: { enabled: boolean };
   source19?: { enabled: boolean };
   source20?: { enabled: boolean };
-  source21?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -237,9 +236,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
     source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
-    // KMMovies now publishes magiclinks.lol share buttons (Cloudflare challenge)
-    // instead of KMCLOUD shares, so it only helps on older posts: opt-in.
-    source21: { enabled: env.ELFURA_KMMOVIES_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

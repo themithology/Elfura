@@ -1475,7 +1475,6 @@ const { server: elfuraServer } = createBackendServer({
   source18: { enabled: false },
   source19: { enabled: false },
   source20: { enabled: false },
-  source21: { enabled: false },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,

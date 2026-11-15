@@ -21,7 +21,7 @@ Extracted from each plugin's own network calls, so the decision is made on the A
 | **SubDubAnime** | `blakiteapi.xyz` + `hugh.cdn.rumble.cloud` | **adopted → Source 18** |
 | **DesiDubAnime** | `desidubanime.me` (WP REST) + `*.p2pplay.pro` + `vidmoly.*` | **adopted → Source 19** |
 | **FMovies (vidora only)** | `moviesapi.to/api/vidora/v1` | **adopted → Source 20** |
-| **KMMovies** | `kmmovies.beer` + `*.kmcloud.*` + `.r2.dev` | **adopted → Source 21** |
+| **KMMovies** | `kmmovies.beer` + `*.magiclinks.lol` (KMCLOUD retired) | **dropped** — see below |
 | CineHD / CineJoy | `api.vidlove.cc` + `nxsha.space` + `vidrock.net` | rejected — Nxsha/VidRock re-exports (already Sources 1/5) |
 | Vidbox / HiStream / Zenix | `nxsha.space`, `embed.vidrift.in` | rejected — same backends as Sources 1/5 |
 | AniHype | `embed.vidrift.net`, `bingr.one`, `embed.filmu.in`, `embed.animetvplus.site`, `sora.anixx.cloud` | rejected — pure embed aggregator over other lanes' players |
@@ -73,15 +73,35 @@ GET /api/vidora/v1/tv/<tmdb>/<s>/<e>   (x-player-key, Referer/Origin)
 ```
 One JSON round-trip, direct adaptive HLS master, subtitle tracks filtered to `vtt|srt|ass` on HTTPS.
 
-### Source 21 — KMMovies
-```
-GET /?s=<query>                       → <article class="movie-card" aria-label="Title (Year)">
-GET /dune-part-two-2024/              → #download-links a.dl-btn → https://one.kmcloud.lol/s/<id>
-GET https://one.kmcloud.lol/d/<id>/watch_online   → ?videoUrl=<R2 object>  (or .r2.dev)
-GET https://one.kmcloud.lol/d/<id>/sonicboom      → signed ?file=…&dl=r2/worker
-```
-Series posts expose one **combined** file per season (`data-type="combined-<n>"`), which is what is used.
-Google Drive copies (`/go/<id>/mydirect`) and archive uploads are not returned: they need a browser session.
+### Source 21 — KMMovies (dropped after live verification)
+
+The plugin was ported in full (`/?s=` → post page → `a.dl-btn` → KMCLOUD share → `watch_online` / `sonicboom`
+→ direct R2 object) and then probed live. Current posts no longer carry KMCLOUD shares: every `dl-btn` on
+Dune Part Two, Oppenheimer, Breaking Bad, Naruto, Jujutsu Kaisen, Squid Game and Jawan points at
+`w3.magiclinks.lol` / `episodes.magiclinks.lol` — a host behind a Cloudflare challenge, which the source plugin
+itself documents as unopenable without a browser. Evidence from the run is in
+`research/sources-probe-report.md` (`dlbtn=6…81 kmcloud=0`).
+
+A lane that can only serve archived posts, needs a challenge solver, and cannot be verified is dead weight, so the
+adapter, its config flag and its tests were removed rather than shipped disabled.
+
+## Live results (GitHub runner, 2026-11-15 08:0x UTC)
+
+| Lane | Dune 2 | Oppenheimer | Breaking Bad | Naruto | JJK | Squid Game | Jawan |
+|---|---|---|---|---|---|---|---|
+| source-18 SubDub | – (anime only) | – | – | 4 rows, 1 alive (480p HLS) | 4 MP4 rows, all alive | 4 HLS rows, all alive | – |
+| source-19 DesiDub | 0 | 0 | 0 | **1 alive**, manifest audio `hi+ta+te+ml+bn+en+ja` | **1 alive**, `hi+ta+te+en+ja` | 0 | 0 |
+| source-20 Vidora | 0 | **1 alive** (`media=ok`) | 0 | 0 | 0 | 0 | **1 alive** |
+| source-21 KMMovies | dropped | dropped | dropped | — | — | — | — |
+
+Two provider behaviours worth remembering:
+
+- SubDubAnime's `get.php` gateway answers **403** unless `Referer`/`Origin` is its own API origin — the public
+  site never calls that route, so the referer is set from `API`, never from the site.
+- SubDubAnime `dataId` values are **paths** (`streams/2025/<id>`), which is why the first version rejected every
+  payload; ids are now validated segment-by-segment with no empty/`.`/`..` parts.
+- SubDubAnime serves only *some* quality renditions per episode; the CDN 403s the rest, so verified-only filtering
+  is what keeps its lanes honest (Naruto: 4 rows in, 1 alive).
 
 ## Source 8 fix — PNG-wrapped transport streams
 
@@ -107,7 +127,7 @@ a wrapped segment anyway.
 
 ## Verification
 
-- `backend/test/sources-18-21.mjs` — payload parsing for all four lanes, AES Streamp2p round-trip, episode/list
+- `backend/test/sources-18-20.mjs` — payload parsing for all four lanes, AES Streamp2p round-trip, episode/list
   parsing, KMCLOUD share parsing, season-combined parsing, opt-out flags, generic labels.
 - `backend/test/diagnostics-pipeline.mjs` — real JPEG rejected, TS-mislabelled-as-JPEG accepted, PNG-wrapped
   accepted and reported.

@@ -319,7 +319,21 @@ export async function fetchFromSubDub(query: SourceQuery, trace?: string[]): Pro
       const audio = audioFromLabel(variant.language) ?? audioFromLabel(variant.title);
       const rows = await fetchPayload(query, variantId, deadline, trace);
       for (const candidate of rows) {
-        if (collected.has(candidate.url)) continue;
+        const existing = collected.get(candidate.url);
+        if (existing) {
+          // The plain `get.php?tmdbId=` call already returned this URL without a
+          // language. A catalogue variant tells us which language it is, so the
+          // label is attached to the existing candidate instead of dropped.
+          if (!existing.audioLabel && !existing.claimedAudioLang && audio) {
+            collected.set(candidate.url, {
+              ...existing,
+              claimedAudioLang: audio.code,
+              audioLabel: audio.label,
+              ...(TRUST_LABELS() ? { audioLang: audio.code } : {}),
+            });
+          }
+          continue;
+        }
         const enriched: RawStreamCandidate = audio
           ? {
               ...candidate,

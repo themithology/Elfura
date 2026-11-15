@@ -1,5 +1,5 @@
-name: Sources 18-21 probe
-# Live verification for the SubDubAnime / DesiDubAnime / Vidora / KMMovies lanes.
+name: Sources 18-20 probe
+# Live verification for the SubDubAnime / DesiDubAnime / Vidora lanes.
 # GitHub runners reach the upstreams; the agent sandbox does not. Prints
 # redacted results only and commits the report to the branch.
 on:
@@ -12,7 +12,6 @@ on:
       - 'backend/src/sources/source18.ts'
       - 'backend/src/sources/source19.ts'
       - 'backend/src/sources/source20.ts'
-      - 'backend/src/sources/source21.ts'
       - 'backend/src/sources/media-sniff.ts'
       - 'backend/src/sources/liveness.ts'
 permissions:
@@ -31,7 +30,7 @@ jobs:
         run: |
           node scripts/newsources-probe.mjs 2>&1 | tee /tmp/sources-probe.log
           {
-            echo '### Sources 18-21 probe'
+            echo '### Sources 18-20 probe'
             echo '```'
             tail -n 120 /tmp/sources-probe.log
             echo '```'
@@ -41,7 +40,7 @@ jobs:
         run: |
           mkdir -p research
           {
-            echo '# Sources 18-21 live probe report'
+            echo '# Sources 18-20 live probe report'
             echo
             echo "Run: $GITHUB_RUN_ID on $GITHUB_REF_NAME at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo

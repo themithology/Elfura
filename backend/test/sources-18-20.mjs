@@ -6,7 +6,6 @@ import { pngCarriesTransportStream, sniffMediaBytes, unwrapPngTransportStream } 
 import { catalogVariants, fetchFromSubDub, renditionsFromPayload } from '../../dist/backend/sources/source18.js';
 import { parseEmbedServers, parseEpisodeLinks, searchDesiDub } from '../../dist/backend/sources/source19.js';
 import { fetchFromVidora, vidoraCandidates } from '../../dist/backend/sources/source20.js';
-import { parseCards, parseDlButtons, parseSeasonFiles } from '../../dist/backend/sources/source21.js';
 
 /* ── media sniffing (Source 8 PNG-wrapped transport streams) ─────────────── */
 
@@ -197,43 +196,6 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-/* ── Source 21: KMMovies HTML parsing ────────────────────────────────────── */
-
-const cardHtml =
-  '<article class="movie-card" aria-label="Dune: Part Two (2024)">' +
-  '<a href="/dune-part-two-2024/">Dune</a></article>' +
-  '<article class="movie-card" aria-label="Dune (2021)">' +
-  '<a href="/dune-2021/">Dune</a></article>';
-const cards = parseCards(cardHtml, 'https://kmmovies.beer');
-assert.equal(cards.length, 2);
-assert.equal(cards[0].url, 'https://kmmovies.beer/dune-part-two-2024/');
-
-const dlHtml =
-  '<a href="https://one.kmcloud.lol/s/FileAbc123" class="dl-btn">' +
-  '<span class="dl-res">1080p</span><span class="dl-size">2.1 GB</span></a>' +
-  '<a href="https://magiclinks.lol/x" class="dl-btn"><span class="dl-res">720p</span></a>';
-const files = parseDlButtons(dlHtml);
-assert.equal(files.length, 1, 'non-KMCLOUD buttons are ignored');
-assert.equal(files[0].origin, 'https://one.kmcloud.lol');
-assert.equal(files[0].id, 'FileAbc123');
-assert.equal(files[0].label, '1080p · 2.1 GB');
-
-const seasonHtml =
-  '<div id="download-links">' +
-  '<div class="season-block open ">' +
-  '<span class="season-block-title">Season 2 (8 eps)</span>' +
-  '<div data-type="combined-2"><a href="https://one.kmcloud.lol/s/SeasonTwo" class="dl-btn">' +
-  '<span class="dl-res">720p</span></a></div></div>' +
-  '<div class="season-block">' +
-  '<span class="season-block-title">Season 1 (10 eps)</span>' +
-  '<div data-type="combined-1"><a href="https://one.kmcloud.lol/s/SeasonOne" class="dl-btn">' +
-  '<span class="dl-res">1080p</span></a></div></div>' +
-  '</div>';
-const seasons = parseSeasonFiles(seasonHtml);
-assert.equal(seasons.size, 2);
-assert.equal(seasons.get(2)[0].id, 'SeasonTwo');
-assert.equal(seasons.get(1)[0].id, 'SeasonOne');
-
 /* ── Registry toggles ────────────────────────────────────────────────────── */
 
 const on = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test' }));
@@ -241,26 +203,22 @@ const ids = on.listPublicSources().map((source) => source.id);
 for (const id of ['source-18', 'source-19', 'source-20']) {
   assert(ids.includes(id), `${id} should be enabled by default`);
 }
-assert(!ids.includes('source-21'), 'Source 21 is opt-in until KMCLOUD shares return');
+assert(!ids.includes('source-21'), 'the retired KMMovies lane never appears');
 const off = new SourceRegistry(
   loadBackendConfig({
     ELFURA_SECRET: 'test',
     ELFURA_SUBDUB_ENABLED: '0',
     ELFURA_DESIDUB_ENABLED: '0',
     ELFURA_VIDORA_ENABLED: '0',
-    ELFURA_KMMOVIES_ENABLED: '0',
   }),
 );
 const offIds = off.listPublicSources().map((source) => source.id);
 for (const id of ['source-18', 'source-19', 'source-20']) {
   assert(!offIds.includes(id), `${id} should honour its opt-out flag`);
 }
-const optIn = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test', ELFURA_KMMOVIES_ENABLED: '1' }));
-assert(optIn.listPublicSources().some((source) => source.id === 'source-21'), 'Source 21 enables when asked');
-for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
-  const entry = optIn.listPublicSources().find((source) => source.id === id)
-    ?? on.listPublicSources().find((source) => source.id === id);
+for (const id of ['source-18', 'source-19', 'source-20']) {
+  const entry = on.listPublicSources().find((source) => source.id === id);
   assert(entry && /^Source \d+$/.test(entry.label), `${id} keeps a generic label`);
 }
 
-console.log('✓ Sources 18-21 payload parsing, AES lane, bounded HTML parsing, opt-out flags and PNG-wrapped TS sniffing');
+console.log('✓ Sources 18-20 payload parsing, AES lane, opt-out flags and PNG-wrapped TS sniffing');
