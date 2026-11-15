@@ -22,6 +22,7 @@ import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
+import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
 
 const SITE = 'https://www.desidubanime.me';
@@ -385,7 +386,7 @@ export async function extractStreamp2p(
       type: 'hls',
       quality,
       headers,
-      rank: 40 + index,
+      rank: 40 + index + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
       ...(audio ? { claimedAudioLang: audio.code, audioLabel: audio.label } : {}),
       ...(subtitles.length ? { subtitles } : {}),
     });
@@ -435,7 +436,7 @@ export async function extractVidMoly(
       type: 'hls',
       quality: 'auto',
       headers: { 'User-Agent': UA, Referer: `${origin}/`, Origin: origin },
-      rank: 45,
+      rank: 45 + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
       ...(audio ? { claimedAudioLang: audio.code, audioLabel: audio.label } : {}),
       ...(subtitles.length ? { subtitles } : {}),
     },

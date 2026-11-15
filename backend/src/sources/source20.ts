@@ -17,6 +17,7 @@
 import { isSafeUpstreamUrl } from '../security.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
+import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://moviesapi.to/api/vidora/v1';
@@ -102,7 +103,8 @@ export function vidoraCandidates(body: unknown): RawStreamCandidate[] {
       type: 'hls',
       quality: 'auto',
       headers: { 'User-Agent': UA, Referer: PLAYER_REFERER },
-      rank: 50 + out.length,
+      // A direct CDN master always outranks the provider's own worker relay.
+      rank: 50 + out.length + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
       ...(subtitles.length ? { subtitles } : {}),
     });
   }

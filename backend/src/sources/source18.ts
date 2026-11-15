@@ -23,6 +23,7 @@
 import { isSafeUpstreamUrl } from '../security.js';
 import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
+import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://blakiteapi.xyz';
@@ -200,7 +201,7 @@ export function renditionsFromPayload(payload: unknown): RawStreamCandidate[] {
         type: 'hls',
         quality,
         headers: { 'User-Agent': UA },
-        rank: 60 + (QORDER.length - QORDER.indexOf(quality)),
+        rank: 60 + (QORDER.length - QORDER.indexOf(quality)) + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
       });
     }
   } else {
@@ -220,7 +221,7 @@ export function renditionsFromPayload(payload: unknown): RawStreamCandidate[] {
         type: 'mp4',
         quality,
         headers: { 'User-Agent': UA },
-        rank: 60 + (QORDER.length - QORDER.indexOf(quality)),
+        rank: 60 + (QORDER.length - QORDER.indexOf(quality)) + (classifyUpstreamUrl(url) === 'relay' ? RELAY_RANK_PENALTY : 0),
       });
     }
   }
