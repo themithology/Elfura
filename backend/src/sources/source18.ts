@@ -266,11 +266,14 @@ async function fetchPayload(
   const rows = renditionsFromPayload(data);
   if (rows.length === 0 && trace && data && typeof data === 'object' && !Array.isArray(data)) {
     // Types only, never values: enough to see which fields the payload carries.
-    const fields = Object.entries(data as Record<string, unknown>)
-      .slice(0, 12)
-      .map(([key, value]) => `${key}:${Array.isArray(value) ? 'array' : typeof value}`)
-      .join(',');
-    trace.push(`fields=${fields}`);
+    const record = data as Record<string, unknown>;
+    const id = typeof record.dataId === 'string' || typeof record.dataId === 'number' ? String(record.dataId) : '';
+    const fmt = typeof record.format === 'string' ? record.format.trim().toUpperCase() : '';
+    const ranges = typeof record.ranges === 'string' ? record.ranges : '';
+    trace.push(
+      `idLen=${id.length} idSafe=${/^[A-Za-z0-9._-]{2,128}$/.test(id)} idChars=${[...new Set(id.replace(/[A-Za-z0-9]/g, ''))].join('') || 'alnum'}` +
+        ` fmt=${fmt || 'none'} lines=${ranges ? ranges.split('\n').length : 0} qid=${String(record.qid ?? 'none')}`,
+    );
   }
   return rows;
 }
