@@ -73,9 +73,9 @@ globalThis.fetch = async (url) => {
     });
   }
   if (target.includes('/season/1/episode/1')) return Response.json({ name: 'Pilot', runtime: 47, air_date: '2008-01-20' });
-  if (target.endsWith('/master-full.m3u8')) return new Response(manifestFor(47), { status: 200 });
+  if (target.includes('/master-full')) return new Response(manifestFor(47), { status: 200 });
   if (target.endsWith('/variant-47.m3u8')) return new Response(variantFor(47), { status: 200 });
-  if (target.endsWith('/master-clip.m3u8')) return new Response(manifestFor(2), { status: 200 });
+  if (target.includes('/master-clip')) return new Response(manifestFor(2), { status: 200 });
   if (target.endsWith('/variant-2.m3u8')) return new Response(variantFor(2), { status: 200 });
   if (target.endsWith('seg.ts')) return new Response(new Uint8Array(2048), { status: 206, headers: { 'content-type': 'video/mp2t' } });
   return new Response('nope', { status: 404 });
@@ -106,6 +106,17 @@ try {
   const urls = playback.sources.map((source) => source.url);
   assert.equal(playback.sources.length, 1, `only the correctly-runtimed lane is listed (got ${playback.sources.length})`);
   assert(!urls.some((url) => String(url).includes('clip')), 'the 2-minute clip is not offered');
+  // A filter must never empty the list: when every verified stream would be
+  // dropped, the guard stands down and keeps them (and logs why).
+  const clipOnly = new SourceRegistry(cfg);
+  clipOnly.adapters = [
+    lane('source-1', 'https://cdn.example.org/master-clip.m3u8'),
+    lane('source-2', 'https://cdn.example.org/master-clip.m3u8?mirror=1'),
+  ];
+  const rescued = await clipOnly.resolvePlayback({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 });
+  assert(rescued, 'the guard must not turn a title with live streams into "no sources"');
+  assert.equal(rescued.sources.length, 2, 'every verified stream is kept when the guard would empty the list');
+
   console.log('✓ Runtime guard: ±20 min movies / ±5 min episodes, VOD-only measurement, live and unknown streams untouched, clip dropped end to end.');
 } finally {
   globalThis.fetch = original;

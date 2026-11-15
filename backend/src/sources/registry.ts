@@ -618,6 +618,10 @@ export class SourceRegistry {
     const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
     const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
     const droppedByRuntime: { id: string; measuredSec: number }[] = [];
+    const allLiveCandidates: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
+    // Escape hatch for an operator who would rather see a wrong-length stream
+    // than no stream at all.
+    const runtimeGuardEnabled = process.env.ELFURA_RUNTIME_GUARD !== '0';
     for (const { adapter, result, liveCandidates } of verifiedEntries) {
       if (!mergedSegments && result.segments) mergedSegments = result.segments;
       if (!media.title && result.metaHint?.title) {
@@ -627,8 +631,9 @@ export class SourceRegistry {
       if (!media.year && result.metaHint?.year) media.year = result.metaHint.year;
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
       for (const cand of liveCandidates) {
+        allLiveCandidates.push({ adapter, candidate: cand });
         const measuredSec = cachedCandidateEvidence(cand)?.durationSec ?? null;
-        if (!durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
+        if (runtimeGuardEnabled && !durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
           droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
           continue;
         }
@@ -638,6 +643,21 @@ export class SourceRegistry {
         }
       }
     }
+    // A filter must never be able to empty the list. If the runtime guard would
+    // remove every verified stream, the measurement or the expected runtime is
+    // wrong — keep them all and say so, because "no sources" is never better.
+    if (droppedByRuntime.length && !candidateEntries.length && allLiveCandidates.length) {
+      console.warn(
+        `[elfura-resolve] runtime guard DISABLED for ${params.type}/${params.tmdbId}: it would have ` +
+          `removed every verified stream (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ` +
+          `±${Math.round(runtimeToleranceSec / 60)}min; measured ` +
+          `${droppedByRuntime.map((row) => `${Math.round(row.measuredSec / 60)}min`).join(',') || 'none'}). ` +
+          `Keeping them all.`,
+      );
+      for (const entry of allLiveCandidates) candidateEntries.push(entry);
+      droppedByRuntime.length = 0;
+    }
+
     const counts = new Map<string, Map<string, number>>();
     const sequences = new Map<string, number>();
     for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
