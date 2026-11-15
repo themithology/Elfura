@@ -12,15 +12,15 @@ try {
  let start=Date.now();const first=await reg.resolvePlayback({type:'movie',tmdbId:'999001'});const fastMs=Date.now()-start;
  assert(first?.sources.length,'Healthy source should not be held by a hung adapter, metadata or skip markers');assert(fastMs<2500,`Fast source took ${fastMs}ms`);
  reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',never),fake('source-2',never)];start=Date.now();const missing=await reg.resolvePlayback({type:'movie',tmdbId:'999002'});const failMs=Date.now()-start;
- assert.equal(missing,null);assert(failMs<5100,`Hung sources took ${failMs}ms`);
+ assert.equal(missing,null);assert(failMs<6800,`Hung sources took ${failMs}ms (budget is 6.2 s so slow-but-alive sources are not reported as absent)`);
  // Unknown liveness must remain bounded even if a shared fetch ignores abort.
- globalThis.fetch=async()=>never();reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',async()=>({candidates:[{...good,key:'slow-probe',url:'https://cdn.example.org/stalled.mp4'}]})),fake('source-2',never)];start=Date.now();await reg.resolvePlayback({type:'movie',tmdbId:'999003'});const probeMs=Date.now()-start;assert(probeMs<5100,`Stalled verification took ${probeMs}ms`);
+ globalThis.fetch=async()=>never();reg=new SourceRegistry(cfg);reg.adapters=[fake('source-1',async()=>({candidates:[{...good,key:'slow-probe',url:'https://cdn.example.org/stalled.mp4'}]})),fake('source-2',never)];start=Date.now();await reg.resolvePlayback({type:'movie',tmdbId:'999003'});const probeMs=Date.now()-start;assert(probeMs<6800,`Stalled verification took ${probeMs}ms`);
  // Exercise real newly registered adapters with hung discovery, not just fake adapters.
  globalThis.fetch=async url=>String(url).startsWith('https://cdn.example.org/')?new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}):never();
  const realCfg=loadBackendConfig({ELFURA_SECRET:'startup-test-secret',TMDB_API_BASE:'https://tmdb-timeout.example',TMDB_API_KEY:'x',OPENSUBTITLES_ENABLED:'0'});
  reg=new SourceRegistry(realCfg);reg.adapters=[fake('source-1',async()=>({candidates:[good]}),never),...reg.adapters.filter(a=>['source-7','source-8','source-9','source-10','source-11','source-12','source-13','source-14','source-15','source-16','source-17'].includes(a.id))];
  start=Date.now();const mixed=await reg.resolvePlayback({type:'tv',tmdbId:'999004',season:1,episode:1});const newSourcesMs=Date.now()-start;
- assert(mixed?.sources.length,'Existing fast source must remain available');assert(newSourcesMs<2500,`New hung sources delayed startup to ${newSourcesMs}ms`);
+ assert(mixed?.sources.length,'Existing fast source must remain available');assert(newSourcesMs<4500,`New hung sources delayed startup to ${newSourcesMs}ms (join window may add ~1.3 s to collect a fuller source list)`);
  // Fairness: a fast source answering first must not silence a source that
  // needs ~1.2 s. Both lanes have to be in the very first response.
  const slow={key:'slow',url:'https://cdn.example.org/slow.mp4',type:'mp4',quality:'auto',rank:0};

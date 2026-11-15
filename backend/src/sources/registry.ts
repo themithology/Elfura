@@ -47,11 +47,16 @@ const MAX_ADAPTER_CACHE_ENTRIES = 256;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
 
 /** Extra time given to still-running adapters once the first source has candidates. */
-const EARLY_GRACE_MS = 800;
+const EARLY_GRACE_MS = 700;
 /** No adapter may be cut before this point, however fast the first one was. */
-const MIN_JOIN_MS = 1500;
+const MIN_JOIN_MS = 1400;
 /** Upper bound for the adapter race when nothing has candidates yet. */
-const ADAPTER_RACE_MS = 3000;
+const ADAPTER_RACE_MS = 3600;
+/** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
+const resolveBudgetMs = (): number => {
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 6200);
+  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 6200;
+};
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 28;
 
@@ -365,7 +370,7 @@ export class SourceRegistry {
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
-    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : 4800);
+    const deadline = resolveStartedAt + (params.anilistId ? 12_000 : resolveBudgetMs());
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
@@ -511,6 +516,19 @@ export class SourceRegistry {
         vFlat,
       };
     };
+
+    // A short source list is worse than a slightly slower start: when fewer than
+    // three sources have produced candidates, keep listening for the adapters
+    // that are still working instead of shipping what happened to arrive first.
+    const readySources = () =>
+      slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
+    const stillPending = activeAdapters.length - doneCount;
+    if (stillPending >= 2 && readySources() < 3 && remaining() > 1500) {
+      await Promise.race([
+        Promise.allSettled(adapterTasks),
+        wait(Math.min(1300, Math.max(0, remaining() - 1400))),
+      ]);
+    }
 
     let verifiedBatch = await verifyCurrentSlots();
 

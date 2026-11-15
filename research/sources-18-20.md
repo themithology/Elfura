@@ -187,3 +187,31 @@ behind any origin CDN lane, and adapters may reject relay-only rows outright (Fl
 | Source 18 SubDubAnime | `hugh.cdn.rumble.cloud` — Rumble's own CDN serving both manifest and segments; MP4 rows are direct objects |
 | Source 19 DesiDubAnime | `prx-*.vmpx.online` — the provider's **relay** front serving segments itself; playable but relayed |
 | Source 20 Vidora | `paretocdn.site` on some titles, `*.workerscloud32.workers.dev` on others — the API hands back whichever it has, so relays are now ranked last |
+
+## Why the source list used to shrink as sources were added
+
+Measured cause, not a guess: the playback resolver runs every source
+concurrently and finalises the response **450 ms after the first source returns
+candidates**. That was fine with six sources of similar speed. With ten — and
+with Sources 18-20 answering in a few hundred ms — it meant:
+
+* Source 14 (six backends on a 3.5 s leash) needed ~4 s: cut every time.
+* Source 1 (~1-2 s) was cut the moment a faster lane replied.
+* A title where only slow lanes had the episode returned **nothing at all**
+  inside the 4.8 s budget.
+
+New timing model:
+
+| Window | Value | Purpose |
+|---|---|---|
+| Minimum join | 1.4 s | no source is cut before this, however fast the first reply |
+| Early grace | 700 ms | added after the first candidates arrive |
+| Adapter race cap | 3.6 s | absolute limit for adapters that produce nothing |
+| Adaptive extension | +1.3 s | only when fewer than 3 sources have candidates and ≥2 are still running |
+| Verification | 2 s, breadth-first (28 candidates spread across sources) | one source with 20 rows cannot starve the others |
+| Enrichment | 700 ms once playback is verified | metadata may not hold a playable stream |
+| Total budget | 6.2 s (`ELFURA_RESOLVE_BUDGET_MS`) | was 4.8 s |
+
+`ELFURA_DEBUG_SOURCES=1` prints `[elfura-sources] <ms> <type>/<tmdb> source-N:raw=X,live=Y …`
+for every resolve, which is how a missing lane should be diagnosed instead of
+guessing.

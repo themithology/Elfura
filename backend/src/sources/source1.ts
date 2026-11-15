@@ -104,7 +104,7 @@ export async function fetchFromVidBolt(
     qs.set('episode', String(query.episode ?? 1));
   }
   try {
-    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
+    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
     const res = await fetch(`${origin}/api/resolve?${qs}`, {
       headers: { Accept: 'application/json', Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA },
       signal,
@@ -149,7 +149,7 @@ async function fetchFromRiftBoot(
   const wrapRelay = (target: string, _manifest = false) => target;
 
   try {
-    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3800)]) : AbortSignal.timeout(3800);
+    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
     const res = await fetch(bootUrl, {
       headers: {
         Accept: 'application/json',
@@ -307,7 +307,7 @@ async function fetchFromVidRock(
       : `/api/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
 
   try {
-    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(4800)]) : AbortSignal.timeout(4800);
+    const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3200)]) : AbortSignal.timeout(3200);
     const res = await fetch(`${origin}${apiPath}`, {
       headers: {
         Accept: 'application/json',
