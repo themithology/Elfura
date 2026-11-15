@@ -199,18 +199,19 @@ console.log('');
 const VZ = 'https://vidzen.fun';
 const VZ_SERVERS = ['hyperion', 'mars', 'jupiter', 'venus', 'saturn', 'mercury', 'neptune', 'earth', 'uranus', 'pluto', 'helios'];
 
-console.log('## 3. Source 12 per-server sweep (Breaking Bad S1E1)');
+for (const [caseLabel, watchPath, apiParams] of [
+  ['tv 1396 S1E1', '/tv/1396/1/1', { type: 'tv', id: '1396', season: '1', episode: '1' }],
+  ['movie 872585', '/movie/872585', { type: 'movie', id: '872585' }],
+]) {
+console.log(`## 3. Source 12 per-server sweep (${caseLabel})`);
 try {
-  const page = await get(`${VZ}/tv/1396/1/1`, { Referer: `${VZ}/`, Accept: 'text/html' });
+  const page = await get(`${VZ}${watchPath}`, { Referer: `${VZ}/`, Accept: 'text/html' });
   const token = extractVidZenToken(page.text);
   console.log(`- page http=${page.status} bytes=${page.text.length} token=${token ? 'yes' : 'no'}`);
   if (token) {
     for (const server of VZ_SERVERS) {
       const endpoint = new URL('/api/sources', VZ);
-      endpoint.searchParams.set('type', 'tv');
-      endpoint.searchParams.set('id', '1396');
-      endpoint.searchParams.set('season', '1');
-      endpoint.searchParams.set('episode', '1');
+      for (const [key, value] of Object.entries(apiParams)) endpoint.searchParams.set(key, value);
       endpoint.searchParams.set('server', server);
       endpoint.searchParams.set('token', token);
       try {
@@ -263,6 +264,8 @@ try {
   }
 } catch (err) {
   console.log(`- vidzen page error ${err instanceof Error ? err.name : 'unknown'}`);
+}
+console.log('');
 }
 
 /* ───────────────── adapters end-to-end (the code paths that ship) ───────────────── */
