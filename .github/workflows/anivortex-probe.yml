@@ -1,0 +1,30 @@
+name: AniVortex feasibility probe
+# Registers one throwaway installation and reports whether the signed routes are
+# reachable from a GitHub runner. Prints redacted results only: no credentials,
+# no full upstream URLs. Run manually from the Actions tab.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - name: Registration + signed catalogue/playback probe
+        run: |
+          node scripts/anivortex-probe.mjs \
+            'movie:Dune: Part Two:2024' \
+            'tv:Breaking Bad:2008:1:1' \
+            'movie:Oppenheimer:2023' 2>&1 | tee /tmp/anivortex-probe.log
+          {
+            echo '### AniVortex probe'
+            echo '```'
+            cat /tmp/anivortex-probe.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

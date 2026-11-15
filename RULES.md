@@ -79,6 +79,7 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
    - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
    - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
    - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
+   - Sources that require per-installation credentials (e.g. `source-17` / AniVortex) must stay **off by default**, enable only when `ELFURA_*_ENABLED=1` **and** their credentials are present in the environment, hold those credentials in `.env` key/value form (never on disk, never in logs, never in diagnostics), and emit a single diagnostic instead of making any request when unconfigured.
 
 ---
 

@@ -83,6 +83,8 @@ export interface BackendConfig {
   source14?: { enabled: boolean };
   source15?: { enabled: boolean };
   source16?: { enabled: boolean };
+  /** AniVortex (signed installation) — off unless explicitly enabled AND credentials exist. */
+  source17?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -224,6 +226,9 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
     source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
+    // AniVortex is opt-in: the API rejects unsigned requests, so enabling it
+    // without installation credentials would only add dead latency.
+    source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED === '1' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
