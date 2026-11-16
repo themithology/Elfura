@@ -17,6 +17,7 @@ import dns from 'node:dns';
 
 import './compat.js';
 import http from 'node:http';
+import cluster from 'node:cluster';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -879,6 +880,30 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 }
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  // One Node process runs one event loop, so a single process cannot use more
+  // than one core however much CPU the box has. `ELFURA_WORKERS` runs the same
+  // server in N processes behind one port: N event loops, N caches, N× the
+  // concurrent resolves before the loop stalls. Opt-in — the default is exactly
+  // the single-process server that has always run here.
+  const workers = Math.max(1, Math.min(8, Number(process.env.ELFURA_WORKERS || 1) || 1));
+  if (cluster.isPrimary && workers > 1) {
+    let shuttingDown = false;
+    console.log(`[elfura-cluster] starting ${workers} workers (one event loop each; ELFURA_WORKERS=1 disables)`);
+    for (let i = 0; i < workers; i += 1) cluster.fork();
+    cluster.on('exit', (worker, code) => {
+      if (shuttingDown) return;
+      console.warn(`[elfura-cluster] worker ${worker.process.pid} exited (${code}); replacing it`);
+      cluster.fork();
+    });
+    const stop = () => {
+      shuttingDown = true;
+      for (const worker of Object.values(cluster.workers ?? {})) worker?.kill('SIGTERM');
+      setTimeout(() => process.exit(0), 5_000).unref();
+    };
+    process.on('SIGTERM', stop);
+    process.on('SIGINT', stop);
+    return;
+  }
   startPerfMonitor();
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {

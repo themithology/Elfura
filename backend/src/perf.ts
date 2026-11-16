@@ -12,6 +12,7 @@
  * identity. Counters are process-local and bounded.
  */
 
+import cluster from 'node:cluster';
 import fs from 'node:fs';
 import os from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
@@ -88,12 +89,24 @@ export function noteRequest(): void {
 
 /** Count a request by endpoint, collapsing ids so routes stay few. */
 export function noteRoute(pathname: string): void {
-  const segments = pathname.split(/[?#]/)[0].split('/').filter(Boolean).slice(0, 3);
-  const key = `/${segments.join('/')}`;
+  const parts = pathname.split(/[?#]/)[0].split('/').filter(Boolean);
+  // `/embed/tv/127881` and `/embed/tv/78017` are the same route. Without this
+  // every title became its own bucket, the table filled with one-hit entries and
+  // the hot routes were evicted — which is why /api/v1/playback reported 57
+  // requests while 131 were running.
+  const key = parts[0] === 'embed' ? `/${parts.slice(0, 2).join('/')}` : `/${parts.slice(0, 3).join('/')}`;
   const next = (routes.get(key) ?? 0) + 1;
   if (next === 1 && routes.size >= MAX_ROUTES) {
-    const oldest = routes.keys().next().value;
-    if (oldest !== undefined) routes.delete(oldest);
+    // Evict the coldest route, never the busiest one.
+    let coldest: string | undefined;
+    let coldestCount = Number.POSITIVE_INFINITY;
+    for (const [route, count] of routes) {
+      if (count < coldestCount) {
+        coldest = route;
+        coldestCount = count;
+      }
+    }
+    if (coldest !== undefined) routes.delete(coldest);
   }
   routes.set(key, next);
 }
@@ -255,6 +268,8 @@ export function stopPerfMonitor(): void {
 }
 
 export interface PerfSnapshot {
+  /** Which server process answered (1 unless ELFURA_WORKERS > 1). */
+  worker: number;
   uptimeSec: number;
   eventLoop: {
     p50Ms: number;
@@ -314,6 +329,7 @@ export function perfSnapshot(): PerfSnapshot {
   const inFlight: Record<string, number> = {};
   for (const [name, active] of phases) inFlight[name] = active;
   return {
+    worker: cluster.isWorker ? (cluster.worker?.id ?? 1) : 1,
     uptimeSec: Math.round((Date.now() - startedAt) / 1000),
     eventLoop: {
       p50Ms: Math.round(windowP50Ms * 10) / 10,

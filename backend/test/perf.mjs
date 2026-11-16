@@ -69,6 +69,15 @@ noteClient('client-b');
 const byClient = perfSnapshot().traffic;
 assert.equal(byClient.distinctClients, 2, 'one retry loop is one client');
 assert.deepEqual(byClient.topRoutes[0], { route: '/api/v1/playback', count: 5 }, 'ids collapse into one route');
+// Embed pages are per title; without collapsing them the table fills with
+// one-hit entries and the busy routes get evicted from it.
+for (let i = 0; i < 3; i += 1) {
+  noteRoute(`/embed/tv/${1000 + i}`);
+  noteRoute(`/api/v1/playback?tmdb=${1000 + i}`);
+}
+const routesNow = perfSnapshot().traffic.topRoutes;
+assert.equal(routesNow.find((r) => r.route === '/embed/tv')?.count, 3, 'embed titles collapse into /embed/tv');
+assert.equal(routesNow.find((r) => r.route === '/api/v1/playback')?.count, 8, 'a hot route is never evicted by cold ones');
 
 // 4. Shapes are complete and numeric — no NaN sneaks into the JSON.
 for (const value of [
