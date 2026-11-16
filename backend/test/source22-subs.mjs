@@ -80,6 +80,23 @@ check('one track per language, clean label preferred', () => {
   assert.equal(english[0].label, 'English', `expected the clean label, got "${english[0].label}"`);
 });
 
+check('with no bare "English", a clean numbered track beats an HI track', () => {
+  // Captured verbatim from /api/subtitles?kind=tv&tmdb=1399&season=1&episode=1.
+  // This is the real-world shape: there is no un-suffixed "English" to prefer.
+  const live = {
+    subtitles: [
+      { url: `${VTT}/English Hi.vtt`, lang: 'en', label: 'English (HI)', group: 'English' },
+      { url: `${VTT}/English Hi4.vtt`, lang: 'en', label: 'English 4 (HI)', group: 'English' },
+      { url: `${VTT}/English2.vtt`, lang: 'en', label: 'English 2', group: 'English' },
+      { url: `${VTT}/English3.vtt`, lang: 'en', label: 'English 3', group: 'English' },
+      { url: `${VTT}/English6.vtt`, lang: 'en', label: 'English 6', group: 'English' },
+    ],
+  };
+  const english = vidlySubtitleTracks(live).filter((t) => t.lang === 'en');
+  assert.equal(english.length, 1, 'one English track only');
+  assert.equal(english[0].label, 'English 2', `expected the cleanest lowest variant, got "${english[0].label}"`);
+});
+
 check('Hindi is available (the reason this lane exists)', () => {
   const hindi = tracks.find((t) => t.lang === 'hi');
   assert.ok(hindi, 'Hindi track missing');
@@ -95,6 +112,27 @@ check('rejects a URL from an unexpected host', () => {
 
 check('rejects relative and non-https URLs', () => {
   assert.ok(!tracks.some((t) => !t.url.startsWith('https://')));
+});
+
+check('tv queries use kind=tv (kind=series silently returns zero tracks)', async () => {
+  const seen = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    return new Response(JSON.stringify({ subtitles: [] }), { status: 200 });
+  };
+  try {
+    const { fetchFromVidlySubtitles } = await import('../../dist/backend/sources/source22.js');
+    await fetchFromVidlySubtitles({ type: 'tv', tmdbId: '1399', season: 1, episode: 2 });
+    await fetchFromVidlySubtitles({ type: 'movie', tmdbId: '1010581' });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.match(seen[0], /kind=tv/, `expected kind=tv, got ${seen[0]}`);
+  assert.match(seen[0], /season=1/, 'season must be sent');
+  assert.match(seen[0], /episode=2/, 'episode must be sent');
+  assert.match(seen[1], /kind=movie/, `expected kind=movie, got ${seen[1]}`);
+  assert.ok(!seen[1].includes('season='), 'a movie query must not carry season');
 });
 
 check('a renamed payload yields nothing instead of throwing', () => {

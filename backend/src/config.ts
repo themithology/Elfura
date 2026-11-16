@@ -223,7 +223,9 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
+    // Merged into source-5 as a second lane set. Default off, matching the
+    // `?? false` gate the standalone adapter used to carry.
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },

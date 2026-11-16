@@ -21,7 +21,6 @@ import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
-import { createSource7Adapter } from './source7.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
 import { createSource10Adapter } from './source10.js';
@@ -74,7 +73,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-3': 'SOURCE3_ENABLED',
   'source-4': 'ELFURA_BINGR_ENABLED',
   'source-5': 'ELFURA_NXSHA_ENABLED',
-  'source-7': 'ELFURA_SCREENSCAPE_ENABLED',
+  'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
   'source-8': 'ELFURA_VIDZEE_ENABLED',
   'source-9': 'ELFURA_VIXSRC_ENABLED',
   'source-10': 'ELFURA_VIDNEST_ENABLED',
@@ -164,8 +163,13 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
-      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
-      createSource7Adapter(() => cfg.source7?.enabled ?? false),
+      // source-7 was never independent: it reused source-5's fetcher against the
+      // same host with a different lane list. It is now source-5's second lane
+      // set, with its original default-off gate preserved.
+      createSource5Adapter(
+        () => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0',
+        () => cfg.source7?.enabled ?? process.env.ELFURA_SCREENSCAPE_ENABLED === '1',
+      ),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),

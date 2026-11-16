@@ -69,12 +69,16 @@ function trackScore(row: VidlySubtitleRow): number {
   const label = typeof row.label === 'string' ? row.label : '';
   const langRank = LANG_RANK[lang];
   const base = langRank === undefined ? 100 : langRank;
-  // "English 2 (HI)" is a duplicate with captions mixed in; useful as a fallback,
-  // never as the first choice when a clean track exists.
-  const hiPenalty = /\bHI\b|\(HI\)/i.test(label) ? 0.5 : 0;
-  // A bare label ("English") beats numbered variants ("English 3").
-  const numberedPenalty = /\d/.test(label) ? 0.25 : 0;
-  return base + hiPenalty + numberedPenalty;
+  // Measured against the live index for tmdb 1399: the English group is
+  // "English (HI)", "English 4/5 (HI)", "English 2", "English 3", "English 6/7"
+  // — there is no bare "English" at all. So a plain count cannot be used, and
+  // the ordering has to be explicit: a clean (non-HI) track wins even when it is
+  // numbered, because hearing-impaired tracks carry sound-effect cues in the
+  // dialogue stream and read badly for ordinary viewing. HI is a fallback.
+  const hiPenalty = /(?:^|[\s(])HI\)?$/i.test(label) || /\(HI\)/i.test(label) ? 1 : 0;
+  // Among equally clean tracks, prefer the earliest numbered variant.
+  const variant = Number(/(\d+)\s*(?:\(HI\))?\s*$/i.exec(label)?.[1] ?? 0);
+  return base * 4 + hiPenalty * 2 + Math.min(variant, 9) * 0.01;
 }
 
 /**
@@ -136,8 +140,11 @@ function queryPath(query: SourceQuery): string | null {
   const episode = query.episode ?? 1;
   if (!Number.isSafeInteger(season) || season < 0 || season > 100) return null;
   if (!Number.isSafeInteger(episode) || episode < 1) return null;
-  // 'series' is the value the endpoint actually expects for television.
-  return `/api/subtitles?kind=series&tmdb=${query.tmdbId}&season=${season}&episode=${episode}`;
+  // 'tv' is the value this endpoint accepts. 'series' — used by the sibling
+  // endpoints — returns {"subtitles":[]} here, which looks like "no subtitles
+  // exist for this title" rather than "wrong parameter". Verified live against
+  // /api/subtitles?kind=tv&tmdb=1399&season=1&episode=1 (60+ tracks).
+  return `/api/subtitles?kind=tv&tmdb=${query.tmdbId}&season=${season}&episode=${episode}`;
 }
 
 async function readBounded(response: Response, maxBytes: number): Promise<string | null> {

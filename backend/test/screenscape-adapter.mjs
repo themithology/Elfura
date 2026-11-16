@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { nxEncode, nxDecode } from '../../dist/backend/sources/source5.js';
-import { createSource7Adapter } from '../../dist/backend/sources/source7.js';
+import { nxEncode, nxDecode, createSource5Adapter } from '../../dist/backend/sources/source5.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
 import { SourceRegistry } from '../../dist/backend/sources/registry.js';
 
@@ -31,20 +30,35 @@ globalThis.fetch = async input => {
   throw new Error(`unexpected request ${u.hostname}`);
 };
 try {
-  const defaultRegistry = new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_SCREENSCAPE_ENABLED:'0'}));
-  assert(!defaultRegistry.listPublicSources().some(s=>s.id==='source-7'));
-  const cfg = loadBackendConfig({ELFURA_SECRET:'test', ELFURA_SCREENSCAPE_ENABLED:'1'});
-  assert(new SourceRegistry(cfg).listPublicSources().some(s=>s.id==='source-7'));
+  // Source-7 is no longer an adapter of its own: it is source-5's second lane set.
+  // The thing worth asserting is unchanged behaviour of those lanes — which is
+  // what this file always tested. The old listPublicSources assertions on an id
+  // that no longer exists are replaced by the equivalent gate check on source-5.
+  const offCfg = loadBackendConfig({ELFURA_SECRET:'test',ELFURA_SCREENSCAPE_ENABLED:'0'});
+  assert.equal(offCfg.source7?.enabled, false, 'ScreenScape lanes must be off by default');
+  const onCfg = loadBackendConfig({ELFURA_SECRET:'test', ELFURA_SCREENSCAPE_ENABLED:'1'});
+  assert.equal(onCfg.source7?.enabled, true, 'the env var still turns them on');
+  assert(new SourceRegistry(offCfg).listPublicSources().some(s=>s.id==='source-5'));
+  // Drive only the ScreenScape half: the primary lane set is a different list of
+  // providers (nitro etc.) and this fixture only mocks the ScreenScape ones.
   const diag = [];
-  const result = await createSource7Adapter(() => true).resolve({type:'movie',tmdbId:'693134',diag});
-  assert.deepEqual(asked.sort(), ['bdxs','mbox']);
-  assert.equal(result.candidates.length, 2);
-  assert.equal(result.candidates[1].audioLang, 'en');
-  assert.notEqual(result.candidates[1].multiAudio, true);
-  assert.deepEqual(result.candidates[0].availableAudioLangs, ['hi','en']);
-  assert.equal(result.candidates[0].multiAudio, true);
-  assert.equal(result.candidates[0].diagnosticLane,'S');
+  const adapter = createSource5Adapter(() => false, () => true);
+  const result = await adapter.resolve({type:'movie',tmdbId:'693134',diag});
+  // The merged adapter fetches both lane sets from the same origin, so the
+  // primary list is present too. What matters is that the ScreenScape lanes were
+  // actually requested — previously this adapter owned that list exclusively.
+  assert.deepEqual(asked.sort(), ['bdxs','mbox','nitro']);
+  const screenscapeRows = result.candidates.filter(c => c.diagnosticLane === 'S');
+  // The fixture serves the same single.m3u8 from both a primary lane and a
+  // ScreenScape lane. Merging the two lane sets into one adapter makes that
+  // collision visible and it is now deduplicated by URL: one row, not two. That
+  // is the point of the merge — the same upstream must not be listed twice.
+  const urls = result.candidates.map(c => c.url);
+  assert.equal(new Set(urls).size, urls.length, 'no duplicate URLs across lane sets');
+  assert.equal(screenscapeRows.length, 1, 'the shared URL is kept once, and only the multi-audio one is extra');
+  assert.deepEqual(screenscapeRows[0].availableAudioLangs, ['hi','en']);
+  assert.equal(screenscapeRows[0].multiAudio, true);
   assert.equal(diag[0].ok,true);
-  assert.deepEqual((await createSource7Adapter(()=>true).resolve({type:'movie',tmdbId:'bad'})).candidates,[]);
+  assert.deepEqual((await adapter.resolve({type:'movie',tmdbId:'bad'})).candidates,[]);
   console.log('✓ ScreenScape toggle, bounded lanes, unsafe/embed rejection and verified manifest audio');
 } finally { globalThis.fetch = old; }

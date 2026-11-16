@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const ORIGIN = 'https://nxsha.space';
@@ -100,10 +101,81 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
     return current;
   } catch { return []; }
 }
-export function createSource5Adapter(enabled: () => boolean): SourceAdapter {
-  return { id: 'source-5', label: 'Source 5', enabled, async resolve(query) {
-    const start = Date.now(); const candidates = await fetchFromNxsha(query);
-    query.diag?.push({ adapter: 'source-5', lane: 'N', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
-    return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'N' } : c) };
-  } };
+/**
+ * The ScreenScape lane set, formerly its own adapter (source-7).
+ *
+ * It was never an independent source: it imported fetchFromNxsha from this very
+ * file and posted to the same ORIGIN, i.e. it was a second lane list over one
+ * host. Running it as a separate adapter meant two requests to the same upstream
+ * per resolve, two independent failure paths, and two rows in the panel for one
+ * provider — and it made a single upstream outage look like two sources dying at
+ * once. It is now a lane set inside this adapter, which is what it always was.
+ *
+ * These lanes are still fetched and verified exactly as before (manifest-proven
+ * multi-audio, explicitly labelled dubs); only the bookkeeping changed.
+ */
+export const SCREENSCAPE_LANES = ['mbox', 'bdxs', 'watchout', 'rive-hindicast', 'purstream', 'em-8'] as const;
+
+export function createSource5Adapter(
+  enabled: () => boolean,
+  screenscapeEnabled: () => boolean = () => false,
+): SourceAdapter {
+  return {
+    id: 'source-5',
+    label: 'Source 5',
+    enabled,
+    async resolve(query) {
+      const start = Date.now();
+      // Both lane sets hit the same origin, so they are issued together rather
+      // than as two adapters racing the same upstream. The ScreenScape half is
+      // bounded tighter (4s) because it is the slower, more speculative set; if
+      // it loses that race the primary lanes still answer on time.
+      const discoverySignal = query.signal
+        ? AbortSignal.any([query.signal, AbortSignal.timeout(4000)])
+        : AbortSignal.timeout(4000);
+
+      // Source-7 used to be a separate adapter that was off by default. The gate
+      // is preserved exactly: merging the two must not quietly start fetching six
+      // extra lanes on every resolve of a source that was meant to be fast.
+      const wantScreenscape = screenscapeEnabled();
+      const [primary, screenscape] = await Promise.all([
+        fetchFromNxsha(query),
+        wantScreenscape
+          ? fetchFromNxsha(
+              { ...query, signal: discoverySignal, diag: [], onLateResult: undefined },
+              SCREENSCAPE_LANES,
+            )
+          : Promise.resolve([] as RawStreamCandidate[]),
+      ]);
+
+      const primaryRows = primary.map((c) => (query.diag ? { ...c, diagnosticLane: 'N' } : c));
+
+      // ScreenScape rows are only kept when they prove multi-audio or an
+      // explicitly labelled dub. That filter is unchanged from the old adapter;
+      // it is the whole reason these lanes were kept separate.
+      const verified = screenscape.length
+        ? await verifyAndFilterCandidatesDetailed(screenscape, query.signal)
+        : { candidates: [] as RawStreamCandidate[] };
+      const seen = new Set(primaryRows.map((c) => c.url));
+      const extraRows = verified.candidates
+        .filter((candidate) => {
+          const evidence = candidateEvidence(candidate);
+          const multiAudio = (evidence?.discoveredAudioLangs?.length ?? 0) > 1;
+          const labelled = !!candidate.audioLang && candidate.audioLang !== 'und';
+          return !!evidence?.alive && (multiAudio || labelled) && !seen.has(candidate.url);
+        })
+        .map((candidate) => (query.diag ? { ...candidate, diagnosticLane: 'S' } : candidate));
+
+      query.diag?.push({
+        adapter: 'source-5',
+        lane: 'N',
+        ok: primaryRows.length > 0 || extraRows.length > 0,
+        ms: Date.now() - start,
+        detail:
+          `candidates=${primaryRows.length},screenscape=${screenscape.length},` +
+          `verified=${extraRows.length}`,
+      });
+      return { candidates: [...primaryRows, ...extraRows] };
+    },
+  };
 }
