@@ -110,9 +110,10 @@ function rescuedLookup(hostname: string, options: LookupOptions | LookupCallback
   resolveHost(hostname).then(({ v4, v6 }) => {
     const wanted = opts.family === 6 ? v6 : opts.family === 4 ? v4 : [...v4, ...v6];
     if (!wanted.length) {
-      const err = new Error(`getaddrinfo ENOTFOUND ${hostname}`) as NodeJS.ErrnoException;
-      err.code = 'ENOTFOUND';
-      done(err);
+      // Our resolvers had nothing (blocked, or the name genuinely does not exist).
+      // Try the system one before declaring failure: taking over must never be
+      // worse than leaving the system resolver alone.
+      dns.lookup(hostname, options as never, done as never);
       return;
     }
     if (opts.all) {
@@ -124,16 +125,33 @@ function rescuedLookup(hostname: string, options: LookupOptions | LookupCallback
   });
 }
 
-/** Is the system resolver answering at all? One lookup, hard ceiling. */
-async function systemResolverAnswers(): Promise<boolean> {
-  const probe = new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => resolve(false), 2_000);
-    dns.lookup('one.one.one.one', (err) => {
-      clearTimeout(timer);
-      resolve(!err);
-    });
-  });
-  return probe;
+/**
+ * Is the system resolver *reliable*, not merely awake?
+ *
+ * Production showed why one probe is the wrong test: `one.one.one.one` answered,
+ * the gate concluded DNS was healthy, the rescue never installed — and every real
+ * lookup (TMDB, every provider host, again and again) hung until it timed out. A
+ * resolver that answers some names and not others is exactly the failure being
+ * rescued from, so several unrelated names have to work, each within its own
+ * budget.
+ */
+const RELIABILITY_PROBES = ['api.themoviedb.org', 'www.rivestream.app', 'cdn.jsdelivr.net'];
+
+async function systemResolverReliable(): Promise<{ reliable: boolean; failed: string[] }> {
+  const failed: string[] = [];
+  await Promise.all(
+    RELIABILITY_PROBES.map(async (host) => {
+      const ok = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), 2_500);
+        dns.lookup(host, (err) => {
+          clearTimeout(timer);
+          resolve(!err);
+        });
+      });
+      if (!ok) failed.push(host);
+    }),
+  );
+  return { reliable: failed.length === 0, failed };
 }
 
 /**
@@ -174,6 +192,7 @@ function normalizeFetchInput(input: unknown, init?: unknown): { url: string; ini
 }
 
 let installed = false;
+let watchdog: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Installs the patch when it is needed (or when forced) and reports what it did.
@@ -187,15 +206,39 @@ export async function installDnsRescue(log: (line: string) => void = console.log
     return false;
   }
 
-  let needed = mode === 'always' || mode === '1';
-  if (!needed) {
-    needed = !(await systemResolverAnswers());
-    if (!needed) {
-      log(`[elfura-dns] system resolver answers; leaving name resolution alone`);
-      return false;
-    }
-    log('[elfura-dns] system resolver is not answering — testing public resolvers');
+  if (mode === 'always' || mode === '1') return applyRescue(log, 'forced');
+
+  const { reliable, failed } = await systemResolverReliable();
+  if (reliable) {
+    log(`[elfura-dns] system resolver answered all ${RELIABILITY_PROBES.length} probe names; leaving name resolution alone`);
+    // Watch it. A resolver that is healthy at boot and dies an hour later is the
+    // same outage, and a boot-time check can only ever be a sample.
+    startWatchdog(log);
+    return false;
   }
+  log(
+    `[elfura-dns] system resolver failed ${failed.length}/${RELIABILITY_PROBES.length} probe names ` +
+      `(${failed.join(', ')}) — testing public resolvers`,
+  );
+  return applyRescue(log, 'unreliable');
+}
+
+/** Re-checks a resolver that looked healthy at boot, and takes over if it rots. */
+function startWatchdog(log: (line: string) => void): void {
+  if (watchdog) return;
+  watchdog = setInterval(() => {
+    if (installed) return;
+    void systemResolverReliable().then(({ reliable, failed }) => {
+      if (reliable) return;
+      log(`[elfura-dns] resolver degraded after boot (${failed.join(', ')} failed) — installing the rescue now`);
+      void applyRescue(log, 'degraded');
+    });
+  }, 60_000);
+  watchdog.unref();
+}
+
+async function applyRescue(log: (line: string) => void, reason: string): Promise<boolean> {
+  if (installed) return true;
 
   // Prove the public resolvers work before taking over lookups: a broken patch
   // would be worse than the thing it replaces.
@@ -232,9 +275,13 @@ export async function installDnsRescue(log: (line: string) => void = console.log
   globalThis.fetch = rescuedFetch;
 
   installed = true;
+  if (watchdog) {
+    clearInterval(watchdog);
+    watchdog = null;
+  }
   log(
-    `[elfura-dns] outgoing hostname lookups now use ${servers().join(', ')} ` +
-      `(proved with api.themoviedb.org -> ${proof.v4[0] ?? proof.v6[0]})`,
+    `[elfura-dns] outgoing hostname lookups now use ${servers().join(', ')} (${reason}; ` +
+      `proved with api.themoviedb.org -> ${proof.v4[0] ?? proof.v6[0]})`,
   );
   return true;
 }
