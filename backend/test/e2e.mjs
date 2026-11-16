@@ -1507,11 +1507,13 @@ try {
   const healthRes = await fetch(`${apiBase}/api/v1/health`);
   assert.equal(healthRes.status, 200);
   const health = await healthRes.json();
-  assert.deepEqual(health.sources, [
-    { id: 'source-1', label: 'Source 1' },
-    { id: 'source-2', label: 'Source 2' },
-    { id: 'source-3', label: 'Source 3' },
-  ]);
+  // This route is unauthenticated, so its body is public. It used to list every
+  // configured source by id — i.e. it published the exact list the whole design
+  // hides, to anyone who curled /api/v1/health. A count says "configured" without
+  // saying "what with".
+  assert.equal(health.sources, undefined, 'the public health route must not list sources');
+  assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
+  assert.equal(health.sourceCount, 3, 'a bare count is fine');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.

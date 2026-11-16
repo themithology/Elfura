@@ -6,16 +6,19 @@
  * spending the shared response budget on timeouts, and kept returning nothing —
  * for days. One broken source quietly degraded every title.
  *
- * Two mechanisms, deliberately separate:
+ * What this does about it: **nothing automatic**. It records the failure and
+ * shows it in the control panel, and that is the end of it.
  *
- *  - The operator switch (`setEnabled`) is absolute. If it is off, the adapter is
- *    never called. It persists to disk, because an operator who turned a source
+ *  - There is no automatic pause, no cooldown, no benching, no "resting". A
+ *    source is called on every resolve unless a human turns it off. This is
+ *    deliberate and was an explicit instruction: an automatic rule cannot tell
+ *    "this site is dead" from "this site is throttling us for a minute", and it
+ *    only takes one wrong guess to make a working source disappear.
+ *
+ *  - The operator switch (`setEnabled`) is the only thing that removes a source
+ *    from rotation. It persists to disk, because an operator who turned a source
  *    off during an incident should not have to remember to do it again after a
  *    restart.
- *
- *  - The automatic pause is a cooldown, not a verdict. After consecutive
- *    failures a source stops being called for a while, then gets one quiet
- *    attempt. A provider that fixes itself comes back on its own.
  *
  * State lives in `data/source-health.json`, which is small and bounded: one entry
  * per known source, at most a few dozen rows.
@@ -26,20 +29,11 @@ import path from 'node:path';
 
 import type { ResolverSourceStatus } from './playback-resolver.js';
 
-/** Failures in a row before a source is rested. */
-const PAUSE_AFTER_FAILURES = Number(process.env.ELFURA_SOURCE_PAUSE_AFTER || 5);
-/** How long a rested source is skipped before one quiet retry. */
-const PAUSE_DURATION_MS = Number(process.env.ELFURA_SOURCE_PAUSE_MS || 30 * 60_000);
-/** Cap so an extremely long outage does not park a source forever. */
-const MAX_PAUSE_MS = 6 * 60 * 60_000;
-
 interface SourceState {
   /** Operator switch. Absent means enabled. */
   disabled?: boolean;
   consecutiveFailures: number;
   successes: number;
-  /** Epoch ms until which the source is rested. */
-  retryAt?: number;
   lastError?: string;
   lastFailureAt?: number;
   lastSuccessAt?: number;
@@ -70,7 +64,6 @@ export class SourceHealthStore {
           disabled: state.disabled === true,
           consecutiveFailures: Number.isFinite(state.consecutiveFailures) ? Number(state.consecutiveFailures) : 0,
           successes: Number.isFinite(state.successes) ? Number(state.successes) : 0,
-          retryAt: Number.isFinite(state.retryAt) ? Number(state.retryAt) : undefined,
           lastError: typeof state.lastError === 'string' ? state.lastError.slice(0, 200) : undefined,
           lastFailureAt: Number.isFinite(state.lastFailureAt) ? Number(state.lastFailureAt) : undefined,
           lastSuccessAt: Number.isFinite(state.lastSuccessAt) ? Number(state.lastSuccessAt) : undefined,
@@ -100,40 +93,35 @@ export class SourceHealthStore {
    * False when the operator turned it off, or when it is resting after repeated
    * failures. An expired cooldown returns true and lets the next call decide.
    */
-  shouldAttempt(id: string, now = Date.now()): boolean {
-    const state = this.states.get(id);
-    if (!state) return true;
-    if (state.disabled) return false;
-    if (state.retryAt && now < state.retryAt) return false;
-    return true;
+  /**
+   * Whether a source may be called. Only an operator switch can say no.
+   * Kept as a method (rather than reading state at the call site) so the rule has
+   * exactly one home and a future change cannot quietly reintroduce a cooldown.
+   */
+  shouldAttempt(id: string): boolean {
+    return this.states.get(id)?.disabled !== true;
   }
 
-  /** Record a successful resolve. Clears the failure streak and any rest. */
+  /** Record a successful resolve. Clears the failure streak. */
   recordSuccess(id: string, note?: string): void {
     const state = this.stateFor(id);
     state.consecutiveFailures = 0;
     state.successes += 1;
-    state.retryAt = undefined;
     state.lastSuccessAt = Date.now();
     if (note !== undefined) state.lastError = undefined;
     this.scheduleSave();
   }
 
   /**
-   * Record a failure. After enough in a row the source is rested with an
-   * exponential cooldown, so a persistently broken provider costs less over time
-   * while a briefly throttled one recovers on the next attempt.
+   * Record a failure. That is all: count it, remember the error, save it for the
+   * panel. The source is still called on the next resolve, because a failure here
+   * is evidence to show a human, not a verdict to act on automatically.
    */
   recordFailure(id: string, error: string): void {
     const state = this.stateFor(id);
     state.consecutiveFailures += 1;
     state.lastError = error.slice(0, 200);
     state.lastFailureAt = Date.now();
-    if (state.consecutiveFailures >= PAUSE_AFTER_FAILURES) {
-      const over = state.consecutiveFailures - PAUSE_AFTER_FAILURES;
-      const delay = Math.min(PAUSE_DURATION_MS * 2 ** Math.min(over, 4), MAX_PAUSE_MS);
-      state.retryAt = Date.now() + delay;
-    }
     this.scheduleSave();
   }
 
@@ -142,9 +130,8 @@ export class SourceHealthStore {
     const state = this.stateFor(id);
     state.disabled = enabled ? false : true;
     if (enabled) {
-      // Turning a source back on clears its rest and its streak: the operator
-      // has decided to give it another chance, so do not immediately re-pause it.
-      state.retryAt = undefined;
+      // The operator has decided to give it another chance, so start the
+      // scorecard fresh rather than showing yesterday's failures forever.
       state.consecutiveFailures = 0;
       state.lastError = undefined;
     }
@@ -172,30 +159,31 @@ export class SourceHealthStore {
    * lists every configured source, not only the ones that have failed.
    */
   snapshot(known: { id: string; label: string }[] = []): ResolverSourceStatus[] {
-    const now = Date.now();
     const rows: ResolverSourceStatus[] = [];
     const seen = new Set<string>();
     const push = (id: string, label: string) => {
       seen.add(id);
       const state = this.states.get(id);
       const disabled = state?.disabled === true;
-      const restingUntil = state?.retryAt && state.retryAt > now ? state.retryAt : null;
+      const failures = state?.consecutiveFailures ?? 0;
       rows.push({
         id,
         label,
         disabledByOperator: disabled,
-        paused: !disabled && restingUntil !== null,
-        consecutiveFailures: state?.consecutiveFailures ?? 0,
-        retryAt: restingUntil,
+        // Always false now: nothing pauses itself. Kept in the shape so an old
+        // data file or an older client cannot misread a field.
+        paused: false,
+        consecutiveFailures: failures,
+        retryAt: null,
         lastError: state?.lastError ?? null,
         successes: state?.successes ?? 0,
         detail: disabled
           ? 'turned off by the operator'
-          : restingUntil
-            ? `resting until ${new Date(restingUntil).toISOString()}`
-            : state?.lastError
-              ? `last error: ${state.lastError}`
-              : 'healthy',
+          : failures
+            ? `failing · ${failures} in a row · last error: ${state?.lastError ?? 'unknown'}`
+            : state?.successes
+              ? 'healthy'
+              : 'not tried yet',
       });
     };
     for (const source of known) push(source.id, source.label);

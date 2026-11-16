@@ -109,9 +109,9 @@ export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
   /**
-   * Per-source health and operator switches. A source that is turned off, or one
-   * that is resting after repeated failures, is not called at all — that is what
-   * stops one broken provider from spending the shared resolve budget.
+   * Per-source health and operator switches. Health is recorded and displayed
+   * only: failures never remove a source by themselves. The single thing that
+   * takes a source out of rotation is an operator switching it off in the panel.
    */
   readonly health: SourceHealthStore;
   private readonly ramCache = new PolicyCache<{ expiresAt: number; result: RawSourceResult }>(
@@ -135,7 +135,7 @@ export class SourceRegistry {
   /**
    * Why the last resolve came back empty, when it was us and not the title.
    * The resolver reports this so "no streams" never silently means "every
-   * source was resting".
+   * source was switched off".
    */
   lastEmptyReason: string | null = null;
 
@@ -552,29 +552,27 @@ export class SourceRegistry {
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
-    // A source the operator switched off, or one that is resting after repeated
-    // failures, is not called at all. This is the whole point: a broken provider
-    // must cost nothing beyond the moment it broke.
+    // Only an operator switch removes a source here. A source that has failed
+    // every time for a week is still asked, because nothing here may decide on
+    // its own that a provider is finished — that judgment belongs to the person
+    // reading the panel.
     const activeAdapters = this.adapters.filter(
       (a) =>
         a.enabled() &&
         this.health.shouldAttempt(a.id) &&
         (!params.sourceId || a.id === params.sourceId),
     );
-    const restedAdapters = this.adapters.filter(
+    const switchedOff = this.adapters.filter(
       (a) => a.enabled() && !this.health.shouldAttempt(a.id) && (!params.sourceId || a.id === params.sourceId),
     );
     this.lastEmptyReason = null;
     if (!activeAdapters.length) {
       // Nothing to try. Reported up so the resolver can say *why* the answer is
       // empty, instead of letting it read like "this title has no sources".
-      if (restedAdapters.length) {
-        this.lastEmptyReason = `${restedAdapters.length} source(s) resting after repeated failures`;
+      if (switchedOff.length) {
+        this.lastEmptyReason = `${switchedOff.length} source(s) switched off by the operator`;
       }
       return null;
-    }
-    if (restedAdapters.length) {
-      this.lastEmptyReason = `${restedAdapters.length} source(s) resting after repeated failures`;
     }
 
     const streamBase = params.streamPathPrefix || '/api/v1/stream';

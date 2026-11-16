@@ -476,7 +476,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         // without SSH. heapUsed is what the code holds; rss is what the OS
         // reserved. With payload caching off these should both stay flat.
         memory: readMemoryUsage(),
-        sources: registry.listPublicSources(),
+        // Deliberately no source list. This route is unauthenticated so a host can
+        // poll it, which means its body is public: naming the providers here would
+        // hand out the one thing the whole design hides. Count only, which says
+        // "it is configured" without saying what with.
+        sourceCount: registry.listPublicSources().length,
       });
       return;
     }
@@ -1045,9 +1049,15 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
     );
     console.log(describeMemoryPolicy());
     const state = registry.describeSources();
-    const sources = state.enabled.join(', ') || 'none';
+    // Count, not names. This console is visible to anyone with panel access, and
+    // the list of providers is the one thing that must not be published — a
+    // screenshot of the startup log used to be a complete source list.
+    // ELFURA_VERBOSE_SOURCES=1 restores the names for local debugging.
+    const named =
+      process.env.ELFURA_VERBOSE_SOURCES === '1' ? `: ${state.enabled.join(', ') || 'none'}` : '';
     console.log(
-      `[elfura-backend] listening on http://${cfg.host}:${cfg.port} (${state.enabled.length}/${state.enabled.length + state.disabled.length} sources: ${sources}; roxy: enabled)`,
+      `[elfura-backend] listening on ${cfg.host}:${cfg.port} ` +
+        `(${state.enabled.length}/${state.enabled.length + state.disabled.length} sources${named}; roxy: enabled)`,
     );
     if (process.env.ELFURA_SELF_TEST !== '0') {
       void import('./sources/self-test.js')
@@ -1138,20 +1148,35 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
     process.exit(1);
   }
   const port = resolverPort(cfg);
+  // The resolver is an internal component. On a two-machine setup it must listen
+  // on the private network only, never on the public interface — bind it to the
+  // WireGuard/private IP, or to 127.0.0.1 when both live on one box.
+  const listenHost = (process.env.ELFURA_RESOLVER_LISTEN || '127.0.0.1').trim();
+  if (listenHost === '0.0.0.0' || listenHost === '::') {
+    console.warn(
+      `[elfura-resolver] listening on ${listenHost} exposes discovery to every network this ` +
+        'machine is on. The token is the only thing left guarding it. Prefer a private address.',
+    );
+  }
   const { server } = createResolverServer({ cfg, registry, token });
   // The egress profile must be installed before the first provider request, and
   // the DNS rescue before the first hostname lookup — exactly as in media mode.
   void installDnsRescue().then(() => installEgressProfile());
-  server.listen(port, cfg.host, () => {
+  server.listen(port, listenHost, () => {
+    // Deliberately vague. This fills a Pterodactyl console that anyone with panel
+    // access can read, so it does not name the port, the bind address or how many
+    // sources exist. The operator knows all three; the log does not need them.
     console.log(
-      `[elfura-resolver] listening on http://${cfg.host}:${port} · ${registry.listPublicSources().length} sources · ` +
+      '[elfura-resolver] ready · discovery is isolated from the media server · ' +
         `token ${process.env.ELFURA_RESOLVER_TOKEN ? 'from ELFURA_RESOLVER_TOKEN' : 'shared with ELFURA_SECRET'}`,
     );
+    if (process.env.ELFURA_RESOLVER_VERBOSE === '1') {
+      console.log(`[elfura-resolver] verbose: http://${cfg.host}:${port} · ${registry.listPublicSources().length} sources`);
+    }
     console.log(describeMemoryPolicy());
-    console.log(
-      `[elfura-resolver] point the media server at it with ` +
-        `ELFURA_RESOLVER_URL=http://127.0.0.1:${port}`,
-    );
+    if (process.env.ELFURA_RESOLVER_VERBOSE === '1') {
+      console.log(`[elfura-resolver] point the media server at it with ELFURA_RESOLVER_URL=http://127.0.0.1:${port}`);
+    }
   });
   const shutdown = (signal: string) => {
     console.log(`[elfura-resolver] ${signal} received; closing`);

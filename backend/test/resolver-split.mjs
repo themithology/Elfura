@@ -155,10 +155,15 @@ console.log('\nProvider isolation');
 
 // ---- The resolver is a real service with a real contract --------------------
 const health = await (await fetch(`${resolverBase}/resolver/api/health`)).json();
-await check('resolver reports itself by name', () => {
+await check('resolver health reveals nothing about sources', () => {
   assert.equal(health.ok, true);
   assert.equal(health.service, 'elfura-resolver');
-  assert.ok(Array.isArray(health.sources) && health.sources.length >= 20, `expected >=20 sources, got ${health.sources?.length}`);
+  // This route is unauthenticated by design, so its body is public. It must not
+  // carry the source list, a source count, the port or the bind address.
+  const body = JSON.stringify(health);
+  assert.equal(health.sources, undefined, 'health must not list sources');
+  assert.doesNotMatch(body, /source-\d+/, 'health body must never contain a source id');
+  assert.deepEqual(Object.keys(health).sort(), ['ok', 'service']);
 });
 
 await check('resolver refuses untrusted callers', async () => {
@@ -167,6 +172,32 @@ await check('resolver refuses untrusted callers', async () => {
 });
 
 const listed = await (await fetch(`${resolverBase}/resolver/api/sources`, { headers: tokenHeader })).json();
+await check('resolver serves nothing but its own API', async () => {
+  // It must be impossible to reach a player, an embed or the panel on the
+  // resolver: that box is supposed to be invisible to the public.
+  for (const route of ['/embed/movie/550', '/roxy', '/', '/api/v1/health', '/api/v1/stream?t=x']) {
+    const response = await fetch(`http://127.0.0.1:${resolverPort}${route}`);
+    assert.ok(
+      response.status === 401 || response.status === 404,
+      `${route} on the resolver must not serve anything (got ${response.status})`,
+    );
+  }
+});
+
+await check('media server does not proxy the resolver API', async () => {
+  for (const route of ['/resolver/api/health', '/resolver/api/sources', '/resolver/api/playback']) {
+    const response = await fetch(`${mediaBase}${route}`, { headers: { origin: mediaBase } });
+    assert.equal(response.status, 404, `${route} must not exist on the public server`);
+  }
+});
+
+await check('public health exposes a count, never a list', async () => {
+  const body = await (await fetch(`${mediaBase}/api/v1/health`)).json();
+  assert.equal(body.sources, undefined, 'the public health route must not list sources');
+  assert.doesNotMatch(JSON.stringify(body), /source-\d+/, 'no source id may appear in a public body');
+  assert.equal(typeof body.sourceCount, 'number');
+});
+
 await check('resolver lists every source with health', () => {
   assert.ok(Array.isArray(listed.sources) && listed.sources.length >= 20);
   for (const source of listed.sources) {
@@ -174,6 +205,60 @@ await check('resolver lists every source with health', () => {
     assert.equal(typeof source.paused, 'boolean');
     assert.equal(typeof source.disabledByOperator, 'boolean');
   }
+});
+
+// ---- Nothing may remove a source automatically ------------------------------
+// An explicit instruction: record and display failing sources, never bench them.
+// A source that has failed a hundred times in a row must still be called.
+const healthStore = await import('../../dist/backend/source-health.js');
+await check('failures never remove a source from rotation', () => {
+  const store = new healthStore.SourceHealthStore(tmp);
+  for (let i = 0; i < 100; i++) store.recordFailure('source-1', 'TimeoutError');
+  assert.equal(store.shouldAttempt('source-1'), true, 'a failing source must still be attempted');
+  const row = store.snapshot([{ id: 'source-1', label: 'Source 1' }])[0];
+  assert.equal(row.consecutiveFailures, 100, 'the streak is recorded for display');
+  assert.match(row.detail, /failing/, 'the panel must say it is failing');
+  assert.equal(row.paused, false, 'nothing pauses itself');
+  assert.equal(row.retryAt, null, 'no automatic retry window exists');
+});
+
+await check('only an operator switch removes a source', () => {
+  const store = new healthStore.SourceHealthStore(tmp);
+  store.setEnabled('source-2', false);
+  assert.equal(store.shouldAttempt('source-2'), false);
+  store.setEnabled('source-2', true);
+  assert.equal(store.shouldAttempt('source-2'), true, 'switching back on restores it immediately');
+});
+
+// ---- A public resolver URL must be refused ---------------------------------
+await check('a public resolver URL is refused, a private one accepted', async () => {
+  const resolverModule = await import('../../dist/backend/playback-resolver.js');
+  const { resolverConfig, isPrivateResolverUrl } = resolverModule;
+  for (const allowed of [
+    'http://127.0.0.1:8793',
+    'http://localhost:8793',
+    'http://10.0.0.5:8793',
+    'http://192.168.1.20:8793',
+    'http://172.16.4.4:8793',
+    'http://100.101.102.103:8793',
+    'http://resolver.internal:8793',
+  ]) {
+    assert.equal(isPrivateResolverUrl(allowed), true, `${allowed} should count as private`);
+    assert.ok(resolverConfig({ ELFURA_RESOLVER_URL: allowed, ELFURA_SECRET: 'x' }), `${allowed} should be accepted`);
+  }
+  for (const refused of ['http://203.0.113.9:8793', 'https://resolver.example.com']) {
+    assert.equal(isPrivateResolverUrl(refused), false, `${refused} must not count as private`);
+    assert.equal(
+      resolverConfig({ ELFURA_RESOLVER_URL: refused, ELFURA_SECRET: 'x' }),
+      null,
+      `${refused} must be refused: it would send the token and receive source names over the internet`,
+    );
+  }
+  // ...unless the operator has explicitly said they have a trusted private link.
+  assert.ok(
+    resolverConfig({ ELFURA_RESOLVER_URL: 'https://resolver.example.com', ELFURA_SECRET: 'x', ELFURA_RESOLVER_ALLOW_PUBLIC: '1' }),
+    'the override must work for someone who knows what they are doing',
+  );
 });
 
 // ---- Sign in to the control panel -----------------------------------------
@@ -291,7 +376,13 @@ await check('autostart: one command starts both processes', async () => {
   const autoResolverPort = Number(match[1]);
   const report = await (await fetch(`http://127.0.0.1:${autoResolverPort}/resolver/api/health`)).json();
   assert.equal(report.service, 'elfura-resolver');
-  assert.ok(report.sources.length >= 20);
+  // The count now comes from the authenticated route, not the public one.
+  const listed = await (
+    await fetch(`http://127.0.0.1:${autoResolverPort}/resolver/api/sources`, {
+      headers: { 'x-elfura-resolver-token': secret },
+    })
+  ).json();
+  assert.ok(listed.sources.length >= 20);
 });
 
 await check('autostart: media server uses the resolver it started', async () => {

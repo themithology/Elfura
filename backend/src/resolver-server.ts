@@ -120,11 +120,11 @@ export function createResolverServer(options: ResolverServerOptions): {
       // Liveness is deliberately unauthenticated so a host can health-check it,
       // and deliberately says nothing beyond whether it is up.
       if (pathname === '/resolver/api/health') {
-        sendJson(res, 200, {
-          ok: true,
-          service: 'elfura-resolver',
-          sources: registry.listPublicSources().map((s) => s.id),
-        });
+        // Nothing beyond "I am up". This route is unauthenticated so a host can
+        // poll it, which means anything in the body is public: a source count
+        // would tell a scanner how much this box scrapes, and source ids would
+        // hand over the very list the whole design exists to hide.
+        sendJson(res, 200, { ok: true, service: 'elfura-resolver' });
         return;
       }
 

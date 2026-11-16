@@ -94,11 +94,44 @@ export const RESOLVER_AUTH_HEADER = 'x-elfura-resolver-token';
 export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
   const url = (env.ELFURA_RESOLVER_URL ?? '').trim();
   if (!url) return null;
-  // Both sides must run on the same machine or a private network; a resolver is
-  // an internal component, not a service to expose.
   if (!/^https?:\/\//i.test(url)) return null;
   const token = (env.ELFURA_RESOLVER_TOKEN ?? env.ELFURA_SECRET ?? '').trim();
-  return { url: url.replace(/\/+$/, ''), token };
+  const clean = url.replace(/\/+$/, '');
+  // A resolver is an internal component. Over the open internet, the token is
+  // transmitted on every call, and the responses name sources and hand back
+  // stream URLs — so a public resolver URL means leaking exactly what the design
+  // hides. Addresses that are obviously private (localhost, RFC1918, WireGuard
+  // ranges, *.internal / *.local) need no ceremony; anything else must be an
+  // explicit decision by the operator.
+  if (!isPrivateResolverUrl(clean) && env.ELFURA_RESOLVER_ALLOW_PUBLIC !== '1') {
+    console.error(
+      `[elfura-resolver] refusing to use a public resolver URL (${clean}): it would send the ` +
+        'shared token and receive source names over the internet. Use a private address ' +
+        '(127.0.0.1, 10.x, 172.16-31.x, 192.168.x, 100.64-127.x, *.internal), or set ' +
+        'ELFURA_RESOLVER_ALLOW_PUBLIC=1 if you have a TLS-protected private link you trust.',
+    );
+    return null;
+  }
+  return { url: clean, token };
+}
+
+/** True for addresses that only make sense on a private network. */
+export function isPrivateResolverUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return false;
+  }
+  if (host === 'localhost' || host === '::1') return true;
+  if (host.endsWith('.internal') || host.endsWith('.local') || host.endsWith('.lan')) return true;
+  if (/^127\./.test(host)) return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)) return true;
+  // Carrier-grade NAT, which is what most WireGuard/Tailscale setups land in.
+  if (/^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./.test(host)) return true;
+  return false;
 }
 
 /**

@@ -208,102 +208,163 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
 <<<<<<< HEAD
 =======
 
-### Optional: running source discovery in a second process
+### Deployment layouts: one server or two
 
-Provider scraping is the least predictable part of this project. A site changes
-its markup and an adapter starts failing slowly, sometimes while holding a
-connection open until it times out. In the default single-process install that
-work shares a heap and a CPU with the relay, so a bad provider can make video
-serving feel worse.
+The project is **one build** that runs in **two roles**. You deploy the same
+`elfura-pterodactyl.zip` either once or twice depending on how much isolation you
+want. There is no separate resolver package to download.
 
-You can move it out without touching the player. Same ZIP, same build, one extra
-process:
+| Role | Command | Does | Never does |
+| --- | --- | --- | --- |
+| **Media server** | `node index.js` | Serves embeds, the player, video relay, catalogue, control panel; mints and checks stream tickets | Scrapes providers (when a resolver is configured) |
+| **Resolver** | `node index.js --resolver` | Scrapes providers, keeps per-source health, answers `/resolver/api/*` | Serves video, serves embeds, exposes a player |
 
-**On Pterodactyl, just add one startup variable** — you do not need a second
-console, because there is only one:
+They share `ELFURA_SECRET` so a stream ticket minted by the resolver opens in the
+media server. The player, the relay and the ticket format are identical in every
+layout below — that is the point of the seam.
+
+#### Layout A — one server (simplest, and fine)
+
+One Pterodactyl server. One startup command. Everything in one process.
+
+```ini
+# .env / Startup variables
+ELFURA_SECRET=<a long random string>
+TMDB_API_BASE=https://your-tmdb.example
+ALLOWED_ORIGINS=https://your-site.example
+```
+
+Do nothing else. Resolution happens in-process. Per-source health and the kill
+switch work exactly the same. **This is a supported deployment, not a degraded
+one.**
+
+If you later want the scraping isolated but still only own one server, add:
 
 ```ini
 ELFURA_RESOLVER_AUTOSTART=1
 ```
 
-The media server then starts the resolver itself on `SERVER_PORT + 3`, points at
-it, and supervises it: if scraping dies, video keeps serving and the dashboard
-says the resolver is down. Leave it unset and everything runs in one process,
-exactly as before.
+The media server starts the resolver itself on `SERVER_PORT + 3`, bound to
+`127.0.0.1` only, and supervises it. You still have **one** Pterodactyl server;
+you now have two processes inside it. If the resolver dies, video keeps serving
+and the dashboard tells you.
 
-Running them by hand is the same mechanism, useful on a VPS or while debugging:
+> RAM: two Node processes in a 500 MB container is tight. Each is capped at
+> 384 MB old-space, so they cannot both peak, but if you see restarts after
+> enabling this, that is the first thing to check. If in doubt, stay on Layout A
+> without autostart, or move to Layout B.
+
+#### Layout B — two servers (full isolation)
+
+Two Pterodactyl servers, same egg, same ZIP, **different startup variables**. They
+must be on a private network that can reach each other — a WireGuard/Tailscale
+mesh, or two instances on the same host's private network. Do not put the
+resolver on the public internet; the media server refuses a public resolver URL
+for exactly that reason (see the guard below).
+
+**Server 1 — media server (this is the one your viewers reach)**
+
+```ini
+ELFURA_SECRET=<the SAME long random string as server 2>
+ELFURA_RESOLVER_URL=http://<resolver-private-ip>:8793
+TMDB_API_BASE=https://your-tmdb.example
+ALLOWED_ORIGINS=https://your-site.example
+SERVER_PORT=8790
+```
+
+Started with `node index.js`. This box is the only one that should be publicly
+reachable. It holds no provider logic.
+
+**Server 2 — resolver (nothing public, ever)**
+
+```ini
+ELFURA_SECRET=<the SAME long random string as server 1>
+ELFURA_RESOLVER_LISTEN=<its private IP, e.g. 10.8.0.2>
+ELFURA_RESOLVER_PORT=8793
+```
+
+Started with `node index.js --resolver`. **Do not** expose a port or a public
+domain for this server. It needs outbound internet (to reach providers) and
+inbound from server 1 only.
+
+What must match:
+
+| Value | Server 1 | Server 2 |
+| --- | --- | --- |
+| `ELFURA_SECRET` | same | same |
+| Resolver address | `ELFURA_RESOLVER_URL` → server 2 | `ELFURA_RESOLVER_LISTEN` / `_PORT` |
+| Startup command | `node index.js` | `node index.js --resolver` |
+
+What must **not** be set on server 2: `ALLOWED_ORIGINS`, `SERVER_PORT` (that is the
+media port), `ELFURA_RESOLVER_URL` (it would make the resolver try to use a
+resolver). And do not set `ELFURA_RESOLVER_AUTOSTART=1` on server 2 — it is not
+needed there and would be ignored anyway.
+
+#### Verifying the wiring
 
 ```bash
-# terminal 1 — discovery only
-node index.js --resolver          # or: ELFURA_RESOLVER_MODE=1 node index.js
+# from server 1 — should answer {"ok":true,"service":"elfura-resolver"}
+curl http://<resolver-private-ip>:8793/resolver/api/health
 
-# terminal 2 — video only, pointed at it
-ELFURA_RESOLVER_URL=http://127.0.0.1:8790 node index.js
+# from anywhere else — should NOT answer
+curl http://<resolver-public-ip>:8793/resolver/api/health
 ```
+
+Then sign in to `/roxy` on server 1 → **Source health**. The tag reads
+`RESOLVER · SEPARATE PROCESS` when server 1 is really using server 2. If it reads
+`IN-PROCESS`, server 1 did not accept your URL (check the console: it says why).
+
+#### Keeping the resolver and its sources hidden
+
+Three things enforce this, all covered by tests:
+
+1. **The resolver has no public surface.** It binds `127.0.0.1` unless you set
+   `ELFURA_RESOLVER_LISTEN`. Its only unauthenticated route is
+   `/resolver/api/health`, which returns `{"ok":true,"service":"elfura-resolver"}`
+   and nothing else — no source ids, no count, no port.
+2. **The media server does not proxy it.** `/resolver/api/*` returns 404 on the
+   public server. There is no route that forwards to the resolver.
+3. **The public health endpoint no longer lists sources.** `/api/v1/health` used
+   to name every configured source to anyone who asked; it now returns a bare
+   `sourceCount`.
+
+The resolver URL itself must be private. `localhost`, `127.x`, `10.x`,
+`172.16–31.x`, `192.168.x`, `100.64–127.x` (Tailscale/WireGuard) and
+`*.internal` / `*.local` / `*.lan` are accepted. Anything else is refused at
+startup with an explanation, because over the open internet every call would send
+the shared token and receive source names back. If you genuinely have a
+TLS-protected private link you trust, `ELFURA_RESOLVER_ALLOW_PUBLIC=1` overrides —
+it is there deliberately, not by accident.
 
 | Variable | Meaning |
 | --- | --- |
-| `ELFURA_RESOLVER_AUTOSTART` | `1` starts a separate resolver from the media server. Ignored if `ELFURA_RESOLVER_URL` is set. |
-| `ELFURA_RESOLVER_URL` | Base URL of the resolver. Unset means "resolve in this process", the default. |
-| `ELFURA_RESOLVER_TOKEN` | Shared secret for the resolver API. Falls back to `ELFURA_SECRET`, so usually nothing to set. |
-| `ELFURA_RESOLVER_PORT` | Resolver listen port. Defaults to `SERVER_PORT + 3`. |
-| `ELFURA_SOURCE_PAUSE_AFTER` | Consecutive failures before a source rests. Default 5. |
-| `ELFURA_SOURCE_PAUSE_MS` | How long it rests. Default 30 minutes. |
+| `ELFURA_RESOLVER_AUTOSTART` | `1` starts a resolver from the media server (Layout A+). Ignored if `ELFURA_RESOLVER_URL` is set. |
+| `ELFURA_RESOLVER_URL` | Base URL of the resolver (Layout B). Unset means "resolve in this process". Must be a private address. |
+| `ELFURA_RESOLVER_LISTEN` | Address the resolver binds. Default `127.0.0.1`. Set to the private IP in Layout B. |
+| `ELFURA_RESOLVER_PORT` | Resolver port. Default `SERVER_PORT + 3`. |
+| `ELFURA_RESOLVER_TOKEN` | Resolver API token. Falls back to `ELFURA_SECRET`, so usually nothing to set. |
+| `ELFURA_RESOLVER_ALLOW_PUBLIC` | `1` permits a public resolver URL. Off by default, on purpose. |
+| `ELFURA_RESOLVER_VERBOSE` | `1` makes the resolver log its port and source count (off by default so a shared panel console stays quiet). |
 
-Both processes must share `ELFURA_SECRET`: stream tickets are minted by whichever
-one resolves and must open in the one serving video. The resolver refuses to start
-without a token, because an unauthenticated resolver is an open scraping proxy.
-
-What the split actually guarantees, and what the test suite now pins:
+What the split guarantees, and what the suite pins:
 
 - **A broken provider cannot touch a stream that is already playing.** The relay
-  reads tickets, not providers. It never asks the resolver for anything on the
-  stream path.
-- **A resolver outage is a 503, never a 404.** "No sources for this title" and
+  reads tickets, not providers. It never asks the resolver on the stream path.
+- **A resolver outage is a 503, never a 404.** "No source for this title" and
   "our scraper is down" are different facts and must not look the same.
-- **Media serving does not depend on it.** Health, the catalogue, embeds and the
-  control panel keep answering while the resolver is dead, and they pick it back
-  up on their own when it returns — no restart needed.
-- **A source that keeps failing rests**, is retried automatically after
-  `ELFURA_SOURCE_PAUSE_MS`, and is visible and switchable in the dashboard.
+- **Media serving does not depend on it.** Health, catalogue, embeds and the panel
+  keep answering while the resolver is dead, and recover on their own — no restart.
+- **A failing source is recorded and displayed, never switched off automatically.**
+  Nothing here decides on its own that a provider is finished. Failures appear in
+  the dashboard with the error and the streak; removing a source from rotation is
+  only ever an operator action, and it is reversible in one click.
 
 Per-source health lives in the **Source health** panel on `/roxy`. Each source
-shows whether it is healthy, resting, or switched off by you, with its last error
+shows whether it is healthy, failing, or switched off by you, with its last error
 and consecutive failure count. **Switch off** stops it from being called at all;
-**Switch back on** returns it immediately. If the resolver itself is unreachable
-the panel says so instead of showing an empty list — zero sources and an
-unreachable resolver are not the same thing.
-
-Running without `ELFURA_RESOLVER_URL` is a supported deployment, not a degraded
-one: you get the same per-source health, resting and kill switches in-process.
->>>>>>> fe3f985 (WIP: resolver split work (backup before rebase))
-
-## 7. Layout
-
-```
-RULES.md                  strict Part 1 / Part 2 architecture & zero-disk rules
-src/core/params.ts        input schema (single source of truth)
-src/core/config.ts        precedence + path/SSR boot + provenance + redaction
-src/core/events.ts        event bus + origin-locked postMessage bridge
-src/core/audio.ts         native/external tracks, language matching, sync engine
-src/core/player.ts        engine adapters (lazy), uniform API client, source failover
-src/subs/parser.ts        VTT / SRT / ASS -> Cue[]
-src/subs/renderer.ts      DOM overlay renderer, drag-to-position
-src/subs/style.ts         SubtitleStyle model, clamping, persistence
-src/ui/controls.ts        chrome, Sources/Quality/CC/Speed/Audio panel, rAF loop
-src/ui/styles.css         one accent property, derived shades
-embed.html                iframe surface
-backend/src/index.ts      zero-dep HTTP server + SSR token bootstrap
-backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
-backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
-backend/src/tmdb.ts       self-hosted TMDB metadata client
-backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
-backend/src/playback-resolver.ts        resolve in-process or over the wire (the seam)
-backend/src/playback-resolver-remote.ts HTTP client for a separate resolver process
-backend/src/resolver-server.ts          the `--resolver` mode: discovery only
-backend/src/source-health.ts            per-source failures, resting, operator switches
-backend/src/sources/      isolated SourceAdapter registry + Source 1–20 adapters (16 bundled Anivexa anime aggregator — pass both `tmdb` and `anilist`; 17 AniVortex catalogue, opt-in and needs installation credentials from `scripts/anivortex-register.mjs`; 18 SubDubAnime Hindi/English sub+dub anime; 19 DesiDubAnime Hindi/Tamil/Telugu dubs; 20 Vidora TMDB-keyed HLS + subtitles)
-```
+**Switch back on** returns it immediately and clears its streak. If the resolver
+itself is unreachable the panel says so instead of showing an empty list — zero
+sources and an unreachable resolver are not the same thing.
 
 ## Roxy operator dashboard
 
