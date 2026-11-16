@@ -132,6 +132,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  // Artwork and playback are what one page load spends its requests on, and the
+  // player reads any non-200 as "this title has no sources". Sharing the 120/min
+  // abuse bucket with them meant a viewer who browsed a catalogue — every card
+  // asks for artwork — exhausted the bucket and then saw "not available in all
+  // sources" for every title until the minute rolled over. They get their own
+  // windows, unlimited unless an operator sets a number.
+  const artCeiling = Number(process.env.ELFURA_ART_RATE_LIMIT || 0);
+  const playbackCeiling = Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0);
+  const artLimiter = artCeiling > 0 ? new SlidingWindowLimiter(artCeiling) : null;
+  const playbackLimiter = playbackCeiling > 0 ? new SlidingWindowLimiter(playbackCeiling) : null;
   const roxy = new RoxyStore(cfg.secret);
   // Pop-under ads live in the embed player only; this decides per request.
   const ads = new AdSettingsStore();
@@ -413,7 +423,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'request forbidden' });
         return;
       }
-      if (!rateLimiter.allow(`art:${getClientIp(req)}`)) {
+      if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -457,7 +467,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!rateLimiter.allow(`pb:${clientIp}`)) {
+      if (playbackLimiter && !playbackLimiter.allow(`pb:${clientIp}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
