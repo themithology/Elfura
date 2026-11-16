@@ -12,27 +12,32 @@ on:
       - '.github/workflows/egress-check.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
       - name: Reachability matrix
         run: |
+          cat > /tmp/probe.sh <<'SCRIPT'
           set +e
           probe() {
             local label="$1" url="$2"
             local out
-            out=$(curl -sS -o /tmp/body -w '%{http_code} %{time_total}' \
-              --max-time 12 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
-              -H 'Accept: application/json,text/html;q=0.9,*/*;q=0.8' \
-              "$url" 2>/tmp/err)
-            local bytes; bytes=$(wc -c </tmp/body 2>/dev/null || echo 0)
+            out=$(curl -sS -o /tmp/body -w '%{http_code} %{time_total}' --max-time 12 \
+              -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+              -H 'Accept: application/json,text/html;q=0.9,*/*;q=0.8' "$url" 2>/tmp/err)
+            local bytes; bytes=$(wc -c </tmp/body 2>/dev/null | tr -d ' ')
             local head; head=$(head -c 70 /tmp/body 2>/dev/null | tr -d '\n\r' | tr -s ' ')
-            printf '%-28s %-22s bytes=%-7s %s\n' "$label" "${out:-curl-failed}" "$bytes" "$head"
-            if [ -s /tmp/err ]; then printf '%-28s ERR: %s\n' "" "$(head -c 120 /tmp/err)"; fi
+            printf '%-22s %-22s bytes=%-7s %s\n' "$label" "${out:-curl-failed}" "$bytes" "$head"
+            [ -s /tmp/err ] && printf '%-22s ERR: %s\n' "" "$(head -c 120 /tmp/err)"
           }
-          echo "==== control (should work) ===="
+          echo "==== control ===="
           probe tmdb https://api.themoviedb.org/3/configuration
           echo "==== provider hosts the adapters use ===="
           probe rivestream https://www.rivestream.app/
@@ -56,3 +61,15 @@ jobs:
           probe cdn-jsdelivr https://cdn.jsdelivr.net/
           probe raw-github https://raw.githubusercontent.com/
           echo "==== end ===="
+          SCRIPT
+          bash /tmp/probe.sh | tee research/egress-matrix.txt
+
+      - name: Commit the matrix
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name  'elfura-ci'
+          git config user.email 'ci@elfura.invalid'
+          git add research/egress-matrix.txt || true
+          git commit -m "research: egress matrix from a datacenter IP [skip ci]" || true
+          git push || true
