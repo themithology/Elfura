@@ -149,12 +149,73 @@ function tryResolveLocaleTag(raw: string): { code: string; label: string } | nul
   return null;
 }
 
+/**
+ * Labels that Intl cannot resolve, because they are not English exonyms.
+ *
+ * `Intl.DisplayNames` only knows English names ("Hindi", "German"), so the
+ * subtitle backends that label tracks in their own script — हिन्दी, বাংলা,
+ * ਪੰਜਾਬੀ, العربية — all fell through to `und` and their tracks were
+ * indistinguishable from each other. This is deliberately a short table of
+ * observed spellings rather than an attempt at a general transliterator: it
+ * covers exactly the labels citadel/flowcast emit and nothing speculative.
+ *
+ * A miss is still safe: the track keeps its label and is marked `und`.
+ */
+const NATIVE_LANGUAGE_ALIASES: Record<string, string> = {
+  हिन्दी: 'hi', हिंदी: 'hi', hindi: 'hi',
+  বাংলা: 'bn', bengali: 'bn',
+  // Bengali can arrive in Arabic script from some backends.
+  '\u0628\u09be\u0982\u09b2\u09be': 'bn',
+  ਪੰਜਾਬੀ: 'pa', punjabi: 'pa',
+  اَلْعَرَبِيَّةُ: 'ar', العربية: 'ar', arabic: 'ar',
+  தமிழ்: 'ta', tamil: 'ta',
+  తెలుగు: 'te', telugu: 'te',
+  മലയാളം: 'ml', malayalam: 'ml',
+  ಕನ್ನಡ: 'kn', kannada: 'kn',
+  मराठी: 'mr', marathi: 'mr',
+  ગુજરાતી: 'gu', gujarati: 'gu',
+  اردو: 'ur', urdu: 'ur',
+  // Exonyms the backends get wrong rather than foreign: citadel labels German
+  // tracks "Germany", which is a country name, so Intl finds nothing.
+  germany: 'de', deutsch: 'de',
+  france: 'fr', français: 'fr', francais: 'fr',
+  spain: 'es', español: 'es', espanol: 'es',
+  italy: 'it', italiano: 'it',
+  japan: 'ja', 日本語: 'ja',
+  korea: 'ko', 한국어: 'ko',
+  russia: 'ru', русский: 'ru',
+  turkey: 'tr', türkçe: 'tr',
+  netherlands: 'nl', nederlands: 'nl',
+  poland: 'pl', polski: 'pl',
+  portugal: 'pt', português: 'pt', portugues: 'pt',
+};
+
+function nativeAliasCode(raw: string): string | null {
+  const key = raw.trim().toLowerCase().replace(/\s*\(.*\)\s*$/, '');
+  return NATIVE_LANGUAGE_ALIASES[key] ?? null;
+}
+
 export function normalizeLang(raw?: string | null, explicitLabel?: string | null): { code: string; label: string } {
   const fromRaw = raw ? tryResolveLocaleTag(String(raw)) : null;
   if (fromRaw && fromRaw.code !== 'und') return fromRaw;
 
   const fromLabel = explicitLabel ? tryResolveLocaleTag(String(explicitLabel)) : null;
   if (fromLabel && fromLabel.code !== 'und') return fromLabel;
+
+  // Native-script / country-name labels that Intl cannot resolve.
+  for (const candidate of [explicitLabel, raw]) {
+    if (!candidate) continue;
+    const code = nativeAliasCode(String(candidate));
+    if (code) {
+      try {
+        const dn = new Intl.DisplayNames(['en'], { type: 'language' });
+        const label = dn.of(code) ?? String(candidate);
+        return { code, label };
+      } catch {
+        return { code, label: String(candidate) };
+      }
+    }
+  }
 
   if (fromRaw) return fromRaw;
   if (fromLabel) return fromLabel;

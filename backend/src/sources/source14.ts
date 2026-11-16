@@ -23,12 +23,18 @@ import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
-import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
+import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://scrapper.rivestream.app/api/provider';
 const ORIGIN = 'https://www.rivestream.app';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
-const PROVIDER_TIMEOUT_MS = 1100;
+// Measured live against scrapper.rivestream.app: citadel answers in ~200 ms but
+// flowcast (which returns three playable MP4 renditions plus a full caption set
+// for tmdb 550) needs well over a second to assemble its payload. At 1100 ms it
+// was recorded as `timeout` on every resolve, so a working backend was reported
+// dead and its rows were lost. 2600 ms stays inside the registry's ~2.7 s
+// early-release window while giving the slow backends room to answer.
+const PROVIDER_TIMEOUT_MS = 2600;
 const MAX_ROWS = 40;
 const MAX_CANDIDATES = 16;
 const MAX_PROVIDER_JSON_BYTES = 384_000;
@@ -120,7 +126,14 @@ export function parseRiveRow(row: unknown, provider: string, rank: number): Pars
   if (provider === 'citadel') {
     // Citadel rows must be signed CDN URLs; anything else is a different shape.
     if (!CITADEL_HOST.test(url.hostname)) return null;
-    if (!/^\/(?:my)?hls_mps\/.+\/index_[a-z0-9_-]+\.m3u8$/i.test(url.pathname)) return null;
+    // `/hls/` is the direct rendition; `/hls_mps/` and `/myhls_mps/` are the
+    // remuxed ones. The pattern used to require `hls_mps`, so every direct `/hls/`
+    // row was silently discarded — and in the live payload that is the 720p
+    // rendition, i.e. the best quality citadel publishes. Verified against
+    // /api/provider?provider=citadel&id=550, which returns
+    //   /hls/78164859/720/index_287.m3u8        (720p, was rejected)
+    //   /hls_mps/78164859/480/index_287.m3u8    (480p, was accepted)
+    if (!/^\/(?:my)?(?:hls|hls_mps)\/.+\/index_[a-z0-9_-]+\.m3u8$/i.test(url.pathname)) return null;
     const expiry = Number(url.searchParams.get('Expires'));
     const signature = url.searchParams.get('Signature') || '';
     if (!Number.isSafeInteger(expiry) || expiry * 1000 <= Date.now() + 15_000) return null;
@@ -214,13 +227,78 @@ export function riveCandidatesByProvider(bodies: Record<string, unknown>): RawSt
   return mergeRows(parsed);
 }
 
+/**
+ * Captions published alongside a provider's streams.
+ *
+ * citadel publishes 26 tracks for tmdb 550 and flowcast a comparable set, in the
+ * same payload as the video rows. Until now this adapter read `data.sources` and
+ * ignored `data.captions` entirely, so a title arrived with a working stream and
+ * no subtitles while the backend had already sent two dozen languages.
+ *
+ * Labels are provider-formatted ("हिन्दी - FlowCast", "Germany - Citadel"), so the
+ * provider suffix is stripped and the remainder is normalised as a language.
+ */
+export function captionsByProvider(bodies: Record<string, unknown>): RawTrackRef[] {
+  const out: RawTrackRef[] = [];
+  const seen = new Set<string>();
+  for (const body of Object.values(bodies)) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) continue;
+    const data = (body as { data?: unknown }).data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) continue;
+    const captions = (data as { captions?: unknown }).captions;
+    if (!Array.isArray(captions)) continue;
+    for (const raw of captions.slice(0, 64)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const row = raw as { file?: unknown; label?: unknown; language?: unknown; type?: unknown };
+      if (typeof row.file !== 'string' || !isSafeUpstreamUrl(row.file)) continue;
+      if (row.file.length > 2048) continue;
+      const format = String(row.type ?? '').toLowerCase();
+      if (format && format !== 'vtt' && format !== 'srt') continue;
+      // Drop the provider suffix before reading the language out of the label.
+      const rawLabel = typeof row.label === 'string' ? row.label : '';
+      const label = rawLabel.replace(/\s*[-–—]\s*[A-Za-z0-9_.]+\s*$/, '').trim().slice(0, 60);
+      const declared = typeof row.language === 'string' ? row.language : '';
+      const audio = normalizeLang(label) ?? normalizeLang(declared);
+      const lang = audio && audio.code !== 'und' ? audio.code : 'und';
+      const url = row.file;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      out.push({
+        lang,
+        label: label || declared || lang,
+        url,
+        format: format === 'srt' ? 'srt' : 'vtt',
+      });
+      if (out.length >= 48) return out;
+    }
+  }
+  return out;
+}
+
 /** Ask every provider for this title in parallel. */
 export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Promise<RawStreamCandidate[]> {
-  if (!/^\d{1,12}$/.test(query.tmdbId) || !['movie', 'tv'].includes(query.type)) return [];
+  return (await fetchProviders(query, trace)).candidates;
+}
+
+/**
+ * Fetch every provider once, returning both its playable rows and its captions.
+ *
+ * Kept as a single pass on purpose: the captions arrive in the same response as
+ * the rows, so splitting this into two functions would either duplicate the
+ * upstream requests or require caching the bodies, and neither is worth it for
+ * data that is already in hand.
+ */
+export async function fetchProviders(
+  query: SourceQuery,
+  trace?: string[],
+): Promise<{ candidates: RawStreamCandidate[]; subtitles: RawTrackRef[] }> {
+  if (!/^\d{1,12}$/.test(query.tmdbId) || !['movie', 'tv'].includes(query.type)) {
+    return { candidates: [], subtitles: [] };
+  }
   const season = query.season ?? 1;
   const episode = query.episode ?? 1;
   if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1)) {
-    return [];
+    return { candidates: [], subtitles: [] };
   }
   // Each provider gets its own short leash: the registry only waits ~2.7 s for
   // adapters, so a region-gated backend that never answers must not hold the
@@ -250,10 +328,24 @@ export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Pr
         const count = Array.isArray((body as { data?: { sources?: unknown } })?.data?.sources)
           ? ((body as { data: { sources: unknown[] } }).data.sources.length)
           : 0;
-        trace?.push(`${provider}=${response.status}/${count}`);
+        // Four distinct states, previously all rendered as one number:
+        //   ok/<n>      answered with n playable rows
+        //   empty       answered 200 with data:null (nothing for this title)
+        //   http=<code> answered with an error status
+        //   timeout     did not answer inside the leash
+        //   net=<name>  never got a response
+        const empty = body && typeof body === 'object' && !(body as { data?: unknown }).data;
+        trace?.push(
+          response.ok
+            ? empty
+              ? `${provider}=empty`
+              : `${provider}=ok/${count}`
+            : `${provider}=http=${response.status}`,
+        );
         return [provider, body] as const;
       } catch (err) {
-        trace?.push(`${provider}=${err instanceof Error && err.name === 'TimeoutError' ? 'timeout' : 'error'}`);
+        const timedOut = err instanceof Error && err.name === 'TimeoutError';
+        trace?.push(`${provider}=${timedOut ? 'timeout' : `net=${err instanceof Error ? err.name : 'error'}`}`);
         return [provider, null] as const;
       }
     }),
@@ -268,6 +360,10 @@ export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Pr
   const out: RawStreamCandidate[] = [];
   for (const [provider, body] of results) {
     if (!body) continue;
+    // `data: null` is a real answer: the provider has nothing for this title. It
+    // is not a failure, and conflating the two is exactly how a healthy backend
+    // got counted as dead.
+    if (!(body as { data?: unknown }).data) continue;
     const rows = riveCandidatesByProvider({ [provider]: body });
     for (const candidate of rows) {
       // The backend name already rides in the key/fingerprint from
@@ -279,15 +375,28 @@ export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Pr
       });
     }
   }
-  // Deduplicate by fingerprint: two backends occasionally serve the same master,
-  // and listing it twice makes the source menu look richer than it is.
+  // Deduplicate by URL, not by fingerprint. The fingerprint includes the caption
+  // set, which differs per backend, so two backends serving literally the same
+  // master produced two fingerprints and both were listed. The URL is the thing
+  // the player actually loads, so it is the thing that must be unique.
   const seen = new Set<string>();
-  return out.filter((candidate) => {
-    const id = candidate.fingerprint ?? candidate.key ?? candidate.url;
-    if (seen.has(id)) return false;
-    seen.add(id);
+  const unique = out.filter((candidate) => {
+    if (seen.has(candidate.url)) return false;
+    seen.add(candidate.url);
     return true;
   });
+
+  // Captions come from the responses we already have. No extra request.
+  const captionBodies: Record<string, unknown> = {};
+  for (const [provider, body] of results) {
+    if (body && typeof body === 'object' && (body as { data?: unknown }).data) {
+      captionBodies[provider] = body;
+    }
+  }
+  const subtitles = captionsByProvider(captionBodies);
+  if (subtitles.length) trace?.push(`captions=${subtitles.length}`);
+
+  return { candidates: unique, subtitles };
 }
 
 export function createSource14Adapter(enabled: () => boolean): SourceAdapter {
@@ -298,17 +407,29 @@ export function createSource14Adapter(enabled: () => boolean): SourceAdapter {
     async resolve(query) {
       const started = Date.now();
       const trace: string[] = [];
-      const raw = await fetchFromCitadel(query, trace);
-      const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter((candidate) => !!candidateEvidenceAlive(candidate));
+      const fetched = await fetchProviders(query, trace);
+      const checked = await verifyAndFilterCandidatesDetailed(fetched.candidates, query.signal);
+      const alive = checked.candidates.filter((candidate) => !!candidateEvidenceAlive(candidate));
+      // Attach the provider's own captions to its rows. These are already
+      // correctly labelled per language by the backend, so they beat anything we
+      // would infer, and they cost nothing extra.
+      const candidates = fetched.subtitles.length
+        ? alive.map((candidate) => ({
+            ...candidate,
+            subtitles: [...(candidate.subtitles ?? []), ...fetched.subtitles],
+          }))
+        : alive;
       query.diag?.push({
         adapter: 'source-14',
         lane: 'C',
         ok: candidates.length > 0,
         ms: Date.now() - started,
         detail:
-          `rows=${raw.length},manifestReachable=${candidates.length} ` +
-          `backends=${trace.filter((t) => t.includes('=200/')).length}/${RIVE_PROVIDERS.length} ` +
+          `rows=${fetched.candidates.length},manifestReachable=${candidates.length} ` +
+          // Count backends that actually answered with rows, not by scraping the
+          // trace for a status code that is no longer formatted the same way.
+          `backends=${trace.filter((t) => /=(?:ok\/|empty)/.test(t)).length}/${RIVE_PROVIDERS.length} ` +
+          `captions=${fetched.subtitles.length} ` +
           trace.join(' ').trim(),
       });
       return {
