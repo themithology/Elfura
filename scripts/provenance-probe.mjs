@@ -291,6 +291,61 @@ for (const [tmdbId, type] of [['872906', 'movie'], ['693134', 'movie'], ['1396',
 }
 console.log('');
 
+console.log('## 2d. Same citadel path, different language labels — same bytes or not?');
+/* The API hands each row its own signature, so two rows can look identical once
+   the query is stripped. Compare the actual playlists: identical bytes mean the
+   labels contradict each other on one file; different bytes mean each label is
+   its own rendition and both lanes must survive. */
+const digest = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
+for (const [tmdbId, type] of [['872906', 'movie'], ['693134', 'movie']]) {
+  const url = new URL(SCRAPPER);
+  url.searchParams.set('provider', 'citadel');
+  url.searchParams.set('id', tmdbId);
+  if (type === 'tv') {
+    url.searchParams.set('season', '1');
+    url.searchParams.set('episode', '1');
+  }
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
+  let rows = [];
+  try {
+    const response = await get(url.href, { Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' });
+    rows = (JSON.parse(response.text)?.data?.sources ?? []).filter((row) => typeof row?.url === 'string');
+  } catch {
+    console.log(`- ${type}:${tmdbId}: api error`);
+    continue;
+  }
+  const byPath = new Map();
+  for (const row of rows) {
+    let path = '';
+    try {
+      path = new URL(row.url).pathname;
+    } catch {
+      continue;
+    }
+    const label = String(row.quality ?? row.label ?? row.language ?? '').replace(/\s*\|\s*/g, ' ').trim();
+    byPath.set(path, [...(byPath.get(path) ?? []), { url: row.url, label }]);
+  }
+  const shared = [...byPath.entries()].filter(([, items]) => items.length > 1);
+  console.log(`- ${type}:${tmdbId}: ${shared.length} path(s) carrying more than one label`);
+  const headers = { 'User-Agent': UA, Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' };
+  for (const [path, items] of shared.slice(0, 3)) {
+    console.log(`    · ${laneShape(`https://x${path}`)}`);
+    for (const item of items.slice(0, 4)) {
+      try {
+        const man = await get(item.url, headers);
+        const audio = man.text.split(/\r?\n/).filter((line) => /^#EXT-X-MEDIA:TYPE=AUDIO/i.test(line)).length;
+        const head = man.text.split(/\r?\n/).find((line) => line.trim()) ?? '';
+        console.log(
+          `        ${item.label} → http=${man.status} ct=${man.ct || '?'} bytes=${man.text.length} sha=${digest(man.text)} audio=${audio} head=${head.slice(0, 40)}`,
+        );
+      } catch (err) {
+        console.log(`        ${item.label} → error ${err instanceof Error ? err.name : '?'}`);
+      }
+    }
+  }
+}
+console.log('');
+
 /* ───────────────────────── Source 12 sweep ───────────────────────── */
 
 const VZ = 'https://vidzen.fun';
