@@ -21,6 +21,7 @@
  * matched; only the two JSON routes above are ever called.
  */
 import { isSafeUpstreamUrl } from '../security.js';
+import { fetchUpstreamJson } from './upstream-fetch.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
@@ -86,65 +87,28 @@ interface StreamPayload {
 let catalogCache: { at: number; value: Catalog } | null = null;
 let catalogInFlight: Promise<Catalog | null> | null = null;
 
-async function readBounded(response: Response, maxBytes: number): Promise<Buffer | null> {
-  if (!response.ok || !response.body) {
-    await response.body?.cancel().catch(() => {});
-    return null;
-  }
-  const declared = Number(response.headers.get('content-length') || 0);
-  if (declared > maxBytes) {
-    await response.body.cancel().catch(() => {});
-    return null;
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      size += value.byteLength;
-      if (size > maxBytes) return null;
-      chunks.push(value);
-    }
-    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
-  } catch {
-    return null;
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-}
-
 async function readJson(
   url: string,
   signal: AbortSignal,
   maxBytes: number,
   trace?: string[],
 ): Promise<unknown> {
-  try {
-    const response = await fetch(url, {
-      // The provider gateway answers 403 unless the referer is its own origin
-      // (the site itself never calls this route). Credentials never leave here.
-      headers: { 'User-Agent': UA, Accept: 'application/json', Referer: `${API}/`, Origin: API },
-      redirect: 'error',
-      signal,
-    });
-    const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
-    const buffer = await readBounded(response, maxBytes);
-    trace?.push(`http=${response.status}${contentType ? `/${contentType}` : ''}${buffer ? '' : '/no-body'}`);
-    if (!buffer) return null;
-    const text = buffer.toString('utf8');
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      trace?.push(`body=${text.slice(0, 40).replace(/\s+/g, ' ')}`);
-      return null;
-    }
-  } catch (err) {
-    trace?.push(`net=${err instanceof Error ? err.name : 'error'}`);
-    return null;
-  }
+  // Shares the redirect-vetted fetch path. `redirect: 'error'` used to be here and
+  // it is why this source reported `catalog=unavailable` while the site itself was
+  // fine: the gateway 302s to the canonical host and undici raised a TypeError
+  // before we ever saw a status. See upstream-fetch.ts.
+  const result = await fetchUpstreamJson(url, {
+    headers: { 'User-Agent': UA },
+    signal,
+    maxBytes,
+    origin: API,
+  });
+  trace?.push(
+    result.body
+      ? `http=${result.status}`
+      : `http=${result.status}${result.reason ? `/${result.reason}` : ''}`,
+  );
+  return result.body;
 }
 
 /** Catalogue snapshot (bounded, RAM-cached). Returns null when unavailable or oversized. */
