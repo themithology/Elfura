@@ -171,6 +171,21 @@ function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
   });
 }
 
+/**
+ * Is this HTTP status a temporary refusal rather than a verdict?
+ *
+ * Providers behind Cloudflare and similar answer 403 when a client asks too
+ * often, 429 when it asks too fast, and 5xx when their own origin is busy. None
+ * of those say anything about whether the stream exists. 404 and 410 do, and a
+ * 451 is a legal block that will not lift on retry.
+ */
+function isTransientHttpStatus(status: number): boolean {
+  return status === 403 || status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+/** Wait before re-asking a provider that just refused. Short: this is a blip check, not a backoff. */
+const PROBE_RETRY_DELAY_MS = 250;
+
 async function readBoundedManifest(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return '';
   const reader = res.body.getReader();
@@ -263,7 +278,7 @@ async function verifyChildHlsPlaylist(
   });
   const finalUrl = res.url || childUrl;
   if (!isSafeUpstreamUrl(finalUrl)) return { state: 'dead' };
-  if (!res.ok) return { state: res.status === 429 || res.status >= 500 ? 'unknown' : 'dead' };
+  if (!res.ok) return { state: isTransientHttpStatus(res.status) ? 'unknown' : 'dead' };
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (ct.includes('text/html') || ct.includes('application/xhtml')) {
@@ -380,12 +395,31 @@ async function runSingleProbe(
         ...(cand.headers ?? {}),
       };
 
-      const res = await fetch(cand.url, {
+      // One request, plus one retry for a temporary refusal. Providers throttle
+      // bursts, and asking twice a moment apart is the difference between "this
+      // source is gone" and "this source did not like that particular request".
+      // A retry only happens for statuses that are explicitly transient, so a
+      // genuinely missing stream still costs exactly one request.
+      let res = await fetch(cand.url, {
         method: 'GET',
         headers: manifestHeaders,
         redirect: 'follow',
         signal: sig,
       });
+      if (isTransientHttpStatus(res.status)) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          /* ignore */
+        }
+        await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_DELAY_MS));
+        res = await fetch(cand.url, {
+          method: 'GET',
+          headers: manifestHeaders,
+          redirect: 'follow',
+          signal: sig,
+        });
+      }
       const finalUrl = res.url || cand.url;
       if (!isSafeUpstreamUrl(finalUrl) || !res.ok) {
         try {
@@ -393,7 +427,12 @@ async function runSingleProbe(
         } catch {
           /* ignore */
         }
-        if (isSafeUpstreamUrl(finalUrl) && (res.status === 429 || res.status >= 500)) {
+        // Not every HTTP error means the stream is gone. A provider refusing
+        // with 403/429/5xx is usually throttling this server for asking too
+        // fast, and every real provider does that intermittently — treating it
+        // as proof of death is what made the same title resolve one moment and
+        // come back empty the next. Only a definitive answer removes a lane.
+        if (isSafeUpstreamUrl(finalUrl) && isTransientHttpStatus(res.status)) {
           return { alive: false, confirmedDead: false };
         }
         const dead = { alive: false, confirmedDead: true };

@@ -27,24 +27,22 @@ ROOT_SHIM = (ROOT / "index.js").read_text(encoding="utf-8")
 # Same entrypoint, re-pointed one directory down (src/ -> ../dist/...).
 SRC_SHIM = ROOT_SHIM.replace("./dist/backend/index.js", "../dist/backend/index.js")
 
+# Only .js aliases are shipped. A .ts file in the container root is an
+# invitation for a Pterodactyl egg to start this project through ts-node, which
+# then has to be installed and which breaks outright on some Node versions — for
+# a project whose runtime output is already compiled JavaScript. Anything an egg
+# might be configured to run exists here as plain .js.
 ROOT_ENTRYPOINTS = [
-    "index.js",
-    "index.ts",
     "server.js",
-    "server.ts",
     "app.js",
-    "app.ts",
     "main.js",
-    "main.ts",
     "bot.js",
-    "bot.ts",
     "start.js",
-    "start.ts",
+    "dist/backend/index.js",  # already present; listed for clarity, not rewritten
 ]
 
 SRC_ENTRYPOINTS = [
     "src/index.js",
-    "src/index.ts",
 ]
 
 NPMRC_CONTENT = """audit=false
@@ -296,7 +294,11 @@ def main() -> None:
             if helper_path.is_file():
                 write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
 
+        # index.js is written from the real file: it carries the memory flags.
+        write_entry(zf, "index.js", ROOT_SHIM.encode("utf-8"))
         for ep in ROOT_ENTRYPOINTS:
+            if ep == "dist/backend/index.js":
+                continue  # part of the compiled build, never overwritten
             write_entry(zf, ep, ROOT_SHIM.encode("utf-8"))
         for ep in SRC_ENTRYPOINTS:
             write_entry(zf, ep, SRC_SHIM.encode("utf-8"))
