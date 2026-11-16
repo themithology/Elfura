@@ -81,7 +81,11 @@ export function xpassCandidates(body: unknown): RawStreamCandidate[] {
   return out;
 }
 
-export async function fetchFromXpass(query: SourceQuery): Promise<RawStreamCandidate[]> {
+/** Why an empty result is empty. Same vocabulary as source-5. */
+export interface XpassOptions { trace?: string[] }
+
+export async function fetchFromXpass(query: SourceQuery, options: XpassOptions = {}): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
   if (!/^\d{1,12}$/.test(query.tmdbId) || !['movie', 'tv'].includes(query.type)) return [];
   const season = query.season ?? 1;
   const episode = query.episode ?? 1;
@@ -102,16 +106,24 @@ export async function fetchFromXpass(query: SourceQuery): Promise<RawStreamCandi
       redirect: 'manual',
       signal,
     });
+    if (!response.ok) { trace?.push(`http=${response.status}`); await response.body?.cancel().catch(() => {}); return []; }
     const body = await readJson(response);
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
+    if (!body || typeof body !== 'object' || Array.isArray(body)) { trace?.push('not-json'); return []; }
     const root = body as { type?: unknown; season?: unknown; episode?: unknown };
     if (typeof root.type === 'string') {
       const expected = query.type === 'movie' ? /^(movie|film)$/i : /^(tv|series|episode)$/i;
-      if (!expected.test(root.type.trim())) return [];
+      if (!expected.test(root.type.trim())) { trace?.push(`wrong-type=${root.type.trim().slice(0, 12)}`); return []; }
     }
-    if (query.type === 'tv' && ((root.season != null && String(root.season) !== String(season)) || (root.episode != null && String(root.episode) !== String(episode)))) return [];
-    return xpassCandidates(body);
-  } catch {
+    if (query.type === 'tv' && ((root.season != null && String(root.season) !== String(season)) || (root.episode != null && String(root.episode) !== String(episode)))) {
+      trace?.push(`wrong-episode=${root.season}/${root.episode}`); return [];
+    }
+    const streams = (body as { streams?: unknown }).streams;
+    const rows = xpassCandidates(body);
+    if (!rows.length) trace?.push(Array.isArray(streams) ? `streams=${streams.length}/0-usable` : 'no-streams-array');
+    return rows;
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+    trace?.push(code === 'TimeoutError' ? 'timeout' : code);
     return [];
   }
 }
@@ -123,7 +135,8 @@ export function createSource13Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromXpass(query);
+      const trace: string[] = [];
+      const raw = await fetchFromXpass(query, { trace });
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
       const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
@@ -131,7 +144,8 @@ export function createSource13Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'X',
         ok: candidates.length > 0,
         ms: Date.now() - started,
-        detail: `candidates=${raw.length},reachable=${candidates.length}`,
+        detail: `candidates=${raw.length},reachable=${candidates.length}` +
+          (trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''),
       });
       return { candidates: candidates.map(candidate => query.diag
         ? { ...candidate, diagnosticLane: 'X' }

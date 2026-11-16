@@ -417,5 +417,40 @@ await check('an undecodable payload reports the decode error', async () => {
   assert.match(trace, /blob=none|undecodable/, `expected a decode reason, got "${trace}"`);
 });
 
+// ---------------------------------------------------------------------------
+// Source 13 — its host answered 500 to every shape when probed, so the panel
+// needs to say that rather than "0 candidates".
+// ---------------------------------------------------------------------------
+const { fetchFromXpass } = await import('../../dist/backend/sources/source13.js');
+
+console.log('\nSource 13 — failure reporting');
+
+await check('a refusing host reports its status', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('error', { status: 500 });
+  const trace = [];
+  try { assert.deepEqual(await fetchFromXpass({ type: 'movie', tmdbId: '550' }, { trace }), []); }
+  finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /http=500/, `expected http=500, got "${trace.join(' ')}"`);
+});
+
+await check('a reachable host with no usable streams says so', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ type: 'movie', streams: [{ format: 'mp4', url: 'https://x.example/a.mp4' }] });
+  const trace = [];
+  try { assert.deepEqual(await fetchFromXpass({ type: 'movie', tmdbId: '550' }, { trace }), []); }
+  finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /streams=1\/0-usable/, `expected the stream verdict, got "${trace.join(' ')}"`);
+});
+
+await check('a payload for the wrong title kind is reported as such', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ type: 'series', streams: [] });
+  const trace = [];
+  try { assert.deepEqual(await fetchFromXpass({ type: 'movie', tmdbId: '550' }, { trace }), []); }
+  finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /wrong-type=series/, `expected wrong-type, got "${trace.join(' ')}"`);
+});
+
 console.log(`\n${failures.length ? `${failures.length} FAILED` : 'all checks passed'}\n`);
 process.exit(failures.length ? 1 : 0);
