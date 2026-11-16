@@ -94,8 +94,14 @@ const resolveBudgetMs = (): number => {
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 36;
-/** Lanes any single source may contribute to one response. */
-const MAX_LANES_PER_SOURCE = 4;
+/**
+ * How many extra lanes one adapter may add in the coverage pass, beyond the
+ * verified set. Verified lanes are not counted, so this only limits how much a
+ * single prolific source can pad the tail of the list. Set high enough that a
+ * source with many genuinely distinct mirrors contributes all of them: the
+ * goal is every working source the viewer can try.
+ */
+const MAX_LANES_PER_SOURCE = 12;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
@@ -832,6 +838,9 @@ export class SourceRegistry {
     // Lanes the runtime guard rejected stay rejected: the coverage pass below
     // must not smuggle a wrong-length clip back into the list.
     const blockedByRuntime = new Set<string>();
+    // Streams whose measured duration does not match, kept as a last-resort rail
+    // rather than deleted (see the guard below).
+    const wrongRuntime: { adapter: SourceAdapter; candidate: RawStreamCandidate }[] = [];
     /** Lanes this request probed and confirmed dead (see verifyAndFilterCandidatesDetailed). */
     const probedDeadHere = verifiedBatch.probedDead;
     const allLiveCandidates: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
@@ -852,8 +861,14 @@ export class SourceRegistry {
         const measuredSec =
           cand.measuredThisRequest?.durationSec ?? cachedCandidateEvidence(cand)?.durationSec ?? null;
         if (runtimeGuardEnabled && !durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
+          // Wrong length is a reason to rank a stream last, not to hide it.
+          // A trailer that plays is more useful to a viewer than an empty list,
+          // and the measurement itself is a guess: live-edge VOD windows, a
+          // playlist that mentions a duration for only one variant, and provider
+          // metadata being wrong all produce a mismatch on a perfectly good
+          // stream. Recorded here, sorted behind the correct-length lanes below.
           droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
-          blockedByRuntime.add(cand.url);
+          wrongRuntime.push({ adapter, candidate: cand });
           continue;
         }
         candidateEntries.push({adapter,candidate:cand});
@@ -914,6 +929,14 @@ export class SourceRegistry {
           `[elfura-resolve] ${params.type}/${params.tmdbId}: listed ${appended} extra lane(s) ` +
             `beyond the verified set (per-source cap ${MAX_LANES_PER_SOURCE}, verified first).`,
         );
+      }
+    }
+
+    // Close the list with wrong-length streams: they are real, they play, and
+    // they are better than nothing when every correctly-timed lane is blocked.
+    for (const entry of wrongRuntime) {
+      if (!candidateEntries.some((existing) => existing.candidate.url === entry.candidate.url)) {
+        candidateEntries.push(entry);
       }
     }
 

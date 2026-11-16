@@ -10,9 +10,18 @@ export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCa
  * streams listed, and the player looked like it had lost most of them.
  * The cap exists only as a sanity bound on the response size.
  */
-export const MAX_LISTED_SOURCES = 48;
+/**
+ * How many stream options one response may list.
+ *
+ * This is a presentation ceiling, not a safety valve: every lane here has been
+ * either verified alive or left unproven rather than disproven, and the player
+ * picks from the top. Raising it costs a few KB of JSON and gives the viewer
+ * more chances of finding one that plays, which is the whole point — a source
+ * dropped here is one they never get to try.
+ */
+export const MAX_LISTED_SOURCES = 200;
 export const MAX_SINGLE_TRACK_FALLBACKS = MAX_LISTED_SOURCES;
-export const MAX_SEPARATE_DUBS = 12;
+export const MAX_SEPARATE_DUBS = 24;
 
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
  * separately labelled language streams (not claimed as multi-audio).

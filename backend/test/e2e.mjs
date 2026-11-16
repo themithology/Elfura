@@ -359,8 +359,17 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
       })),
     ];
     const filtered = await verifyAndFilterCandidates(candidates);
-    assert.deepEqual(filtered.map((c) => c.key), ['healthy'],
-      'Unverified slow lanes must be hidden when a healthy candidate exists');
+    // Maximum sources: nothing is dropped for being slow. The verified lane is
+    // ranked first so the player opens on something known to work, and every
+    // unproven lane follows instead of being deleted. A lane that turns out to
+    // be dead costs one retry in the player; hiding it costs a source the
+    // viewer never sees.
+    assert.equal(filtered[0].key, 'healthy', 'the verified lane must be ranked first');
+    assert.equal(
+      filtered.length,
+      candidates.length,
+      'slow-but-unproven lanes must still be offered, behind the verified one',
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

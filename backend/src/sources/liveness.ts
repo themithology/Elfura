@@ -734,17 +734,26 @@ export async function verifyAndFilterCandidatesDetailed(
       ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
       : undefined,
   });
-  const hasVerifiedAlive = candidates.some((cand) => {
-    const outcome = outcomeFor(cand);
-    return !!outcome.primary?.alive || !!outcome.standby?.alive;
-  });
-
   const kept: RawStreamCandidate[] = [];
   let verifiedAliveCount = 0;
   // Lanes this probe confirmed dead. Callers need this without a cache to know
   // not to re-list them in the coverage pass.
   const probedDead = new Set<string>();
   const probedAlive = new Set<string>();
+
+  // Two rails, both kept. Verified lanes are ranked first so the player opens on
+  // something known to work; everything that was merely not verified in time
+  // follows rather than being deleted.
+  //
+  // The previous rule dropped every unverified lane as soon as one lane verified
+  // alive. That reads as "only show streams we proved", but in practice a probe
+  // has ~3 s, provider manifests routinely take longer, and a slow-but-working
+  // CDN is exactly what a viewer wants as a fallback. The goal is the largest
+  // set of playable sources, not the strictest set — a lane that turns out to be
+  // dead costs one failed attempt in the player, while a lane deleted here costs
+  // a source the viewer never even sees.
+  const verified: RawStreamCandidate[] = [];
+  const unverified: RawStreamCandidate[] = [];
 
   for (const cand of candidates) {
     const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
@@ -758,45 +767,45 @@ export async function verifyAndFilterCandidatesDetailed(
       standbyHeaders: undefined,
     });
 
-    // Always prefer a verified healthy lane, including a standby whose primary
-    // timed out. Once any healthy option exists, never advertise unprobed lanes.
+    // A healthy standby replaces a primary that did not answer.
     if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
       verifiedAliveCount++;
-      kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      probedAlive.add(cand.standbyUrl ?? cand.url);
+      verified.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       continue;
     }
-    if (primaryOutcome?.alive || standbyOutcome?.alive) {
-      probedAlive.add(primaryOutcome?.alive ? cand.url : (cand.standbyUrl ?? cand.url));
-    }
+
     if (primaryOutcome?.alive) {
       verifiedAliveCount++;
+      probedAlive.add(cand.url);
       const cleanedStandby = standbyOutcome?.confirmedDead
         ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
         : cand;
-      kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+      verified.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
       continue;
     }
-    // Record a confirmed-dead primary BEFORE any early exit below: with a
-    // healthy lane present this candidate is skipped here, and the caller still
-    // needs to know the probe rejected it (the coverage pass re-lists raw lanes).
-    if (primaryOutcome?.confirmedDead && !(hasStandby && standbyOutcome?.alive)) {
-      probedDead.add(cand.url);
-    }
-    if (hasVerifiedAlive) continue;
 
-    // Last-resort mode only: no candidate verified healthy, so an unconfirmed
-    // slow origin is preferable to returning no playback option at all.
+    // Definitive "this stream is gone": 404/410/451, an HTML error page where a
+    // playlist should be, or an unparseable manifest. Only these are removed.
     if (primaryOutcome?.confirmedDead) {
-      if (hasStandby && !standbyOutcome?.confirmedDead) {
-        kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      probedDead.add(cand.url);
+      if (hasStandby && !standbyOutcome?.confirmedDead && !standbyOutcome?.alive) {
+        // Its backup was never disproven, so keep the backup rather than a URL
+        // that just answered 404.
+        unverified.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       }
       continue;
     }
+
+    // Nothing conclusive: slow, timed out, throttled, or never probed because the
+    // batch filled up. Keep it, ranked behind the verified lanes.
     const cleanedStandby = standbyOutcome?.confirmedDead
       ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
       : cand;
-    kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+    unverified.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
+
+  kept.push(...verified, ...unverified);
 
   return { candidates: kept, verifiedAliveCount, probedDead, probedAlive };
 }
