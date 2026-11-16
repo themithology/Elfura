@@ -525,6 +525,55 @@ export async function verifyAndFilterCandidates(
   return detailed.candidates;
 }
 
+/**
+ * One shared pool for every manifest probe in the process.
+ *
+ * Each resolve used to open its own pool of twenty probes, so a hundred
+ * concurrent resolves meant thousands of simultaneous HTTP responses — each
+ * buffering a manifest — and the RSS climbed into gigabytes. Parallelism of I/O
+ * is what has to be bounded here: nothing is refused, every resolve still runs
+ * to completion, they just do not all fetch at the same instant.
+ */
+const PROBE_PARALLELISM = Math.max(4, Number(process.env.ELFURA_PROBE_PARALLELISM || 32));
+let probeActive = 0;
+const probeWaiters: ((granted: boolean) => void)[] = [];
+
+export function probePoolStats(): { active: number; queued: number } {
+  return { active: probeActive, queued: probeWaiters.length };
+}
+
+async function withProbeSlot<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  let granted = false;
+  if (probeActive >= PROBE_PARALLELISM) {
+    granted = await new Promise<boolean>((resolve) => {
+      const waiter = (ok: boolean) => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve(ok);
+      };
+      const onAbort = () => {
+        const index = probeWaiters.indexOf(waiter);
+        if (index >= 0) probeWaiters.splice(index, 1);
+        waiter(false);
+      };
+      probeWaiters.push(waiter);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    if (!granted) return task(); // aborted while waiting: let the caller see it
+  } else {
+    probeActive += 1;
+    granted = true;
+  }
+  try {
+    return await task();
+  } finally {
+    if (granted) {
+      const next = probeWaiters.shift();
+      if (next) next(true);
+      else probeActive = Math.max(0, probeActive - 1);
+    }
+  }
+}
+
 export async function verifyAndFilterCandidatesDetailed(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
@@ -569,7 +618,7 @@ export async function verifyAndFilterCandidatesDetailed(
       while (cursor < entries.length && !budgetSig.aborted) {
         const idx = cursor++;
         const [k, target] = entries[idx];
-        const res = await runSingleProbe(target, budgetSig);
+        const res = await withProbeSlot(() => runSingleProbe(target, budgetSig), budgetSig);
         outcomes.set(k, res);
       }
     }),

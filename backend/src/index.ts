@@ -30,6 +30,7 @@ import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
 import { healthSummary, noteClient, noteRateLimit, noteRequest, noteResolve, noteRoute, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
+import { registerPerfProbe } from './perf.js';
 import { PerKeyConcurrency, ResolveGate, registerQueueStats } from './limits.js';
 import {
   applyCorsHeaders,
@@ -42,7 +43,8 @@ import {
   SlidingWindowLimiter,
   verifyPlaybackToken,
 } from './security.js';
-import { SourceRegistry } from './sources/registry.js';
+import { SourceRegistry, lastResolveDiagnostics } from './sources/registry.js';
+import { probePoolStats } from './sources/liveness.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
@@ -200,6 +202,13 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     const gate = resolveGate?.stats() ?? { active: 0, queued: 0 };
     return { resolveActive: gate.active, resolveQueued: gate.queued, resolveClients: resolvePerClient?.stats().clients ?? 0 };
   });
+  // Per-source detail of the newest resolve: which adapter answered, with how
+  // many lanes, and how many of those survived the manifest probe.
+  registerPerfProbe(() => ({
+    ...registry.stats(),
+    lastResolve: lastResolveDiagnostics(),
+    probePool: probePoolStats(),
+  }));
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -237,7 +246,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
-    noteRoute(pathname);
+    const finishRoute = noteRoute(pathname);
+    res.once('finish', () => finishRoute());
     noteClient(crypto.createHash('sha256').update(getClientIp(req)).digest('base64url').slice(0, 10));
 
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.

@@ -152,9 +152,22 @@ export function languageFirstOrder(candidates: RawStreamCandidate[]): RawStreamC
   return [...firsts, ...rest];
 }
 
+/** Per-source detail of the newest resolve, so "no sources" can be answered
+ * from the perf endpoint: raw = the adapter's own count, live = lanes that also
+ * passed the manifest probe. */
+export interface ResolveLaneDetail { id: string; raw: number; live: number; error?: string; }
+let lastResolveLanes: { at: string; type: string; tmdbId: string; lanes: ResolveLaneDetail[] } | null = null;
+export function lastResolveDiagnostics(): typeof lastResolveLanes {
+  return lastResolveLanes;
+}
+
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
+  /** Identical resolves share one run: the browser asking six times in a row for
+   * the same title must not start six races over twenty adapters. */
+  private readonly playbackInFlight = new Map<string, Promise<UniformPlaybackResponse | null>>();
+  private sharedResolveCount = 0;
   private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
   private readonly segmentCache = new Map<
@@ -508,7 +521,62 @@ export class SourceRegistry {
     return p;
   }
 
+  /** Identity of one resolve: everything that can change the answer. */
+  private static playbackKey(params: {
+    type: 'movie' | 'tv';
+    tmdbId: string;
+    season?: number;
+    episode?: number;
+    sourceId?: string;
+    anilistId?: string;
+    anilistEpisode?: number;
+    preferredLang?: string;
+    late?: boolean;
+  }): string {
+    return [
+      params.type,
+      params.tmdbId,
+      params.season ?? 0,
+      params.episode ?? 0,
+      params.sourceId ?? '',
+      params.anilistId ?? '',
+      params.anilistEpisode ?? 0,
+      params.preferredLang ?? '',
+      params.late === true ? 1 : 0,
+    ].join('|');
+  }
+
+  stats(): { sharedResolves: number; inFlightPlayback: number } {
+    return { sharedResolves: this.sharedResolveCount, inFlightPlayback: this.playbackInFlight.size };
+  }
+
+  /** Public entry: collapse duplicates of a resolve that is already running. */
   async resolvePlayback(params: {
+    type: 'movie' | 'tv';
+    tmdbId: string;
+    season?: number;
+    episode?: number;
+    sourceId?: string;
+    anilistId?: string;
+    anilistEpisode?: number;
+    preferredLang?: string;
+    streamPathPrefix?: string;
+    late?: boolean;
+  }): Promise<UniformPlaybackResponse | null> {
+    const key = SourceRegistry.playbackKey(params);
+    const running = this.playbackInFlight.get(key);
+    if (running) {
+      this.sharedResolveCount += 1;
+      return running;
+    }
+    const started = this.resolvePlaybackOnce(params).finally(() => {
+      if (this.playbackInFlight.get(key) === started) this.playbackInFlight.delete(key);
+    });
+    this.playbackInFlight.set(key, started);
+    return started;
+  }
+
+  private async resolvePlaybackOnce(params: {
     type: 'movie' | 'tv';
     tmdbId: string;
     season?: number;
@@ -910,6 +978,25 @@ export class SourceRegistry {
           droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
       );
     }
+
+    // Keep the per-source breakdown of this resolve for the perf endpoint, so a
+    // client-side "no sources" can be traced to the exact source that was empty.
+    lastResolveLanes = {
+      at: new Date().toISOString(),
+      type: params.type,
+      tmdbId: params.tmdbId,
+      lanes: activeAdapters.map((adapter) => {
+        const hit = verifiedEntries.find((entry) => entry.adapter.id === adapter.id);
+        const report = adapterReport.get(adapter.id);
+        const lane: ResolveLaneDetail = {
+          id: adapter.id,
+          raw: hit ? hit.result.candidates.length : (report?.raw ?? 0),
+          live: hit ? hit.liveCandidates.length : 0,
+        };
+        if (!hit && report?.error) lane.error = report.error;
+        return lane;
+      }),
+    };
 
     if (!uniformOptions.length) {
       // Operator-only diagnostics (server console; never sent to clients).

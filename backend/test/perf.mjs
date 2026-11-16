@@ -62,18 +62,21 @@ assert.deepEqual(limited.traffic.rateLimitedByBucket, { art: 1, playback: 2 });
 // 3b. A burst from one client must be visible as one client, not as traffic.
 const { noteClient, noteRoute } = await import('../../dist/backend/perf.js');
 for (let i = 0; i < 5; i += 1) {
-  noteRoute(`/api/v1/playback?id=${i}`);
+  noteRoute(`/api/v1/playback?id=${i}`)(120);
   noteClient('client-a');
 }
 noteClient('client-b');
 const byClient = perfSnapshot().traffic;
 assert.equal(byClient.distinctClients, 2, 'one retry loop is one client');
-assert.deepEqual(byClient.topRoutes[0], { route: '/api/v1/playback', count: 5 }, 'ids collapse into one route');
+const busiest = byClient.topRoutes[0];
+assert.equal(busiest.route, '/api/v1/playback', 'ids collapse into one route');
+assert.equal(busiest.count, 5);
+assert.equal(busiest.avgMs, 120, 'route latency is recorded; a queue shows up as latency');
 // Embed pages are per title; without collapsing them the table fills with
 // one-hit entries and the busy routes get evicted from it.
 for (let i = 0; i < 3; i += 1) {
-  noteRoute(`/embed/tv/${1000 + i}`);
-  noteRoute(`/api/v1/playback?tmdb=${1000 + i}`);
+  noteRoute(`/embed/tv/${1000 + i}`)(5);
+  noteRoute(`/api/v1/playback?tmdb=${1000 + i}`)(40);
 }
 const routesNow = perfSnapshot().traffic.topRoutes;
 assert.equal(routesNow.find((r) => r.route === '/embed/tv')?.count, 3, 'embed titles collapse into /embed/tv');

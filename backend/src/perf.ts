@@ -24,6 +24,25 @@ const STALL_WARN_MS = Math.max(50, Number(process.env.ELFURA_STALL_WARN_MS || 25
 const SAMPLE_INTERVAL_MS = 2_000;
 const MAX_STALLS = 25;
 
+const probes = new Set<() => Record<string, unknown>>();
+
+/** Register a structured value (e.g. per-source detail of the last resolve). */
+export function registerPerfProbe(provider: () => Record<string, unknown>): void {
+  probes.add(provider);
+}
+
+function probeSnapshot(): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  for (const provider of probes) {
+    try {
+      Object.assign(merged, provider());
+    } catch {
+      /* a broken probe must not break telemetry */
+    }
+  }
+  return merged;
+}
+
 interface Stall {
   at: string;
   ms: number;
@@ -49,7 +68,7 @@ const rateLimits = new Map<string, { denied: number; lastAt: number }>();
 let lastPhase: { name: string; at: number } = { name: 'idle', at: 0 };
 /** Which endpoint is being hit, and by how many distinct clients. Without this
  * a burst of resolves is indistinguishable from a lot of viewers. */
-const routes = new Map<string, number>();
+const routes = new Map<string, { count: number; totalMs: number; maxMs: number }>();
 const clients = new Map<string, number>();
 const MAX_ROUTES = 48;
 const MAX_CLIENTS = 4096;
@@ -87,28 +106,38 @@ export function noteRequest(): void {
   totals.requests += 1;
 }
 
-/** Count a request by endpoint, collapsing ids so routes stay few. */
-export function noteRoute(pathname: string): void {
+/** Count a request by endpoint, collapsing ids so routes stay few. Returns a
+ * function to call when the response finishes, so latency per route is visible:
+ * a queue shows up as latency, never as a count. */
+export function noteRoute(pathname: string): (ms?: number) => void {
   const parts = pathname.split(/[?#]/)[0].split('/').filter(Boolean);
   // `/embed/tv/127881` and `/embed/tv/78017` are the same route. Without this
   // every title became its own bucket, the table filled with one-hit entries and
   // the hot routes were evicted — which is why /api/v1/playback reported 57
   // requests while 131 were running.
   const key = parts[0] === 'embed' ? `/${parts.slice(0, 2).join('/')}` : `/${parts.slice(0, 3).join('/')}`;
-  const next = (routes.get(key) ?? 0) + 1;
-  if (next === 1 && routes.size >= MAX_ROUTES) {
+  const entry = routes.get(key) ?? { count: 0, totalMs: 0, maxMs: 0 };
+  entry.count += 1;
+  if (entry.count === 1 && routes.size >= MAX_ROUTES) {
     // Evict the coldest route, never the busiest one.
     let coldest: string | undefined;
     let coldestCount = Number.POSITIVE_INFINITY;
-    for (const [route, count] of routes) {
-      if (count < coldestCount) {
+    for (const [route, value] of routes) {
+      if (value.count < coldestCount) {
         coldest = route;
-        coldestCount = count;
+        coldestCount = value.count;
       }
     }
     if (coldest !== undefined) routes.delete(coldest);
   }
-  routes.set(key, next);
+  routes.set(key, entry);
+  const startedAt = process.hrtime.bigint();
+  return (ms?: number): void => {
+    const elapsed = ms ?? Number(process.hrtime.bigint() - startedAt) / 1e6;
+    if (!Number.isFinite(elapsed) || elapsed < 0) return;
+    entry.totalMs += elapsed;
+    if (elapsed > entry.maxMs) entry.maxMs = elapsed;
+  };
 }
 
 /** Record the outcome of a playback resolve, so "no sources" has an answer. */
@@ -293,13 +322,15 @@ export interface PerfSnapshot {
     rateLimited: number;
     rateLimitedByBucket: Record<string, number>;
     distinctClients: number;
-    topRoutes: { route: string; count: number }[];
+    topRoutes: { route: string; count: number; avgMs: number; maxMs: number }[];
   };
   inFlight: Record<string, number>;
   /** Process-wide and per-client concurrency for the expensive endpoint. */
   queues: Record<string, number>;
   /** Last resolve outcomes, newest last: status, lane count and duration. */
   resolves: { at: string; type: string; tmdbId: string; status: number; sources: number; ms: number }[];
+  /** Values registered by the server (per-source detail of the last resolve). */
+  probes: Record<string, unknown>;
   /** Plain-language verdict, so a log dump answers "was it the CPU?". */
   verdict: string;
 }
@@ -359,13 +390,19 @@ export function perfSnapshot(): PerfSnapshot {
       rateLimitedByBucket: byBucket,
       distinctClients: clients.size,
       topRoutes: [...routes.entries()]
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].count - a[1].count)
         .slice(0, 8)
-        .map(([route, count]) => ({ route, count })),
+        .map(([route, value]) => ({
+          route,
+          count: value.count,
+          avgMs: Math.round((value.totalMs / Math.max(1, value.count)) * 10) / 10,
+          maxMs: Math.round(value.maxMs),
+        })),
     },
     inFlight,
     queues: queueStats(),
     resolves: resolves.slice(),
+    probes: probeSnapshot(),
     verdict: verdict(),
   };
 }
