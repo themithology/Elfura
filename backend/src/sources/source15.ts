@@ -6,7 +6,7 @@
  */
 import { createHash } from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const SITE = 'https://mapple.fun';
@@ -268,7 +268,7 @@ export function createSource15Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromMapple(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-15',
         lane: 'M',

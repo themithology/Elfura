@@ -21,6 +21,7 @@ import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
+import { PolicyCache } from '../memory-policy.js';
 
 const DEFAULT_PROBE_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -103,7 +104,7 @@ interface CachedLivenessEntry extends LivenessProbeOutcome {
   expiresAt: number;
 }
 
-const livenessRamCache = new Map<string, CachedLivenessEntry>();
+const livenessRamCache = new PolicyCache<CachedLivenessEntry>(MAX_LIVENESS_CACHE);
 const livenessInFlight = new Map<string, Promise<LivenessProbeOutcome>>();
 
 function cacheKeyFor(url: string, headers?: Record<string, string>): string {
@@ -129,18 +130,40 @@ export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): num
 }
 
 /** Report only existing liveness evidence; does not initiate upstream requests. */
+/**
+ * What is known about a candidate's manifest, from whichever source of truth is
+ * available. Checked in this order:
+ *   1. what this request measured, carried on the candidate itself;
+ *   2. what an earlier request remembers, when payload caching is enabled.
+ *
+ * All ranking, filtering and per-lane reporting goes through here so that
+ * switching caching off cannot silently change how streams are chosen.
+ */
+export function candidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
+  const measured = candidate.measuredThisRequest;
+  const remembered = cachedCandidateEvidence(candidate);
+  if (!measured) return remembered;
+  return {
+    alive: measured.alive,
+    confirmedDead: !measured.alive,
+    ...(measured.rttMs !== undefined ? { rttMs: measured.rttMs } : {}),
+    ...(measured.durationSec !== undefined ? { durationSec: measured.durationSec } : {}),
+    ...(measured.discoveredAudioLangs !== undefined
+      ? { discoveredAudioLangs: measured.discoveredAudioLangs }
+      : remembered?.discoveredAudioLangs !== undefined
+        ? { discoveredAudioLangs: remembered.discoveredAudioLangs }
+        : {}),
+    ...(remembered?.manifestKind !== undefined ? { manifestKind: remembered.manifestKind } : {}),
+    ...(remembered?.qualityLadder !== undefined ? { qualityLadder: remembered.qualityLadder } : {}),
+  };
+}
+
 export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
   return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
   if (!outcome.alive && !outcome.confirmedDead) return;
-  if (livenessRamCache.has(key)) livenessRamCache.delete(key);
-  while (livenessRamCache.size >= MAX_LIVENESS_CACHE) {
-    const oldest = livenessRamCache.keys().next().value;
-    if (oldest === undefined) break;
-    livenessRamCache.delete(oldest);
-  }
   livenessRamCache.set(key, {
     ...outcome,
     observedAt: Date.now(),
@@ -528,8 +551,17 @@ export async function verifyAndFilterCandidates(
 export async function verifyAndFilterCandidatesDetailed(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
-): Promise<{ candidates: RawStreamCandidate[]; verifiedAliveCount: number }> {
-  if (!candidates.length) return { candidates: [], verifiedAliveCount: 0 };
+): Promise<{
+  candidates: RawStreamCandidate[];
+  verifiedAliveCount: number;
+  /** Lanes this probe confirmed dead (URL -> true). */
+  probedDead: Set<string>;
+  /** Lanes this probe confirmed working, including ones filtered out of the list. */
+  probedAlive: Set<string>;
+}> {
+  if (!candidates.length) {
+    return { candidates: [], verifiedAliveCount: 0, probedDead: new Set(), probedAlive: new Set() };
+  }
 
   // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead.
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
@@ -644,7 +676,17 @@ export async function verifyAndFilterCandidatesDetailed(
       };
     }
 
-    return updated;
+    // Carry what was just measured with the candidate so ranking works with no
+    // cache at all (see RawStreamCandidate.measuredThisRequest).
+    return {
+      ...updated,
+      measuredThisRequest: {
+        alive: true,
+        ...(outcome.rttMs !== undefined ? { rttMs: outcome.rttMs } : {}),
+        ...(outcome.discoveredAudioLangs?.length ? { discoveredAudioLangs: outcome.discoveredAudioLangs } : {}),
+        ...(outcome.durationSec !== undefined ? { durationSec: outcome.durationSec } : {}),
+      },
+    };
   };
 
   const outcomeFor = (cand: RawStreamCandidate) => ({
@@ -660,6 +702,10 @@ export async function verifyAndFilterCandidatesDetailed(
 
   const kept: RawStreamCandidate[] = [];
   let verifiedAliveCount = 0;
+  // Lanes this probe confirmed dead. Callers need this without a cache to know
+  // not to re-list them in the coverage pass.
+  const probedDead = new Set<string>();
+  const probedAlive = new Set<string>();
 
   for (const cand of candidates) {
     const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
@@ -680,6 +726,9 @@ export async function verifyAndFilterCandidatesDetailed(
       kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       continue;
     }
+    if (primaryOutcome?.alive || standbyOutcome?.alive) {
+      probedAlive.add(primaryOutcome?.alive ? cand.url : (cand.standbyUrl ?? cand.url));
+    }
     if (primaryOutcome?.alive) {
       verifiedAliveCount++;
       const cleanedStandby = standbyOutcome?.confirmedDead
@@ -687,6 +736,12 @@ export async function verifyAndFilterCandidatesDetailed(
         : cand;
       kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
       continue;
+    }
+    // Record a confirmed-dead primary BEFORE any early exit below: with a
+    // healthy lane present this candidate is skipped here, and the caller still
+    // needs to know the probe rejected it (the coverage pass re-lists raw lanes).
+    if (primaryOutcome?.confirmedDead && !(hasStandby && standbyOutcome?.alive)) {
+      probedDead.add(cand.url);
     }
     if (hasVerifiedAlive) continue;
 
@@ -704,7 +759,7 @@ export async function verifyAndFilterCandidatesDetailed(
     kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 
-  return { candidates: kept, verifiedAliveCount };
+  return { candidates: kept, verifiedAliveCount, probedDead, probedAlive };
 }
 
 /**

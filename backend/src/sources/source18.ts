@@ -21,7 +21,7 @@
  * matched; only the two JSON routes above are ever called.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
@@ -360,7 +360,7 @@ export function createSource18Adapter(enabled: () => boolean): SourceAdapter {
       const trace: string[] = [];
       const raw = await fetchFromSubDub(query, trace);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
+      const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-18',
         lane: 'S',

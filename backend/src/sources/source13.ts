@@ -3,7 +3,7 @@
  * Xpass server names are not audio-language evidence; captions are ignored.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://freakyniki.elaxo.lol/';
@@ -125,7 +125,7 @@ export function createSource13Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromXpass(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-13',
         lane: 'X',

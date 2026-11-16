@@ -16,7 +16,7 @@
  *     minted once more and those servers are retried.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
@@ -207,14 +207,14 @@ export function createSource12Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       let raw = await fetchFromVidZen(query);
       let checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      let alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      let alive = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       if (alive.length === 0 && raw.length > 0 && RETRY_ON_EMPTY() && !query.signal?.aborted) {
         const second = await fetchFromVidZen(query).catch(() => [] as RawStreamCandidate[]);
         const retried = second.length ? await verifyAndFilterCandidatesDetailed(second, query.signal) : null;
         if (retried) {
           raw = [...raw, ...second];
           checked = retried;
-          alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+          alive = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
         }
       }
       const verified = alive;

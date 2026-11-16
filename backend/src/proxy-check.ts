@@ -12,7 +12,6 @@
  * another.
  */
 import { loadUndici } from './undici-loader.js';
-import type { ProxyEntry } from './proxy-pool.js';
 import { readRelayToken } from './relay-config.js';
 
 /** A tiny text endpoint that answers with the caller's address. */
@@ -68,55 +67,7 @@ export async function checkDirect(timeoutMs = 9000): Promise<{ ok: boolean; stat
   }
 }
 
-export async function checkProxy(entry: ProxyEntry, timeoutMs = 9000): Promise<ProxyCheck> {
-  const started = Date.now();
-  const undici = await loadUndici();
-  if (!undici) return { id: entry.id, ok: false, status: 0, ip: '', ms: 0, error: 'undici is unavailable' };
 
-  const target = proxyProbeTarget();
-  const agent = new undici.ProxyAgent(entry.url);
-  try {
-    const response = await undici.request(target, {
-      dispatcher: agent,
-      method: 'GET',
-      headers: { accept: 'text/plain', 'user-agent': 'elfura-proxy-check' },
-      signal: AbortSignal.timeout(timeoutMs),
-      headersTimeout: timeoutMs,
-      bodyTimeout: timeoutMs,
-    });
-    const body = (await response.body.text()).trim().slice(0, 120);
-    const ip = IPV4.test(body) || IPV6.test(body) ? body : '';
-    const ok = response.statusCode >= 200 && response.statusCode < 400;
-    return {
-      id: entry.id,
-      ok,
-      status: response.statusCode,
-      ip,
-      ms: Date.now() - started,
-      error: ok ? '' : `HTTP ${response.statusCode}`,
-    };
-  } catch (error) {
-    return { id: entry.id, ok: false, status: 0, ip: '', ms: Date.now() - started, error: readableError(error) };
-  } finally {
-    void Promise.resolve(agent.close?.()).catch(() => {});
-  }
-}
-
-/** Bounded parallel checks so a 100-proxy list cannot stall the panel. */
-export async function checkProxies(entries: ProxyEntry[], concurrency = 5): Promise<ProxyCheck[]> {
-  const results: ProxyCheck[] = [];
-  let index = 0;
-  const workers = Array.from({ length: Math.min(concurrency, entries.length) }, async () => {
-    while (index < entries.length) {
-      const entry = entries[index];
-      index += 1;
-      results.push(await checkProxy(entry));
-    }
-  });
-  await Promise.all(workers);
-  const order = new Map(entries.map((entry, position) => [entry.id, position]));
-  return results.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-}
 
 /**
  * Can the Worker relay reach the internet, and from which address?

@@ -1,5 +1,5 @@
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence } from './liveness.js';
+import { candidateEvidence } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
 export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCandidate }
@@ -25,8 +25,20 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     const c = entry.candidate;
     if (unique.has(c.url)) continue;
     unique.add(c.url);
-    const evidence = cachedCandidateEvidence(c);
-    const langs = [...new Set(evidence?.discoveredAudioLangs ?? [])];
+    // One helper answers "what do we know about this lane", preferring what
+    // this request measured over what an earlier one remembered. With payload
+    // caching off nothing is remembered, and ranking must still work.
+    const evidence = candidateEvidence(c);
+    // Manifest truth about the audio layout beats provider metadata: a measured
+    // single-language probe means single-language, however the source labelled
+    // itself. Only when nothing was measured may the provider claim stand.
+    const measuredLangs = evidence?.alive ? evidence.discoveredAudioLangs : undefined;
+    const providerLangs = c.availableAudioLangs ?? [];
+    const langs = measuredLangs !== undefined
+      ? [...new Set(measuredLangs)]
+      : evidence?.alive
+        ? []
+        : [...new Set(providerLangs)];
     if (evidence?.alive && langs.length > 1) {
       multi.push({ adapter:entry.adapter, candidate:{...c,multiAudio:true,availableAudioLangs:langs,audioLang:undefined,audioLabel:undefined} });
       continue;
@@ -35,6 +47,9 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     // the same language into a supposedly multilingual source.
     let host = '';
     try { host = new URL(c.url).hostname.toLowerCase(); } catch { continue; }
+    // A provider multi-audio flag that no measurement backs never survives into
+    // the response: an unproven claim is what makes a language switch look
+    // available while the audio never changes.
     single.push({adapter:entry.adapter,candidate:{...c,multiAudio:false,availableAudioLangs:langs.length===1?langs:undefined},
       alive:!!evidence?.alive,latency:evidence?.rttMs ?? c.latencyMs ?? Number.POSITIVE_INFINITY,host,order:single.length});
   }

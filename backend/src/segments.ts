@@ -1,7 +1,9 @@
 /** Optional, independent skip-marker lookup. Playback never waits for this service. */
 export interface SegmentQuery { tmdbId: string; season: number; episode: number; duration: number }
 export interface SkipMarkers { intro?: [number, number]; outro?: [number, number] }
-const cache = new Map<string, { expires: number; value: SkipMarkers }>();
+import { PolicyCache } from './memory-policy.js';
+
+const cache = new PolicyCache<{ expires: number; value: SkipMarkers }>(500);
 const pending = new Map<string, Promise<SkipMarkers>>();
 
 export function parseIntroDbMarkers(data: unknown, duration: number): SkipMarkers {
@@ -43,7 +45,6 @@ export async function fetchSkipMarkers(q: SegmentQuery): Promise<SkipMarkers> {
       const data = await response.json() as Record<string, unknown>;
       if (data?.type !== 'tv' || Number(data.season) !== q.season || Number(data.episode) !== q.episode) return {};
       const result = parseIntroDbMarkers(data, q.duration);
-      if (cache.size >= 500) cache.delete(cache.keys().next().value!);
       cache.set(key, { value: result, expires: Date.now() + (result.intro || result.outro ? 3600_000 : 300_000) });
       return result;
     } catch { return {}; }

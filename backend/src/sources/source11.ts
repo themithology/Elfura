@@ -1,7 +1,7 @@
 /** Direct VAPlayer HLS discovery. Upstream 'original' is not evidence of a
  * language: only manifest-proven multi-audio results are returned. */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 const API = 'https://streamdata.vaplayer.ru/api.php';
 const ORIGIN = 'https://brightpathsignals.com';
@@ -42,7 +42,7 @@ export function createSource11Adapter(enabled: () => boolean): SourceAdapter {
     const start = Date.now(), raw = await fetchFromVAPlayer(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
     const candidates = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
+      const evidence = candidateEvidence(c);
       return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
     });
     query.diag?.push({adapter:'source-11',lane:'A',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}`});

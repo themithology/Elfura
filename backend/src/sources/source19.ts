@@ -20,7 +20,7 @@
  */
 import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
 import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
 
@@ -504,7 +504,7 @@ export function createSource19Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromDesiDub(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
+      const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-19',
         lane: 'DD',

@@ -17,6 +17,7 @@ import type { BackendConfig } from './config.js';
 import { isSafeUpstreamUrl } from './security.js';
 import { normalizeLang } from './sources/lang.js';
 import type { RawTrackRef } from './sources/types.js';
+import { PolicyCache } from './memory-policy.js';
 
 interface OpenSubEntry {
   id?: string;
@@ -36,7 +37,7 @@ interface CacheEntry {
 
 const SUB_CACHE_MAX = 256;
 const SUB_CACHE_TTL_MS = 30 * 60_000;
-const subRamCache = new Map<string, CacheEntry>();
+const subRamCache = new PolicyCache<CacheEntry>(SUB_CACHE_MAX);
 
 const OPENSUB_LEGACY_TAG_MAP: Record<string, string> = {
   pob: 'pt-BR',
@@ -87,10 +88,6 @@ function getCachedSubs(key: string): RawTrackRef[] | null {
 }
 
 function setCachedSubs(key: string, tracks: RawTrackRef[]): void {
-  if (subRamCache.size >= SUB_CACHE_MAX) {
-    const oldest = subRamCache.keys().next().value;
-    if (oldest) subRamCache.delete(oldest);
-  }
   subRamCache.set(key, { expiresAt: Date.now() + SUB_CACHE_TTL_MS, tracks });
 }
 

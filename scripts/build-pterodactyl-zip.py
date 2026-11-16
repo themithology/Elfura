@@ -20,15 +20,12 @@ OUT_ZIP = ROOT / "elfura-pterodactyl.zip"
 if not (DIST_DIR / "embed.html").is_file() or not (DIST_DIR / "backend" / "index.js").is_file():
     raise SystemExit("dist/ is incomplete — run `npm run build` first.")
 
-ROOT_SHIM = (
-    "import { startBackendServer } from './dist/backend/index.js';\n"
-    "startBackendServer();\n"
-)
+# The real root entrypoint is shipped, not a generated shim: it sets the Node
+# memory flags this deployment depends on, and a shim would silently drop them.
+ROOT_SHIM = (ROOT / "index.js").read_text(encoding="utf-8")
 
-SRC_SHIM = (
-    "import { startBackendServer } from '../dist/backend/index.js';\n"
-    "startBackendServer();\n"
-)
+# Same entrypoint, re-pointed one directory down (src/ -> ../dist/...).
+SRC_SHIM = ROOT_SHIM.replace("./dist/backend/index.js", "../dist/backend/index.js")
 
 ROOT_ENTRYPOINTS = [
     "index.js",

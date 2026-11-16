@@ -19,8 +19,13 @@ globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.ends
  const language=u.pathname.includes('other-multi')?['it','en']:u.pathname.includes('/multi')?['hi','en']:u.pathname.includes('single-b')?['en']:[];
  const tracks=language.map(l=>`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="${l}",NAME="${l}",URI="/child.m3u8"`).join('\n');return new Response(`#EXTM3U\n${tracks}\n#EXT-X-STREAM-INF:BANDWIDTH=500000,AUDIO="x"\n/child.m3u8`);};
 try {
+ // Verification returns NEW candidate objects carrying per-request evidence.
+ // Use those for selection: ranking must work with no cache at all.
  const results=await verifyAndFilterCandidatesDetailed(entries.map(x=>x.candidate));assert.equal(results.verifiedAliveCount,5);
- const selected=selectPlaybackCandidates(entries);const multi=selected.filter(x=>x.candidate.multiAudio),single=selected.filter(x=>!x.candidate.multiAudio);
+ const verifiedByUrl=new Map(results.candidates.map(c=>[c.url,c]));
+ const baseEntries=entries.slice();
+ const verifiedEntries=baseEntries.map(e=>({...e,candidate:verifiedByUrl.get(e.candidate.url)??e.candidate})).filter(e=>verifiedByUrl.has(e.candidate.url));
+ const selected=selectPlaybackCandidates(verifiedEntries);const multi=selected.filter(x=>x.candidate.multiAudio),single=selected.filter(x=>!x.candidate.multiAudio);
  assert.equal(multi.length,2);assert.equal(single.length,3,'every verified single-track lane is listed, not just two');assert.deepEqual(multi[0].candidate.availableAudioLangs,['hi','en'],'unverified metadata must not create a fake third language');
  assert(!multi.some(x=>x.candidate.key==='single-b'),'single-track source must not be called multi-audio');
  assert.equal(new Set(single.map(x=>new URL(x.candidate.url).hostname)).size,2,'fallbacks should use different hosts');
@@ -33,9 +38,20 @@ try {
  for (const lang of ['en','hi','ta','te','kn']) assert(dubSelected.some(x=>x.candidate.audioLang===lang&&!x.candidate.multiAudio),`missing separate ${lang} dub`);
  const slow=cand('slow-verify.example','late-multi',{multiAudio:true,availableAudioLangs:['hi','en']});
  globalThis.fetch=async input=>{if(String(input).includes('late-multi'))await new Promise(r=>setTimeout(r,250));return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');};
- await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));assert.equal(cachedCandidateEvidence(slow),null);await new Promise(r=>setTimeout(r,350));assert.equal(cachedCandidateEvidence(slow)?.alive,true,'shared probe should finish and warm cache after startup timeout');assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slow}])[0].candidate.multiAudio,true);
+ // A startup timeout must not kill the shared probe: the lane stays usable and
+ // is measured by the request that actually needs it. Payload caching is off by
+ // design, so nothing is expected to be remembered across requests.
+ const slowVerify=await verifyAndFilterCandidatesDetailed([slow],AbortSignal.timeout(50));
+ assert.equal(slowVerify.probedDead.has(slow.url),false,'a startup timeout is not proof of death');
+ await new Promise(r=>setTimeout(r,350));
+ const slowAgain=await verifyAndFilterCandidatesDetailed([slow]);
+ assert.equal(slowAgain.verifiedAliveCount,1,'the lane verifies once it is given the time');
+ assert.equal(selectPlaybackCandidates([{adapter:one,candidate:slowAgain.candidates[0]}])[0].candidate.multiAudio,true);
  const unknown=selectPlaybackCandidates([{adapter:one,candidate:cand('e.example','unverified',{multiAudio:true,availableAudioLangs:['hi','en']})}]);assert.equal(unknown.length,1);assert.equal(unknown[0].candidate.multiAudio,false);assert.equal(unknown[0].candidate.availableAudioLangs,undefined);
- const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,three].map(a=>({...a,resolve:async()=>({candidates:entries.filter(x=>x.adapter===a).map(x=>x.candidate)})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.deepEqual(playback.sourceGroups,['source-1','source-2','source-3']);assert.equal(playback.sources.filter(x=>!x.multiAudio).length,3);assert.equal(playback.sources.filter(x=>x.multiAudio).length,2);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
+ globalThis.fetch=async input=>{const u=new URL(String(input));if(u.pathname.endsWith('/child.m3u8'))return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
+ const language=u.pathname.includes('other-multi')?['it','en']:u.pathname.includes('/multi')?['hi','en']:u.pathname.includes('single-b')?['en']:[];
+ const tracks=language.map(l=>`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="${l}",NAME="${l}",URI="/child.m3u8"`).join('\n');return new Response(`#EXTM3U\n${tracks}\n#EXT-X-STREAM-INF:BANDWIDTH=500000,AUDIO="x"\n/child.m3u8`);};
+ const reg=new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'selection-test',OPENSUBTITLES_ENABLED:'0'}));reg.adapters=[one,two,three].map(a=>({...a,resolve:async()=>({candidates:baseEntries.filter(x=>x.adapter===a).map(x=>({...x.candidate}))})}));entries[0].candidate.subtitles=[{lang:'en',label:'provider',url:'https://secret.example/provider.vtt'}];const playback=await reg.resolvePlayback({type:'movie',tmdbId:'424242'});assert.deepEqual(playback.sourceGroups,['source-1','source-2','source-3']);assert.equal(playback.sources.filter(x=>!x.multiAudio).length,3);assert.equal(playback.sources.filter(x=>x.multiAudio).length,2);assert(playback.sources.every(x=>x.subtitles.length===0),'provider subtitles must never leak when OpenSubtitles is disabled');
  // VidSync can label the same file in multiple languages and its standby
  // may point to a different dub. Neither may be advertised as proven tracks.
  const vsRows=[

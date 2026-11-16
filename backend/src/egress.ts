@@ -24,7 +24,6 @@
  */
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
 import { readDotEnvOverlay } from './config.js';
-import { proxyPool, type ProxyEntry } from './proxy-pool.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
 
@@ -99,17 +98,7 @@ export function egressProblem(): string {
 }
 
 /** Close cached proxy dispatchers after the operator uploads a different list. */
-let cachedGeneration = -1;
-let proxyLogAnnounced = false;
 let relayLogAnnounced = false;
-const proxyAgents = new Map<string, import('undici').Dispatcher>();
-
-function releaseProxies(): void {
-  for (const dispatcher of proxyAgents.values()) {
-    void Promise.resolve((dispatcher as { close?: () => unknown }).close?.()).catch(() => {});
-  }
-  proxyAgents.clear();
-}
 
 /**
  * Live state of the Worker relay, for the panel.
@@ -282,19 +271,6 @@ export async function installEgressProfile(log: (line: string) => void = console
   const fetch = undici.fetch;
   type FetchResult = Awaited<ReturnType<typeof fetch>>;
 
-  /** One dispatcher per uploaded proxy, rebuilt when the list changes. */
-  const agentFor = (entry: ProxyEntry): import('undici').Dispatcher => {
-    if (cachedGeneration !== proxyPool.generation) {
-      releaseProxies();
-      cachedGeneration = proxyPool.generation;
-    }
-    const existing = proxyAgents.get(entry.id);
-    if (existing) return existing;
-    const created = new undici!.ProxyAgent(entry.url);
-    proxyAgents.set(entry.id, created);
-    return created;
-  };
-
   /**
    * One discovery request through the Worker. The target URL and the method go
    * in headers because the Worker is a different origin and the URL carries the
@@ -429,45 +405,19 @@ export async function installEgressProfile(log: (line: string) => void = console
       }
     }
 
-    // The legacy path: uploaded proxies take precedence over the single `.env`
-    // proxy, because an operator who uploaded a list asked for that list. Each
-    // request starts one proxy further along; a transport failure moves to the
-    // next, and when the whole list is unreachable the request still leaves over
-    // the direct agent rather than failing the source outright.
+    // The Worker relay is the only proxying mechanism. If it is unset or paused
+    // the request goes direct over the browser profile; there is no local proxy
+    // list to rotate through, because rotating one caused a metered provider to
+    // flag this server for a request burst it never actually issued.
     let dispatcher: import('undici').Dispatcher = directAgent;
-    let usedProxy: ProxyEntry | null = null;
-    let response: FetchResult | null = null;
-    // One candidate per request, not three. Twenty-one sources times three
-    // dials is how a metered proxy account gets throttled for "1,000 requests
-    // in a second" while an operator is only trying to load a page.
-    const candidates = proxyPool.nextCandidates(1);
-    if (candidates.length && !proxyLogAnnounced) {
-      proxyLogAnnounced = true;
-      log(`[elfura-egress] proxy list active: ${proxyPool.size} uploaded prox${proxyPool.size === 1 ? 'y' : 'ies'}, rotating per request`);
-    }
-    for (const candidate of candidates) {
-      try {
-        const candidateDispatcher = agentFor(candidate);
-        response = await fetch(normalized.url, { ...firstInit, dispatcher: candidateDispatcher } as never);
-        proxyPool.reportSuccess(candidate.id);
-        dispatcher = candidateDispatcher;
-        usedProxy = candidate;
-        break;
-      } catch (error) {
-        proxyPool.reportFailure(candidate.id, error);
-      }
-    }
-    if (!response) {
-      // No proxy answered, so this request is going direct. It gets the same
-      // single 403 retry as the pass-through path below; without that a bare
-      // install lost its only defence against a Cloudflare refusal.
-      response = await fetch(normalized.url, { ...firstInit, dispatcher: directAgent } as never);
-    }
+    let response: FetchResult | null = await fetch(normalized.url, {
+      ...firstInit,
+      dispatcher: directAgent,
+    } as never);
 
     // 403 is what Cloudflare answers to a request it dislikes. One retry with a
     // plainer fingerprint costs nothing when it fails and is a source back when
-    // it works. A refusal through a proxy may also be that proxy's reputation,
-    // so the retry is attempted over the next proxy when one is available.
+    // it works.
     if (response.status === 403) {
       await response.body?.cancel().catch(() => {});
       const retryHeaders = alternateProfile(firstInit.headers as HeaderBag);
@@ -482,41 +432,25 @@ export async function installEgressProfile(log: (line: string) => void = console
           /* fall through to the local retry */
         }
       }
-      let retried: FetchResult | null = null;
-      if (usedProxy) {
-        const next = proxyPool.nextCandidates(1).find((entry) => entry.id !== usedProxy!.id);
-        if (next) {
-          try {
-            retried = await fetch(normalized.url, { ...firstInit, headers: retryHeaders, dispatcher: agentFor(next) } as never);
-            proxyPool.reportSuccess(next.id);
-            if (retried.status !== 403) return retried;
-            await retried.body?.cancel().catch(() => {});
-            retried = null;
-          } catch (error) {
-            proxyPool.reportFailure(next.id, error);
-          }
-        }
-      }
-      response = await fetch(normalized.url, { ...firstInit, headers: retryHeaders, dispatcher } as never).catch(
-        () => response,
-      );
+      response = await fetch(normalized.url, {
+        ...firstInit,
+        headers: retryHeaders,
+        dispatcher,
+      } as never).catch(() => response);
     }
     return response;
   }) as typeof fetch;
 
   globalThis.fetch = profiledFetch;
   installed = true;
-  const uploaded = proxyPool.size;
   const bootRelay = currentRelayUrl();
   log(
     `[elfura-egress] discovery requests use a browser profile` +
       (bootRelay
         ? ` via relay ${relayHost(bootRelay)}`
-        : uploaded
-          ? ` via ${uploaded} uploaded prox${uploaded === 1 ? 'y' : 'ies'}`
-          : proxy
-            ? ' via configured proxy'
-            : ' (HTTP/2, Chrome headers, one retry on 403)'),
+        : proxy
+          ? ' via configured proxy'
+          : ' (HTTP/2, Chrome headers, one retry on 403)'),
   );
   return true;
 }

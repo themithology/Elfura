@@ -2,7 +2,7 @@
  * multilingual streams and reachable language-labelled dubs leave this adapter. No subtitle or embed proxy. */
 import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://core.vidzee.wtf';
@@ -67,7 +67,7 @@ export function createSource8Adapter(enabled: () => boolean): SourceAdapter {
     const raw = await fetchFromVidZee(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw, query.signal);
     const usable = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
+      const evidence = candidateEvidence(c);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
     });
     query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},usable=${usable.length}` });

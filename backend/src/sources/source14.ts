@@ -21,7 +21,7 @@
  */
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
@@ -293,5 +293,5 @@ export function createSource14Adapter(enabled: () => boolean): SourceAdapter {
 }
 
 function candidateEvidenceAlive(candidate: RawStreamCandidate): boolean {
-  return !!cachedCandidateEvidence(candidate)?.alive;
+  return !!candidateEvidence(candidate)?.alive;
 }

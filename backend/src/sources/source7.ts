@@ -1,6 +1,6 @@
 /** Experimental ScreenScape lanes, separate from the existing Nxsha source.
  * Retains manifest-proven multi-audio and reachable, explicitly labelled dubs. */
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { fetchFromNxsha } from './source5.js';
 import type { SourceAdapter } from './types.js';
 
@@ -18,7 +18,7 @@ export function createSource7Adapter(enabled: () => boolean): SourceAdapter {
     const candidates = await fetchFromNxsha({ ...query, signal: discoverySignal, diag: [], onLateResult: undefined }, LANES);
     const verified = await verifyAndFilterCandidatesDetailed(candidates, query.signal);
     const usable = verified.candidates.filter(candidate => {
-      const evidence = cachedCandidateEvidence(candidate);
+      const evidence = candidateEvidence(candidate);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!candidate.audioLang && candidate.audioLang !== 'und');
     });
     query.diag?.push({ adapter: 'source-7', lane: 'S', ok: usable.length > 0, ms: Date.now() - start,

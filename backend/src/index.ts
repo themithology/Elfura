@@ -26,8 +26,7 @@ import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { MAX_PROXY_TEXT_BYTES, proxyPool } from './proxy-pool.js';
-import { checkDirect, checkProxies, checkRelay, proxyProbeTarget } from './proxy-check.js';
+import { checkRelay, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
 import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
@@ -48,6 +47,7 @@ import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
+import { describeMemoryPolicy, RAM_CACHE_ENABLED } from './memory-policy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_ROOT = path.resolve(__dirname, '../../dist');
@@ -181,9 +181,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       readDotEnvOverlay().ELFURA_UPSTREAM_PROXY ??
       ''
     ).trim();
-    const snapshot = proxyPool.snapshot();
     return {
-      ...snapshot,
       envProxyConfigured: !!envProxy,
       applied: isEgressProfileInstalled(),
       problem: egressProblem(),
@@ -317,60 +315,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
       }
-      if (pathname === '/roxy/api/proxies' && method === 'GET') { reply(200, proxySummary()); return; }
-      if (pathname === '/roxy/api/proxies' && method === 'POST') {
-        // The panel reads the picked .txt file and posts its text: a plain text
-        // body keeps the format exactly what the provider handed the operator.
-        try {
-          const body = await readJsonBody(req, MAX_PROXY_TEXT_BYTES + 4096);
-          if (typeof body.text !== 'string') { reply(400, { error: 'expected {text}' }); return; }
-          if (body.text.length > MAX_PROXY_TEXT_BYTES) { reply(413, { error: 'That list is too large' }); return; }
-          const result = proxyPool.replaceText(body.text);
-          if (!result.persisted) { reply(500, { ...proxySummary(), ...result, error: 'Could not save the proxy list' }); return; }
-          reply(200, { ...proxySummary(), ...result });
-        } catch { reply(400, { error: 'Invalid request' }); }
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/clear' && method === 'POST') {
-        const ok = proxyPool.clear();
-        reply(ok ? 200 : 500, { ...proxySummary(), ...(ok ? {} : { error: 'Could not save the change' }) });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
-        if (!proxyCheckLimiter.allow('proxy-check')) { reply(429, { error: 'Test limit reached; retry shortly' }); return; }
-        try {
-          const body = await readJsonBody(req, 4096);
-          const all = proxyPool.list();
-          if (!all.length) { reply(400, { error: 'No proxies uploaded yet' }); return; }
-          let selected = all;
-          if (typeof body.id === 'string' && body.id) {
-            const one = proxyPool.find(body.id);
-            if (!one) { reply(400, { error: 'Unknown proxy' }); return; }
-            selected = [one];
-          } else if (all.length > 25) {
-            // Bounded: the panel is a browser tab, not a load generator.
-            selected = all.slice(0, 25);
-          }
-          // Run the no-proxy control only when the list produced no success:
-          // then it answers the only question that matters ("is it my server
-          // or my proxies?"), and costs nothing on a healthy list.
-          const results = await checkProxies(selected);
-          const direct = results.some((result) => result.ok) ? null : await checkDirect();
-          // Feed the result back into the pool: a working proxy loses its
-          // failure count, a dead one starts resting, and the panel can show
-          // which exit address each proxy actually provides.
-          for (const result of results) {
-            if (result.ok) {
-              proxyPool.reportSuccess(result.id);
-              proxyPool.reportIp(result.id, result.ip);
-            } else {
-              proxyPool.reportFailure(result.id, result.error);
-            }
-          }
-          reply(200, { results, direct, probeTarget: proxyProbeTarget() });
-        } catch { reply(400, { error: 'Invalid request' }); }
-        return;
-      }
       if (pathname === '/roxy/api/egress' && method === 'GET') {
         // The one question worth answering before any proxy, relay or header
         // work: can this server reach the internet at all, and is the failure
@@ -467,6 +411,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         // Emitted by the running code, unlike build-info.json which can be
         // replaced on disk while an older Node process is still running.
         features: { roxy: true },
+        // Small, stable readout so RAM can be watched from the panel or a URL
+        // without SSH. heapUsed is what the code holds; rss is what the OS
+        // reserved. With payload caching off these should both stay flat.
+        memory: readMemoryUsage(),
         sources: registry.listPublicSources(),
       });
       return;
@@ -990,6 +938,25 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   return { server, cfg, registry };
 }
 
+/** Compact memory readout: MB with one decimal, cheap enough for a health probe. */
+function readMemoryUsage(): {
+  rssMb: number;
+  heapUsedMb: number;
+  heapTotalMb: number;
+  externalMb: number;
+  payloadCaches: 'on' | 'off';
+} {
+  const m = process.memoryUsage();
+  const mb = (n: number) => Math.round((n / 1048576) * 10) / 10;
+  return {
+    rssMb: mb(m.rss),
+    heapUsedMb: mb(m.heapUsed),
+    heapTotalMb: mb(m.heapTotal),
+    externalMb: mb(m.external),
+    payloadCaches: RAM_CACHE_ENABLED ? 'on' : 'off',
+  };
+}
+
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   // Before anything resolves a hostname: if this container's resolver is dead
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
@@ -1003,6 +970,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
         ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
+    console.log(describeMemoryPolicy());
     const state = registry.describeSources();
     const sources = state.enabled.join(', ') || 'none';
     console.log(
