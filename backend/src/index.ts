@@ -28,6 +28,7 @@ import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
+import { healthSummary, noteRateLimit, noteRequest, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -132,11 +133,31 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  // Artwork and playback are what a normal page load spends its requests on.
+  // Sharing one 120/min bucket with them meant a catalogue page plus a stream
+  // could lock the user out of both for the rest of the minute — and the retry
+  // traffic made it look like the sources had died. They get their own,
+  // generous windows; the abuse-sensitive endpoints keep the base limit.
+  const artLimiter = new SlidingWindowLimiter(
+    Math.max(600, Number(process.env.ELFURA_ART_RATE_LIMIT || 0) || cfg.rateLimitPerMin * 6),
+  );
+  const playbackLimiter = new SlidingWindowLimiter(
+    Math.max(180, Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0) || cfg.rateLimitPerMin * 3),
+  );
   const roxy = new RoxyStore(cfg.secret);
   // Pop-under ads live in the embed player only; this decides per request.
   const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
+  /** Run one bounded unit of work with the perf monitor watching it. */
+  const trackPhase = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
+    const end = phaseStart(name);
+    try {
+      return await run();
+    } finally {
+      end();
+    }
+  };
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -185,6 +206,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
 
   const server = http.createServer(async (req, res) => {
+    noteRequest();
     const method = (req.method || 'GET').toUpperCase();
     let url: URL;
     try {
@@ -287,8 +309,21 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         // Emitted by the running code, unlike build-info.json which can be
         // replaced on disk while an older Node process is still running.
         features: { roxy: true },
+        perf: healthSummary(),
         sources: registry.listPublicSources(),
       });
+      return;
+    }
+
+    // 2a. "Why did it stop?" — event-loop lag, CPU/cgroup throttling, GC pauses
+    // and rate-limit denials for this process. No upstream identity is exposed.
+    if (method === 'GET' && pathname === '/api/v1/perf') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+        return;
+      }
+      sendJson(res, 200, { ok: true, ...perfSnapshot() }, allowOrigin);
       return;
     }
 
@@ -413,7 +448,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'request forbidden' });
         return;
       }
-      if (!rateLimiter.allow(`art:${getClientIp(req)}`)) {
+      if (!artLimiter.allow(`art:${getClientIp(req)}`)) {
+        noteRateLimit('art');
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -425,6 +461,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const season = type === 'tv' ? Math.max(1, Number(url.searchParams.get('s') || url.searchParams.get('season')) || 1) : undefined;
       const episode = type === 'tv' ? Math.max(1, Number(url.searchParams.get('e') || url.searchParams.get('episode')) || 1) : undefined;
+      const endArtPhase = phaseStart('art');
       try {
         const media = await fetchTmdbMetadata(cfg.tmdb, { type, tmdbId, season, episode });
         sendJson(
@@ -446,6 +483,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         );
       } catch {
         sendJson(res, 200, { ok: false }, allowOrigin);
+      } finally {
+        endArtPhase();
       }
       return;
     }
@@ -457,7 +496,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!rateLimiter.allow(`pb:${clientIp}`)) {
+      if (!playbackLimiter.allow(`pb:${clientIp}`)) {
+        noteRateLimit('playback');
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -525,7 +565,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         }
       }
 
-      const resolved = await registry.resolvePlayback({
+      const resolved = await trackPhase('playback', () => registry.resolvePlayback({
         type: mediaType,
         tmdbId,
         anilistId,
@@ -535,7 +575,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sourceId,
         preferredLang,
         late: url.searchParams.get('late') === '1',
-      });
+      }));
 
       if (!resolved) {
         sendJson(res, 404, { ok: false, error: 'no playable streams available for this title' }, allowOrigin);
@@ -785,6 +825,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 }
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  startPerfMonitor();
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     console.log(
