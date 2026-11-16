@@ -1246,6 +1246,12 @@ function startAutostartResolver(overrides: Partial<BackendConfig> = {}) {
     }
   };
   for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => stop(signal));
+  // A spawn that never starts (bad entrypoint, missing file) must not be reported
+  // as "started". This check exists because the log said "started a separate
+  // resolver on port N" while nothing was listening on N at all.
+  child.on('error', (err) => {
+    console.error(`[elfura-resolver] autostart could not spawn the resolver: ${err.message}`);
+  });
   child.on('exit', (code, signal) => {
     // The resolver shuts itself down gracefully on a signal, so a normal stop is
     // an exit code, not a signal. Either way this is expected when we asked.
@@ -1260,8 +1266,33 @@ function startAutostartResolver(overrides: Partial<BackendConfig> = {}) {
     );
   });
   process.env.ELFURA_RESOLVER_URL = `http://127.0.0.1:${port}`;
+  // Say "starting", then confirm with a probe before claiming it is up. The old
+  // single line was emitted unconditionally and was wrong whenever the child
+  // exited immediately, which sent anyone debugging it looking at the media
+  // server for a fault that was in the child.
   console.log(
-    `[elfura-resolver] autostart: started a separate resolver on port ${port}; ` +
+    `[elfura-resolver] autostart: starting a separate resolver on port ${port}; ` +
       'discovery is isolated from the media server',
   );
+  void (async () => {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (shuttingDown) return;
+      try {
+        const probe = await fetch(`http://127.0.0.1:${port}/resolver/api/health`, {
+          signal: AbortSignal.timeout(400),
+        });
+        if (probe.ok || probe.status === 401 || probe.status === 403) {
+          console.log(`[elfura-resolver] autostart: resolver is answering on port ${port}`);
+          return;
+        }
+      } catch {
+        /* not up yet */
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    console.error(
+      `[elfura-resolver] autostart: the resolver never answered on port ${port}. ` +
+        'Video keeps serving; new source lookups will report an outage.',
+    );
+  })();
 }

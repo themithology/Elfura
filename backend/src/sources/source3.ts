@@ -94,7 +94,22 @@ export async function fetchFromVidSyncPro(
         await res.body?.cancel().catch(() => {});
         return null;
       }
-      return await res.json();
+      // A 200 does not promise JSON. On a datacenter IP this host answers with an
+      // HTML page, and letting `.json()` throw surfaced as a bare
+      // "SyntaxError SyntaxError" in the panel — a failure with no meaning. A
+      // body we cannot parse is a distinct, reportable outcome.
+      const text = await res.text();
+      if (!text) {
+        grabReasons.push('empty-body');
+        return null;
+      }
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        // Keep a few characters so an HTML challenge page is obvious in the trace.
+        grabReasons.push(`not-json:${text.slice(0, 16).replace(/\s+/g, ' ')}`);
+        return null;
+      }
     } catch (err) {
       grabReasons.push(err instanceof Error ? err.name : 'error');
       return null;

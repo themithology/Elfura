@@ -50,6 +50,39 @@ await check('a 404 on both endpoints is reported as http=404, not silently empty
   }
 });
 
+await check('a 200 that is HTML is reported as not-json, not as SyntaxError', async () => {
+  // Exact CI failure: on the GitHub runner this host answered 200 with an HTML
+  // page and `.json()` threw, so the panel showed "SyntaxError SyntaxError" —
+  // a failure with no meaning attached to it.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<!DOCTYPE html><html><body>blocked</body></html>', {
+    status: 200,
+    headers: { 'content-type': 'text/html' },
+  });
+  try {
+    const diag = [];
+    const adapter = createSource3Adapter({ enabled: true, origin: 'https://vidsync.example' });
+    await adapter.resolve({ type: 'movie', tmdbId: '155', diag });
+    assert.match(diag[0].detail, /not-json/, `expected not-json in "${diag[0].detail}"`);
+    assert.ok(!/SyntaxError/.test(diag[0].detail), 'a parse failure must not read as a thrown error');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+await check('an empty 200 body is reported as empty-body', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('', { status: 200 });
+  try {
+    const diag = [];
+    const adapter = createSource3Adapter({ enabled: true, origin: 'https://vidsync.example' });
+    await adapter.resolve({ type: 'movie', tmdbId: '155', diag });
+    assert.match(diag[0].detail, /empty-body/, `expected empty-body in "${diag[0].detail}"`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 await check('a network failure is reported with its error name', async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async () => {

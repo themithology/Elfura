@@ -243,9 +243,16 @@ export function createSource22Adapter(enabled: () => boolean): SourceAdapter {
       query.diag?.push({
         adapter: 'source-22',
         lane: 'VT',
-        // `ok` means "the index answered", not "this title is playable". The
-        // panel must not read a subtitle hit as a working stream.
-        ok: false,
+        // `ok` is true when the lane did its job — fetched subtitles. The CI run
+        // showed how misleading `ok:false` was here: the lane returned 12 real
+        // tracks and still appeared in the "answered nothing" list, which is
+        // wrong in the opposite direction from the source-18 bug. A subtitle
+        // lane succeeding is not a failure just because it has no video.
+        //
+        // The panel must still not read this as a playable stream, which is why
+        // the kind is stated in the detail line and the row counts stay at zero:
+        // a subtitle hit is not a source that can serve a title.
+        ok: tracks.length > 0,
         ms: Date.now() - started,
         detail:
           `subtitles-only tracks=${tracks.length} ` +

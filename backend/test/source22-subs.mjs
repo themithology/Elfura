@@ -153,8 +153,31 @@ await check('subtitles are never reported as streams', async () => {
   });
   assert.equal(result.candidates.length, 0, 'a subtitle lane must return zero video candidates');
   assert.equal(diag.length, 1, 'it must still report itself in diagnostics');
-  assert.equal(diag[0].ok, false, 'a subtitle hit must never be reported as a working source');
+  // This run is pointed at a dead host (signal timeout), so `ok` is false. When
+  // the lane does fetch tracks, `ok` is true — see the next case. Reporting a
+  // successful subtitle fetch as a failure was putting a working lane in the
+  // "answered nothing" list on CI.
   assert.match(diag[0].detail, /subtitles-only/);
+});
+
+await check('a successful subtitle fetch reports ok:true but still no stream', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ subtitles: [
+      { url: `${VTT}/Hindi.vtt`, lang: 'hi', label: 'Hindi', group: 'Hindi' },
+      { url: `${VTT}/Tamil.vtt`, lang: 'ta', label: 'Tamil', group: 'Tamil' },
+    ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  try {
+    const diag = [];
+    const adapter = createSource22Adapter(() => true);
+    const result = await adapter.resolve({ type: 'movie', tmdbId: '1010581', diag });
+    assert.equal(result.candidates.length, 0, 'still no video candidate');
+    assert.equal(diag[0].ok, true, 'a working subtitle lane must not report as failed');
+    assert.match(diag[0].detail, /tracks=2/);
+    assert.match(diag[0].detail, /subtitles-only/, 'the panel must still know it is subtitle-only');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 console.log(`\n${failures.length ? `${failures.length} FAILED` : 'all checks passed'}\n`);

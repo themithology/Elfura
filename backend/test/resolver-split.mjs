@@ -57,6 +57,16 @@ async function waitFor(url, tries = 90) {
  * and a test that only kills the parent would silently measure nothing.
  */
 function killTree(pid) {
+  // `index.js` re-execs itself once (to set memory flags), so the process that is
+  // actually listening is a *grandchild* and `pkill -P <pid>` misses it — the
+  // parent dies, the server keeps running, and it holds a port for the next test
+  // run. Because the child was spawned `detached: true` it has its own process
+  // group, so killing the group gets everything.
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    /* no process group (already gone) */
+  }
   try {
     execSync(`pkill -9 -P ${pid}`, { stdio: 'ignore' });
   } catch {
@@ -364,33 +374,86 @@ const autoPort = 8903;
 // EADDRINUSE and the check fails for a reason that has nothing to do with the
 // behaviour under test. Clear both before asserting.
 await waitForPortClosed(autoPort);
-try {
-  // Only a process listening on *our* test port is killed, by port, not by name.
-  const owners = execSync(`ss -ltnp 2>/dev/null | grep ':${autoPort} ' || true`).toString();
-  for (const match of owners.matchAll(/pid=(\d+)/g)) {
+/**
+ * Sweep anything left listening in this test's port range.
+ *
+ * The autostart boot picks the next free port from `autoPort` upward, so a run
+ * that was killed mid-flight (a timeout, a Ctrl-C, a sandbox restart) leaves a
+ * media server plus its autostarted resolver behind on 8903/8904/8905/... The
+ * next run then sees ports that answer, and both autostart checks fail for a
+ * reason unrelated to the code. Sweeping the range rather than one port makes
+ * the test independent of how the previous run happened to die.
+ */
+function sweepPortRange(from, to) {
+  for (let port = from; port <= to; port++) {
     try {
-      execSync(`kill -9 ${match[1]}`);
+      const owners = execSync(`ss -ltnp 2>/dev/null | grep ':${port} ' || true`).toString();
+      for (const match of owners.matchAll(/pid=(\d+)/g)) {
+        try {
+          execSync(`kill -9 ${match[1]}`);
+        } catch {
+          /* already gone */
+        }
+      }
     } catch {
-      /* already gone */
+      /* ss unavailable on this platform; the wait below still covers one port */
     }
   }
-} catch {
-  /* ss unavailable: fall through to the wait below */
 }
+// 24 ports, not 8: an autostarted resolver picks the next free port from the
+// media port upward and was observed landing on 8924 after a few leaked runs.
+sweepPortRange(autoPort, autoPort + 24);
+await waitForPortClosed(autoPort);
 const auto = spawnElfura([], {
   SERVER_PORT: String(autoPort),
   ELFURA_RESOLVER_AUTOSTART: '1',
   // deliberately no ELFURA_RESOLVER_URL: that is the point of autostart
 });
 const autoUp = await waitFor(`http://127.0.0.1:${autoPort}/api/v1/health`, 150);
+// The media server binds its own port first and the autostarted resolver is a
+// second process that has to boot from scratch, so "media is up" does not mean
+// "resolver is up". Waiting on the media port alone made this check race the
+// resolver by a second or two and fail intermittently — the resolver answers on
+// its own schedule and the media server now logs when it does.
+function waitForLog(pattern, tries = 200) {
+  return (async () => {
+    for (let i = 0; i < tries; i++) {
+      if (pattern.test(auto.log)) return true;
+      await wait(100);
+    }
+    return false;
+  })();
+}
+if (!autoUp) {
+  console.log(`\n--- autostart child log (port ${autoPort}) ---`);
+  console.log(auto.log.slice(-2000) || '(no output at all)');
+  console.log('--- end ---\n');
+}
 const autoBase = `http://127.0.0.1:${autoPort}`;
 
 await check('autostart: one command starts both processes', async () => {
-  assert.equal(autoUp, true, `media server did not start:\n${auto.log.slice(-2000)}`);
-  const match = /separate resolver on port (\d+)/.exec(auto.log);
+  // Dump the child's own log on failure. "fetch failed" alone says nothing about
+  // whether the media server refused to boot, crashed, or never bound the port.
+  assert.equal(autoUp, true, `media server did not start on port ${autoPort}.\n--- child log ---\n${auto.log.slice(-2000) || '(no output)'}`);
+  const match = /(?:starting|started) a separate resolver on port (\d+)/.exec(auto.log);
   assert.ok(match, 'no autostart log line');
+  // Wait for the media server to confirm the resolver is actually answering, not
+  // just for it to have been spawned.
+  const confirmed = await waitForLog(/resolver is answering on port \d+/);
+  assert.ok(confirmed, `media server never confirmed the resolver was up:\n${auto.log.slice(-1200)}`);
   const autoResolverPort = Number(match[1]);
-  const report = await (await fetch(`http://127.0.0.1:${autoResolverPort}/resolver/api/health`)).json();
+  let report;
+  try {
+    report = await (await fetch(`http://127.0.0.1:${autoResolverPort}/resolver/api/health`, { signal: AbortSignal.timeout(2000) })).json();
+  } catch (err) {
+    // The media server logged a resolver port but nothing answers there. Print
+    // what we know rather than letting a bare "fetch failed" stand in for it.
+    const probe = execSync(`ss -ltnp 2>/dev/null | grep -E ':(8[0-9]{3}) ' || true`).toString().trim();
+    throw new Error(
+      `autostart logged resolver port ${autoResolverPort} but it did not answer (${err.message}).\n` +
+      `listening ports:\n${probe || '(none in 8000-8999)'}\n--- child log ---\n${auto.log.slice(-1500)}`,
+    );
+  }
   assert.equal(report.service, 'elfura-resolver');
   // The count now comes from the authenticated route, not the public one.
   const listed = await (
