@@ -12,10 +12,15 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 const SITE = 'https://mapple.fun';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
 const PLAYER_API_KEY = 'mptv_sk_a8f29c4e7b3d1f'; // Public player protocol value, not a private credential.
+// The site renamed its hosters from Nexus/Cipher/Pulse to Greek gods (its watch
+// page renders "Poseidon · Source 1 / 13", with Zeus and Athena beside it). The
+// keys are what /api/encrypt takes; the names are only display labels, and the
+// old ids are kept because a rollout can leave both live at once.
 const SERVERS = [
-  { id: 'mapple', name: 'Mapple' },
+  { id: 'mapple', name: 'Zeus' },
+  { id: 's25', name: 'Poseidon' },
+  { id: 's2', name: 'Athena' },
   { id: 's1', name: 'Nexus' },
-  { id: 's2', name: 'Cipher' },
   { id: 's3', name: 'Pulse' },
   { id: 's4', name: 'Vertex' },
   { id: 's10', name: 'Chimp' },
@@ -223,6 +228,39 @@ async function serverCandidate(
   };
 }
 
+/**
+ * Fetch the request token from the site's own endpoint.
+ *
+ * This used to be inline in the page as `window.__REQUEST_TOKEN__`, and we only
+ * read that. The site moved the token behind `POST /api/request-token` (it needs
+ * the page's session cookie and answers JSON), so scraping the HTML started
+ * returning nothing and source-15 went silent with no explanation. The API is
+ * the primary path now; the inline form is kept as a fallback in case a
+ * deployment still ships it.
+ */
+async function fetchRequestToken(pageUrl: string, cookie: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const response = await fetch(`${SITE}/api/request-token`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Referer: pageUrl,
+        Origin: SITE,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: '',
+      redirect: 'manual',
+      signal,
+    });
+    if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
+    const body = await readJson(response);
+    const token = (body as { token?: unknown } | null)?.token;
+    return typeof token === 'string' && token.length >= 8 && token.length <= 2048 ? token : null;
+  } catch { return null; }
+}
+
 /** Why an empty result is empty. Same vocabulary as source-5 and source-13. */
 export interface MappleOptions { trace?: string[] }
 
@@ -247,9 +285,14 @@ export async function fetchFromMapple(query: SourceQuery, options: MappleOptions
     // The token and the proof-of-work handshake are this source's own gate; when
     // either is missing the reason is specific and worth naming, because the
     // fix differs (site markup change vs. a PoW budget that is too small).
-    const requestToken = extractMappleRequestToken(html);
-    if (!requestToken) { trace?.push('no-request-token'); return []; }
     const cookie = mappleCookies(pageResponse);
+    // Prefer the API; fall back to the retired inline token only if it is there.
+    let requestToken = await fetchRequestToken(pageUrl, cookie, signal);
+    if (!requestToken) {
+      requestToken = extractMappleRequestToken(html);
+      if (requestToken) trace?.push('request-token=inline');
+    }
+    if (!requestToken) { trace?.push('no-request-token'); return []; }
     const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal);
     if (!streamToken) { trace?.push('pow-unsolved'); return []; }
     const results = await Promise.all(SERVERS.map((server, index) => serverCandidate(

@@ -477,6 +477,45 @@ await check('a page without the request token says which token is missing', asyn
   assert.match(trace.join(' '), /no-request-token/, `expected no-request-token, got "${trace.join(' ')}"`);
 });
 
+await check('the request token comes from the API, and the chain continues', async () => {
+  // The site moved its token out of the page (`window.__REQUEST_TOKEN__`) into
+  // POST /api/request-token. Scraping the HTML alone is what made this source
+  // report `no-request-token` while the site was perfectly healthy.
+  const realFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url);
+    calls.push(`${opts?.method ?? 'GET'} ${u.replace('https://mapple.fun', '')}`);
+    if (u.endsWith('/api/request-token')) return Response.json({ token: 'tok-from-api-123' });
+    if (u.endsWith('/api/playback-init')) return Response.json({ success: true, token: 'playback-token' });
+    if (u.endsWith('/api/encrypt')) return Response.json({ url: '/api/stream-encrypted?x=1' });
+    return new Response('<html>page without any inline token</html>', { status: 200 });
+  };
+  const trace = [];
+  try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); }
+  finally { globalThis.fetch = realFetch; }
+  assert.ok(calls.includes('POST /api/request-token'), `expected the token API to be called, saw ${JSON.stringify(calls)}`);
+  assert.ok(calls.includes('POST /api/playback-init'), 'a token from the API must let the handshake continue');
+  assert.doesNotMatch(trace.join(' '), /no-request-token/, 'a healthy site must not report a missing token');
+});
+
+await check('an inline token is still accepted when the API is gone', async () => {
+  // Older deployments may still inline the token; the fallback must keep working.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/api/request-token')) return new Response('', { status: 404 });
+    if (u.endsWith('/api/playback-init')) return Response.json({ success: true, token: 'playback-token' });
+    if (u.endsWith('/api/encrypt')) return Response.json({ url: '/api/stream-encrypted?x=1' });
+    return new Response(`<script>window.__REQUEST_TOKEN__ = "inline-token-abcdefgh";</script>`, { status: 200 });
+  };
+  const trace = [];
+  try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); }
+  finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /request-token=inline/, `expected the inline fallback to be noted, got "${trace.join(' ')}"`);
+  assert.doesNotMatch(trace.join(' '), /no-request-token/, 'the inline token must still be usable');
+});
+
 console.log('\nSource 19 — multi-stage discovery');
 
 await check('a title that is not in the catalogue says so', async () => {
