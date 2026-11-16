@@ -287,7 +287,13 @@ export async function fetchFromNxsha(
       try { const res = await getWithFailover('sources', { ...params, ex_lang: true, provider }); if (Array.isArray(res.sources)) rows.push(...res.sources.slice(0, 12)); } catch { /* one lane failing is expected */ }
       finally { finished++; if (!query.diag && rows.length && !timer) timer = setTimeout(() => release?.(), 350); }
     }));
-    if (query.diag) await all;
+    if (query.diag) {
+      // Diagnose mode wants every lane's outcome, so it waits for all of them —
+      // but without a ceiling one unresponsive provider stalls the entire report.
+      // A 3s cap still covers every lane that is merely slow while keeping the
+      // panel responsive; slow lanes are reported, just not waited on forever.
+      await Promise.race([all, new Promise<void>(r => setTimeout(r, 3000))]);
+    }
     else if (ids.length) {
       // Two ways to stop, whichever comes first: the first lane that actually
       // returns rows (then a short grace period for its siblings), or all lanes

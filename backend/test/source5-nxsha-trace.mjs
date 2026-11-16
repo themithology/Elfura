@@ -339,6 +339,39 @@ await check('a resolve does not outwait lanes that have all already failed', asy
   assert.ok(elapsed < 1200, `a fully failed lane set must not wait on a fallback timer (took ${elapsed}ms)`);
 });
 
+await check('diagnose mode reports a hung lane without waiting for it forever', async () => {
+  // Diagnose awaits every lane so the panel can describe each one. Without a
+  // ceiling, a single provider that never answers stalled the whole report
+  // (measured at 20s with one 20s lane). The ceiling must still let ordinary
+  // slow lanes finish.
+  const crypto = await import('node:crypto');
+  const { nxDecode } = await import('../../dist/backend/sources/source5.js');
+  const KEY = '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120';
+  const seal = (o) => {
+    const s2 = crypto.randomBytes(8); let m = Buffer.alloc(0), p2 = Buffer.alloc(0);
+    while (m.length < 48) { p2 = crypto.createHash('md5').update(Buffer.concat([p2, Buffer.from(KEY), s2])).digest(); m = Buffer.concat([m, p2]); }
+    const ci = crypto.createCipheriv('aes-256-cbc', m.subarray(0, 32), m.subarray(32, 48)); const b = JSON.stringify(o);
+    return Buffer.concat([Buffer.from('Salted__'), s2, ci.update(b), ci.final()]).toString('base64url');
+  };
+  const { createSource5Adapter } = await import('../../dist/backend/sources/source5.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/api/servers')) return Response.json({ _hash: seal({ servers: [{ scraper: 'nitro' }, { scraper: 'mhbox' }] }) });
+    const body = nxDecode(new URL(u).searchParams.get('q'));
+    if (body.provider === 'mhbox') await new Promise((r) => setTimeout(r, 20000));
+    await new Promise((r) => setTimeout(r, 100));
+    return Response.json({ _hash: seal({ sources: [{ url: `https://cdn.example/${body.provider}.m3u8`, language: 'English', type: 'hls' }] }) });
+  };
+  const started = Date.now();
+  let out;
+  try { out = await createSource5Adapter(() => true, () => false).resolve({ type: 'movie', tmdbId: '550', diag: [] }); }
+  finally { globalThis.fetch = realFetch; }
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 4500, `diagnose must cap a hung lane (took ${elapsed}ms)`);
+  assert.ok(out.candidates.length >= 1, 'the responsive lane must still be reported');
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.
