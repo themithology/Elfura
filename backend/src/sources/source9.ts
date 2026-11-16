@@ -47,7 +47,7 @@ export function createSource9Adapter(enabled: () => boolean): SourceAdapter {
       const evidence = candidateEvidence(c);
       return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
     });
-    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}`});
+    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }

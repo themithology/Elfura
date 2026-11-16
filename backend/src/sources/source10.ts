@@ -89,7 +89,7 @@ export function createSource10Adapter(enabled: () => boolean): SourceAdapter {
       const evidence = candidateEvidence(c);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
     });
-    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}`});
+    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }
