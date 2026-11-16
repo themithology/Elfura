@@ -78,7 +78,7 @@ try {
   const citadelRequest = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert(citadelRequest, 'the citadel provider is always asked');
   assert.equal(citadelRequest.url.searchParams.get('id'), '693134');
-  assert.equal(citadelRequest.redirect, 'error');
+  assert.equal(citadelRequest.redirect, 'manual');
   assert.deepEqual(
     new Set(requests.map(request => request.url.searchParams.get('provider'))),
     new Set(['citadel', 'primevids', 'flowcast', 'quasar', 'guru', 'hindicast']),

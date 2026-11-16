@@ -45,7 +45,7 @@ try {
   assert.equal(raw[0].audioLang, undefined, 'server names must not be guessed as audio languages');
   assert.equal(raw[0].headers.Referer, 'https://vidzen.fun/');
   assert(requests.filter(req => req.url.pathname === '/api/sources').length <= 11);
-  assert(requests.filter(req => req.url.pathname === '/api/sources').every(req => req.redirect === 'error'));
+  assert(requests.filter(req => req.url.pathname === '/api/sources').every(req => req.redirect === 'manual'));
   assert(!JSON.stringify(raw).includes('fixture-token-123456'), 'page/API tokens must not escape candidate data');
 
   requests.length = 0;

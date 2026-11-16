@@ -3,6 +3,7 @@
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
+import { fetchNoRedirect } from './upstream-fetch.js';
 
 const ORIGIN = 'https://bingr.one';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
@@ -56,7 +57,12 @@ export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandi
   const path = query.type === 'movie' ? `/watch/movie/${query.tmdbId}` : `/watch/tv/${query.tmdbId}/${season}/${episode}`;
   const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
   const get = async (url: string, limit: number) => {
-    const r = await fetch(url, { headers: { 'User-Agent': UA, Referer: ORIGIN + path, Accept: '*/*' }, redirect: 'error', signal });
+    const { response: r } = await fetchNoRedirect(
+      url,
+      { headers: { 'User-Agent': UA, Referer: ORIGIN + path, Accept: '*/*' }, signal },
+      { allowSameOriginRedirects: true },
+    );
+    if (!r) return '';
     if (!r.ok) { await r.body?.cancel(); return ''; }
     return readBounded(r, limit);
   };

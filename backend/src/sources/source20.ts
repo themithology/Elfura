@@ -134,7 +134,7 @@ export async function fetchFromVidora(query: SourceQuery): Promise<RawStreamCand
         Referer: PLAYER_REFERER,
         Origin: PLAYER_REFERER.slice(0, -1),
       },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const buffer = await readBounded(response, MAX_JSON_BYTES);

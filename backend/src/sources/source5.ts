@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { fetchNoRedirect } from './upstream-fetch.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const ORIGIN = 'https://nxsha.space';
@@ -53,8 +54,16 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
   const params = { tmdbId: query.tmdbId, imdb_id: '', type: query.type, season, episode };
   const get = async (endpoint: string, body: object) => {
     const url = `${ORIGIN}/api/${endpoint}?q=${nxEncode(body)}`;
-    const response = await fetch(url, { redirect: 'error', headers: { 'User-Agent': UA, Referer: ORIGIN + '/', Accept: 'application/json' }, signal });
-    if (!response.ok) { await response.body?.cancel(); throw new Error('upstream unavailable'); }
+    // nxsha is same-origin behind one host, so a redirect here is either an
+    // http->https upgrade or a path move. Follow a same-origin hop; refuse
+    // anything else. `redirect:'error'` used to make the former look like an
+    // outage.
+    const { response, reason } = await fetchNoRedirect(url, {
+      headers: { 'User-Agent': UA, Referer: ORIGIN + '/', Accept: 'application/json' },
+      signal,
+    }, { allowSameOriginRedirects: true });
+    if (!response) throw new Error(reason ?? 'upstream unavailable');
+    if (!response.ok) { await response.body?.cancel(); throw new Error(`upstream ${response.status}`); }
     if (Number(response.headers.get('content-length') || 0) > 1_000_000 || !response.body) { await response.body?.cancel(); throw new Error('oversized response'); }
     const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
     try { while (true) { const { value, done } = await reader.read(); if (done) break; size += value.length; if (size > 1_000_000) throw new Error('oversized response'); chunks.push(value); } }

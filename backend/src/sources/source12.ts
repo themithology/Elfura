@@ -103,7 +103,7 @@ async function mintToken(signal: AbortSignal, path: string): Promise<string | nu
   try {
     const page = await fetch(`${SITE}${path}`, {
       headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8' },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const html = await readBoundedText(page, MAX_PAGE_BYTES);
@@ -133,7 +133,7 @@ async function askServer(
     endpoint.searchParams.set('token', token);
     const response = await fetch(endpoint, {
       headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json' },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const text = await readBoundedText(response, MAX_JSON_BYTES);

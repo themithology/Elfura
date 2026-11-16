@@ -191,3 +191,60 @@ export async function fetchUpstreamJson(
   }
   return { body: null, status: 0, reason: 'redirect-limit' };
 }
+
+/**
+ * Fetch an adapter endpoint without following redirects, but without pretending
+ * a redirect is a dead host.
+ *
+ * `redirect: 'error'` was used throughout the adapters with the right intent —
+ * never be bounced to an unvetted host — but undici turns the 3xx into
+ * `TypeError: fetch failed`, so a provider that 301s http→https or /api→/api/v2
+ * was indistinguishable from one that had shut down. That is how source-18 lost
+ * its whole catalogue while the site was fine.
+ *
+ * `manual` keeps the security property: the 3xx is handed back to us, we refuse
+ * it, and the caller gets `null` plus a reason it can log. Callers that *should*
+ * follow a same-origin hop pass `allowSameOriginRedirects`.
+ */
+export interface GuardedFetchResult {
+  response: Response | null;
+  /** Populated when `response` is null. Short and log-safe. */
+  reason?: string;
+}
+
+export function fetchNoRedirect(
+  url: string | URL,
+  init: RequestInit = {},
+  options: { allowSameOriginRedirects?: boolean; maxHops?: number } = {},
+): Promise<GuardedFetchResult> {
+  return (async () => {
+    const maxHops = options.maxHops ?? (options.allowSameOriginRedirects ? 3 : 0);
+    const origin = new URL(String(url)).origin;
+    let current = String(url);
+    for (let hop = 0; hop <= maxHops; hop++) {
+      let response: Response;
+      try {
+        response = await fetch(current, { ...init, redirect: 'manual' });
+      } catch (err) {
+        const name = err instanceof Error ? err.name : 'Error';
+        const cause = (err as { cause?: { code?: string } })?.cause?.code;
+        return { response: null, reason: `${name}${cause ? `/${cause}` : ''}` };
+      }
+      if (response.status < 300 || response.status >= 400) return { response };
+      const location = response.headers.get('location');
+      await response.body?.cancel().catch(() => {});
+      if (!location) return { response: null, reason: `redirect=${response.status}/no-location` };
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        return { response: null, reason: 'redirect=bad-target' };
+      }
+      // Same-origin only, and never to a host we would not have called directly.
+      if (next.origin !== origin) return { response: null, reason: `redirect=cross-origin(${next.origin})` };
+      if (hop === maxHops) return { response: null, reason: 'redirect=limit' };
+      current = next.href;
+    }
+    return { response: null, reason: 'redirect=limit' };
+  })();
+}

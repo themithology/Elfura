@@ -139,7 +139,7 @@ async function solvePlaybackInit(
     requestToken,
   };
   const first = await fetch(`${SITE}/api/playback-init`, {
-    method: 'POST', headers, body: JSON.stringify(body), redirect: 'error', signal,
+    method: 'POST', headers, body: JSON.stringify(body), redirect: 'manual', signal,
   });
   const firstData = await readJson(first);
   if (!firstData || typeof firstData !== 'object' || Array.isArray(firstData)) return null;
@@ -152,7 +152,7 @@ async function solvePlaybackInit(
   const nonce = await solveMapplePow(pow.challenge, pow.difficulty, MAX_POW_ATTEMPTS, signal);
   if (nonce === null) return null;
   const second = await fetch(`${SITE}/api/playback-init`, {
-    method: 'POST', headers, redirect: 'error', signal,
+    method: 'POST', headers, redirect: 'manual', signal,
     body: JSON.stringify({ ...body, pow: { challengeId: pow.challengeId, nonce } }),
   });
   const secondData = await readJson(second);
@@ -183,7 +183,7 @@ async function serverCandidate(
   const encryptResponse = await fetch(`${SITE}/api/encrypt`, {
     method: 'POST',
     headers,
-    redirect: 'error',
+    redirect: 'manual',
     signal,
     body: JSON.stringify({ data: {
       mediaId: query.tmdbId,
@@ -203,7 +203,7 @@ async function serverCandidate(
   endpoint.searchParams.set('token', streamToken);
   const streamResponse = await fetch(endpoint, {
     headers: { 'User-Agent': UA, Accept: 'application/json', Referer: pageUrl, Origin: SITE, ...(cookie ? { Cookie: cookie } : {}) },
-    redirect: 'error',
+    redirect: 'manual',
     signal,
   });
   const streamData = await readJson(streamResponse);
@@ -234,7 +234,7 @@ export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCand
   try {
     const pageResponse = await fetch(pageUrl, {
       headers: { 'User-Agent': UA, Accept: 'text/html,*/*;q=0.8', Referer: `${SITE}/` },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const html = await readBoundedText(pageResponse, MAX_PAGE_BYTES);

@@ -321,7 +321,7 @@ export async function fetchProviders(
       try {
         const response = await fetch(endpoint, {
           headers: { 'User-Agent': UA, Referer: `${ORIGIN}/`, Origin: ORIGIN, Accept: 'application/json' },
-          redirect: 'error',
+          redirect: 'manual',
           signal,
         });
         const body = await readJsonBounded(response, MAX_PROVIDER_JSON_BYTES);

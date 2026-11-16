@@ -4,6 +4,7 @@ import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
+import { fetchNoRedirect } from './upstream-fetch.js';
 
 const API = 'https://core.vidzee.wtf';
 const PLAYER = 'https://player.vidzee.wtf';
@@ -46,7 +47,11 @@ export async function fetchFromVidZee(query: SourceQuery): Promise<RawStreamCand
   const results = await Promise.all(SERVERS.map(async server => {
     try {
       const url = new URL(API + path); url.searchParams.set('s', server); url.searchParams.set('e', '0');
-      const response = await fetch(url, { redirect: 'error', headers: { 'User-Agent': UA, Referer: PLAYER + '/', Origin: PLAYER, Accept: 'application/json' }, signal });
+      const { response } = await fetchNoRedirect(url, {
+        headers: { 'User-Agent': UA, Referer: PLAYER + '/', Origin: PLAYER, Accept: 'application/json' },
+        signal,
+      }, { allowSameOriginRedirects: true });
+      if (!response) return null;
       const data = await readJsonBounded(response);
       if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
       const row = data as { url?: unknown; headers?: unknown; language?: unknown };

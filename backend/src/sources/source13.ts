@@ -99,7 +99,7 @@ export async function fetchFromXpass(query: SourceQuery): Promise<RawStreamCandi
   try {
     const response = await fetch(endpoint, {
       headers: { 'User-Agent': UA, Referer: PLAYER, Accept: 'application/json' },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const body = await readJson(response);
