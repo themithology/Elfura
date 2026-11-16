@@ -288,7 +288,16 @@ export async function fetchFromNxsha(
       finally { finished++; if (!query.diag && rows.length && !timer) timer = setTimeout(() => release?.(), 350); }
     }));
     if (query.diag) await all;
-    else if (ids.length) await Promise.race([all, new Promise<void>(r => { release = r; }), new Promise<void>(r => setTimeout(r, 2200))]);
+    else if (ids.length) {
+      // Two ways to stop, whichever comes first: the first lane that actually
+      // returns rows (then a short grace period for its siblings), or all lanes
+      // having answered. The old fallback waited a flat 2.2s even when every
+      // lane had already failed, and with the wider lane list that wait was
+      // added to a resolve that had nothing left to wait for.
+      const empty = new Promise<void>(r => { release = r; });
+      const settled = all.then(() => { finished = ids.length; });
+      await Promise.race([settled, empty, new Promise<void>(r => setTimeout(r, 2200))]);
+    }
     if (timer) clearTimeout(timer);
     if (available.length && !ids.length) {
       // The provider listed servers, but none matched the lanes we accept. That is

@@ -312,6 +312,33 @@ await check('the two lane sets stay disjoint', async () => {
   assert.deepEqual(overlap, [], `primary lanes must not repeat a ScreenScape lane: ${JSON.stringify(overlap)}`);
 });
 
+await check('a resolve does not outwait lanes that have all already failed', async () => {
+  // With the wider lane list this mattered: if the server list call worked but
+  // every lane errored, the old code still sat on a flat 2.2s fallback timer.
+  // Nothing was left to wait for, so the resolve has to end promptly.
+  const crypto = await import('node:crypto');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/api/servers')) {
+      // A real (decodable with our key) server list containing one of our lanes.
+      const salt = crypto.randomBytes(8);
+      let m = Buffer.alloc(0), p2 = Buffer.alloc(0);
+      const KEY = '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120';
+      while (m.length < 48) { p2 = crypto.createHash('md5').update(Buffer.concat([p2, Buffer.from(KEY), salt])).digest(); m = Buffer.concat([m, p2]); }
+      const c = crypto.createCipheriv('aes-256-cbc', m.subarray(0, 32), m.subarray(32, 48));
+      const body = JSON.stringify({ servers: [{ scraper: 'nitro' }, { scraper: 'mhbox' }] });
+      return Response.json({ _hash: Buffer.concat([Buffer.from('Salted__'), salt, c.update(body), c.final()]).toString('base64url') });
+    }
+    // Every lane fails immediately.
+    return new Response('nope', { status: 500 });
+  };
+  const started = Date.now();
+  try { await fetchFromNxsha(query, undefined, { trace: [] }); } finally { globalThis.fetch = realFetch; }
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 1200, `a fully failed lane set must not wait on a fallback timer (took ${elapsed}ms)`);
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.
