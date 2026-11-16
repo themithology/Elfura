@@ -240,6 +240,57 @@ console.log('');
 
 console.log('');
 
+console.log('## 2c. Shared-URL citadel rows — one file with several audio tracks?');
+/* Jawan returns the same playlist URL under Hindi, Kannada and Telugu labels.
+   Either the API is sloppy (one label is real) or the master carries several
+   EXT-X-MEDIA audio renditions and every label is a real track. The manifest
+   answers that, so read it instead of guessing. */
+const audioLine = (line) => {
+  const pick = (key) => (line.match(new RegExp(`${key}="([^"]*)"`, 'i')) || [])[1] || '';
+  return `lang=${pick('LANGUAGE') || '?'} name=${pick('NAME') || '?'} group=${pick('GROUP-ID') || '?'} uri=${/URI="/i.test(line) ? 'yes' : 'no'}`;
+};
+for (const [tmdbId, type] of [['872906', 'movie'], ['693134', 'movie'], ['1396', 'tv']]) {
+  const url = new URL(SCRAPPER);
+  url.searchParams.set('provider', 'citadel');
+  url.searchParams.set('id', tmdbId);
+  if (type === 'tv') {
+    url.searchParams.set('season', '1');
+    url.searchParams.set('episode', '1');
+  }
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
+  let rows = [];
+  try {
+    const response = await get(url.href, { Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' });
+    rows = (JSON.parse(response.text)?.data?.sources ?? []).filter((row) => typeof row?.url === 'string');
+  } catch {
+    console.log(`- ${type}:${tmdbId}: api error`);
+    continue;
+  }
+  const groups = new Map();
+  for (const row of rows) {
+    const label = String(row.quality ?? row.label ?? row.language ?? '').replace(/\s*\|\s*/g, ' ').trim();
+    groups.set(row.url, [...(groups.get(row.url) ?? []), label]);
+  }
+  console.log(`- ${type}:${tmdbId}: ${rows.length} row(s) in ${groups.size} distinct url(s)`);
+  for (const [shared, labels] of [...groups.entries()].slice(0, 4)) {
+    let man;
+    try {
+      man = await get(shared, { Referer: 'https://www.rivestream.app/' });
+    } catch (err) {
+      console.log(`    · ${laneShape(shared)} [${labels.join(' + ')}]: error ${err instanceof Error ? err.name : '?'}`);
+      continue;
+    }
+    const lines = man.text.split(/\r?\n/).map((line) => line.trim());
+    const audio = lines.filter((line) => /^#EXT-X-MEDIA:TYPE=AUDIO/i.test(line));
+    const variants = lines.filter((line) => /^#EXT-X-STREAM-INF/i.test(line)).length;
+    console.log(
+      `    · ${laneShape(shared)} [${labels.join(' + ')}]: http=${man.status} variants=${variants} audioRenditions=${audio.length}`,
+    );
+    for (const line of audio.slice(0, 8)) console.log(`        ${audioLine(line)}`);
+  }
+}
+console.log('');
+
 /* ───────────────────────── Source 12 sweep ───────────────────────── */
 
 const VZ = 'https://vidzen.fun';
