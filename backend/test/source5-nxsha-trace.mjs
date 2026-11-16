@@ -452,5 +452,54 @@ await check('a payload for the wrong title kind is reported as such', async () =
   assert.match(trace.join(' '), /wrong-type=series/, `expected wrong-type, got "${trace.join(' ')}"`);
 });
 
+// ---------------------------------------------------------------------------
+// Sources 15 and 19 — multi-stage discovery, where "which gate failed" is the
+// only useful piece of information.
+// ---------------------------------------------------------------------------
+const { fetchFromMapple } = await import('../../dist/backend/sources/source15.js');
+const { fetchFromDesiDub } = await import('../../dist/backend/sources/source19.js');
+
+console.log('\nSource 15 — multi-stage discovery');
+
+await check('a refusing host reports its status', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('nope', { status: 503 });
+  const trace = [];
+  try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); } finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /http=503/, `expected http=503, got "${trace.join(' ')}"`);
+});
+
+await check('a page without the request token says which token is missing', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html>no token here</html>', { status: 200 });
+  const trace = [];
+  try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); } finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /no-request-token/, `expected no-request-token, got "${trace.join(' ')}"`);
+});
+
+console.log('\nSource 19 — multi-stage discovery');
+
+await check('a title that is not in the catalogue says so', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html><body>no results</body></html>', { status: 200 });
+  const trace = [];
+  try {
+    await fetchFromDesiDub({ type: 'movie', tmdbId: '550', title: 'A Title That Does Not Exist' }, { trace });
+  } finally { globalThis.fetch = realFetch; }
+  const joined = trace.join(' ');
+  assert.ok(/not-in-catalogue|series-page-unreachable|no-episode-page/.test(joined),
+    `expected a named discovery gate, got "${joined}"`);
+});
+
+await check('a missing title is reported before any request is made', async () => {
+  const realFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => { called = true; return new Response('', { status: 200 }); };
+  const trace = [];
+  try { await fetchFromDesiDub({ type: 'movie', tmdbId: '550' }, { trace }); } finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /no-title/, `expected no-title, got "${trace.join(' ')}"`);
+  assert.equal(called, false, 'no request should be made without a title');
+});
+
 console.log(`\n${failures.length ? `${failures.length} FAILED` : 'all checks passed'}\n`);
 process.exit(failures.length ? 1 : 0);

@@ -444,7 +444,11 @@ export async function extractVidMoly(
   ];
 }
 
-export async function fetchFromDesiDub(query: SourceQuery): Promise<RawStreamCandidate[]> {
+/** Why an empty result is empty. Same vocabulary as source-5/13/15. */
+export interface DesiDubOptions { trace?: string[] }
+
+export async function fetchFromDesiDub(query: SourceQuery, options: DesiDubOptions = {}): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
   const season = query.season ?? 1;
   const episode = query.episode ?? 1;
   if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 1 || !Number.isSafeInteger(episode) || episode < 1)) {
@@ -457,17 +461,20 @@ export async function fetchFromDesiDub(query: SourceQuery): Promise<RawStreamCan
   const meta = query.title
     ? { title: query.title }
     : await query.resolveMetaFallback?.().catch(() => undefined);
+  // Each step here is a distinct gate on a different page, and every one of
+  // them previously returned a bare []. Which gate failed decides what to fix,
+  // so each says so.
   const title = meta?.title?.trim();
-  if (!title) return [];
+  if (!title) { trace?.push('no-title'); return []; }
 
   const match = await searchDesiDub(title, signal);
-  if (!match) return [];
+  if (!match) { trace?.push('not-in-catalogue'); return []; }
 
   const animePage = await getText(match.link, signal);
-  if (!animePage) return [];
+  if (!animePage) { trace?.push('series-page-unreachable'); return []; }
 
   const watchUrl = await resolveWatchPage(animePage.body, animePage.url, season, episode, signal);
-  if (!watchUrl) return [];
+  if (!watchUrl) { trace?.push(`no-episode-page=s${season}e${episode}`); return []; }
 
   const watchPage = await getText(watchUrl, signal);
   if (!watchPage) return [];
@@ -502,7 +509,8 @@ export function createSource19Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromDesiDub(query);
+      const trace: string[] = [];
+      const raw = await fetchFromDesiDub(query, { trace });
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
       const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
@@ -510,7 +518,8 @@ export function createSource19Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'DD',
         ok: usable.length > 0,
         ms: Date.now() - started,
-        detail: `candidates=${raw.length},reachable=${usable.length}`,
+        detail: `candidates=${raw.length},reachable=${usable.length}` +
+          (trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''),
       });
       return {
         candidates: usable.map((candidate) =>

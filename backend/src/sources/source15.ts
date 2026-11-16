@@ -223,9 +223,13 @@ async function serverCandidate(
   };
 }
 
-export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCandidate[]> {
+/** Why an empty result is empty. Same vocabulary as source-5 and source-13. */
+export interface MappleOptions { trace?: string[] }
+
+export async function fetchFromMapple(query: SourceQuery, options: MappleOptions = {}): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
   const path = pagePath(query);
-  if (!path) return [];
+  if (!path) { trace?.push('unsupported-query'); return []; }
   const mediaType = query.type;
   const pageUrl = `${SITE}${path}`;
   const signal = query.signal
@@ -237,13 +241,17 @@ export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCand
       redirect: 'manual',
       signal,
     });
+    if (!pageResponse.ok) { trace?.push(`http=${pageResponse.status}`); await pageResponse.body?.cancel().catch(() => {}); return []; }
     const html = await readBoundedText(pageResponse, MAX_PAGE_BYTES);
-    if (!html) return [];
+    if (!html) { trace?.push('empty-page'); return []; }
+    // The token and the proof-of-work handshake are this source's own gate; when
+    // either is missing the reason is specific and worth naming, because the
+    // fix differs (site markup change vs. a PoW budget that is too small).
     const requestToken = extractMappleRequestToken(html);
-    if (!requestToken) return [];
+    if (!requestToken) { trace?.push('no-request-token'); return []; }
     const cookie = mappleCookies(pageResponse);
     const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal);
-    if (!streamToken) return [];
+    if (!streamToken) { trace?.push('pow-unsolved'); return []; }
     const results = await Promise.all(SERVERS.map((server, index) => serverCandidate(
       server, query, mediaType, pageUrl, requestToken, streamToken, cookie, signal, index,
     ).catch(() => null)));
@@ -253,8 +261,11 @@ export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCand
       unique.set(candidate.url, candidate);
       if (unique.size >= MAX_CANDIDATES) break;
     }
+    if (!unique.size) trace?.push(`servers=${SERVERS.length}/0-usable`);
     return [...unique.values()];
-  } catch {
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+    trace?.push(code === 'TimeoutError' ? 'timeout' : code);
     return [];
   }
 }
@@ -266,7 +277,8 @@ export function createSource15Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromMapple(query);
+      const trace: string[] = [];
+      const raw = await fetchFromMapple(query, { trace });
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
       const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
@@ -274,7 +286,8 @@ export function createSource15Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'M',
         ok: candidates.length > 0,
         ms: Date.now() - started,
-        detail: `hlsCandidates=${raw.length},manifestReachable=${candidates.length}`,
+        detail: `hlsCandidates=${raw.length},manifestReachable=${candidates.length}` +
+          (trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''),
       });
       return { candidates: candidates.map(candidate => query.diag
         ? { ...candidate, diagnosticLane: 'M' }
