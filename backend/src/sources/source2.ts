@@ -478,7 +478,13 @@ interface ParsedCandidateItem {
 /* Live Multi-Cluster Helpers (NXStream 30+ Servers + VidStuck)        */
 /* ------------------------------------------------------------------ */
 
-const NX_PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
+// Public client passphrases, not credentials. The site rotates them; keep the
+// known history so a rotation does not silently zero out every stream.
+const NX_PASSES = [
+  'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3',
+  'S8x!Jk4ZP1uG8$my',
+] as const;
+const NX_PASS = NX_PASSES[0];
 const VS_PASS = '7f4c9e2a81d63b05c4f7a9e8126d3b50e1a8c7f23d9465ab0c6e9f1d4a7b832c';
 
 const VS_FIELDS = {
@@ -775,7 +781,8 @@ async function fetchFromNxsha(
       }
       const json = (await res.json()) as { _hash?: string };
       if (!json?._hash) return null;
-      const dec = openSslDecrypt(json._hash, NX_PASS);
+      let dec = null;
+      for (const pass of NX_PASSES) { dec = openSslDecrypt(json._hash, pass); if (dec) break; }
       return dec ? (JSON.parse(dec) as T) : null;
     } catch (err) {
       console.warn(

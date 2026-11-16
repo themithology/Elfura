@@ -90,6 +90,8 @@ export interface BackendConfig {
   source19?: { enabled: boolean };
   source20?: { enabled: boolean };
   source21?: { enabled: boolean };
+  /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
+  source22?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -221,7 +223,9 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     },
     source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
     source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED !== '0' },
+    // Merged into source-5 as a second lane set. Default off, matching the
+    // `?? false` gate the standalone adapter used to carry.
+    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
@@ -239,6 +243,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
+    source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

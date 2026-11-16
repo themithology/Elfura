@@ -6,16 +6,21 @@
  */
 import { createHash } from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const SITE = 'https://mapple.fun';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
 const PLAYER_API_KEY = 'mptv_sk_a8f29c4e7b3d1f'; // Public player protocol value, not a private credential.
+// The site renamed its hosters from Nexus/Cipher/Pulse to Greek gods (its watch
+// page renders "Poseidon · Source 1 / 13", with Zeus and Athena beside it). The
+// keys are what /api/encrypt takes; the names are only display labels, and the
+// old ids are kept because a rollout can leave both live at once.
 const SERVERS = [
-  { id: 'mapple', name: 'Mapple' },
+  { id: 'mapple', name: 'Zeus' },
+  { id: 's25', name: 'Poseidon' },
+  { id: 's2', name: 'Athena' },
   { id: 's1', name: 'Nexus' },
-  { id: 's2', name: 'Cipher' },
   { id: 's3', name: 'Pulse' },
   { id: 's4', name: 'Vertex' },
   { id: 's10', name: 'Chimp' },
@@ -124,6 +129,7 @@ async function solvePlaybackInit(
   pageUrl: string,
   cookie: string,
   signal: AbortSignal,
+  trace?: string[],
 ): Promise<string | null> {
   const headers = {
     'User-Agent': UA,
@@ -139,7 +145,7 @@ async function solvePlaybackInit(
     requestToken,
   };
   const first = await fetch(`${SITE}/api/playback-init`, {
-    method: 'POST', headers, body: JSON.stringify(body), redirect: 'error', signal,
+    method: 'POST', headers, body: JSON.stringify(body), redirect: 'manual', signal,
   });
   const firstData = await readJson(first);
   if (!firstData || typeof firstData !== 'object' || Array.isArray(firstData)) return null;
@@ -149,10 +155,17 @@ async function solvePlaybackInit(
   const pow = firstRecord.pow as { challenge?: unknown; difficulty?: unknown; challengeId?: unknown };
   if (typeof pow.challenge !== 'string' || typeof pow.difficulty !== 'number' ||
       (typeof pow.challengeId !== 'string' && typeof pow.challengeId !== 'number')) return null;
-  const nonce = await solveMapplePow(pow.challenge, pow.difficulty, MAX_POW_ATTEMPTS, signal);
-  if (nonce === null) return null;
+  // Difficulty is chosen by the site and can rise; expected work is 2^difficulty
+  // hashes, so a fixed attempt cap that used to be generous can quietly become
+  // too small and surface as an unexplained failure. Size the budget to the
+  // difficulty, capped so a hostile value cannot pin a core.
+  const expected = Math.min(4_000_000, Math.ceil(2 ** Math.min(pow.difficulty, 22) * 4));
+  const attempts = Math.max(MAX_POW_ATTEMPTS, expected);
+  const nonce = await solveMapplePow(pow.challenge, pow.difficulty, attempts, signal);
+  if (nonce === null) { trace?.push(`pow-unsolved difficulty=${pow.difficulty} attempts=${attempts}`); return null; }
+  trace?.push(`pow-solved difficulty=${pow.difficulty} attempts<=${attempts}`);
   const second = await fetch(`${SITE}/api/playback-init`, {
-    method: 'POST', headers, redirect: 'error', signal,
+    method: 'POST', headers, redirect: 'manual', signal,
     body: JSON.stringify({ ...body, pow: { challengeId: pow.challengeId, nonce } }),
   });
   const secondData = await readJson(second);
@@ -183,7 +196,7 @@ async function serverCandidate(
   const encryptResponse = await fetch(`${SITE}/api/encrypt`, {
     method: 'POST',
     headers,
-    redirect: 'error',
+    redirect: 'manual',
     signal,
     body: JSON.stringify({ data: {
       mediaId: query.tmdbId,
@@ -203,7 +216,7 @@ async function serverCandidate(
   endpoint.searchParams.set('token', streamToken);
   const streamResponse = await fetch(endpoint, {
     headers: { 'User-Agent': UA, Accept: 'application/json', Referer: pageUrl, Origin: SITE, ...(cookie ? { Cookie: cookie } : {}) },
-    redirect: 'error',
+    redirect: 'manual',
     signal,
   });
   const streamData = await readJson(streamResponse);
@@ -223,9 +236,46 @@ async function serverCandidate(
   };
 }
 
-export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCandidate[]> {
+/**
+ * Fetch the request token from the site's own endpoint.
+ *
+ * This used to be inline in the page as `window.__REQUEST_TOKEN__`, and we only
+ * read that. The site moved the token behind `POST /api/request-token` (it needs
+ * the page's session cookie and answers JSON), so scraping the HTML started
+ * returning nothing and source-15 went silent with no explanation. The API is
+ * the primary path now; the inline form is kept as a fallback in case a
+ * deployment still ships it.
+ */
+async function fetchRequestToken(pageUrl: string, cookie: string, signal: AbortSignal): Promise<string | null> {
+  try {
+    const response = await fetch(`${SITE}/api/request-token`, {
+      method: 'POST',
+      headers: {
+        'User-Agent': UA,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Referer: pageUrl,
+        Origin: SITE,
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      body: '',
+      redirect: 'manual',
+      signal,
+    });
+    if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
+    const body = await readJson(response);
+    const token = (body as { token?: unknown } | null)?.token;
+    return typeof token === 'string' && token.length >= 8 && token.length <= 2048 ? token : null;
+  } catch { return null; }
+}
+
+/** Why an empty result is empty. Same vocabulary as source-5 and source-13. */
+export interface MappleOptions { trace?: string[] }
+
+export async function fetchFromMapple(query: SourceQuery, options: MappleOptions = {}): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
   const path = pagePath(query);
-  if (!path) return [];
+  if (!path) { trace?.push('unsupported-query'); return []; }
   const mediaType = query.type;
   const pageUrl = `${SITE}${path}`;
   const signal = query.signal
@@ -234,16 +284,28 @@ export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCand
   try {
     const pageResponse = await fetch(pageUrl, {
       headers: { 'User-Agent': UA, Accept: 'text/html,*/*;q=0.8', Referer: `${SITE}/` },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
+    if (!pageResponse.ok) { trace?.push(`http=${pageResponse.status}`); await pageResponse.body?.cancel().catch(() => {}); return []; }
     const html = await readBoundedText(pageResponse, MAX_PAGE_BYTES);
-    if (!html) return [];
-    const requestToken = extractMappleRequestToken(html);
-    if (!requestToken) return [];
+    if (!html) { trace?.push('empty-page'); return []; }
+    // The token and the proof-of-work handshake are this source's own gate; when
+    // either is missing the reason is specific and worth naming, because the
+    // fix differs (site markup change vs. a PoW budget that is too small).
     const cookie = mappleCookies(pageResponse);
-    const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal);
-    if (!streamToken) return [];
+    // Prefer the API; fall back to the retired inline token only if it is there.
+    let requestToken = await fetchRequestToken(pageUrl, cookie, signal);
+    if (!requestToken) {
+      requestToken = extractMappleRequestToken(html);
+      if (requestToken) trace?.push('request-token=inline');
+    }
+    if (!requestToken) { trace?.push('no-request-token'); return []; }
+    const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal, trace);
+    if (!streamToken) {
+      if (!trace?.some(t => t.startsWith('pow-unsolved'))) trace?.push('playback-init-refused');
+      return [];
+    }
     const results = await Promise.all(SERVERS.map((server, index) => serverCandidate(
       server, query, mediaType, pageUrl, requestToken, streamToken, cookie, signal, index,
     ).catch(() => null)));
@@ -253,8 +315,11 @@ export async function fetchFromMapple(query: SourceQuery): Promise<RawStreamCand
       unique.set(candidate.url, candidate);
       if (unique.size >= MAX_CANDIDATES) break;
     }
+    if (!unique.size) trace?.push(`servers=${SERVERS.length}/0-usable`);
     return [...unique.values()];
-  } catch {
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+    trace?.push(code === 'TimeoutError' ? 'timeout' : code);
     return [];
   }
 }
@@ -266,15 +331,17 @@ export function createSource15Adapter(enabled: () => boolean): SourceAdapter {
     enabled,
     async resolve(query) {
       const started = Date.now();
-      const raw = await fetchFromMapple(query);
+      const trace: string[] = [];
+      const raw = await fetchFromMapple(query, { trace });
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-15',
         lane: 'M',
         ok: candidates.length > 0,
         ms: Date.now() - started,
-        detail: `hlsCandidates=${raw.length},manifestReachable=${candidates.length}`,
+        detail: `hlsCandidates=${raw.length},manifestReachable=${candidates.length}` +
+          (trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''),
       });
       return { candidates: candidates.map(candidate => query.diag
         ? { ...candidate, diagnosticLane: 'M' }

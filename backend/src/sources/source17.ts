@@ -20,7 +20,7 @@
 import { anivortexEnv, anivortexRequest, describeAnivortexCredentials, readAnivortexCredentials, type AnivortexCredentials } from '../anivortex-auth.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
 
 const MAX_SEARCH_RESULTS = 12;
@@ -394,7 +394,7 @@ export function createSource17Adapter(enabled: () => boolean): SourceAdapter {
       }
       const raw = await fetchFromAnivortex(query, credentials);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const candidates = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      const candidates = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-17',
         lane: 'V',

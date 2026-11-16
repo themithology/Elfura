@@ -7,6 +7,7 @@
  */
 
 import type { BackendConfig } from './config.js';
+import { PolicyCache } from './memory-policy.js';
 
 export interface SeasonSummary {
   seasonNumber: number;
@@ -64,7 +65,7 @@ export interface MediaMetadata {
 const MAX_TMDB_RAM_ENTRIES = 512;
 const TMDB_RAM_TTL_MS = 30 * 60_000;
 
-const tmdbRamCache = new Map<string, { expiresAt: number; value: MediaMetadata }>();
+const tmdbRamCache = new PolicyCache<{ expiresAt: number; value: MediaMetadata }>(MAX_TMDB_RAM_ENTRIES);
 const tmdbInFlight = new Map<string, Promise<MediaMetadata>>();
 
 function cloneMeta(meta: MediaMetadata): MediaMetadata {
@@ -89,12 +90,6 @@ function getCachedMeta(key: string): MediaMetadata | null {
 
 function setCachedMeta(key: string, value: MediaMetadata): void {
   if (!value.title && !value.imdbId && !value.poster && !value.backdrop) return;
-  if (tmdbRamCache.has(key)) tmdbRamCache.delete(key);
-  while (tmdbRamCache.size >= MAX_TMDB_RAM_ENTRIES) {
-    const oldest = tmdbRamCache.keys().next().value;
-    if (oldest === undefined) break;
-    tmdbRamCache.delete(oldest);
-  }
   tmdbRamCache.set(key, {
     expiresAt: Date.now() + TMDB_RAM_TTL_MS,
     value: cloneMeta(value),
@@ -430,7 +425,7 @@ export async function fetchTmdbMetadata(
 }
 
 const MAX_SEASON_RAM_ENTRIES = 256;
-const seasonRamCache = new Map<string, { expiresAt: number; value: SeriesSeasonCatalog }>();
+const seasonRamCache = new PolicyCache<{ expiresAt: number; value: SeriesSeasonCatalog }>(MAX_SEASON_RAM_ENTRIES);
 const seasonInFlight = new Map<string, Promise<SeriesSeasonCatalog>>();
 
 export async function fetchTmdbSeasonEpisodes(
@@ -557,12 +552,6 @@ export async function fetchTmdbSeasonEpisodes(
       };
 
       if (episodes.length > 0 || seasons.length > 1) {
-        if (seasonRamCache.has(cacheKey)) seasonRamCache.delete(cacheKey);
-        while (seasonRamCache.size >= MAX_SEASON_RAM_ENTRIES) {
-          const oldest = seasonRamCache.keys().next().value;
-          if (oldest === undefined) break;
-          seasonRamCache.delete(oldest);
-        }
         seasonRamCache.set(cacheKey, {
           expiresAt: Date.now() + TMDB_RAM_TTL_MS,
           value: resolved,

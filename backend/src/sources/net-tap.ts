@@ -47,10 +47,9 @@ export function installNetTap(): void {
       bucket.push({ host, status: response.status, ms: Date.now() - started });
       return response;
     } catch (err) {
-      const name = err instanceof Error ? err.name : 'Error';
       bucket.push({
         host,
-        error: name === 'AbortError' || name === 'TimeoutError' ? 'timeout' : name,
+        error: describeFailure(err),
         ms: Date.now() - started,
       });
       throw err;
@@ -66,6 +65,40 @@ export async function tapRequests<T>(fn: () => Promise<T>): Promise<{ value: T; 
   const bucket: NetRecord[] = [];
   const value = await storage.run(bucket, fn);
   return { value, net: bucket };
+}
+
+/**
+ * Why a request failed, in one word the operator can act on.
+ *
+ * `fetch` rejects with a bare `TypeError: fetch failed` and puts the real reason
+ * on `.cause`. Reporting the outer error meant every distinct network fault —
+ * a DNS name that will not resolve, a TLS handshake reset mid-flight, a refused
+ * port, a timeout — printed as the same `TypeError`, which is exactly useless
+ * when twenty adapters fail at once and the answer is one of those four.
+ */
+export function describeFailure(err: unknown): string {
+  const chain: { code?: string; message?: string; name?: string }[] = [];
+  let current = err as { code?: string; message?: string; name?: string; cause?: unknown } | undefined;
+  for (let depth = 0; depth < 6 && current; depth += 1) {
+    chain.push(current);
+    current = current.cause as typeof current;
+  }
+  for (const link of chain) {
+    const code = link?.code || '';
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns-fail';
+    if (code === 'ECONNREFUSED') return 'refused';
+    if (code === 'ECONNRESET' || code === 'EPIPE') return 'tls-reset';
+    if (code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT') return 'timeout';
+    if (code === 'CERT_HAS_EXPIRED' || code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'ERR_TLS_CERT_ALTNAME_INVALID') return 'tls-cert';
+    if (code) return code;
+  }
+  const name = err instanceof Error ? err.name : 'Error';
+  if (name === 'AbortError' || name === 'TimeoutError') return 'timeout';
+  // Nothing structured: keep the message's first words rather than "TypeError".
+  const message = (err instanceof Error ? err.message : String(err ?? '')).trim();
+  const cause = (err as { cause?: { message?: string } })?.cause?.message;
+  const detail = (cause || message).replace(/\s+/g, ' ').slice(0, 40);
+  return detail || name;
 }
 
 /** Human-readable one-liner: "4 req · cdn.example 403×3 · api.site timeout×1". */

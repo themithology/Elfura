@@ -2,8 +2,9 @@
  * multilingual streams and reachable language-labelled dubs leave this adapter. No subtitle or embed proxy. */
 import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
+import { fetchNoRedirect } from './upstream-fetch.js';
 
 const API = 'https://core.vidzee.wtf';
 const PLAYER = 'https://player.vidzee.wtf';
@@ -46,7 +47,11 @@ export async function fetchFromVidZee(query: SourceQuery): Promise<RawStreamCand
   const results = await Promise.all(SERVERS.map(async server => {
     try {
       const url = new URL(API + path); url.searchParams.set('s', server); url.searchParams.set('e', '0');
-      const response = await fetch(url, { redirect: 'error', headers: { 'User-Agent': UA, Referer: PLAYER + '/', Origin: PLAYER, Accept: 'application/json' }, signal });
+      const { response } = await fetchNoRedirect(url, {
+        headers: { 'User-Agent': UA, Referer: PLAYER + '/', Origin: PLAYER, Accept: 'application/json' },
+        signal,
+      }, { allowSameOriginRedirects: true });
+      if (!response) return null;
       const data = await readJsonBounded(response);
       if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
       const row = data as { url?: unknown; headers?: unknown; language?: unknown };
@@ -67,10 +72,10 @@ export function createSource8Adapter(enabled: () => boolean): SourceAdapter {
     const raw = await fetchFromVidZee(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw, query.signal);
     const usable = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
+      const evidence = candidateEvidence(c);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
     });
-    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},usable=${usable.length}` });
+    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},usable=${usable.length}${raw.length && !usable.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}` });
     return { candidates: usable.map(c => query.diag ? { ...c, diagnosticLane: 'Z' } : c) };
   } };
 }

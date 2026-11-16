@@ -1,5 +1,6 @@
 import type { BackendConfig } from './config.js';
 import { isSafeUpstreamUrl } from './security.js';
+import { describeFailure } from './sources/net-tap.js';
 
 /** Operator-only website checks. These are not playback or stream tests. */
 export function roxySourceWebsites(cfg: BackendConfig) {
@@ -35,8 +36,11 @@ export async function requestSourceWebsite(site: ReturnType<typeof roxySourceWeb
     await response.body?.cancel().catch(() => {});
     return { id: site.id, status: response.status, ms: Date.now() - start };
   } catch (error) {
-    const e = error as Error & { cause?: { code?: string } };
-    const reason = e.name === 'TimeoutError' ? 'Timed out after 8 seconds' : e.cause?.code || e.name || 'Request failed';
+    // Same vocabulary as the resolve log: a bare "TypeError" hides which of DNS,
+    // TCP, TLS or the challenge page actually failed, and those need different
+    // answers. `describeFailure` walks the .cause chain for the real code.
+    const e = error as Error;
+    const reason = e.name === 'TimeoutError' ? 'Timed out after 8 seconds' : describeFailure(error);
     return { id: site.id, error: reason, ms: Date.now() - start };
   }
 }

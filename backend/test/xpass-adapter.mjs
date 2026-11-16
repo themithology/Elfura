@@ -51,7 +51,7 @@ try {
   assert.equal(movie.length, 2);
   assert.equal(requests.at(-1).url.searchParams.get('tmdb_id'), '693134');
   assert.equal(requests.at(-1).headers.get('referer'), player);
-  assert.equal(requests.at(-1).redirect, 'error');
+  assert.equal(requests.at(-1).redirect, 'manual');
   const beforeInvalid = requests.length;
   assert.equal((await fetchFromXpass({ type: 'movie', tmdbId: 'https://invalid.example' })).length, 0);
   assert.equal(requests.length, beforeInvalid, 'invalid IDs must be rejected before upstream requests');

@@ -20,34 +20,29 @@ OUT_ZIP = ROOT / "elfura-pterodactyl.zip"
 if not (DIST_DIR / "embed.html").is_file() or not (DIST_DIR / "backend" / "index.js").is_file():
     raise SystemExit("dist/ is incomplete — run `npm run build` first.")
 
-ROOT_SHIM = (
-    "import { startBackendServer } from './dist/backend/index.js';\n"
-    "startBackendServer();\n"
-)
+# The real root entrypoint is shipped, not a generated shim: it sets the Node
+# memory flags this deployment depends on, and a shim would silently drop them.
+ROOT_SHIM = (ROOT / "index.js").read_text(encoding="utf-8")
 
-SRC_SHIM = (
-    "import { startBackendServer } from '../dist/backend/index.js';\n"
-    "startBackendServer();\n"
-)
+# Same entrypoint, re-pointed one directory down (src/ -> ../dist/...).
+SRC_SHIM = ROOT_SHIM.replace("./dist/backend/index.js", "../dist/backend/index.js")
 
+# Only .js aliases are shipped. A .ts file in the container root is an
+# invitation for a Pterodactyl egg to start this project through ts-node, which
+# then has to be installed and which breaks outright on some Node versions — for
+# a project whose runtime output is already compiled JavaScript. Anything an egg
+# might be configured to run exists here as plain .js.
 ROOT_ENTRYPOINTS = [
-    "index.js",
-    "index.ts",
     "server.js",
-    "server.ts",
     "app.js",
-    "app.ts",
     "main.js",
-    "main.ts",
     "bot.js",
-    "bot.ts",
     "start.js",
-    "start.ts",
+    "dist/backend/index.js",  # already present; listed for clarity, not rewritten
 ]
 
 SRC_ENTRYPOINTS = [
     "src/index.js",
-    "src/index.ts",
 ]
 
 NPMRC_CONTENT = """audit=false
@@ -67,7 +62,17 @@ RUNTIME_PACKAGE_JSON = json.dumps(
             "start": "node index.js",
         },
         "dependencies": {
+            # Declared as a file: dependency so an egg that runs `npm install`
+            # at boot does not classify undici as extraneous and prune it. The
+            # same copy is also shipped at vendor/undici, which the runtime
+            # loader falls back to if node_modules is wiped anyway.
             "typescript": "file:./vendor/ts-shim",
+            "undici": "file:./vendor/undici",
+        },
+        # wreq-js is only used by one AniVortex provider and needs a native
+        # build, so a panel where that build fails must not abort the install
+        # and take undici with it.
+        "optionalDependencies": {
             "wreq-js": "3.2.0",
         },
     },
@@ -272,6 +277,13 @@ def main() -> None:
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))
         write_entry(zf, "tsconfig.json", RUNTIME_TSCONFIG_JSON.encode("utf-8"))
+        # The relay Worker ships with the bundle: the operator who needs it is on a
+        # panel with no shell, so "deploy this file" must not mean "clone the repo".
+        for worker_file in ("worker.js", "README.md"):
+            source = ROOT / "cloudflare-worker" / worker_file
+            if source.is_file():
+                write_entry(zf, f"cloudflare-worker/{worker_file}", source.read_bytes())
+
         write_entry(zf, "README.md", (ROOT / "README.md").read_bytes())
         write_entry(zf, "RULES.md", (ROOT / "RULES.md").read_bytes())
 
@@ -282,7 +294,11 @@ def main() -> None:
             if helper_path.is_file():
                 write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
 
+        # index.js is written from the real file: it carries the memory flags.
+        write_entry(zf, "index.js", ROOT_SHIM.encode("utf-8"))
         for ep in ROOT_ENTRYPOINTS:
+            if ep == "dist/backend/index.js":
+                continue  # part of the compiled build, never overwritten
             write_entry(zf, ep, ROOT_SHIM.encode("utf-8"))
         for ep in SRC_ENTRYPOINTS:
             write_entry(zf, ep, SRC_SHIM.encode("utf-8"))
@@ -294,12 +310,57 @@ def main() -> None:
         # undici is a real runtime dependency now, not a shim: the DNS rescue
         # installs its fetch with an Agent whose connector resolves through
         # explicit name servers, which is the only supported seam Node exposes.
+        #
+        # Its manifest is REPLACED, not copied. Publishing undici's own
+        # package.json inside the archive is what made `npm install` fail in a
+        # Pterodactyl panel: npm runs the `prepare` lifecycle script of every
+        # `file:` dependency, and undici's prepare is
+        # `husky && node ./scripts/platform-shell.js`. Neither husky nor the
+        # scripts/ directory ship with the package, so the install died with
+        # "Cannot find module .../scripts/platform-shell.js" *before* finishing
+        # — undici was never linked, the egress profile and the proxy pool never
+        # started, and every console line said the sources were simply offline.
+        # Stripping scripts/devDependencies keeps the resolution fields
+        # (main, exports, engines) that `import('undici')` needs and leaves
+        # nothing for npm to execute.
         undici_dir = ROOT / "node_modules" / "undici"
         if undici_dir.is_dir():
+            source_manifest = json.loads((undici_dir / "package.json").read_text("utf-8"))
+            runtime_manifest = {
+                key: value
+                for key, value in source_manifest.items()
+                if key
+                not in (
+                    "scripts",
+                    "devDependencies",
+                    "husky",
+                    "lint-staged",
+                    "workspaces",
+                    "packageManager",
+                    "funding",
+                    "repository",
+                    "bugs",
+                    "homepage",
+                )
+            }
+            runtime_manifest["description"] = "undici (vendored, lifecycle scripts removed for the Pterodactyl bundle)"
+            # A file: dependency runs whatever lifecycle scripts its manifest
+            # declares, so an accidental `scripts` key here breaks `npm install`
+            # in the panel — the exact failure this bundle exists to avoid.
+            for forbidden in ("scripts", "devDependencies", "workspaces"):
+                assert forbidden not in runtime_manifest, (
+                    f"vendored undici manifest still declares {forbidden}; npm install in the panel would run it"
+                )
+            stripped_manifest = (json.dumps(runtime_manifest, indent=2) + "\n").encode("utf-8")
             for file_path in sorted(undici_dir.rglob("*")):
                 if file_path.is_file():
                     rel = file_path.relative_to(undici_dir).as_posix()
-                    write_entry(zf, f"node_modules/undici/{rel}", file_path.read_bytes())
+                    content = stripped_manifest if rel == "package.json" else file_path.read_bytes()
+                    write_entry(zf, f"node_modules/undici/{rel}", content)
+                    # Second copy outside node_modules: an egg that runs
+                    # `npm install` can prune or recreate that directory, and
+                    # the proxy, egress profile and DNS rescue all need undici.
+                    write_entry(zf, f"vendor/undici/{rel}", content)
 
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():

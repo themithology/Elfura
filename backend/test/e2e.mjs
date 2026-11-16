@@ -359,8 +359,17 @@ process.env.ELFURA_ALLOW_LOOPBACK_TEST = '1';
       })),
     ];
     const filtered = await verifyAndFilterCandidates(candidates);
-    assert.deepEqual(filtered.map((c) => c.key), ['healthy'],
-      'Unverified slow lanes must be hidden when a healthy candidate exists');
+    // Maximum sources: nothing is dropped for being slow. The verified lane is
+    // ranked first so the player opens on something known to work, and every
+    // unproven lane follows instead of being deleted. A lane that turns out to
+    // be dead costs one retry in the player; hiding it costs a source the
+    // viewer never sees.
+    assert.equal(filtered[0].key, 'healthy', 'the verified lane must be ranked first');
+    assert.equal(
+      filtered.length,
+      candidates.length,
+      'slow-but-unproven lanes must still be offered, behind the verified one',
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1498,11 +1507,13 @@ try {
   const healthRes = await fetch(`${apiBase}/api/v1/health`);
   assert.equal(healthRes.status, 200);
   const health = await healthRes.json();
-  assert.deepEqual(health.sources, [
-    { id: 'source-1', label: 'Source 1' },
-    { id: 'source-2', label: 'Source 2' },
-    { id: 'source-3', label: 'Source 3' },
-  ]);
+  // This route is unauthenticated, so its body is public. It used to list every
+  // configured source by id — i.e. it published the exact list the whole design
+  // hides, to anyone who curled /api/v1/health. A count says "configured" without
+  // saying "what with".
+  assert.equal(health.sources, undefined, 'the public health route must not list sources');
+  assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
+  assert.equal(health.sourceCount, 4, 'a bare count is fine (source-22 = Vidly subtitles)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1513,7 +1524,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 3);
+  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 joined the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);

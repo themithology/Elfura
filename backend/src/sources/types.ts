@@ -29,6 +29,13 @@ export interface SourceQuery {
   diag?: DiagEntry[];
   /** Warm the adapter cache with lanes that finish after a fast initial result. */
   onLateResult?: (result: RawSourceResult) => void;
+  /**
+   * Subtitle-only adapters (they produce no stream of their own) append their
+   * tracks here; the registry attaches them to the streams it already found for
+   * this title. A subtitle lane must never fabricate a video candidate to carry
+   * them — that would rank as a playable stream.
+   */
+  extraSubtitles?: RawTrackRef[];
   imdbId?: string | null;
   title?: string;
   year?: string;
@@ -90,6 +97,18 @@ export interface RawStreamCandidate {
   availableAudioLangs?: string[];
   /** True when the manifest itself carries multiple muxed audio tracks. */
   multiAudio?: boolean;
+  /**
+   * Evidence measured during THIS request, carried with the candidate.
+   *
+   * The liveness cache holds cross-request observations so a title can be
+   * ranked without re-probing it every time. With payload caching disabled
+   * (small-RAM deployments) that cache is empty, and ranking still has to be
+   * driven by the probe that this very request just ran — otherwise verified
+   * multi-audio streams lose their promotion and fast lanes lose their
+   * measured latency ordering. Carrying it here keeps correctness independent
+   * of whether any cache is switched on.
+   */
+  measuredThisRequest?: { alive: boolean; rttMs?: number; discoveredAudioLangs?: string[]; durationSec?: number };
   /** Direct non-manifest external audio files (m4a/mp3/aac) for ExternalAudioSync. */
   audioTracks?: RawTrackRef[];
   /** Subtitle files (VTT / SRT / ASS). */

@@ -36,6 +36,19 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
     assert (target / 'data/roxy.json').read_text() == persisted
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+    # Panels that run `npm install` at boot must succeed. Vendoring undici as a
+    # `file:` dependency made npm execute undici's own `prepare` script
+    # (`husky && node ./scripts/platform-shell.js`), which aborted the whole
+    # install and left the proxy layer permanently unavailable. Offline check:
+    # the archive must carry no lifecycle scripts at all.
+    with zipfile.ZipFile(bundle) as archive:
+        for name in archive.namelist():
+            if name.endswith('/package.json'):
+                manifest = json.loads(archive.read(name))
+                assert not manifest.get('scripts'), f'{name} still declares lifecycle scripts: {manifest["scripts"]}'
+        assert 'vendor/undici/index.js' in archive.namelist(), 'the undici fallback copy is missing'
+        assert 'node_modules/undici/index.js' in archive.namelist(), 'the bundled undici is missing'
+
     env = dict(os.environ, HOST='127.0.0.1', SERVER_PORT=str(port))
     env.pop('ELFURA_SECRET', None); env.pop('ROXY_DATA_DIR', None)
     process = subprocess.Popen(['node', 'index.js'], cwd=tmp, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -57,7 +70,22 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         assert client.open(req).status == 200
         overview = json.load(client.open(base + '/roxy/api/overview'))
         assert overview['bans'] == ['https://example.org']
-        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview.')
+
+        # The proxy uploader is the feature an operator reaches for when a source
+        # has gone quiet, so it is exercised against the real extracted bundle:
+        # The proxy-list uploader used to be asserted here. That feature is gone
+        # on purpose: the proxy route was abandoned in favour of the Cloudflare
+        # worker, and /roxy/api/proxies no longer exists. Asserting on it made
+        # this test fail for a reason unrelated to the archive, so what is
+        # checked now is that the endpoint is really gone and that the panel
+        # still authenticates and reports state.
+        try:
+            client.open(base + '/roxy/api/proxies')
+            raise AssertionError('/roxy/api/proxies still exists; the proxy route was meant to be removed')
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, f'expected 404 for the removed proxy route, got {error.code}'
+
+        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview, and confirms the abandoned proxy uploader is gone.')
     finally:
         process.terminate()
         try: process.wait(timeout=5)

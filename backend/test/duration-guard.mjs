@@ -104,8 +104,21 @@ try {
   const playback = await registry.resolvePlayback({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 });
   assert(playback, 'the real episode survives');
   const urls = playback.sources.map((source) => source.url);
-  assert.equal(playback.sources.length, 1, `only the correctly-runtimed lane is listed (got ${playback.sources.length})`);
-  assert(!urls.some((url) => String(url).includes('clip')), 'the 2-minute clip is not offered');
+  // The guard ranks, it does not delete. The correctly-runtimed lane is first,
+  // and a wrong-length stream stays available behind it rather than being
+  // hidden: it plays, and an empty slot helps nobody.
+  assert.ok(playback.sources.length >= 1, 'the episode still resolves');
+  // URLs are sealed stream tickets, so identify lanes by the adapter that
+  // produced them: source-1 is the 47-minute stream, source-2 the 2-minute clip.
+  assert.equal(
+    playback.sources[0].sourceId,
+    'source-1',
+    `the correctly-runtimed lane must be ranked first (got ${playback.sources[0]?.sourceId})`,
+  );
+  const clipIndex = playback.sources.findIndex((source) => source.sourceId === 'source-2');
+  if (clipIndex !== -1) {
+    assert(clipIndex > 0, 'a wrong-length stream may only appear behind correct-length ones');
+  }
   // A filter must never empty the list: when every verified stream would be
   // dropped, the guard stands down and keeps them (and logs why).
   const clipOnly = new SourceRegistry(cfg);
@@ -117,7 +130,7 @@ try {
   assert(rescued, 'the guard must not turn a title with live streams into "no sources"');
   assert.equal(rescued.sources.length, 2, 'every verified stream is kept when the guard would empty the list');
 
-  console.log('✓ Runtime guard: ±20 min movies / ±5 min episodes, VOD-only measurement, live and unknown streams untouched, clip dropped end to end.');
+  console.log('✓ Runtime guard: ±20 min movies / ±5 min episodes, VOD-only measurement, correct-length ranked first, wrong-length demoted not deleted.');
 } finally {
   globalThis.fetch = original;
   clearInterval(keepAlive);

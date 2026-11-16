@@ -16,7 +16,7 @@
  *     minted once more and those servers are retried.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
@@ -68,6 +68,19 @@ function watchPath(query: SourceQuery): string | null {
   return `/tv/${query.tmdbId}/${season}/${episode}`;
 }
 
+/** Only the header names a media CDN legitimately needs; never anything else. */
+function safeHeaders(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== 'string' || raw.length > 1024 || /[\r\n]/.test(raw)) continue;
+    if (!/^(referer|origin|user-agent|cookie)$/i.test(key)) continue;
+    if (/^(referer|origin)$/i.test(key) && !isSafeUpstreamUrl(raw)) continue;
+    out[/^referer$/i.test(key) ? 'Referer' : /^origin$/i.test(key) ? 'Origin' : /^cookie$/i.test(key) ? 'Cookie' : 'User-Agent'] = raw;
+  }
+  return out;
+}
+
 function candidatesFromResponse(value: unknown, rank: number): RawStreamCandidate[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
   const sources = (value as { sources?: unknown }).sources;
@@ -75,35 +88,68 @@ function candidatesFromResponse(value: unknown, rank: number): RawStreamCandidat
   const result: RawStreamCandidate[] = [];
   for (const source of sources.slice(0, 8)) {
     if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
-    const row = source as { type?: unknown; url?: unknown };
+    const row = source as {
+      type?: unknown;
+      url?: unknown;
+      directUrl?: unknown;
+      rawUrl?: unknown;
+      proxyUrl?: unknown;
+      headers?: unknown;
+    };
     const type = typeof row.type === 'string' ? row.type.trim().toLowerCase() : '';
-    if ((type !== 'hls' && type !== 'mp4') || typeof row.url !== 'string' || row.url.length > 4096) continue;
+    if (type !== 'hls' && type !== 'mp4') continue;
+    // Prefer a real provider URL when the payload carries one, and use the
+    // player path only as a last resort.
+    //
+    // This used to REQUIRE `/api/stream/...` on the site's own origin. That path
+    // answers with an HTML page — "Direct Stream Access Prohibited: this video
+    // stream is protected and can only be played inside the official Vidzen
+    // player" — for any request that is not the player itself, token or no token.
+    // So every candidate this adapter produced pointed somewhere nothing could
+    // ever verify, which is why it reported candidates=16, reachable=0 on CI: the
+    // discovery was fine, the URLs were unusable by construction.
+    const direct = [row.directUrl, row.rawUrl, row.proxyUrl, row.url]
+      .map((candidate) => (typeof candidate === 'string' ? candidate.trim() : ''))
+      .find((candidate) => candidate.length > 0 && candidate.length <= 4096);
+    if (!direct) continue;
+    let url: URL;
     try {
-      const url = new URL(row.url, SITE);
-      // This implementation's documented stream path is provider-hosted. Keep
-      // the origin/path pinned rather than trusting arbitrary API URLs.
-      if (url.origin !== SITE || !url.pathname.startsWith('/api/stream/') || !isSafeUpstreamUrl(url.href)) continue;
-      const cleanUrl = url.href;
-      result.push({
-        key: cleanUrl,
-        url: cleanUrl,
-        type,
-        quality: 'auto',
-        headers: { 'User-Agent': UA, Referer: REFERER },
-        // Provider-hosted lanes rank first; a relay-fronted row (their worker
-        // edge) still plays but must not outrank the provider's own origin.
-        rank: rank + (classifyUpstreamUrl(cleanUrl) === 'relay' ? RELAY_RANK_PENALTY : 0),
-      });
-    } catch { /* reject malformed URLs */ }
+      url = new URL(direct, SITE);
+    } catch {
+      continue;
+    }
+    if (!isSafeUpstreamUrl(url.href)) continue;
+    // An embed page is a web page, not a stream. This check used to be implicit
+    // in the same-origin /api/stream/ requirement; now that any provider URL is
+    // accepted, it has to be explicit.
+    if (url.origin === SITE && /^\/embed(?:\/|$)/i.test(url.pathname)) continue;
+    const playerLocked = url.origin === SITE && url.pathname.startsWith('/api/stream/');
+    const headers = safeHeaders(row.headers);
+    result.push({
+      key: url.href,
+      url: url.href,
+      type,
+      quality: 'auto',
+      // Provider-declared headers win. A CDN that requires its own Referer
+      // rejects ours, so overwriting it would make every lane look dead.
+      headers: { 'User-Agent': UA, Referer: REFERER, ...headers },
+      // A player-locked URL is kept only so the panel can show that the provider
+      // did return something, and it is ranked last because it cannot be fetched.
+      rank: rank + (classifyUpstreamUrl(url.href) === 'relay' ? RELAY_RANK_PENALTY : 0) + (playerLocked ? 50 : 0),
+      ...(playerLocked ? { claimedAudioLang: 'und' } : {}),
+    });
   }
-  return result;
+  // Rank is the contract: the player takes the first row. Returning insertion
+  // order meant a player-locked URL (+50) could be listed above a working
+  // provider URL, which is the opposite of what the rank says.
+  return result.sort((a, b) => a.rank - b.rank);
 }
 
 async function mintToken(signal: AbortSignal, path: string): Promise<string | null> {
   try {
     const page = await fetch(`${SITE}${path}`, {
       headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'text/html,application/json;q=0.9,*/*;q=0.8' },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const html = await readBoundedText(page, MAX_PAGE_BYTES);
@@ -133,7 +179,7 @@ async function askServer(
     endpoint.searchParams.set('token', token);
     const response = await fetch(endpoint, {
       headers: { 'User-Agent': UA, Referer: REFERER, Accept: 'application/json' },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const text = await readBoundedText(response, MAX_JSON_BYTES);
@@ -207,14 +253,14 @@ export function createSource12Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       let raw = await fetchFromVidZen(query);
       let checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      let alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+      let alive = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
       if (alive.length === 0 && raw.length > 0 && RETRY_ON_EMPTY() && !query.signal?.aborted) {
         const second = await fetchFromVidZen(query).catch(() => [] as RawStreamCandidate[]);
         const retried = second.length ? await verifyAndFilterCandidatesDetailed(second, query.signal) : null;
         if (retried) {
           raw = [...raw, ...second];
           checked = retried;
-          alive = checked.candidates.filter(candidate => !!cachedCandidateEvidence(candidate)?.alive);
+          alive = checked.candidates.filter(candidate => !!candidateEvidence(candidate)?.alive);
         }
       }
       const verified = alive;

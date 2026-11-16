@@ -1,6 +1,6 @@
 /** VixSrc signed HLS discovery. All outputs flow through Elfura's relay. */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 const BASE = 'https://vixsrc.to';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
@@ -44,10 +44,10 @@ export function createSource9Adapter(enabled: () => boolean): SourceAdapter {
     const start = Date.now(); const raw = await fetchFromVixSrc(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
     const candidates = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
+      const evidence = candidateEvidence(c);
       return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
     });
-    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}`});
+    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }

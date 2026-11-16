@@ -28,6 +28,7 @@ import {
 } from './security.js';
 import { normalizeLang } from './sources/lang.js';
 import { isImageContentType, unwrapPngTransportStream } from './sources/media-sniff.js';
+import { PolicyCache } from './memory-policy.js';
 
 const DEFAULT_RELAY_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -818,7 +819,7 @@ interface CachedUpstreamManifest {
   bodyText: string;
 }
 
-const manifestRamCache = new Map<string, CachedUpstreamManifest>();
+const manifestRamCache = new PolicyCache<CachedUpstreamManifest>(MAX_MANIFEST_RAM_ENTRIES);
 
 function getCachedManifest(key: string): CachedUpstreamManifest | null {
   const hit = manifestRamCache.get(key);
@@ -834,12 +835,6 @@ function getCachedManifest(key: string): CachedUpstreamManifest | null {
 
 function setCachedManifest(key: string, entry: Omit<CachedUpstreamManifest, 'expiresAt'>): void {
   if (entry.bodyText.length > MAX_CACHEABLE_MANIFEST_BYTES) return;
-  if (manifestRamCache.has(key)) manifestRamCache.delete(key);
-  while (manifestRamCache.size >= MAX_MANIFEST_RAM_ENTRIES) {
-    const oldest = manifestRamCache.keys().next().value;
-    if (oldest === undefined) break;
-    manifestRamCache.delete(oldest);
-  }
   manifestRamCache.set(key, {
     ...entry,
     expiresAt: Date.now() + MANIFEST_RAM_TTL_MS,

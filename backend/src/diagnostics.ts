@@ -88,6 +88,13 @@ export interface EgressStage {
 }
 
 const EGRESS_TARGETS: { label: string; host: string; path: string }[] = [
+  // Two controls, deliberately independent of the provider ecosystem. When these
+  // fail alongside the providers, the fault is the container's own outbound
+  // path — and no amount of proxy, relay or header work can fix that. Separating
+  // "the internet" from "these sites" is the first question, and answering it
+  // from provider hosts only ever produced the wrong answer.
+  { label: 'control-github', host: 'api.github.com', path: '/' },
+  { label: 'control-npm', host: 'registry.npmjs.org', path: '/' },
   { label: 'control-tmdb', host: 'api.themoviedb.org', path: '/3/configuration' },
   { label: 'rivestream', host: 'www.rivestream.app', path: '/' },
   { label: 'rive-api', host: 'scrapper.rivestream.app', path: '/' },
@@ -269,6 +276,17 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
         ? 'system-resolver-dead-but-public-dns-works: DNS rescue takes over at boot (ELFURA_DNS_SERVERS)'
         : 'system-resolver-dead-and-public-dns-unreachable: this container cannot resolve any name at all',
     );
+  }
+  const controls = targets.filter((t) => t.label.startsWith('control-'));
+  const controlsHealthy = controls.filter((t) => t.tls?.ok).length;
+  if (controls.length && controlsHealthy === 0) {
+    verdict.push(
+      'outbound-https-blocked: not one independent control host completed TLS either ' +
+        '(github/npm/TMDB), so this is the container network path, not the sources. ' +
+        'Nothing in Elfura — headers, proxies or a relay on this same host — can fix that.',
+    );
+  } else if (controlsHealthy > 0 && controlsHealthy < controls.length) {
+    verdict.push('partial-egress: some independent hosts work and others do not, so failures are path-specific');
   }
   if (control && !control.tcp?.ok) verdict.push('egress-blocked: even the control host cannot open a TCP connection');
   else if (control?.tcp?.ok && providers.some((t) => !t.tcp?.ok)) {

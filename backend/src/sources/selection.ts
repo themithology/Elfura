@@ -1,5 +1,5 @@
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence } from './liveness.js';
+import { candidateEvidence } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter } from './types.js';
 
 export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCandidate }
@@ -10,9 +10,18 @@ export interface CandidateEntry { adapter: SourceAdapter; candidate: RawStreamCa
  * streams listed, and the player looked like it had lost most of them.
  * The cap exists only as a sanity bound on the response size.
  */
-export const MAX_LISTED_SOURCES = 48;
+/**
+ * How many stream options one response may list.
+ *
+ * This is a presentation ceiling, not a safety valve: every lane here has been
+ * either verified alive or left unproven rather than disproven, and the player
+ * picks from the top. Raising it costs a few KB of JSON and gives the viewer
+ * more chances of finding one that plays, which is the whole point — a source
+ * dropped here is one they never get to try.
+ */
+export const MAX_LISTED_SOURCES = 200;
 export const MAX_SINGLE_TRACK_FALLBACKS = MAX_LISTED_SOURCES;
-export const MAX_SEPARATE_DUBS = 12;
+export const MAX_SEPARATE_DUBS = 24;
 
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
  * separately labelled language streams (not claimed as multi-audio).
@@ -25,8 +34,20 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     const c = entry.candidate;
     if (unique.has(c.url)) continue;
     unique.add(c.url);
-    const evidence = cachedCandidateEvidence(c);
-    const langs = [...new Set(evidence?.discoveredAudioLangs ?? [])];
+    // One helper answers "what do we know about this lane", preferring what
+    // this request measured over what an earlier one remembered. With payload
+    // caching off nothing is remembered, and ranking must still work.
+    const evidence = candidateEvidence(c);
+    // Manifest truth about the audio layout beats provider metadata: a measured
+    // single-language probe means single-language, however the source labelled
+    // itself. Only when nothing was measured may the provider claim stand.
+    const measuredLangs = evidence?.alive ? evidence.discoveredAudioLangs : undefined;
+    const providerLangs = c.availableAudioLangs ?? [];
+    const langs = measuredLangs !== undefined
+      ? [...new Set(measuredLangs)]
+      : evidence?.alive
+        ? []
+        : [...new Set(providerLangs)];
     if (evidence?.alive && langs.length > 1) {
       multi.push({ adapter:entry.adapter, candidate:{...c,multiAudio:true,availableAudioLangs:langs,audioLang:undefined,audioLabel:undefined} });
       continue;
@@ -35,6 +56,9 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     // the same language into a supposedly multilingual source.
     let host = '';
     try { host = new URL(c.url).hostname.toLowerCase(); } catch { continue; }
+    // A provider multi-audio flag that no measurement backs never survives into
+    // the response: an unproven claim is what makes a language switch look
+    // available while the audio never changes.
     single.push({adapter:entry.adapter,candidate:{...c,multiAudio:false,availableAudioLangs:langs.length===1?langs:undefined},
       alive:!!evidence?.alive,latency:evidence?.rttMs ?? c.latencyMs ?? Number.POSITIVE_INFINITY,host,order:single.length});
   }

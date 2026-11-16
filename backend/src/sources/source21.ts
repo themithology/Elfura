@@ -20,7 +20,7 @@
  * tickets. Zero disk, two bounded requests at most, no credentials.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
@@ -181,7 +181,7 @@ export function createSource21Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromWatchout(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
+      const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-21',
         lane: 'W',

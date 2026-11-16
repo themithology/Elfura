@@ -38,7 +38,7 @@ try {
   assert.equal(movie[0].audioLang, undefined, 'server names must never be inferred as audio languages');
   assert(requests.some(request => request.url.pathname === '/watch/movie/693134'));
   assert(requests.some(request => request.url.pathname === '/api/encrypt' && request.body.data.source === 's10'));
-  assert(requests.filter(request => request.url.pathname === '/api/stream-encrypted').every(request => request.redirect === 'error'));
+  assert(requests.filter(request => request.url.pathname === '/api/stream-encrypted').every(request => request.redirect === 'manual'));
   assert(requests.some(request => request.url.pathname === '/api/playback-init' && request.headers.get('cookie') === '_mapple_site=fixture-cookie'));
   assert(!JSON.stringify(movie).includes('fixture-stream-token-123'), 'Mapple auth tokens must not escape to stream candidates');
 

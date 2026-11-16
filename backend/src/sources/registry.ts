@@ -8,7 +8,10 @@
  */
 
 import crypto from 'node:crypto';
+import path from 'node:path';
 import type { BackendConfig } from '../config.js';
+import { PolicyCache } from '../memory-policy.js';
+import { SourceHealthStore } from '../source-health.js';
 import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
@@ -18,7 +21,6 @@ import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
-import { createSource7Adapter } from './source7.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
 import { createSource10Adapter } from './source10.js';
@@ -33,6 +35,7 @@ import { createSource18Adapter } from './source18.js';
 import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
+import { createSource22Adapter } from './source22.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -70,7 +73,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-3': 'SOURCE3_ENABLED',
   'source-4': 'ELFURA_BINGR_ENABLED',
   'source-5': 'ELFURA_NXSHA_ENABLED',
-  'source-7': 'ELFURA_SCREENSCAPE_ENABLED',
+  'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
   'source-8': 'ELFURA_VIDZEE_ENABLED',
   'source-9': 'ELFURA_VIXSRC_ENABLED',
   'source-10': 'ELFURA_VIDNEST_ENABLED',
@@ -93,22 +96,52 @@ const resolveBudgetMs = (): number => {
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 36;
-/** Lanes any single source may contribute to one response. */
-const MAX_LANES_PER_SOURCE = 4;
+/**
+ * How many extra lanes one adapter may add in the coverage pass, beyond the
+ * verified set. Verified lanes are not counted, so this only limits how much a
+ * single prolific source can pad the tail of the list. Set high enough that a
+ * source with many genuinely distinct mirrors contributes all of them: the
+ * goal is every working source the viewer can try.
+ */
+const MAX_LANES_PER_SOURCE = 12;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
-  private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
+  /**
+   * Per-source health and operator switches. Health is recorded and displayed
+   * only: failures never remove a source by themselves. The single thing that
+   * takes a source out of rotation is an operator switching it off in the panel.
+   */
+  readonly health: SourceHealthStore;
+  private readonly ramCache = new PolicyCache<{ expiresAt: number; result: RawSourceResult }>(
+    MAX_ADAPTER_CACHE_ENTRIES,
+  );
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
-  private readonly segmentCache = new Map<
-    string,
-    { expiresAt: number; result: SkipSegments | undefined }
-  >();
+  private readonly segmentCache = new PolicyCache<{ expiresAt: number; result: SkipSegments | undefined }>(
+    MAX_ADAPTER_CACHE_ENTRIES,
+  );
   private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
+  /**
+   * Lanes that finished AFTER the first response was sealed.
+   *
+   * This is the one piece of retained state that is not a cache: without it a
+   * slow source's result is simply lost, and the player's follow-up `late=1`
+   * passes would never see it. It is bounded by lane name, holds only the
+   * per-lane candidate list, and drops the payload when a newer resolve of the
+   * same title starts — so a hundred titles viewed once cannot pile up.
+   */
+  private readonly finishedLate = new Map<string, { adapter: SourceAdapter; result: RawSourceResult }[]>();
+  /**
+   * Why the last resolve came back empty, when it was us and not the title.
+   * The resolver reports this so "no streams" never silently means "every
+   * source was switched off".
+   */
+  lastEmptyReason: string | null = null;
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
+    this.health = new SourceHealthStore(process.env.ROXY_DATA_DIR || path.join(process.cwd(), 'data'));
     // Record what each adapter actually talked to, so a resolve that yields
     // nothing can explain itself in the console.
     installNetTap();
@@ -130,8 +163,13 @@ export class SourceRegistry {
       createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
-      createSource5Adapter(() => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0'),
-      createSource7Adapter(() => cfg.source7?.enabled ?? false),
+      // source-7 was never independent: it reused source-5's fetcher against the
+      // same host with a different lane list. It is now source-5's second lane
+      // set, with its original default-off gate preserved.
+      createSource5Adapter(
+        () => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0',
+        () => cfg.source7?.enabled ?? process.env.ELFURA_SCREENSCAPE_ENABLED === '1',
+      ),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),
@@ -146,6 +184,7 @@ export class SourceRegistry {
       createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
+      createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
     ];
   }
 
@@ -204,6 +243,8 @@ export class SourceRegistry {
   }
 
   listPublicSources(): { id: string; label: string }[] {
+    // Operator switches and cooldowns are reported separately by `health`, so this
+    // keeps listing what is *configured*: the panel decides how to show it.
     return this.adapters.filter((a) => a.enabled()).map((a) => ({ id: a.id, label: a.label }));
   }
 
@@ -235,6 +276,10 @@ export class SourceRegistry {
       signal: AbortSignal.timeout(15_000),
     };
     const diagnosticCandidates = new Map<string, RawStreamCandidate[]>();
+    /** Every lane this diagnostics run verified as working, listed or not. */
+    const diagnosticProbedAlive = new Set<string>();
+    /** Every lane this diagnostics run confirmed dead, listed or not. */
+    const diagnosticProbedDead = new Set<string>();
     const diagnosticRaw = new Map<string, RawStreamCandidate[]>();
     const adapters = await Promise.all(
       this.adapters
@@ -245,9 +290,11 @@ export class SourceRegistry {
             const result = await adapter.resolve(query);
             const raw = result.candidates;
             diagnosticRaw.set(adapter.id, raw);
-            const { candidates: verified, verifiedAliveCount } =
+            const { candidates: verified, verifiedAliveCount, probedAlive: probeAlive, probedDead: probeDead } =
               await verifyAndFilterCandidatesDetailed(raw);
             diagnosticCandidates.set(adapter.id, verified);
+            for (const url of probeAlive) diagnosticProbedAlive.add(url);
+            for (const url of probeDead) diagnosticProbedDead.add(url);
             return {
               id: adapter.id,
               ms: Date.now() - t0,
@@ -255,13 +302,29 @@ export class SourceRegistry {
               retained: verified.length,
               manifestReachable: verifiedAliveCount,
               manifestMultiAudio: verified.filter((c) => {
-                const evidence = cachedCandidateEvidence(c);
-                return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
+                const langs = c.measuredThisRequest?.alive
+                  ? c.measuredThisRequest.discoveredAudioLangs
+                  : cachedCandidateEvidence(c)?.discoveredAudioLangs;
+                return new Set(langs ?? []).size > 1;
               }).length,
               // Raw claims and independently measured manifest evidence are
               // intentionally separate. Never return URLs, headers or tokens.
               options: raw.slice(0, 20).map((candidate) => {
-                const evidence = cachedCandidateEvidence(candidate);
+                const measured = verified.find((v) => v.url === candidate.url)?.measuredThisRequest;
+                const remembered = cachedCandidateEvidence(candidate);
+                const evidence = measured
+                  ? {
+                      alive: measured.alive,
+                      confirmedDead: !measured.alive,
+                      rttMs: measured.rttMs,
+                      discoveredAudioLangs: measured.discoveredAudioLangs ?? remembered?.discoveredAudioLangs,
+                      durationSec: measured.durationSec ?? remembered?.durationSec,
+                      manifestKind: remembered?.manifestKind,
+                      manifestAudioRenditions: remembered?.manifestAudioRenditions,
+                      manifestVideoVariants: remembered?.manifestVideoVariants,
+                      qualityLadder: remembered?.qualityLadder,
+                    }
+                  : remembered;
                 return {
                   fingerprint: crypto.createHmac('sha256', this.cfg.secret)
                     .update(candidate.url).digest('hex').slice(0, 12),
@@ -345,9 +408,32 @@ export class SourceRegistry {
       })));
       playbackChecks.push(...batch);
     }
+    // Per-lane health for the diagnostics view. Verification happens on copies
+    // of the raw candidates, so match them back by URL: a lane's health has to
+    // come from what this run probed, not only from a cache.
+    const verifiedByUrl = new Map<string, RawStreamCandidate>();
+    for (const list of diagnosticCandidates.values()) for (const v of list) verifiedByUrl.set(v.url, v);
     const lanes = diag.map(entry => {
       const candidates = (diagnosticRaw.get(entry.adapter) ?? []).filter(c => c.diagnosticLane === entry.lane);
-      const evidence = candidates.map(c => cachedCandidateEvidence(c));
+      const evidence = candidates.map(c => {
+        const measured = verifiedByUrl.get(c.url)?.measuredThisRequest;
+        if (measured) {
+          return {
+            alive: measured.alive,
+            confirmedDead: !measured.alive,
+            discoveredAudioLangs: measured.discoveredAudioLangs,
+          };
+        }
+        // Verified working but filtered out of the retained list (e.g. a
+        // runtime mismatch): still evidence the lane answered.
+        if (diagnosticProbedAlive.has(c.url)) {
+          return { alive: true, confirmedDead: false, discoveredAudioLangs: cachedCandidateEvidence(c)?.discoveredAudioLangs };
+        }
+        if (diagnosticProbedDead.has(c.url)) {
+          return { alive: false, confirmedDead: true };
+        }
+        return cachedCandidateEvidence(c);
+      });
       return { ...entry, candidateCount: candidates.length, manifestReachable: evidence.filter(e => e?.alive).length,
         manifestFailed: evidence.filter(e => e?.confirmedDead).length,
         manifestUnknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
@@ -370,12 +456,6 @@ export class SourceRegistry {
 
   private setCachedAdapterResult(key: string, result: RawSourceResult): void {
     if (!result.candidates.length) return;
-    if (this.ramCache.has(key)) this.ramCache.delete(key);
-    while (this.ramCache.size >= MAX_ADAPTER_CACHE_ENTRIES) {
-      const oldest = this.ramCache.keys().next().value;
-      if (oldest === undefined) break;
-      this.ramCache.delete(oldest);
-    }
     this.ramCache.set(key, {
       expiresAt: Date.now() + ADAPTER_CACHE_TTL_MS,
       result,
@@ -432,12 +512,6 @@ export class SourceRegistry {
     const p = resolveSegments({ ...query, preferredLang: undefined })
       .catch(() => undefined)
       .then((result) => {
-        if (this.segmentCache.has(baseKey)) this.segmentCache.delete(baseKey);
-        while (this.segmentCache.size >= MAX_ADAPTER_CACHE_ENTRIES) {
-          const oldest = this.segmentCache.keys().next().value;
-          if (oldest === undefined) break;
-          this.segmentCache.delete(oldest);
-        }
         this.segmentCache.set(baseKey, {
           expiresAt: Date.now() + ADAPTER_CACHE_TTL_MS,
           result,
@@ -484,13 +558,34 @@ export class SourceRegistry {
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+    // Only an operator switch removes a source here. A source that has failed
+    // every time for a week is still asked, because nothing here may decide on
+    // its own that a provider is finished — that judgment belongs to the person
+    // reading the panel.
     const activeAdapters = this.adapters.filter(
-      (a) => a.enabled() && (!params.sourceId || a.id === params.sourceId),
+      (a) =>
+        a.enabled() &&
+        this.health.shouldAttempt(a.id) &&
+        (!params.sourceId || a.id === params.sourceId),
     );
-    if (!activeAdapters.length) return null;
+    const switchedOff = this.adapters.filter(
+      (a) => a.enabled() && !this.health.shouldAttempt(a.id) && (!params.sourceId || a.id === params.sourceId),
+    );
+    this.lastEmptyReason = null;
+    if (!activeAdapters.length) {
+      // Nothing to try. Reported up so the resolver can say *why* the answer is
+      // empty, instead of letting it read like "this title has no sources".
+      if (switchedOff.length) {
+        this.lastEmptyReason = `${switchedOff.length} source(s) switched off by the operator`;
+      }
+      return null;
+    }
 
     const streamBase = params.streamPathPrefix || '/api/v1/stream';
 
+    // Identity of this title for the late-join stash. Deliberately excludes
+    // headers/tokens: it is only a bucket name.
+    const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}`;
     // Launch TMDB metadata AND all source adapters concurrently (zero serial wait!)
     const mediaPromise = fetchTmdbMetadata(this.cfg.tmdb, {
       type: params.type,
@@ -557,10 +652,18 @@ export class SourceRegistry {
     // sources, "which one failed and why" must be readable from the log.
     const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
     const adapterNet = new Map<string, NetRecord[]>();
+    // A fresh resolve owns a fresh stash. This has to run before any adapter
+    // task can record into it — the tasks below start immediately — and never
+    // on a late pass, which is the pass that reads it.
+    if (!lateOnly) this.finishedLate.delete(lateKey);
     if (lateOnly) {
+      // Report what finished after the previous response was sealed. The
+      // payload cache is not consulted: it may be disabled entirely, and using
+      // it here is what made late joins look like a caching feature.
+      const finished = this.finishedLate.get(lateKey) ?? [];
       activeAdapters.forEach((adapter, idx) => {
-        const cached = this.getCachedAdapterResult(cacheKeys[idx]);
-        if (cached) slots[idx] = { adapter, result: cached };
+        const hit = finished.find((entry) => entry.adapter.id === adapter.id);
+        if (hit) slots[idx] = { adapter, result: hit.result };
       });
     }
     const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
@@ -571,7 +674,22 @@ export class SourceRegistry {
         const result = tapped.value;
         adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
+        // Keep this lane for the player's follow-up late passes. Every lane is
+        // recorded, not only the ones that missed the seal: a late pass has to
+        // report `pendingSources` correctly, and a lane that already answered
+        // is not pending even if it answered early. The stash is cleared when a
+        // fresh resolve of this title starts, so it never accumulates.
+        if (result.candidates.length) {
+          const prior = this.finishedLate.get(lateKey) ?? [];
+          prior.push({ adapter, result });
+          this.finishedLate.set(lateKey, prior);
+          this.pruneFinishedLate();
+        }
         adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
+        // Learn from what actually happened. "No candidates" is not a failure —
+        // that provider may simply not carry this title — so only a throw or an
+        // explicit error marks a source unhealthy.
+        if (result.candidates.length > 0) this.health.recordSuccess(adapter.id);
         if (!result.candidates.length) {
           console.warn(
             `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
@@ -590,10 +708,9 @@ export class SourceRegistry {
           }
         }
       } catch (err) {
-        adapterReport.set(adapter.id, {
-          ms: Date.now() - startedAt,
-          error: err instanceof Error ? err.name : 'Error',
-        });
+        const name = err instanceof Error ? err.name : 'Error';
+        adapterReport.set(adapter.id, { ms: Date.now() - startedAt, error: name });
+        this.health.recordFailure(adapter.id, name);
       } finally {
         doneCount++;
         if (doneCount >= activeAdapters.length) {
@@ -629,7 +746,7 @@ export class SourceRegistry {
           if (cand) tagged.push({ ...cand, key: `${adapterIdx}::${cand.key}` });
         }
       }
-      const { candidates: vFlat, verifiedAliveCount } =
+      const { candidates: vFlat, verifiedAliveCount, probedDead } =
         await verifyAndFilterCandidatesDetailed(
           tagged,
           // The probe decides whether a title is playable at all, so it gets a
@@ -660,6 +777,7 @@ export class SourceRegistry {
         totalLive: vFlat.length,
         verifiedLive: verifiedAliveCount,
         vFlat,
+        probedDead,
       };
     };
 
@@ -668,7 +786,14 @@ export class SourceRegistry {
     // that are still working instead of shipping what happened to arrive first.
     const readySources = () =>
       slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
-    const stillPending = lateOnly ? 0 : activeAdapters.length - doneCount;
+    // A late pass used to assume every lane had already finished, so it never
+    // reported anything pending. Lanes discovered empty (nothing stashed, not
+    // currently resolving) still are pending, and saying so is what lets the
+    // player schedule its remaining retries.
+    const lateStash = lateOnly ? this.finishedLate.get(lateKey) ?? [] : [];
+    const stillPending = lateOnly
+      ? activeAdapters.filter((adapter) => !lateStash.some((entry) => entry.adapter.id === adapter.id)).length
+      : activeAdapters.length - doneCount;
     if (stillPending >= 2 && readySources() < 3 && remaining() > 1500) {
       await Promise.race([
         Promise.allSettled(adapterTasks),
@@ -757,6 +882,11 @@ export class SourceRegistry {
     // Lanes the runtime guard rejected stay rejected: the coverage pass below
     // must not smuggle a wrong-length clip back into the list.
     const blockedByRuntime = new Set<string>();
+    // Streams whose measured duration does not match, kept as a last-resort rail
+    // rather than deleted (see the guard below).
+    const wrongRuntime: { adapter: SourceAdapter; candidate: RawStreamCandidate }[] = [];
+    /** Lanes this request probed and confirmed dead (see verifyAndFilterCandidatesDetailed). */
+    const probedDeadHere = verifiedBatch.probedDead;
     const allLiveCandidates: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
     // Escape hatch for an operator who would rather see a wrong-length stream
     // than no stream at all.
@@ -771,10 +901,18 @@ export class SourceRegistry {
       if (!media.imdbId && result.metaHint?.imdbId) media.imdbId = result.metaHint.imdbId;
       for (const cand of liveCandidates) {
         allLiveCandidates.push({ adapter, candidate: cand });
-        const measuredSec = cachedCandidateEvidence(cand)?.durationSec ?? null;
+        // This request measured the runtime a moment ago; the cache may be off.
+        const measuredSec =
+          cand.measuredThisRequest?.durationSec ?? cachedCandidateEvidence(cand)?.durationSec ?? null;
         if (runtimeGuardEnabled && !durationFits(measuredSec, expectedRuntimeSec, runtimeToleranceSec)) {
+          // Wrong length is a reason to rank a stream last, not to hide it.
+          // A trailer that plays is more useful to a viewer than an empty list,
+          // and the measurement itself is a guess: live-edge VOD windows, a
+          // playlist that mentions a duration for only one variant, and provider
+          // metadata being wrong all produce a mismatch on a perfectly good
+          // stream. Recorded here, sorted behind the correct-length lanes below.
           droppedByRuntime.push({ id: adapter.id, measuredSec: measuredSec ?? 0 });
-          blockedByRuntime.add(cand.url);
+          wrongRuntime.push({ adapter, candidate: cand });
           continue;
         }
         candidateEntries.push({adapter,candidate:cand});
@@ -814,9 +952,16 @@ export class SourceRegistry {
         for (const cand of slot.result.candidates) {
           if (added >= MAX_LANES_PER_SOURCE) break;
           if (seenUrls.has(cand.url) || blockedByRuntime.has(cand.url)) continue;
+          // A probe run during this request speaks with the same authority as a
+          // remembered one: a lane it confirmed dead must not come back just
+          // because the cache that would have remembered that is switched off.
+          if (probedDeadHere.has(cand.url)) continue;
           const evidence = cachedCandidateEvidence(cand);
           if (evidence && !evidence.alive) continue;
-          if (evidence && !durationFits(evidence.durationSec ?? null, expectedRuntimeSec, runtimeToleranceSec)) continue;
+          const measured = cand.measuredThisRequest;
+          const durationHere = measured?.durationSec ?? evidence?.durationSec ?? null;
+          const aliveHere = measured?.alive || !!evidence?.alive;
+          if (aliveHere && !durationFits(durationHere, expectedRuntimeSec, runtimeToleranceSec)) continue;
           seenUrls.add(cand.url);
           candidateEntries.push({ adapter: slot.adapter, candidate: cand });
           added += 1;
@@ -828,6 +973,14 @@ export class SourceRegistry {
           `[elfura-resolve] ${params.type}/${params.tmdbId}: listed ${appended} extra lane(s) ` +
             `beyond the verified set (per-source cap ${MAX_LANES_PER_SOURCE}, verified first).`,
         );
+      }
+    }
+
+    // Close the list with wrong-length streams: they are real, they play, and
+    // they are better than nothing when every correctly-timed lane is blocked.
+    for (const entry of wrongRuntime) {
+      if (!candidateEntries.some((existing) => existing.candidate.url === entry.candidate.url)) {
+        candidateEntries.push(entry);
       }
     }
 
@@ -868,7 +1021,11 @@ export class SourceRegistry {
       return null;
     }
 
-    // Only OpenSubtitles tracks are exposed. No provider subtitle fallback.
+    // Only OpenSubtitles tracks are exposed by default. No provider subtitle
+    // fallback — with one exception: the Vidly index (source-22), which is a
+    // separate, unauthenticated subtitle catalogue. It is used only when
+    // OpenSubtitles produced nothing, so it can add languages but can never
+    // displace a working OpenSubtitles track.
     const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
     if (shouldResolveOpenSubtitles && media.imdbId) {
@@ -893,6 +1050,31 @@ export class SourceRegistry {
         for (const opt of uniformOptions) {
           opt.subtitles = [...sealedFallbackSubs];
         }
+      }
+    }
+
+    // Vidly subtitle index: a language fallback, never a replacement.
+    // `query.extraSubtitles` was filled in by the source-22 lane during the same
+    // resolve, so this costs no extra request and no extra wait.
+    const vidlyTracks = query.extraSubtitles ?? [];
+    if (vidlyTracks.length && uniformOptions.length) {
+      const sealedVidly = vidlyTracks.map((track) => ({
+        lang: track.lang,
+        label: track.label,
+        format: 'vtt' as const,
+        url: `${streamBase}?t=${encodeURIComponent(
+          sealStreamTicket(this.cfg.secret, {
+            u: track.url,
+            ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+            k: 's',
+          }),
+        )}`,
+      }));
+      for (const opt of uniformOptions) {
+        const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
+        const added = sealedVidly.filter((track) => !already.has(track.lang));
+        // Never overwrite a language we already have: OpenSubtitles wins.
+        if (added.length) opt.subtitles = [...(opt.subtitles ?? []), ...added];
       }
     }
 
@@ -970,10 +1152,29 @@ export class SourceRegistry {
       // Sources that have not produced anything yet. The client uses this to
       // decide whether a late-join pass is worth making.
       pendingSources: activeAdapters
-        .filter((_adapter, idx) => slots[idx] === null)
+        .filter((adapter, idx) =>
+          lateOnly
+            ? !(this.finishedLate.get(lateKey) ?? []).some((entry) => entry.adapter.id === adapter.id)
+            : slots[idx] === null,
+        )
         .map((adapter) => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
+  }
+
+  /**
+   * Keep the late-join stash small. It only ever needs to hold the handful of
+   * titles a viewer currently has open, so a hard cap with oldest-first
+   * eviction is enough — and unlike a payload cache it never holds a manifest
+   * body, only per-lane candidate descriptors.
+   */
+  private pruneFinishedLate(): void {
+    const MAX_TITLES = 8;
+    while (this.finishedLate.size > MAX_TITLES) {
+      const oldest = this.finishedLate.keys().next().value;
+      if (oldest === undefined) break;
+      this.finishedLate.delete(oldest);
+    }
   }
 
   private sealCandidate(

@@ -15,7 +15,7 @@
  * probe on the returned manifest.
  */
 import { isSafeUpstreamUrl } from '../security.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { normalizeLang } from './lang.js';
 import { classifyUpstreamUrl, RELAY_RANK_PENALTY } from './provenance.js';
 import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
@@ -134,7 +134,7 @@ export async function fetchFromVidora(query: SourceQuery): Promise<RawStreamCand
         Referer: PLAYER_REFERER,
         Origin: PLAYER_REFERER.slice(0, -1),
       },
-      redirect: 'error',
+      redirect: 'manual',
       signal,
     });
     const buffer = await readBounded(response, MAX_JSON_BYTES);
@@ -154,7 +154,7 @@ export function createSource20Adapter(enabled: () => boolean): SourceAdapter {
       const started = Date.now();
       const raw = await fetchFromVidora(query);
       const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-      const usable = checked.candidates.filter((candidate) => !!cachedCandidateEvidence(candidate)?.alive);
+      const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
       query.diag?.push({
         adapter: 'source-20',
         lane: 'V',

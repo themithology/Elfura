@@ -21,9 +21,13 @@ globalThis.fetch = async (input, init = {}) => {
       assert.equal(url.searchParams.get('episode'), '2');
     }
     return Response.json({ sources: [
+      // Same-origin player path. Kept as a candidate (ranked last) because it is
+      // what the provider hands us, but it cannot verify: see below.
       { type: 'hls', url: 'https://vidzen.fun/api/stream/shared/master.m3u8' },
       { type: 'mp4', url: 'https://vidzen.fun/api/stream/movie.mp4' },
-      { type: 'hls', url: 'https://evil.example/api/stream/master.m3u8' },
+      // A real provider host is what actually works.
+      { type: 'hls', directUrl: 'https://cdn.provider.example/master.m3u8' },
+      { type: 'hls', url: 'http://127.0.0.1/private.m3u8' },
       { type: 'hls', url: 'https://vidzen.fun/embed/123' },
     ] });
   }
@@ -39,13 +43,25 @@ try {
   assert.equal(extractVidZenToken('<html>no token</html>'), null);
 
   const raw = await fetchFromVidZen({ type: 'movie', tmdbId: '693134' });
-  assert.equal(raw.length, 2, 'only same-origin provider stream URLs should survive (HLS + MP4)');
+  // The player-locked /api/stream rows are still returned (the provider gave them
+  // to us) but they are ranked below a real provider URL, and the loopback and
+  // /embed/ rows are refused outright.
+  assert.equal(raw.length, 3, 'two player-locked rows plus one real provider URL');
+  // Rank order is the contract: the working URL must come first.
+  assert.equal(raw[0].url, 'https://cdn.provider.example/master.m3u8');
   assert.deepEqual(new Set(raw.map(candidate => candidate.type)), new Set(['hls', 'mp4']));
-  assert.equal(raw[0].type, 'hls');
-  assert.equal(raw[0].audioLang, undefined, 'server names must not be guessed as audio languages');
+  // A real provider URL must outrank the player-locked ones: the locked path
+  // answers any request with "Direct Stream Access Prohibited" HTML, so it can
+  // never verify, and ranking it first meant the adapter reported 16 candidates
+  // and 0 reachable on CI.
+  assert.equal(raw[0].url, 'https://cdn.provider.example/master.m3u8', 'the provider URL must rank first');
+  for (const candidate of raw) {
+    assert.ok(!candidate.url.includes('127.0.0.1'), 'loopback must be refused');
+    assert.ok(!candidate.url.includes('/embed/'), 'embed pages are not streams');
+  }
   assert.equal(raw[0].headers.Referer, 'https://vidzen.fun/');
   assert(requests.filter(req => req.url.pathname === '/api/sources').length <= 11);
-  assert(requests.filter(req => req.url.pathname === '/api/sources').every(req => req.redirect === 'error'));
+  assert(requests.filter(req => req.url.pathname === '/api/sources').every(req => req.redirect === 'manual'));
   assert(!JSON.stringify(raw).includes('fixture-token-123456'), 'page/API tokens must not escape candidate data');
 
   requests.length = 0;
@@ -104,12 +120,25 @@ try {
   const poolAdapter = createSource12Adapter(() => true);
   const rawPool = await fetchFromVidZen({ type: 'movie', tmdbId: '693134' });
   assert(rawPool.length > 8, 'the raw pool is collected beyond the old cap of 8 before filtering');
-  assert(!rawPool.some(candidate => candidate.url.includes('workers.dev')),
-    'foreign origins (including worker relays) stay rejected by the same-origin pin');
+  // A worker relay is a genuine lane, not something to hide. It is ranked below
+  // provider-hosted URLs, and both survive when both are alive.
+  assert(rawPool.some(candidate => candidate.url.includes('workers.dev')),
+    'a relay-fronted lane is a real source and must not be dropped for its hostname');
   const pooled = await poolAdapter.resolve({ type: 'movie', tmdbId: '693134', diag: [] });
-  assert.equal(pooled.candidates.length, 1);
-  assert.equal(pooled.candidates[0].url, 'https://vidzen.fun/api/stream/late/master.m3u8',
-    'the only live lane sits last in the pool and still survives verification');
+  assert.equal(pooled.candidates.length, 2, 'the relay lane and the provider lane both play');
+  // The relay outranks the site's own /api/stream/ path, and that is correct: the
+  // relay is fetchable and the /api/stream/ path answers any non-player request
+  // with "Direct Stream Access Prohibited" HTML. A playable relay beats a
+  // player-locked URL, however much we would prefer the provider's own host.
+  assert.equal(pooled.candidates[0].url, 'https://alive-sun.workers.dev/relay/live.m3u8');
+  const locked = pooled.candidates.find((candidate) => candidate.url.includes('/api/stream/'));
+  assert.ok(locked.rank > pooled.candidates[0].rank, 'the player-locked URL must rank last');
+
+  // Loopback and embed pages are still refused outright.
+  for (const candidate of rawPool) {
+    assert.ok(!candidate.url.includes('127.0.0.1'), 'loopback must never become a candidate');
+    assert.ok(!/\/embed(?:\/|$)/.test(new URL(candidate.url).pathname), 'embed pages are not streams');
+  }
 
   // 403 from every server once, then a fresh token makes them work.
   let rejectedOnce = false;

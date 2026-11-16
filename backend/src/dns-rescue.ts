@@ -23,11 +23,15 @@
  */
 import dns from 'node:dns';
 
+import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
+
 const CACHE_TTL_MS = 5 * 60_000;
 const QUERY_TIMEOUT_MS = 2_500;
 
 type CacheRow = { v4: string[]; v6: string[]; expiresAt: number };
 const cache = new Map<string, CacheRow>();
+/** Hostnames are few, but never let a hostile resolver path grow this forever. */
+const MAX_DNS_CACHE_ENTRIES = 512;
 
 const servers = (): string[] =>
   (process.env.ELFURA_DNS_SERVERS ?? '1.1.1.1,8.8.8.8')
@@ -96,7 +100,13 @@ async function resolveHost(host: string): Promise<{ v4: string[]; v6: string[] }
       : await Promise.all([dohQuery(host, 'A'), dohQuery(host, 'AAAA')]);
   // Cache successes for a while; retry failures on the next connection rather
   // than remembering an outage.
-  if (v4.length || v6.length) cache.set(host, { v4, v6, expiresAt: Date.now() + CACHE_TTL_MS });
+  if (v4.length || v6.length) {
+    if (cache.size >= MAX_DNS_CACHE_ENTRIES) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    cache.set(host, { v4, v6, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
   return { v4, v6 };
 }
 
@@ -257,9 +267,12 @@ async function applyRescue(log: (line: string) => void, reason: string): Promise
   // `connect.lookup` is ours, so that is what gets installed — only here, only
   // after the system resolver has been proven dead and the public ones proven
   // alive, and only when an Agent can actually be built.
-  const undici = await import('undici').catch(() => null);
+  const undici = await loadUndici();
   if (!undici) {
-    log('[elfura-dns] undici is not installed, so lookups cannot be rescued; fix this container\'s resolver');
+    log(
+      `[elfura-dns] undici could not be loaded (${undiciUnavailableReason()}), so lookups cannot be rescued; ` +
+        `fix this container's resolver`,
+    );
     return false;
   }
 

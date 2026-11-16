@@ -21,6 +21,7 @@ import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
+import { PolicyCache } from '../memory-policy.js';
 
 const DEFAULT_PROBE_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -103,7 +104,7 @@ interface CachedLivenessEntry extends LivenessProbeOutcome {
   expiresAt: number;
 }
 
-const livenessRamCache = new Map<string, CachedLivenessEntry>();
+const livenessRamCache = new PolicyCache<CachedLivenessEntry>(MAX_LIVENESS_CACHE);
 const livenessInFlight = new Map<string, Promise<LivenessProbeOutcome>>();
 
 function cacheKeyFor(url: string, headers?: Record<string, string>): string {
@@ -129,24 +130,61 @@ export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): num
 }
 
 /** Report only existing liveness evidence; does not initiate upstream requests. */
+/**
+ * What is known about a candidate's manifest, from whichever source of truth is
+ * available. Checked in this order:
+ *   1. what this request measured, carried on the candidate itself;
+ *   2. what an earlier request remembers, when payload caching is enabled.
+ *
+ * All ranking, filtering and per-lane reporting goes through here so that
+ * switching caching off cannot silently change how streams are chosen.
+ */
+export function candidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
+  const measured = candidate.measuredThisRequest;
+  const remembered = cachedCandidateEvidence(candidate);
+  if (!measured) return remembered;
+  return {
+    alive: measured.alive,
+    confirmedDead: !measured.alive,
+    ...(measured.rttMs !== undefined ? { rttMs: measured.rttMs } : {}),
+    ...(measured.durationSec !== undefined ? { durationSec: measured.durationSec } : {}),
+    ...(measured.discoveredAudioLangs !== undefined
+      ? { discoveredAudioLangs: measured.discoveredAudioLangs }
+      : remembered?.discoveredAudioLangs !== undefined
+        ? { discoveredAudioLangs: remembered.discoveredAudioLangs }
+        : {}),
+    ...(remembered?.manifestKind !== undefined ? { manifestKind: remembered.manifestKind } : {}),
+    ...(remembered?.qualityLadder !== undefined ? { qualityLadder: remembered.qualityLadder } : {}),
+  };
+}
+
 export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
   return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
   if (!outcome.alive && !outcome.confirmedDead) return;
-  if (livenessRamCache.has(key)) livenessRamCache.delete(key);
-  while (livenessRamCache.size >= MAX_LIVENESS_CACHE) {
-    const oldest = livenessRamCache.keys().next().value;
-    if (oldest === undefined) break;
-    livenessRamCache.delete(oldest);
-  }
   livenessRamCache.set(key, {
     ...outcome,
     observedAt: Date.now(),
     expiresAt: Date.now() + (outcome.alive ? ALIVE_TTL_MS : DEAD_TTL_MS),
   });
 }
+
+/**
+ * Is this HTTP status a temporary refusal rather than a verdict?
+ *
+ * Providers behind Cloudflare and similar answer 403 when a client asks too
+ * often, 429 when it asks too fast, and 5xx when their own origin is busy. None
+ * of those say anything about whether the stream exists. 404 and 410 do, and a
+ * 451 is a legal block that will not lift on retry.
+ */
+function isTransientHttpStatus(status: number): boolean {
+  return status === 403 || status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+/** Wait before re-asking a provider that just refused. Short: this is a blip check, not a backoff. */
+const PROBE_RETRY_DELAY_MS = 250;
 
 async function readBoundedManifest(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return '';
@@ -240,7 +278,7 @@ async function verifyChildHlsPlaylist(
   });
   const finalUrl = res.url || childUrl;
   if (!isSafeUpstreamUrl(finalUrl)) return { state: 'dead' };
-  if (!res.ok) return { state: res.status === 429 || res.status >= 500 ? 'unknown' : 'dead' };
+  if (!res.ok) return { state: isTransientHttpStatus(res.status) ? 'unknown' : 'dead' };
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (ct.includes('text/html') || ct.includes('application/xhtml')) {
@@ -357,12 +395,31 @@ async function runSingleProbe(
         ...(cand.headers ?? {}),
       };
 
-      const res = await fetch(cand.url, {
+      // One request, plus one retry for a temporary refusal. Providers throttle
+      // bursts, and asking twice a moment apart is the difference between "this
+      // source is gone" and "this source did not like that particular request".
+      // A retry only happens for statuses that are explicitly transient, so a
+      // genuinely missing stream still costs exactly one request.
+      let res = await fetch(cand.url, {
         method: 'GET',
         headers: manifestHeaders,
         redirect: 'follow',
         signal: sig,
       });
+      if (isTransientHttpStatus(res.status)) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          /* ignore */
+        }
+        await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_DELAY_MS));
+        res = await fetch(cand.url, {
+          method: 'GET',
+          headers: manifestHeaders,
+          redirect: 'follow',
+          signal: sig,
+        });
+      }
       const finalUrl = res.url || cand.url;
       if (!isSafeUpstreamUrl(finalUrl) || !res.ok) {
         try {
@@ -370,7 +427,12 @@ async function runSingleProbe(
         } catch {
           /* ignore */
         }
-        if (isSafeUpstreamUrl(finalUrl) && (res.status === 429 || res.status >= 500)) {
+        // Not every HTTP error means the stream is gone. A provider refusing
+        // with 403/429/5xx is usually throttling this server for asking too
+        // fast, and every real provider does that intermittently — treating it
+        // as proof of death is what made the same title resolve one moment and
+        // come back empty the next. Only a definitive answer removes a lane.
+        if (isSafeUpstreamUrl(finalUrl) && isTransientHttpStatus(res.status)) {
           return { alive: false, confirmedDead: false };
         }
         const dead = { alive: false, confirmedDead: true };
@@ -528,8 +590,17 @@ export async function verifyAndFilterCandidates(
 export async function verifyAndFilterCandidatesDetailed(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
-): Promise<{ candidates: RawStreamCandidate[]; verifiedAliveCount: number }> {
-  if (!candidates.length) return { candidates: [], verifiedAliveCount: 0 };
+): Promise<{
+  candidates: RawStreamCandidate[];
+  verifiedAliveCount: number;
+  /** Lanes this probe confirmed dead (URL -> true). */
+  probedDead: Set<string>;
+  /** Lanes this probe confirmed working, including ones filtered out of the list. */
+  probedAlive: Set<string>;
+}> {
+  if (!candidates.length) {
+    return { candidates: [], verifiedAliveCount: 0, probedDead: new Set(), probedAlive: new Set() };
+  }
 
   // Expand standby backups into explicit probe targets so we can promote them cleanly if primary is dead.
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
@@ -644,7 +715,17 @@ export async function verifyAndFilterCandidatesDetailed(
       };
     }
 
-    return updated;
+    // Carry what was just measured with the candidate so ranking works with no
+    // cache at all (see RawStreamCandidate.measuredThisRequest).
+    return {
+      ...updated,
+      measuredThisRequest: {
+        alive: true,
+        ...(outcome.rttMs !== undefined ? { rttMs: outcome.rttMs } : {}),
+        ...(outcome.discoveredAudioLangs?.length ? { discoveredAudioLangs: outcome.discoveredAudioLangs } : {}),
+        ...(outcome.durationSec !== undefined ? { durationSec: outcome.durationSec } : {}),
+      },
+    };
   };
 
   const outcomeFor = (cand: RawStreamCandidate) => ({
@@ -653,13 +734,26 @@ export async function verifyAndFilterCandidatesDetailed(
       ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
       : undefined,
   });
-  const hasVerifiedAlive = candidates.some((cand) => {
-    const outcome = outcomeFor(cand);
-    return !!outcome.primary?.alive || !!outcome.standby?.alive;
-  });
-
   const kept: RawStreamCandidate[] = [];
   let verifiedAliveCount = 0;
+  // Lanes this probe confirmed dead. Callers need this without a cache to know
+  // not to re-list them in the coverage pass.
+  const probedDead = new Set<string>();
+  const probedAlive = new Set<string>();
+
+  // Two rails, both kept. Verified lanes are ranked first so the player opens on
+  // something known to work; everything that was merely not verified in time
+  // follows rather than being deleted.
+  //
+  // The previous rule dropped every unverified lane as soon as one lane verified
+  // alive. That reads as "only show streams we proved", but in practice a probe
+  // has ~3 s, provider manifests routinely take longer, and a slow-but-working
+  // CDN is exactly what a viewer wants as a fallback. The goal is the largest
+  // set of playable sources, not the strictest set — a lane that turns out to be
+  // dead costs one failed attempt in the player, while a lane deleted here costs
+  // a source the viewer never even sees.
+  const verified: RawStreamCandidate[] = [];
+  const unverified: RawStreamCandidate[] = [];
 
   for (const cand of candidates) {
     const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
@@ -673,38 +767,47 @@ export async function verifyAndFilterCandidatesDetailed(
       standbyHeaders: undefined,
     });
 
-    // Always prefer a verified healthy lane, including a standby whose primary
-    // timed out. Once any healthy option exists, never advertise unprobed lanes.
+    // A healthy standby replaces a primary that did not answer.
     if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
       verifiedAliveCount++;
-      kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      probedAlive.add(cand.standbyUrl ?? cand.url);
+      verified.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       continue;
     }
+
     if (primaryOutcome?.alive) {
       verifiedAliveCount++;
+      probedAlive.add(cand.url);
       const cleanedStandby = standbyOutcome?.confirmedDead
         ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
         : cand;
-      kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+      verified.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
       continue;
     }
-    if (hasVerifiedAlive) continue;
 
-    // Last-resort mode only: no candidate verified healthy, so an unconfirmed
-    // slow origin is preferable to returning no playback option at all.
+    // Definitive "this stream is gone": 404/410/451, an HTML error page where a
+    // playlist should be, or an unparseable manifest. Only these are removed.
     if (primaryOutcome?.confirmedDead) {
-      if (hasStandby && !standbyOutcome?.confirmedDead) {
-        kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
+      probedDead.add(cand.url);
+      if (hasStandby && !standbyOutcome?.confirmedDead && !standbyOutcome?.alive) {
+        // Its backup was never disproven, so keep the backup rather than a URL
+        // that just answered 404.
+        unverified.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
       }
       continue;
     }
+
+    // Nothing conclusive: slow, timed out, throttled, or never probed because the
+    // batch filled up. Keep it, ranked behind the verified lanes.
     const cleanedStandby = standbyOutcome?.confirmedDead
       ? { ...cand, standbyUrl: undefined, standbyHeaders: undefined }
       : cand;
-    kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
+    unverified.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 
-  return { candidates: kept, verifiedAliveCount };
+  kept.push(...verified, ...unverified);
+
+  return { candidates: kept, verifiedAliveCount, probedDead, probedAlive };
 }
 
 /**

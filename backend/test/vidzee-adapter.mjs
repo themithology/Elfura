@@ -6,7 +6,11 @@ const original = globalThis.fetch, requests = [];
 globalThis.fetch = async (input, options) => {
   const u = new URL(String(input)); requests.push(u);
   if (u.hostname === 'core.vidzee.wtf') {
-    assert.equal(options.redirect, 'error');
+    // Was 'error', which made a 3xx indistinguishable from a dead host: undici
+    // rejects with TypeError before the adapter sees a status. 'manual' keeps the
+    // request on the same origin (the guard is in fetchNoRedirect) while letting a
+    // redirect be observed rather than thrown.
+    assert.equal(options.redirect, 'manual');
     assert.equal(u.pathname, '/streams/tv/1396/1/2'); assert.equal(u.searchParams.get('e'), '0');
     const s = u.searchParams.get('s');
     if (s === 'dcloud') return Response.json({url:'https://vz-fixture.example/multi.m3u8', language:'Hindi', headers:{Referer:'https://valid.example/',Authorization:'secret',Origin:'http://127.0.0.1'}});

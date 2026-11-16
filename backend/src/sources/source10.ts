@@ -3,7 +3,7 @@
 import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const API = 'https://new.vidnest.fun';
@@ -86,10 +86,10 @@ export function createSource10Adapter(enabled: () => boolean): SourceAdapter {
     const start = Date.now(), raw = await fetchFromVidNest(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
     const candidates = verified.candidates.filter(c => {
-      const evidence = cachedCandidateEvidence(c);
+      const evidence = candidateEvidence(c);
       return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
     });
-    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}`});
+    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }
