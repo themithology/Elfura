@@ -168,6 +168,27 @@ export class SourceRegistry {
    * the same title must not start six races over twenty adapters. */
   private readonly playbackInFlight = new Map<string, Promise<UniformPlaybackResponse | null>>();
   private sharedResolveCount = 0;
+  /**
+   * How many resolves may *run* at once. This is the memory bound: a resolve
+   * holds twenty adapters, their lanes and their probes for its whole budget, so
+   * the process footprint is (parallelism x cost of one resolve), and nothing in
+   * the machine can make it grow with uptime.
+   *
+   * Waiting is a queue, never a refusal — the outage was a ceiling that answered
+   * 503, not a ceiling as such. Callers wait their turn and every one of them is
+   * answered with a full response; a duplicate arriving while its own resolve is
+   * queued or running attaches to it and does not take a second place.
+   */
+  private resolveParallelism = (() => {
+    const raw = Number(process.env.ELFURA_RESOLVE_PARALLELISM ?? 32);
+    if (!Number.isFinite(raw)) return 32;
+    // 0 is the old behaviour on purpose: no ceiling at all.
+    if (raw === 0) return Number.POSITIVE_INFINITY;
+    return Math.max(1, Math.min(512, Math.floor(raw)));
+  })();
+  private resolveActiveCount = 0;
+  private resolvePeakCount = 0;
+  private readonly resolveWaiters: (() => void)[] = [];
   private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
   private readonly segmentCache = new Map<
@@ -550,6 +571,38 @@ export class SourceRegistry {
     return { sharedResolves: this.sharedResolveCount, inFlightPlayback: this.playbackInFlight.size };
   }
 
+  /** Live admission state, so the endpoint shows the memory bound working. */
+  admissionStats(): { active: number; queued: number; parallelism: number; peak: number } {
+    return {
+      active: this.resolveActiveCount,
+      queued: this.resolveWaiters.length,
+      // 0 means unlimited, which JSON can express and Infinity cannot.
+      parallelism: Number.isFinite(this.resolveParallelism) ? this.resolveParallelism : 0,
+      peak: this.resolvePeakCount,
+    };
+  }
+
+  /** Test hook: the bound is per registry, not per process. */
+  setResolveParallelism(value: number): void {
+    const next = Math.floor(Number(value));
+    if (Number.isFinite(next) && next >= 1) this.resolveParallelism = Math.min(512, next);
+  }
+
+  /** Take one of the running slots, waiting in FIFO order when they are all busy. */
+  private async withResolveSlot<T>(task: () => Promise<T>): Promise<T> {
+    if (this.resolveActiveCount >= this.resolveParallelism) {
+      await new Promise<void>((resolve) => this.resolveWaiters.push(resolve));
+    }
+    this.resolveActiveCount += 1;
+    if (this.resolveActiveCount > this.resolvePeakCount) this.resolvePeakCount = this.resolveActiveCount;
+    try {
+      return await task();
+    } finally {
+      this.resolveActiveCount -= 1;
+      this.resolveWaiters.shift()?.();
+    }
+  }
+
   /** Public entry: collapse duplicates of a resolve that is already running. */
   async resolvePlayback(params: {
     type: 'movie' | 'tv';
@@ -581,11 +634,21 @@ export class SourceRegistry {
         return firstPass;
       }
     }
-    const started = this.resolvePlaybackOnce(params).finally(() => {
-      if (this.playbackInFlight.get(key) === started) this.playbackInFlight.delete(key);
+    // Registered before a slot is taken, so the duplicates that pile up while a
+    // resolve waits in the queue attach to it instead of queueing behind it.
+    let settle: (value: UniformPlaybackResponse | null) => void = () => {};
+    let fail: (reason: unknown) => void = () => {};
+    const shared = new Promise<UniformPlaybackResponse | null>((resolve, reject) => {
+      settle = resolve;
+      fail = reject;
     });
-    this.playbackInFlight.set(key, started);
-    return started;
+    this.playbackInFlight.set(key, shared);
+    void this.withResolveSlot(() => this.resolvePlaybackOnce(params))
+      .then(settle, fail)
+      .finally(() => {
+        if (this.playbackInFlight.get(key) === shared) this.playbackInFlight.delete(key);
+      });
+    return shared;
   }
 
   private async resolvePlaybackOnce(params: {

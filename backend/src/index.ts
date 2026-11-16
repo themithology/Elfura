@@ -199,13 +199,22 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     : null;
   const resolvePerClient = resolvePerIp > 0 ? new PerKeyConcurrency(resolvePerIp) : null;
   registerQueueStats(() => {
-    const gate = resolveGate?.stats() ?? { active: 0, queued: 0 };
-    return { resolveActive: gate.active, resolveQueued: gate.queued, resolveClients: resolvePerClient?.stats().clients ?? 0 };
+    // The registry admission queue is the real bound now: it reports what is
+    // running, what is waiting, and what the ceiling is set to.
+    const admission = registry.admissionStats();
+    return {
+      resolveActive: admission.active,
+      resolveQueued: admission.queued,
+      resolveParallelism: admission.parallelism,
+      resolvePeak: admission.peak,
+      resolveClients: resolvePerClient?.stats().clients ?? 0,
+    };
   });
   // Per-source detail of the newest resolve: which adapter answered, with how
   // many lanes, and how many of those survived the manifest probe.
   registerPerfProbe(() => ({
     ...registry.stats(),
+    admission: registry.admissionStats(),
     lastResolve: lastResolveDiagnostics(),
     probePool: probePoolStats(),
   }));
