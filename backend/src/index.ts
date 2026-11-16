@@ -21,6 +21,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { hasConfiguredSecret, loadBackendConfig, readDotEnvOverlay, type BackendConfig } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
@@ -44,6 +45,14 @@ import {
   verifyPlaybackToken,
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
+import {
+  createLocalPlaybackResolver,
+  resolverConfig,
+  type PlaybackResolution,
+  type PlaybackResolver,
+} from './playback-resolver.js';
+import { RemotePlaybackResolver, ResolverUnavailableError } from './playback-resolver-remote.js';
+import { createResolverServer, resolverPort } from './resolver-server.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
@@ -151,8 +160,19 @@ if ((process.env.ELFURA_DNS_ORDER ?? 'ipv4first') === 'ipv4first') {
 }
 
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
+  // May set ELFURA_RESOLVER_URL, so it runs before the resolver is chosen below.
+  startAutostartResolver(overrides);
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
+  /**
+   * Where stream discovery happens. Either this process scrapes providers, or a
+   * separate resolver process does and this one only serves video. The player,
+   * the relay and the ticket format are identical in both cases.
+   */
+  const remote = resolverConfig();
+  const resolver: PlaybackResolver = remote
+    ? new RemotePlaybackResolver(remote.url, remote.token)
+    : createLocalPlaybackResolver(registry);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
   // Artwork and playback are what one page load spends its requests on, and the
   // player reads any non-200 as "this title has no sources". Sharing the 120/min
@@ -315,6 +335,47 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
       }
+      // ---- Source health & kill switches -------------------------------
+      // The control surface the operator asked for: see every source, why it is
+      // failing, and turn it off without editing files or restarting.
+      if (pathname === '/roxy/api/sources' && method === 'GET') {
+        // `sources: null` and `unavailable: true` when the resolver cannot be
+        // reached. An empty array would render as "you have no sources", which
+        // is the opposite of the truth and the exact confusion this whole split
+        // exists to prevent.
+        const probe = await resolver.probe();
+        const status = probe.reachable ? await resolver.sourceStatus() : null;
+        reply(200, {
+          resolver: { kind: resolver.kind, label: resolver.label, ...probe },
+          unavailable: !probe.reachable,
+          sources: status,
+        });
+        return;
+      }
+      if (pathname === '/roxy/api/sources' && method === 'POST') {
+        try {
+          const body = await readJsonBody(req, 4096);
+          const id = typeof body.id === 'string' ? body.id.trim() : '';
+          if (!id || typeof body.enabled !== 'boolean') { reply(400, { error: 'expected { id, enabled }' }); return; }
+          const ok = await resolver.setSourceEnabled(id, body.enabled);
+          if (!ok) { reply(502, { error: 'the resolver did not accept the change' }); return; }
+          const status = await resolver.sourceStatus();
+          reply(200, { ok: true, sources: status ?? [] });
+        } catch { reply(400, { error: 'Invalid request' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/sources/reset' && method === 'POST') {
+        // Give a source a clean slate after a deploy that might have fixed it.
+        try {
+          const body = await readJsonBody(req, 4096);
+          const id = typeof body.id === 'string' ? body.id.trim() : '';
+          if (id) await resolver.setSourceEnabled(id, true);
+          const status = await resolver.sourceStatus();
+          reply(200, { ok: true, sources: status ?? [] });
+        } catch { reply(400, { error: 'Invalid request' }); }
+        return;
+      }
+
       if (pathname === '/roxy/api/egress' && method === 'GET') {
         // The one question worth answering before any proxy, relay or header
         // work: can this server reach the internet at all, and is the failure
@@ -679,17 +740,29 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         }
       }
 
-      const resolved = await registry.resolvePlayback({
-        type: mediaType,
-        tmdbId,
-        anilistId,
-        season,
-        episode,
-        anilistEpisode,
-        sourceId,
-        preferredLang,
-        late: url.searchParams.get('late') === '1',
-      });
+      let resolved: PlaybackResolution | null = null;
+      try {
+        resolved = await resolver.resolve({
+          type: mediaType,
+          tmdbId,
+          anilistId,
+          season,
+          episode,
+          anilistEpisode,
+          sourceId,
+          preferredLang,
+          late: url.searchParams.get('late') === '1',
+        });
+      } catch (error) {
+        // A resolver that cannot be reached is an outage, not an answer. Saying
+        // "no sources for this title" would send the viewer hunting for a
+        // different title when the problem is behind us.
+        if (error instanceof ResolverUnavailableError) {
+          sendJson(res, 503, { ok: false, error: 'source resolver is unreachable; try again shortly' }, allowOrigin);
+          return;
+        }
+        throw error;
+      }
 
       if (!resolved) {
         sendJson(res, 404, { ok: false, error: 'no playable streams available for this title' }, allowOrigin);
@@ -1044,4 +1117,126 @@ const isDirectMain =
 
 if (isDirectMain) {
   startBackendServer();
+}
+
+/**
+ * Start the source-resolver process instead of the media server.
+ *
+ * Same build, same adapters, different port. Enabled with `--resolver` on the
+ * command line or ELFURA_RESOLVER_MODE=1. Kept in the same file so the two
+ * modes cannot drift apart: both construct a SourceRegistry from the same
+ * config, they only differ in what they expose over HTTP.
+ */
+export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
+  const { cfg, registry } = createBackendServer(overrides);
+  const token = (process.env.ELFURA_RESOLVER_TOKEN ?? process.env.ELFURA_SECRET ?? '').trim();
+  if (!token) {
+    console.error(
+      '[elfura-resolver] refusing to start without a token: set ELFURA_RESOLVER_TOKEN ' +
+        '(or ELFURA_SECRET). An unauthenticated resolver is an open scraping proxy.',
+    );
+    process.exit(1);
+  }
+  const port = resolverPort(cfg);
+  const { server } = createResolverServer({ cfg, registry, token });
+  // The egress profile must be installed before the first provider request, and
+  // the DNS rescue before the first hostname lookup — exactly as in media mode.
+  void installDnsRescue().then(() => installEgressProfile());
+  server.listen(port, cfg.host, () => {
+    console.log(
+      `[elfura-resolver] listening on http://${cfg.host}:${port} · ${registry.listPublicSources().length} sources · ` +
+        `token ${process.env.ELFURA_RESOLVER_TOKEN ? 'from ELFURA_RESOLVER_TOKEN' : 'shared with ELFURA_SECRET'}`,
+    );
+    console.log(describeMemoryPolicy());
+    console.log(
+      `[elfura-resolver] point the media server at it with ` +
+        `ELFURA_RESOLVER_URL=http://127.0.0.1:${port}`,
+    );
+  });
+  const shutdown = (signal: string) => {
+    console.log(`[elfura-resolver] ${signal} received; closing`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  return { server, cfg, registry };
+}
+
+/**
+ * One command, two processes.
+ *
+ * Pterodactyl gives an operator a single startup command, so "run the resolver
+ * separately" is not a thing they can actually do there. With
+ * ELFURA_RESOLVER_AUTOSTART=1 the media server starts the resolver itself, on the
+ * same build, and points at it — the isolation is real (separate heap, separate
+ * event loop, a crash in scraping cannot take down the relay) without asking for
+ * a second terminal.
+ *
+ * Deliberately NOT a silent default: an operator who has deliberately not
+ * configured a resolver should not suddenly be running two processes, and an
+ * operator who runs one separately should not get a duplicate fighting for the
+ * port.
+ */
+function startAutostartResolver(overrides: Partial<BackendConfig> = {}) {
+  if (process.env.ELFURA_RESOLVER_AUTOSTART !== '1') return;
+  if ((process.env.ELFURA_RESOLVER_URL ?? '').trim()) {
+    console.log('[elfura-resolver] ELFURA_RESOLVER_URL is set; not starting a second resolver');
+    return;
+  }
+  if (process.env.ELFURA_RESOLVER_CHILD === '1') return; // we ARE the child
+  const token = (process.env.ELFURA_RESOLVER_TOKEN ?? process.env.ELFURA_SECRET ?? '').trim();
+  if (!token) {
+    console.warn('[elfura-resolver] autostart skipped: no ELFURA_SECRET or ELFURA_RESOLVER_TOKEN to authenticate with');
+    return;
+  }
+  const cfg = { ...loadBackendConfig(), ...overrides };
+  const port = resolverPort(cfg);
+  // Re-exec the entrypoint the host actually launched (`index.js` at the project
+  // root), not this compiled module: `--resolver` is handled there, and running
+  // dist/backend/index.js directly would start a second *media* server and fight
+  // for the port. Plain `node` regardless of how we were started, because the
+  // entrypoint already knows how to serve the compiled build under a TS runner.
+  const entrypoint = process.argv[1];
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ELFURA_RESOLVER_CHILD: '1',
+    ELFURA_RESOLVER_PORT: String(port),
+    ELFURA_RESOLVER_MODE: '1',
+  };
+  // Let the child apply its own memory flags rather than inheriting our "already
+  // applied" marker, which would leave it unbounded.
+  delete childEnv.ELFURA_MEMORY_FLAGS_APPLIED;
+  const child = spawn(process.execPath, [entrypoint, '--resolver'], {
+    env: childEnv,
+    stdio: 'inherit',
+  });
+  let shuttingDown = false;
+  const stop = (signal: NodeJS.Signals) => {
+    shuttingDown = true;
+    try {
+      child.kill(signal);
+    } catch {
+      /* already gone */
+    }
+  };
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => stop(signal));
+  child.on('exit', (code, signal) => {
+    // The resolver shuts itself down gracefully on a signal, so a normal stop is
+    // an exit code, not a signal. Either way this is expected when we asked.
+    if (shuttingDown) return;
+    if (signal === 'SIGTERM' || signal === 'SIGINT') return;
+    // The resolver dying must not take video serving with it. Say so loudly, and
+    // leave the media server running: playback says 503 until it is restarted,
+    // which is truthful and recoverable, where exiting would be neither.
+    console.error(
+      `[elfura-resolver] the autostarted resolver exited (${signal ?? code}); ` +
+        'video keeps serving, but new source lookups will report an outage until it is restarted',
+    );
+  });
+  process.env.ELFURA_RESOLVER_URL = `http://127.0.0.1:${port}`;
+  console.log(
+    `[elfura-resolver] autostart: started a separate resolver on port ${port}; ` +
+      'discovery is isolated from the media server',
+  );
 }

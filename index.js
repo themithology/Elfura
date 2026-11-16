@@ -133,6 +133,17 @@ if (!reexecForMemory()) {
     );
   }
   await warnAboutStaleTypeScriptEntrypoints();
-  const { startBackendServer } = await import('./dist/backend/index.js');
-  startBackendServer();
+  // `node index.js --resolver` runs the source resolver instead of the media
+  // server: same build, separate port, separate memory. The flag is stripped
+  // before the backend sees argv, so both modes read identical options.
+  const wantsResolver =
+    process.argv.includes('--resolver') || process.env.ELFURA_RESOLVER_MODE === '1';
+  const args = process.argv.slice(2).filter((arg) => arg !== '--resolver');
+  process.argv = [process.argv[0], process.argv[1], ...args];
+  const backend = await import('./dist/backend/index.js');
+  if (wantsResolver) {
+    backend.startResolverServer();
+  } else {
+    backend.startBackendServer();
+  }
 }

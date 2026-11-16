@@ -205,6 +205,78 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
   If your egg hard-codes `ts-node --esm index.ts`, change it to `node index.js`. TypeScript files are deliberately not shipped: this project's runtime output is already compiled into `dist/`, and a `.ts` entrypoint makes the host install a compiler it never needs. Some `ts-node` 10.x builds also crash on Node 22 with `Cannot find module './--max-old-space-size=384'` inside `imaginaryUncacheableRequireResolveScript`, which reads as a boot loop in the panel console.
 
   If you cannot change the startup command, `node index.js` still works when launched through `ts-node`/`tsx` — the entrypoint detects a TypeScript runner, ignores its injected flags, and serves the compiled build. It just needs the runner installed.
+<<<<<<< HEAD
+=======
+
+### Optional: running source discovery in a second process
+
+Provider scraping is the least predictable part of this project. A site changes
+its markup and an adapter starts failing slowly, sometimes while holding a
+connection open until it times out. In the default single-process install that
+work shares a heap and a CPU with the relay, so a bad provider can make video
+serving feel worse.
+
+You can move it out without touching the player. Same ZIP, same build, one extra
+process:
+
+**On Pterodactyl, just add one startup variable** — you do not need a second
+console, because there is only one:
+
+```ini
+ELFURA_RESOLVER_AUTOSTART=1
+```
+
+The media server then starts the resolver itself on `SERVER_PORT + 3`, points at
+it, and supervises it: if scraping dies, video keeps serving and the dashboard
+says the resolver is down. Leave it unset and everything runs in one process,
+exactly as before.
+
+Running them by hand is the same mechanism, useful on a VPS or while debugging:
+
+```bash
+# terminal 1 — discovery only
+node index.js --resolver          # or: ELFURA_RESOLVER_MODE=1 node index.js
+
+# terminal 2 — video only, pointed at it
+ELFURA_RESOLVER_URL=http://127.0.0.1:8790 node index.js
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `ELFURA_RESOLVER_AUTOSTART` | `1` starts a separate resolver from the media server. Ignored if `ELFURA_RESOLVER_URL` is set. |
+| `ELFURA_RESOLVER_URL` | Base URL of the resolver. Unset means "resolve in this process", the default. |
+| `ELFURA_RESOLVER_TOKEN` | Shared secret for the resolver API. Falls back to `ELFURA_SECRET`, so usually nothing to set. |
+| `ELFURA_RESOLVER_PORT` | Resolver listen port. Defaults to `SERVER_PORT + 3`. |
+| `ELFURA_SOURCE_PAUSE_AFTER` | Consecutive failures before a source rests. Default 5. |
+| `ELFURA_SOURCE_PAUSE_MS` | How long it rests. Default 30 minutes. |
+
+Both processes must share `ELFURA_SECRET`: stream tickets are minted by whichever
+one resolves and must open in the one serving video. The resolver refuses to start
+without a token, because an unauthenticated resolver is an open scraping proxy.
+
+What the split actually guarantees, and what the test suite now pins:
+
+- **A broken provider cannot touch a stream that is already playing.** The relay
+  reads tickets, not providers. It never asks the resolver for anything on the
+  stream path.
+- **A resolver outage is a 503, never a 404.** "No sources for this title" and
+  "our scraper is down" are different facts and must not look the same.
+- **Media serving does not depend on it.** Health, the catalogue, embeds and the
+  control panel keep answering while the resolver is dead, and they pick it back
+  up on their own when it returns — no restart needed.
+- **A source that keeps failing rests**, is retried automatically after
+  `ELFURA_SOURCE_PAUSE_MS`, and is visible and switchable in the dashboard.
+
+Per-source health lives in the **Source health** panel on `/roxy`. Each source
+shows whether it is healthy, resting, or switched off by you, with its last error
+and consecutive failure count. **Switch off** stops it from being called at all;
+**Switch back on** returns it immediately. If the resolver itself is unreachable
+the panel says so instead of showing an empty list — zero sources and an
+unreachable resolver are not the same thing.
+
+Running without `ELFURA_RESOLVER_URL` is a supported deployment, not a degraded
+one: you get the same per-source health, resting and kill switches in-process.
+>>>>>>> fe3f985 (WIP: resolver split work (backup before rebase))
 
 ## 7. Layout
 
@@ -226,12 +298,17 @@ backend/src/config.ts     env config (SERVER_PORT, ELFURA_SECRET, TMDB_API_BASE)
 backend/src/security.ts   HMAC pltoken, AES-256-GCM stream tickets, SSRF & rate limit
 backend/src/tmdb.ts       self-hosted TMDB metadata client
 backend/src/relay.ts      zero-disk HLS/DASH manifest rewriter & Range stream proxy
+backend/src/playback-resolver.ts        resolve in-process or over the wire (the seam)
+backend/src/playback-resolver-remote.ts HTTP client for a separate resolver process
+backend/src/resolver-server.ts          the `--resolver` mode: discovery only
+backend/src/source-health.ts            per-source failures, resting, operator switches
 backend/src/sources/      isolated SourceAdapter registry + Source 1–20 adapters (16 bundled Anivexa anime aggregator — pass both `tmdb` and `anilist`; 17 AniVortex catalogue, opt-in and needs installation credentials from `scripts/anivortex-register.mjs`; 18 SubDubAnime Hindi/English sub+dub anime; 19 DesiDubAnime Hindi/Tamil/Telugu dubs; 20 Vidora TMDB-keyed HLS + subtitles)
 ```
 
 ## Roxy operator dashboard
 
-Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET` from `.env`. Configure a strong, non-placeholder secret and use HTTPS. The secret is not copied into the deployment ZIP. The dashboard shows actual embed playback starts, approximate active viewers (last heartbeat within 60 seconds), reported terminal playback failures, embedding origins, and on-demand HTTP checks of source websites. Counts start from installation, not historical data; SDK and direct API playback are not included. Titles fall back to TMDB IDs when metadata is unavailable. An HTTP response does not guarantee playback.
+Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET` from `.env`. Configure a strong, non-placeholder secret and use HTTPS. The secret is not copied into the deployment ZIP. The dashboard shows actual embed playback starts, approximate active viewers (last heartbeat within 60 seconds), reported terminal playback failures, embedding origins, on-demand HTTP checks of source websites, and live per-source health with a kill
+switch for each source. Counts start from installation, not historical data; SDK and direct API playback are not included. Titles fall back to TMDB IDs when metadata is unavailable. An HTTP response does not guarantee playback.
 
 Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
 

@@ -8,8 +8,10 @@
  */
 
 import crypto from 'node:crypto';
+import path from 'node:path';
 import type { BackendConfig } from '../config.js';
 import { PolicyCache } from '../memory-policy.js';
+import { SourceHealthStore } from '../source-health.js';
 import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
@@ -106,6 +108,12 @@ const MAX_LANES_PER_SOURCE = 12;
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
+  /**
+   * Per-source health and operator switches. A source that is turned off, or one
+   * that is resting after repeated failures, is not called at all — that is what
+   * stops one broken provider from spending the shared resolve budget.
+   */
+  readonly health: SourceHealthStore;
   private readonly ramCache = new PolicyCache<{ expiresAt: number; result: RawSourceResult }>(
     MAX_ADAPTER_CACHE_ENTRIES,
   );
@@ -124,9 +132,16 @@ export class SourceRegistry {
    * same title starts — so a hundred titles viewed once cannot pile up.
    */
   private readonly finishedLate = new Map<string, { adapter: SourceAdapter; result: RawSourceResult }[]>();
+  /**
+   * Why the last resolve came back empty, when it was us and not the title.
+   * The resolver reports this so "no streams" never silently means "every
+   * source was resting".
+   */
+  lastEmptyReason: string | null = null;
 
   constructor(cfg: BackendConfig) {
     this.cfg = cfg;
+    this.health = new SourceHealthStore(process.env.ROXY_DATA_DIR || path.join(process.cwd(), 'data'));
     // Record what each adapter actually talked to, so a resolve that yields
     // nothing can explain itself in the console.
     installNetTap();
@@ -222,6 +237,8 @@ export class SourceRegistry {
   }
 
   listPublicSources(): { id: string; label: string }[] {
+    // Operator switches and cooldowns are reported separately by `health`, so this
+    // keeps listing what is *configured*: the panel decides how to show it.
     return this.adapters.filter((a) => a.enabled()).map((a) => ({ id: a.id, label: a.label }));
   }
 
@@ -535,10 +552,30 @@ export class SourceRegistry {
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+    // A source the operator switched off, or one that is resting after repeated
+    // failures, is not called at all. This is the whole point: a broken provider
+    // must cost nothing beyond the moment it broke.
     const activeAdapters = this.adapters.filter(
-      (a) => a.enabled() && (!params.sourceId || a.id === params.sourceId),
+      (a) =>
+        a.enabled() &&
+        this.health.shouldAttempt(a.id) &&
+        (!params.sourceId || a.id === params.sourceId),
     );
-    if (!activeAdapters.length) return null;
+    const restedAdapters = this.adapters.filter(
+      (a) => a.enabled() && !this.health.shouldAttempt(a.id) && (!params.sourceId || a.id === params.sourceId),
+    );
+    this.lastEmptyReason = null;
+    if (!activeAdapters.length) {
+      // Nothing to try. Reported up so the resolver can say *why* the answer is
+      // empty, instead of letting it read like "this title has no sources".
+      if (restedAdapters.length) {
+        this.lastEmptyReason = `${restedAdapters.length} source(s) resting after repeated failures`;
+      }
+      return null;
+    }
+    if (restedAdapters.length) {
+      this.lastEmptyReason = `${restedAdapters.length} source(s) resting after repeated failures`;
+    }
 
     const streamBase = params.streamPathPrefix || '/api/v1/stream';
 
@@ -645,6 +682,10 @@ export class SourceRegistry {
           this.pruneFinishedLate();
         }
         adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
+        // Learn from what actually happened. "No candidates" is not a failure —
+        // that provider may simply not carry this title — so only a throw or an
+        // explicit error marks a source unhealthy.
+        if (result.candidates.length > 0) this.health.recordSuccess(adapter.id);
         if (!result.candidates.length) {
           console.warn(
             `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
@@ -663,10 +704,9 @@ export class SourceRegistry {
           }
         }
       } catch (err) {
-        adapterReport.set(adapter.id, {
-          ms: Date.now() - startedAt,
-          error: err instanceof Error ? err.name : 'Error',
-        });
+        const name = err instanceof Error ? err.name : 'Error';
+        adapterReport.set(adapter.id, { ms: Date.now() - startedAt, error: name });
+        this.health.recordFailure(adapter.id, name);
       } finally {
         doneCount++;
         if (doneCount >= activeAdapters.length) {
