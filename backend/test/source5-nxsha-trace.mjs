@@ -242,6 +242,76 @@ await check('a refusal followed by a good mirror is not called an IP refusal', a
   assert.match(joined, /ECONNRESET/, `expected the mirror's own reason, got "${joined}"`);
 });
 
+await check('a rotation is recovered from the site bundle instead of losing the source', async () => {
+  // The realistic bad day: nxsha redeploys with a new passphrase, so our key
+  // stops opening replies. Their client has to ship the new key to work at all,
+  // so it is recoverable from the JS the browser downloads. The adapter must
+  // find it, prove it by opening the failed payload, and carry on.
+  const crypto = await import('node:crypto');
+  const NEW = 'b'.repeat(64);
+  const evp = (pass, salt) => {
+    let m = Buffer.alloc(0), p2 = Buffer.alloc(0);
+    while (m.length < 48) { p2 = crypto.createHash('md5').update(Buffer.concat([p2, Buffer.from(pass), salt])).digest(); m = Buffer.concat([m, p2]); }
+    return { key: m.subarray(0, 32), iv: m.subarray(32, 48) };
+  };
+  const seal = (obj) => {
+    const salt = crypto.randomBytes(8); const { key, iv } = evp(NEW, salt);
+    const c = crypto.createCipheriv('aes-256-cbc', key, iv);
+    return Buffer.concat([Buffer.from('Salted__'), salt, c.update(Buffer.from(JSON.stringify(obj))), c.final()]).toString('base64url');
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/api/servers')) return Response.json({ _hash: seal({ servers: [{ scraper: 'nitro' }] }) });
+    if (u.includes('/api/sources')) return Response.json({ _hash: seal({ sources: [{ url: 'https://cdn.example/x.m3u8', language: 'English', quality: '1080p' }] }) });
+    if (u.includes('/embed/movie/')) return new Response('<script src="/_next/static/chunks/main-abc.js"></script>', { status: 200 });
+    if (u.includes('/_next/static/chunks/')) return new Response(`let t="${NEW}";other="deadbeef"`, { status: 200 });
+    return new Response('', { status: 404 });
+  };
+  const trace = [];
+  let rows;
+  try { rows = await fetchFromNxsha(query, undefined, { trace }); } finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /recovered-passphrase/, `expected a recovered key, got "${trace.join(' ')}"`);
+  assert.equal(rows.length, 1, 'the stream must survive the rotation');
+  assert.equal(rows[0].url, 'https://cdn.example/x.m3u8');
+});
+
+await check('a bundle key that does not open the payload is not adopted', async () => {
+  // Guessing must never be blindly trusted: only a key that provably decrypts
+  // the failed reply may replace the current one.
+  const crypto = await import('node:crypto');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/api/servers')) {
+      const salt = crypto.randomBytes(8);
+      const c = crypto.createCipheriv('aes-256-cbc', crypto.randomBytes(32), crypto.randomBytes(16));
+      const env = Buffer.concat([Buffer.from('Salted__'), salt, c.update(Buffer.from('{"servers":[]}'.padEnd(64))), c.final()]).toString('base64url');
+      return Response.json({ _hash: env });
+    }
+    if (u.includes('/embed/movie/')) return new Response('<script src="/_next/static/chunks/m.js"></script>', { status: 200 });
+    if (u.includes('/_next/static/chunks/')) return new Response(`k="${'c'.repeat(64)}"`, { status: 200 });
+    return new Response('', { status: 403 });
+  };
+  const trace = [];
+  try { await fetchFromNxsha(query, undefined, { trace }); } finally { globalThis.fetch = realFetch; }
+  const joined = trace.join(' ');
+  assert.doesNotMatch(joined, /recovered-passphrase/, `a bogus bundle key must not be adopted: "${joined}"`);
+  assert.match(joined, /no-key/, `expected the honest no-key report, got "${joined}"`);
+});
+
+await check('the two lane sets stay disjoint', async () => {
+  // Primary and ScreenScape lanes are issued as two separate passes at the same
+  // host. A provider listed in both gets requested twice per resolve and shows
+  // up as two lanes, which is exactly what happened when the primary list was
+  // widened: 'bdxs' appeared in both and every ScreenScape provider was asked
+  // for twice. PRIMARY_LANES now filters itself against SCREENSCAPE_LANES;
+  // this asserts the filter stays in place.
+  const { SCREENSCAPE_LANES, primaryLanesForTest } = await import('../../dist/backend/sources/source5.js');
+  const overlap = primaryLanesForTest().filter((l) => SCREENSCAPE_LANES.includes(l));
+  assert.deepEqual(overlap, [], `primary lanes must not repeat a ScreenScape lane: ${JSON.stringify(overlap)}`);
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.

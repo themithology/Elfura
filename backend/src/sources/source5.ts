@@ -17,11 +17,44 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/
 // Each deployment seals with its own passphrase, so a host is only readable
 // with the key that belongs to it. Both are public front-ends of the same
 // catalogue.
-const ENDPOINTS: readonly { origin: string; pass: string }[] = [
-  { origin: 'https://nxsha.space', pass: 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3' },
+const ENDPOINTS: { origin: string; pass: string }[] = [
+  { origin: 'https://nxsha.space', pass: '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120' },
   { origin: 'https://web.nxsha.app', pass: 'S8x!Jk4ZP1uG8$my' },
 ];
+// Older keys, tried only when the current one does not open a reply. Kept
+// because a deployment can briefly serve two key generations side by side.
+/**
+ * The second lane set, formerly its own adapter (source-7 / ScreenScape).
+ * Off by default; only kept when a lane proves multi-audio or a labelled dub.
+ */
+
+/** The second lane set, formerly source-7. Declared first because the primary
+ *  list filters itself against it. */
+export const SCREENSCAPE_LANES = ['mbox', 'bdxs', 'watchout', 'rive-hindicast', 'purstream', 'em-8'] as const;
+
+/**
+ * Primary lanes. Read from the live /api/servers payload, which lists 34
+ * scrapers; these are the ones advertising `web_support`, i.e. an HLS manifest
+ * we can actually read. The site's own reliability order is preserved.
+ *
+ * Deliberately disjoint from SCREENSCAPE_LANES: the two sets are issued as
+ * separate passes over the same host, so a provider in both would be requested
+ * twice per resolve and counted as two lanes. The filter below makes that
+ * structural instead of a comment someone can miss — before it existed, adding
+ * scrapers here silently re-introduced the overlap.
+ */
+/** Exposed for the disjointness test; not part of the adapter contract. */
+export const primaryLanesForTest = (): readonly string[] => PRIMARY_LANES;
+const PRIMARY_LANES: readonly string[] = ([
+  'nitro', 'mahalala', 'awsind', 'rive-citadel', 'castle', 'streamflix',
+  'xdownloader', 'vixolity', 'rive-primevids', 'mhbox', 'stvv', 'imovr',
+  'ophim', 'yomovies', 'vidapi', 'levi', 'toonstream', 'rive-flowcast',
+  'rive-quasar', 'hdhub4u', 'k4khdhub', 'filmyfly', 'moviesdrive', 'movone',
+  'zoko',
+] as string[]).filter(lane => !(SCREENSCAPE_LANES as readonly string[]).includes(lane));
+
 const PASSES = [
+  '38c8cd65d781936f4b9fe1fd985234fd7335699855051abf76ea3493bcfc0120',
   'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3',
   'S8x!Jk4ZP1uG8$my',
 ] as const;
@@ -51,6 +84,59 @@ export function nxDecodeWith(input: string, pass: string): NxPayload {
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(16)), decipher.final()]).toString('utf8')) as NxPayload;
 }
+/**
+ * Read the current passphrase out of the site's own player bundle.
+ *
+ * nxsha rotates the passphrase whenever it redeploys its front-end, and a
+ * rotation otherwise turns every lane into "no results" until someone notices
+ * and edits a constant. Their own client has to ship the key to work at all, so
+ * it is always recoverable from the JS the browser downloads: fetch an embed
+ * page, walk its /_next/ chunk list one level deep, and take the 64-hex string
+ * that opens the reply we are holding.
+ *
+ * Returns the key only if it actually decrypts `sample`, so a wrong guess can
+ * never be adopted. Cheap enough to run once per resolve on the failure path,
+ * and it only runs when we have already failed.
+ */
+async function findPassphrase(sample: string, signal: AbortSignal): Promise<string | null> {
+  const headers = { 'User-Agent': UA, Referer: ORIGIN + '/' };
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  try {
+    const page = await fetchNoRedirect(`${ORIGIN}/embed/movie/27205`, { headers, signal }, { allowSameOriginRedirects: true });
+    if (!page.response?.ok) return null;
+    const html = await page.response.text();
+    const first = [...html.matchAll(/\/_next\/(static\/chunks\/[A-Za-z0-9_.-]+\.js)/g)].map(m => m[1]).slice(0, 16);
+    const collect = (bodies: string[]) => {
+      const next: string[] = [];
+      for (const body of bodies) {
+        for (const m of body.matchAll(/"([0-9a-f]{64})"/g)) if (!candidates.includes(m[1])) candidates.push(m[1]);
+        for (const m of body.matchAll(/"(static\/chunks\/[A-Za-z0-9_.-]+\.js)"/g)) if (!seen.has(m[1])) next.push(m[1]);
+      }
+      return next.slice(0, 16);
+    };
+    const grab = async (paths: string[]) => {
+      const todo = paths.filter(p => { if (seen.has(p)) return false; seen.add(p); return true; }).slice(0, 16);
+      const results = await Promise.all(todo.map(async path => {
+        try {
+          const r = await fetchNoRedirect(`${ORIGIN}/_next/${path}`, { headers, signal }, { allowSameOriginRedirects: true });
+          if (!r.response?.ok) return '';
+          return await r.response.text();
+        } catch { return ''; }
+      }));
+      return collect(results);
+    };
+    const more = await grab(first);
+    if (!candidates.length) await grab(more);
+  } catch { return null; }
+  for (const candidate of candidates) {
+    // Only adopt a key that provably opens the payload we could not read, so a
+    // random 64-hex string in a bundle can never replace a working key.
+    try { nxDecodeWith(sample, candidate); return candidate; } catch { /* not this one */ }
+  }
+  return null;
+}
+
 /** Try every passphrase we know of, current first. */
 export function nxDecode(input: string): NxPayload {
   let last: unknown;
@@ -146,7 +232,11 @@ export async function fetchFromNxsha(
         : (error as NodeJS.ErrnoException).code === 'ERR_OSSL_BAD_DECRYPT' ? 'no-key'
         : 'no-key';
       trace?.push(`${endpoint}=undecodable:${reason}:${bytes.length}b`);
-      throw new Error('undecodable');
+      // Carry the envelope out on the error so the caller can try to discover a
+      // newer passphrase against the very payload that failed.
+      const failure = new Error('undecodable') as Error & { envelope?: string };
+      if (reason === 'no-key') failure.envelope = String(envelope._hash);
+      throw failure;
     }
   };
   /**
@@ -158,7 +248,20 @@ export async function fetchFromNxsha(
   const getWithFailover = async (endpoint: string, body: object) => {
     try {
       return await get(endpoint, body);
-    } catch (error) {
+    } catch (rawError) {
+      const error = rawError;
+      // Before falling back to a mirror, try to recover the key: if the host
+      // redeployed with a new passphrase, the site's own bundle has it, and
+      // that keeps this front-end (and its lanes) usable.
+      const sample = (error as Error & { envelope?: string }).envelope;
+      if ((error as Error).message === 'undecodable' && sample) {
+        const discovered = await findPassphrase(sample, AbortSignal.timeout(6000));
+        if (discovered) {
+          active = { ...active, pass: discovered };
+          trace?.push(`recovered-passphrase=${discovered.slice(0, 8)}`);
+          return await get(endpoint, body);
+        }
+      }
       // A refusal is also worth a mirror attempt: the two front-ends do not
       // necessarily share an edge policy, so one can refuse an address the
       // other serves.
@@ -176,7 +279,7 @@ export async function fetchFromNxsha(
     const available = Array.isArray(root.servers) ? root.servers : [];
     // Restricted to Nitro and Indian-dub HLS lanes; avoid rejected providers,
     // season packs, embed-only hosts and unbounded request fan-out.
-    const allowed = lanes ?? ['nitro', 'mhbox', 'awsind', 'rive-citadel', 'rive-primevids', 'rive-flowcast', 'rive-quasar', 'streamflix', 'vidapi', 'stvv'];
+    const allowed = lanes ?? PRIMARY_LANES;
     if (!available.length) trace?.push('servers=none');
     const ids = [...new Set(available.map(s => s.scraper).filter((x): x is string => !!x && allowed.includes(x)))].sort((a,b) => allowed.indexOf(a) - allowed.indexOf(b));
     const rows: Stream[] = []; let finished = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
@@ -249,7 +352,6 @@ export async function fetchFromNxsha(
  * These lanes are still fetched and verified exactly as before (manifest-proven
  * multi-audio, explicitly labelled dubs); only the bookkeeping changed.
  */
-export const SCREENSCAPE_LANES = ['mbox', 'bdxs', 'watchout', 'rive-hindicast', 'purstream', 'em-8'] as const;
 
 export function createSource5Adapter(
   enabled: () => boolean,
