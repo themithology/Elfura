@@ -1,0 +1,77 @@
+name: diagnose-compare
+
+# Runs the exact probe behind /diagnose on a GitHub runner, so the answer to
+# "why are the sources not working?" can be split into two different questions:
+#
+#   runner: 0/20 answered  -> the adapters are broken (a code problem)
+#   runner: 20/20 answered -> this host is refused (a network problem)
+#   runner: some answered  -> per-provider refusal, and the lane details say which
+#
+# Nothing here touches the production server. It builds this commit and resolves
+# one title from a datacenter IP, which is what a player host looks like.
+on:
+  workflow_dispatch:
+    inputs:
+      type:
+        description: 'movie or tv'
+        default: movie
+      tmdb:
+        description: 'TMDB id (550 = Fight Club)'
+        default: '550'
+      season:
+        description: 'season (tv only)'
+        default: ''
+      episode:
+        description: 'episode (tv only)'
+        default: ''
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Probe the same title the server probed
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          TMDB_BEARER_TOKEN: ${{ secrets.TMDB_BEARER_TOKEN }}
+          ELFURA_SECRET: ci-diagnose-compare
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/diagnose-compare.mjs \
+            "${{ github.event.inputs.type || 'movie' }}" \
+            "${{ github.event.inputs.tmdb || '550' }}" \
+            "${{ github.event.inputs.season }}" \
+            "${{ github.event.inputs.episode }}" | tee /tmp/compare.txt
+
+      - name: Write a summary
+        if: always()
+        run: |
+          {
+            echo "## diagnose-compare (CI runner)"
+            echo ""
+            echo "Same registry, same adapters, same verification as \`/diagnose\` — different host."
+            echo ""
+            echo '```'
+            sed -n '/\[diagnose-compare\]/,/\[diagnose-compare:json\]/p' /tmp/compare.txt | head -40
+            echo '```'
+            echo ""
+            echo "Compare the **raw / kept / reach** columns against your server's"
+            echo "\`/diagnose\` JSON for the same title. A source with raw>0 here and"
+            echo "raw=0 there is refused on your host, not broken in code."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the raw report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnose-compare-${{ github.run_id }}
+          path: /tmp/compare.txt
+          retention-days: 14
