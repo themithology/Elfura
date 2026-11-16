@@ -2,7 +2,7 @@ name: Provenance + source 14/12 expansion probe
 on:
   workflow_dispatch:
   push:
-    branches: [arena/399224d8-elfura]
+    branches: [arena/399224d8-elfura, arena/4d781e96-elfura, main]
     paths:
       - '.github/workflows/provenance-probe.yml'
       - 'scripts/provenance-probe.mjs'
