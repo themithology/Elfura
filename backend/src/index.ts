@@ -128,6 +128,23 @@ try {
   /* older runtimes: keep the default order */
 }
 
+/**
+ * Prefer IPv4 for outbound resolves unless an operator says otherwise.
+ *
+ * A container with an IPv6 route that black-holes is a classic half-broken
+ * egress: every host with an AAAA record hangs until the connect attempt times
+ * out, while a host that answers only on IPv4 loads instantly. It looks exactly
+ * like "some sources just stopped working". IPv4-first removes that class of
+ * failure and costs nothing when IPv6 is healthy.
+ */
+if ((process.env.ELFURA_DNS_ORDER ?? 'ipv4first') === 'ipv4first') {
+  try {
+    dns.setDefaultResultOrder('ipv4first');
+  } catch {
+    /* older runtime: keep the default */
+  }
+}
+
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
