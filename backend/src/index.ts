@@ -27,6 +27,7 @@ import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } 
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
+import { installDnsRescue } from './dns-rescue.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -842,6 +843,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 }
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  // Before anything resolves a hostname: if this container's resolver is dead
+  // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
+  // own lookups through public DNS so the adapters can work at all.
+  void installDnsRescue();
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     console.log(

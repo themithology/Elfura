@@ -291,6 +291,16 @@ def main() -> None:
             write_entry(zf, f"{prefix}/package.json", TS_SHIM_PKG_JSON.encode("utf-8"))
             write_entry(zf, f"{prefix}/index.cjs", TS_SHIM_INDEX_CJS.encode("utf-8"))
 
+        # undici is a real runtime dependency now, not a shim: the DNS rescue
+        # installs its fetch with an Agent whose connector resolves through
+        # explicit name servers, which is the only supported seam Node exposes.
+        undici_dir = ROOT / "node_modules" / "undici"
+        if undici_dir.is_dir():
+            for file_path in sorted(undici_dir.rglob("*")):
+                if file_path.is_file():
+                    rel = file_path.relative_to(undici_dir).as_posix()
+                    write_entry(zf, f"node_modules/undici/{rel}", file_path.read_bytes())
+
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():
                 rel = file_path.relative_to(ROOT).as_posix()

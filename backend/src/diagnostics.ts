@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import { lookup } from 'node:dns/promises';
+import { rescueResolve } from './dns-rescue.js';
 import dns from 'node:dns';
 import net from 'node:net';
 import tls from 'node:tls';
@@ -257,7 +258,18 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
   const providers = targets.filter((t) => t.label !== 'control-tmdb');
   const allDnsOk = targets.every((t) => t.dns?.ok);
   const anyDnsFail = targets.some((t) => !t.dns?.ok);
-  if (anyDnsFail) verdict.push('dns-failure-on-server: names do not resolve, so no adapter can reach anything');
+  if (anyDnsFail) {
+    const publicDns = await (async () => {
+      const started = Date.now();
+      const res = await rescueResolve('api.themoviedb.org');
+      return { ok: res.v4.length > 0 || res.v6.length > 0, ms: Date.now() - started };
+    })();
+    verdict.push(
+      publicDns.ok
+        ? 'system-resolver-dead-but-public-dns-works: DNS rescue takes over at boot (ELFURA_DNS_SERVERS)'
+        : 'system-resolver-dead-and-public-dns-unreachable: this container cannot resolve any name at all',
+    );
+  }
   if (control && !control.tcp?.ok) verdict.push('egress-blocked: even the control host cannot open a TCP connection');
   else if (control?.tcp?.ok && providers.some((t) => !t.tcp?.ok)) {
     verdict.push('selective-egress-block: the control host connects but provider hosts do not (firewall, proxy or IP reputation)');
@@ -277,6 +289,7 @@ export async function reportEgress(): Promise<{
   targets: EgressStage[];
   verdict: string[];
   resolver: string[];
+  publicDns: { servers: string[]; ok: boolean; ms: number; address: string | null };
   elapsedMs: number;
   node: string;
 }> {
@@ -284,6 +297,18 @@ export async function reportEgress(): Promise<{
   const report = await probeEgressStages();
   return {
     ...report,
+    publicDns: await (async () => {
+      // If the container resolver is dead but public DNS answers, the rescue in
+      // dns-rescue.ts is the whole fix and the report should say so.
+      const started = Date.now();
+      const viaPublic = await rescueResolve('api.themoviedb.org');
+      return {
+        servers: (process.env.ELFURA_DNS_SERVERS ?? '1.1.1.1,8.8.8.8').split(',').map((v) => v.trim()),
+        ok: viaPublic.v4.length > 0 || viaPublic.v6.length > 0,
+        ms: Date.now() - started,
+        address: viaPublic.v4[0] ?? viaPublic.v6[0] ?? null,
+      };
+    })(),
     resolver: (() => {
       try {
         return dns.getServers();
