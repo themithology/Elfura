@@ -204,6 +204,44 @@ await check('an unreadable primary fails over to the mirror', async () => {
   assert.match(trace.join(' '), /failover=web\.nxsha\.app/, `expected a failover note, got "${trace.join(' ')}"`);
 });
 
+await check('a refusal on both front-ends is named as an IP-level refusal', async () => {
+  // The honest description of source-5 on CI: the hosts answer browsers and
+  // refuse datacenter addresses. Reporting that as a plain 403 made a healthy
+  // source look broken.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('no', { status: 403 });
+  const trace = [];
+  try {
+    await fetchFromNxsha(query, undefined, { trace });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const joined = trace.join(' ');
+  assert.match(joined, /failover=web\.nxsha\.app/, `expected the mirror to be tried, got "${joined}"`);
+  assert.match(joined, /all-front-ends-refused-this-ip/, `expected the IP-refusal note, got "${joined}"`);
+});
+
+await check('a refusal followed by a good mirror is not called an IP refusal', async () => {
+  // Only one host refused; the other answered. Must not overclaim.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const host = new URL(typeof url === 'string' ? url : url.url).hostname;
+    if (host === 'nxsha.space') return new Response('no', { status: 403 });
+    const err = new TypeError('fetch failed');
+    err.cause = { code: 'ECONNRESET' };
+    throw err;
+  };
+  const trace = [];
+  try {
+    await fetchFromNxsha(query, undefined, { trace });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const joined = trace.join(' ');
+  assert.doesNotMatch(joined, /all-front-ends-refused-this-ip/, `must not overclaim: "${joined}"`);
+  assert.match(joined, /ECONNRESET/, `expected the mirror's own reason, got "${joined}"`);
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.

@@ -109,7 +109,9 @@ export async function fetchFromNxsha(
     if (!response.ok) {
       trace?.push(`${endpoint}=http=${response.status}`);
       await response.body?.cancel().catch(() => {});
-      throw new Error('upstream-unavailable');
+      // Distinct message so the caller can tell "this edge refused us" from
+      // "the connection died" — only a refusal is worth a mirror attempt.
+      throw new Error(`http=${response.status}`);
     }
     if (Number(response.headers.get('content-length') || 0) > 1_000_000 || !response.body) { await response.body?.cancel(); throw new Error('oversized response'); }
     const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
@@ -157,7 +159,11 @@ export async function fetchFromNxsha(
     try {
       return await get(endpoint, body);
     } catch (error) {
-      if ((error as Error).message !== 'undecodable') throw error;
+      // A refusal is also worth a mirror attempt: the two front-ends do not
+      // necessarily share an edge policy, so one can refuse an address the
+      // other serves.
+      const reason = (error as Error).message;
+      if (reason !== 'undecodable' && reason !== 'http=403') throw error;
       const alternate = ENDPOINTS.find(e => e.origin !== active.origin);
       if (!alternate) throw error;
       active = alternate;
@@ -211,6 +217,15 @@ export async function fetchFromNxsha(
     // Keep the reason. Previously this was a bare `catch { return []; }`, so an
     // empty result could be a network failure, a refused request, a changed
     // envelope or a genuinely empty server list — and the panel said nothing.
+    // A refusal on every front-end is the one case worth labelling, because it
+    // is not a fault in this adapter: the hosts answer browsers and refuse
+    // datacenter addresses, so a CI runner or a server IP sees 403 while the
+    // source is healthy. Without the note that reads like a broken provider.
+    // Trace entries look like `servers=http=403`, so match on the status, not
+    // on a suffix. Only claim an IP-level refusal when both front-ends said no.
+    const refusals = (trace ?? []).filter(t => /=(?:servers=)?http=403$|http=403$/.test(t)).length;
+    const hosts = new Set((trace ?? []).filter(t => t.startsWith('failover=')));
+    if (refusals >= 2 && hosts.size >= 1) trace?.push('all-front-ends-refused-this-ip');
     if (!trace?.length) {
       const name = err instanceof Error ? err.name : 'Error';
       const code = (err as { cause?: { code?: string } })?.cause?.code;
