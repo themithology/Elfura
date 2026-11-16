@@ -2,7 +2,7 @@ name: Provenance + source 14/12 expansion probe
 on:
   workflow_dispatch:
   push:
-    branches: [arena/399224d8-elfura, arena/4d781e96-elfura, main]
+    branches: [arena/399224d8-elfura]
     paths:
       - '.github/workflows/provenance-probe.yml'
       - 'scripts/provenance-probe.mjs'
@@ -11,11 +11,6 @@ on:
       - 'backend/src/sources/source21.ts'
 permissions:
   contents: write
-# Two pushes in a row used to race: both runs wrote a report and only the first
-# push landed, so the newest probe output was silently dropped.
-concurrency:
-  group: provenance-probe-${{ github.ref_name }}
-  cancel-in-progress: false
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -82,7 +77,7 @@ jobs:
           git commit -m 'research: provenance + sources 14/12 probe [skip ci]' || exit 0
           # The other probe workflow may land a report commit during this run.
           for attempt in 1 2 3; do
-            git pull --rebase --autostash origin "$GITHUB_REF_NAME" >/dev/null 2>&1 || true
+            git pull --rebase origin "$GITHUB_REF_NAME" >/dev/null 2>&1 || true
             git push origin "HEAD:$GITHUB_REF_NAME" && break
             sleep 5
           done

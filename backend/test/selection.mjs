@@ -61,19 +61,5 @@ try {
  assert.equal(deep.status,'manifest-and-playlists-reachable');assert.deepEqual(deep.manifestLanguages,['hi','en']);assert.deepEqual(new Set(deep.steps.map(s=>s.stage)),new Set(['master','video-playlist','audio-playlist']));assert(!JSON.stringify(deep).includes('secret.example'));
  globalThis.fetch=async input=>String(input).includes('/child.m3u8')?new Response('',{status:403}):new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1\n/child.m3u8');
  const failure=await diagnoseMultiAudioCandidate(cand('secret.example','multi'));assert.equal(failure.status,'incomplete');assert(failure.steps.some(s=>s.stage==='audio-playlist' && s.status==='http-error' && s.httpStatus===403));assert(!JSON.stringify(failure).includes('secret.example'));
- // One lane per language before a second quality of the same language.
- const {languageFirstOrder}=await import('../../dist/backend/sources/registry.js');
- const order=languageFirstOrder([
-  cand('one.example','a',{audioLang:'hi'}),cand('two.example','b',{audioLang:'hi'}),cand('three.example','c',{audioLang:'ta'}),
-  cand('four.example','d',{}),cand('five.example','e',{audioLang:'ta'}),cand('six.example','f',{audioLang:'kn'}),
- ]).map(c=>c.key);
- assert.deepEqual(order,['a','c','d','f','b','e'],'every language gets a slot before the duplicate qualities');
- // "ORG"/"Original" means the Hindi track on the live catalogue; anime lanes keep theirs.
- const {retagOriginalAudio}=await import('../../dist/backend/sources/registry.js');
- const retag=(id,label)=>retagOriginalAudio(adapter(id),cand('label.example','label',{audioLabel:label}));
- assert.deepEqual([retag('source-1','Original').audioLang,retag('source-1','ORG').audioLang,retag('source-1','Original Audio').audioLang],['hi','hi','hi']);
- assert.equal(retag('source-1','Original').audioLabel,'Hindi');
- assert.equal(retag('source-16','Original').audioLabel,'Original','anime originals are not relabelled Hindi');
- assert.equal(retag('source-1','Tamil').audioLabel,'Tamil','real language labels are left alone');
  console.log('✓ Genuine multi-audio evidence, capped diverse fallback selection and unverified claims.');
 }finally{globalThis.fetch=old}

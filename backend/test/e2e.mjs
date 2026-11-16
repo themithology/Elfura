@@ -1880,32 +1880,27 @@ try {
   delete globalThis.__elfuraDashTestPlayer;
 
   // A single stalled initial source must not leave the startup screen forever:
-  // recovery re-resolves once and actually attaches a newly discovered option.
-  // Exactly one request — a `?source=` call per provider group fanned out up to
-  // 32 simultaneous resolutions per player and flooded the backend's limiter.
+  // retry both provider groups and actually attach a newly discovered option.
   {
     const originalFetch=globalThis.fetch;
     const dead={...pb.primary,id:'source-3:1',sourceId:'source-3',fingerprint:'dead-initial',multiAudio:false,audioTracks:[],subtitles:[]};
     const good={...dead,id:'source-2:1',sourceId:'source-2',fingerprint:'late-good',multiAudio:true,availableAudioLangs:['en','hi']};
-    let requests=[];
-    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requests.push(u);return Response.json({ok:true,sources:[good,dead]})};
+    let requested=[];
+    globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-2'?[good]:[dead]})};
     try {
       const p=new ElfuraPlayer({postMessage:false});p.input.config.tmdb='693134';p.input.config.mediaType='movie';p.input.config.api='https://retry.example/api/v1/playback';p.sources=[dead];p.currentSource=dead;
       let active; p.activateSourceOption=async opt=>{active=opt;p.currentSource=opt};
       p.failover();await new Promise(r=>setTimeout(r,40));
-      assert.equal(requests.length,1,'recovery is one resolve, not one per provider group');
-      assert.equal(requests[0].searchParams.get('source'),null,'the recovery call asks for every group at once');
-      assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
-      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requests.length,1,'exhaustion recovery must be bounded');
+      assert.deepEqual(requested.sort(),['source-1','source-2','source-3','source-4','source-5']);assert.equal(active?.fingerprint,'late-good');assert.equal(p.getSources().filter(x=>x.fingerprint==='dead-initial').length,1);
+      p.failover();await new Promise(r=>setTimeout(r,20));assert.equal(requested.length,5,'exhaustion recovery must be bounded');
       p.destroy();
       // A backend-advertised new group participates without a player release.
-      requests=[];
+      requested=[];
       const newer={...good,id:'source-10:1',sourceId:'source-10',fingerprint:'dynamic-good'};
-      globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requests.push(u);return Response.json({ok:true,sources:[newer]})};
+      globalThis.fetch=async input=>{const u=new URL(String(input));if(u.hostname!=='retry.example')return new Response('',{status:404});requested.push(u.searchParams.get('source'));return Response.json({ok:true,sources:u.searchParams.get('source')==='source-10'?[newer]:[]})};
       const p2=new ElfuraPlayer({postMessage:false});p2.input.config.tmdb='693134';p2.input.config.mediaType='movie';p2.input.config.api='https://retry.example/api/v1/playback';p2.sourceGroups=['source-3','source-10'];p2.sources=[dead];p2.currentSource=dead;
       let dynamicActive;p2.activateSourceOption=async opt=>{dynamicActive=opt;p2.currentSource=opt};p2.failover();await new Promise(r=>setTimeout(r,40));
-      assert.equal(requests.length,1,'a new backend group arrives in the same single recovery response');
-      assert.equal(dynamicActive?.fingerprint,'dynamic-good');p2.destroy();
+      assert.deepEqual(requested.filter(Boolean).sort(),['source-10','source-3']);assert.equal(dynamicActive?.fingerprint,'dynamic-good');p2.destroy();
     } finally {globalThis.fetch=originalFetch;}
   }
   // The watchdog must cover a single option too and not stop at metadata or

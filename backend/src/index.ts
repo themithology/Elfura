@@ -17,7 +17,6 @@ import dns from 'node:dns';
 
 import './compat.js';
 import http from 'node:http';
-import cluster from 'node:cluster';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -29,9 +28,6 @@ import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
-import { healthSummary, noteClient, noteRateLimit, noteRequest, noteResolve, noteRoute, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
-import { registerPerfProbe } from './perf.js';
-import { PerKeyConcurrency, ResolveGate, registerQueueStats } from './limits.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -43,8 +39,7 @@ import {
   SlidingWindowLimiter,
   verifyPlaybackToken,
 } from './security.js';
-import { SourceRegistry, lastResolveDiagnostics } from './sources/registry.js';
-import { probePoolStats } from './sources/liveness.js';
+import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
@@ -71,7 +66,6 @@ function sendJson(
   body: unknown,
   allowOrigin = '*',
   cachePolicy: 'no-store' | 'manifest' = 'no-store',
-  extraHeaders: Record<string, string> = {},
 ): void {
   applyCorsHeaders(res, allowOrigin);
   setCloudflareCache(res, cachePolicy);
@@ -80,7 +74,6 @@ function sendJson(
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': String(payload.byteLength),
     'X-Content-Type-Options': 'nosniff',
-    ...extraHeaders,
   });
   res.end(payload);
 }
@@ -139,29 +132,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
-  // Artwork and playback are page-load traffic, not abuse, and the box has CPU
-  // to spare: both are UNLIMITED unless an operator sets a ceiling. Sharing one
-  // small bucket with them was what answered 429 to a catalogue page and made a
-  // working install look like every source had died. Abuse-sensitive endpoints
-  // (login, admin, diagnostics, analytics) keep their own limits below.
-  const artCeiling = Number(process.env.ELFURA_ART_RATE_LIMIT || 0);
-  const playbackCeiling = Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0);
-  const artLimiter = artCeiling > 0 ? new SlidingWindowLimiter(artCeiling) : null;
-  const playbackLimiter = playbackCeiling > 0 ? new SlidingWindowLimiter(playbackCeiling) : null;
   const roxy = new RoxyStore(cfg.secret);
   // Pop-under ads live in the embed player only; this decides per request.
   const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
-  /** Run one bounded unit of work with the perf monitor watching it. */
-  const trackPhase = async <T>(name: string, run: () => Promise<T>): Promise<T> => {
-    const end = phaseStart(name);
-    try {
-      return await run();
-    } finally {
-      end();
-    }
-  };
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -184,40 +159,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
-  // Concurrency ceilings are OFF by default: this hardware has headroom and the
-  // player no longer fans out one request per provider, so nothing needs to be
-  // queued. The guards stay available for a small container — set either value
-  // above zero to switch them back on.
-  const resolveConcurrency = Number(process.env.ELFURA_RESOLVE_CONCURRENCY || 0);
-  const resolvePerIp = Number(process.env.ELFURA_RESOLVE_PER_IP || 0);
-  const resolveGate = resolveConcurrency > 0
-    ? new ResolveGate(
-        resolveConcurrency,
-        Math.max(2, Number(process.env.ELFURA_RESOLVE_QUEUE || 24)),
-        Math.max(500, Number(process.env.ELFURA_RESOLVE_QUEUE_MS || 6000)),
-      )
-    : null;
-  const resolvePerClient = resolvePerIp > 0 ? new PerKeyConcurrency(resolvePerIp) : null;
-  registerQueueStats(() => {
-    // The registry admission queue is the real bound now: it reports what is
-    // running, what is waiting, and what the ceiling is set to.
-    const admission = registry.admissionStats();
-    return {
-      resolveActive: admission.active,
-      resolveQueued: admission.queued,
-      resolveParallelism: admission.parallelism,
-      resolvePeak: admission.peak,
-      resolveClients: resolvePerClient?.stats().clients ?? 0,
-    };
-  });
-  // Per-source detail of the newest resolve: which adapter answered, with how
-  // many lanes, and how many of those survived the manifest probe.
-  registerPerfProbe(() => ({
-    ...registry.stats(),
-    admission: registry.admissionStats(),
-    lastResolve: lastResolveDiagnostics(),
-    probePool: probePoolStats(),
-  }));
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -244,7 +185,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
 
   const server = http.createServer(async (req, res) => {
-    noteRequest();
     const method = (req.method || 'GET').toUpperCase();
     let url: URL;
     try {
@@ -255,9 +195,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
-    const finishRoute = noteRoute(pathname);
-    res.once('finish', () => finishRoute());
-    noteClient(crypto.createHash('sha256').update(getClientIp(req)).digest('base64url').slice(0, 10));
 
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
     if (pathname === '/roxy' || pathname === '/roxy/') {
@@ -350,21 +287,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         // Emitted by the running code, unlike build-info.json which can be
         // replaced on disk while an older Node process is still running.
         features: { roxy: true },
-        perf: healthSummary(),
         sources: registry.listPublicSources(),
       });
-      return;
-    }
-
-    // 2a. "Why did it stop?" — event-loop lag, CPU/cgroup throttling, GC pauses
-    // and rate-limit denials for this process. No upstream identity is exposed.
-    if (method === 'GET' && pathname === '/api/v1/perf') {
-      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
-        return;
-      }
-      sendJson(res, 200, { ok: true, ...perfSnapshot() }, allowOrigin);
       return;
     }
 
@@ -489,8 +413,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'request forbidden' });
         return;
       }
-      if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
-        noteRateLimit('art');
+      if (!rateLimiter.allow(`art:${getClientIp(req)}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -502,7 +425,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const season = type === 'tv' ? Math.max(1, Number(url.searchParams.get('s') || url.searchParams.get('season')) || 1) : undefined;
       const episode = type === 'tv' ? Math.max(1, Number(url.searchParams.get('e') || url.searchParams.get('episode')) || 1) : undefined;
-      const endArtPhase = phaseStart('art');
       try {
         const media = await fetchTmdbMetadata(cfg.tmdb, { type, tmdbId, season, episode });
         sendJson(
@@ -524,8 +446,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         );
       } catch {
         sendJson(res, 200, { ok: false }, allowOrigin);
-      } finally {
-        endArtPhase();
       }
       return;
     }
@@ -537,9 +457,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (playbackLimiter && !playbackLimiter.allow(`pb:${clientIp}`)) {
-        noteRateLimit('playback');
-        sendJson(res, 429, { ok: false, error: 'rate limit exceeded', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
+      if (!rateLimiter.allow(`pb:${clientIp}`)) {
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
 
@@ -606,49 +525,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         }
       }
 
-      // Opt-in only: a per-client in-flight cap for tight containers.
-      if (resolvePerClient && !resolvePerClient.enter(clientIp)) {
-        noteRateLimit('playback-concurrent');
-        sendJson(res, 429, { ok: false, error: 'too many resolves in flight', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
-        return;
-      }
-      const resolveStartedMs = Date.now();
-      let resolved: Awaited<ReturnType<typeof registry.resolvePlayback>> | null;
-      try {
-        const task = () => trackPhase('playback', () => registry.resolvePlayback({
-          type: mediaType,
-          tmdbId,
-          anilistId,
-          season,
-          episode,
-          anilistEpisode,
-          sourceId,
-          preferredLang,
-          late: url.searchParams.get('late') === '1',
-        }));
-        if (resolveGate) {
-          const slot = await resolveGate.run(task);
-          if (!slot.ok) {
-            noteRateLimit('playback-queue');
-            sendJson(res, 503, { ok: false, error: 'server busy', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
-            return;
-          }
-          resolved = slot.value;
-        } else {
-          resolved = await task();
-        }
-      } finally {
-        resolvePerClient?.leave(clientIp);
-      }
-
-      noteResolve({
+      const resolved = await registry.resolvePlayback({
         type: mediaType,
         tmdbId,
-        status: resolved ? 200 : 404,
-        sources: Array.isArray((resolved as { sources?: unknown[] } | null)?.sources)
-          ? (resolved as { sources: unknown[] }).sources.length
-          : 0,
-        ms: Date.now() - resolveStartedMs,
+        anilistId,
+        season,
+        episode,
+        anilistEpisode,
+        sourceId,
+        preferredLang,
+        late: url.searchParams.get('late') === '1',
       });
 
       if (!resolved) {
@@ -899,31 +785,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 }
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
-  // One Node process runs one event loop, so a single process cannot use more
-  // than one core however much CPU the box has. `ELFURA_WORKERS` runs the same
-  // server in N processes behind one port: N event loops, N caches, N× the
-  // concurrent resolves before the loop stalls. Opt-in — the default is exactly
-  // the single-process server that has always run here.
-  const workers = Math.max(1, Math.min(8, Number(process.env.ELFURA_WORKERS || 1) || 1));
-  if (cluster.isPrimary && workers > 1) {
-    let shuttingDown = false;
-    console.log(`[elfura-cluster] starting ${workers} workers (one event loop each; ELFURA_WORKERS=1 disables)`);
-    for (let i = 0; i < workers; i += 1) cluster.fork();
-    cluster.on('exit', (worker, code) => {
-      if (shuttingDown) return;
-      console.warn(`[elfura-cluster] worker ${worker.process.pid} exited (${code}); replacing it`);
-      cluster.fork();
-    });
-    const stop = () => {
-      shuttingDown = true;
-      for (const worker of Object.values(cluster.workers ?? {})) worker?.kill('SIGTERM');
-      setTimeout(() => process.exit(0), 5_000).unref();
-    };
-    process.on('SIGTERM', stop);
-    process.on('SIGINT', stop);
-    return;
-  }
-  startPerfMonitor();
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     console.log(

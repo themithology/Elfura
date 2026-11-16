@@ -6,26 +6,19 @@ import { loadBackendConfig } from '../../dist/backend/config.js';
 const originalFetch = globalThis.fetch;
 const requests = [];
 const exp = Math.floor(Date.now() / 1000) + 3600;
-const makeUrl = (path, host = 'img1.fcxmb.com', signature = 'signed_fixture_signature_1234567890==') => {
+const makeUrl = (path, host = 'img1.fcxmb.com') => {
   const url = new URL(`https://${host}${path}`);
   url.searchParams.set('Expires', String(exp));
   url.searchParams.set('KeyName', 'Signature');
-  url.searchParams.set('Signature', signature);
+  url.searchParams.set('Signature', 'signed_fixture_signature_1234567890==');
   return url.href;
 };
 const rows = [
   { source: 'Citadel', format: 'hls', quality: '720p | Hindi', url: makeUrl('/myhls_mps/2024/Dune2/Hindi_720/index_266.m3u8') },
   { source: 'Citadel', format: 'hls', quality: '720p | Tamil', url: makeUrl('/myhls_mps/2024/Dune2/Tamil_720/index_266.m3u8') },
   { source: 'Citadel', format: 'hls', quality: '720p | English', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com') },
-  // A different rendition file is a different lane, even on another mirror.
+  // Same path on a mirror but conflicting language claims: drop both rather than guess.
   { source: 'Citadel', format: 'hls', quality: '720p | Japanese', url: makeUrl('/hls_mps/abc123/720/index_288.m3u8', 'img2.fcxmb.com') },
-  // One path, two signatures: the signature selects the rendition, so both
-  // labels are real lanes. This is the shape that used to collapse to one.
-  { source: 'Citadel', format: 'hls', quality: '720p | Telugu', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com', 'signed_telugu_1234567890==') },
-  { source: 'Citadel', format: 'hls', quality: '720p | Kannada', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com', 'signed_kannada_1234567890==') },
-  // The very same file wearing two language labels: drop both rather than guess.
-  { source: 'Citadel', format: 'hls', quality: '720p | Bengali', url: makeUrl('/myhls_mps/2024/Dune2/Mirror_720/index_266.m3u8') },
-  { source: 'Citadel', format: 'hls', quality: '720p | Kannada', url: makeUrl('/myhls_mps/2024/Dune2/Mirror_720/index_266.m3u8') },
   { source: 'Citadel', format: 'mp4', quality: '720p | Hindi', url: makeUrl('/myhls_mps/2024/Dune2/Hindi_720/video.mp4') },
   { source: 'Other', format: 'hls', quality: '720p | Hindi', url: makeUrl('/myhls_mps/2024/Dune2/Hindi_720/index_266.m3u8') },
   { source: 'Citadel', format: 'hls', quality: 'Hindi subtitles', url: makeUrl('/myhls_mps/2024/Dune2/Hindi_subs/index_266.m3u8') },
@@ -74,22 +67,14 @@ globalThis.fetch = async (input, init = {}) => {
 
 try {
   const parsed = citadelCandidates(apiBody);
-  assert.equal(
-    parsed.length,
-    6,
-    'every language rendition is its own lane (hi, ta, en, ja, te, kn); one file with two labels is dropped',
-  );
-  assert.deepEqual(new Set(parsed.map(candidate => candidate.audioLang)), new Set(['hi', 'ta', 'en', 'ja', 'te', 'kn']));
-  assert(
-    parsed.every(candidate => candidate.audioLabel && !candidate.audioLabel.includes('unverified')),
-    'the label names the real language, with no "unverified" wording',
-  );
-  assert(parsed.every(candidate => candidate.audioLang !== 'bn'), 'the same signed url with two labels is dropped entirely');
-  assert.equal(parsed.filter(candidate => candidate.audioLang === 'kn').length, 1, 'a distinct signature keeps its own Kannada lane');
+  assert.equal(parsed.length, 2, 'keep distinct Hindi/Tamil streams, drop conflicting mirrored labels and captions');
+  assert.deepEqual(new Set(parsed.map(candidate => candidate.claimedAudioLang)), new Set(['hi', 'ta']));
+  assert(parsed.every(candidate => candidate.audioLang === undefined), 'provider language labels are not verified audio tracks');
+  assert(parsed.every(candidate => candidate.audioLabel.includes('Citadel label (unverified)')));
   assert(parsed.every(candidate => !JSON.stringify(candidate).includes('hindi.vtt')));
 
   const movie = await fetchFromCitadel({ type: 'movie', tmdbId: '693134' });
-  assert.equal(movie.length, 7, 'six citadel language rows plus one PrimeVids CDN row');
+  assert.equal(movie.length, 3, 'two citadel language rows plus one PrimeVids CDN row');
   const citadelRequest = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert(citadelRequest, 'the citadel provider is always asked');
   assert.equal(citadelRequest.url.searchParams.get('id'), '693134');
@@ -101,7 +86,7 @@ try {
   );
   requests.length = 0;
   const tv = await fetchFromCitadel({ type: 'tv', tmdbId: '1396', season: 2, episode: 3 });
-  assert.equal(tv.length, 7, 'six citadel language rows plus the PrimeVids CDN row');
+  assert.equal(tv.length, 3);
   const tvCitadel = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert.equal(tvCitadel.url.searchParams.get('season'), '2');
   assert.equal(tvCitadel.url.searchParams.get('episode'), '3');
@@ -113,10 +98,11 @@ try {
   const anime = await fetchFromCitadel({ type: 'tv', tmdbId: '635302', season: 1, episode: 1 });
   assert.equal(anime.length, 5, 'four labelled citadel anime rows plus the PrimeVids CDN row');
   assert.deepEqual(
-    new Set(anime.map(candidate => candidate.audioLang).filter(Boolean)),
+    new Set(anime.map(candidate => candidate.claimedAudioLang).filter(Boolean)),
     new Set(['hi', 'ja']),
     'labelled rows stay separated by language; unlabelled PrimeVids rows make no claim',
   );
+  assert(anime.every(candidate => candidate.audioLang === undefined), 'the fixture manifests expose no audio language evidence');
   const animeCitadel = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert(animeCitadel.url.searchParams.get('id') === '635302');
   assert(animeCitadel.url.searchParams.get('season') === '1');
@@ -124,18 +110,13 @@ try {
   const animeAdapter = createSource14Adapter(() => true);
   const animeResolved = await animeAdapter.resolve({ type: 'tv', tmdbId: '635302', season: 1, episode: 1, diag: [] });
   assert.equal(animeResolved.candidates.length, 4, 'retain reachable anime candidates without promoting source labels to verified audio');
-  assert(animeResolved.candidates.every(candidate => candidate.audioLang && candidate.audioLabel));
-  assert(animeResolved.candidates.every(candidate => !candidate.audioLabel.includes('unverified')));
+  assert(animeResolved.candidates.every(candidate => candidate.claimedAudioLang && !candidate.audioLang));
+  assert(animeResolved.candidates.every(candidate => candidate.audioLabel.includes('(unverified)')));
 
   requests.length = 0;
   const adapter = createSource14Adapter(() => true);
   const resolved = await adapter.resolve({ type: 'movie', tmdbId: '693134', diag: [] });
-  assert.equal(resolved.candidates.length, 6, 'every living language lane survives the adapter');
-  assert.deepEqual(
-    new Set(resolved.candidates.map(candidate => candidate.audioLang)),
-    new Set(['hi', 'ta', 'en', 'ja', 'te', 'kn']),
-    'no language is swallowed by a shared path',
-  );
+  assert.equal(resolved.candidates.length, 2, 'HLS manifest-reachable language streams should be retained');
   assert(resolved.candidates.every(candidate => candidate.diagnosticLane === 'C'));
 
   // PrimeVids rows carry no language, publish unsigned CDN URLs, and are merged
@@ -144,8 +125,9 @@ try {
   const merged = await fetchFromCitadel({ type: 'movie', tmdbId: '693134' });
   const slowcloud = merged.filter(candidate => candidate.url.includes('slowcloud.live'));
   assert.equal(slowcloud.length, 1, 'the unsigned PrimeVids CDN row survives; insecure and relay rows do not');
-  assert.equal(slowcloud[0].audioLang, undefined, 'no audio language is invented for an unlabelled row');
-  assert(merged.some(candidate => candidate.audioLang === 'hi'), 'labelled citadel rows are still merged in');
+  assert.equal(slowcloud[0].claimedAudioLang, undefined, 'no audio language is invented for an unlabelled row');
+  assert.equal(slowcloud[0].audioLang, undefined);
+  assert(merged.some(candidate => candidate.claimedAudioLang === 'hi'), 'labelled citadel rows are still merged in');
   assert(!merged.some(candidate => /corsflix|workers\.dev/.test(candidate.url)), 'relays and CORS proxies are rejected');
 
   const enabled = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'citadel-test-secret', ELFURA_RIVE_CITADEL_ENABLED: '1' }));

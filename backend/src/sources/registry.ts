@@ -87,112 +87,18 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
 };
 
-
-/** Anime lanes keep their own original language (Japanese); everything else
- * that ships a bare "Original"/"ORG" tag is Hindi, as verified on the live
- * catalogue. Overridable with ELFURA_ORIGINAL_LANG (e.g. 'ja', 'und'). */
-const ANIME_SOURCES = new Set(['source-16', 'source-17']);
-const ORIGINAL_AUDIO_TOKENS = /^(?:orig(?:inal)?|org|original\s+audio(?:\s+track)?|default)$/i;
-
-export function retagOriginalAudio(
-  adapter: SourceAdapter,
-  candidate: RawStreamCandidate,
-): RawStreamCandidate {
-  if (ANIME_SOURCES.has(adapter.id)) return candidate;
-  const target = (process.env.ELFURA_ORIGINAL_LANG ?? 'hi').trim().toLowerCase();
-  if (!target || target === 'und') return candidate;
-  const label = String(candidate.audioLabel ?? '').trim();
-  if (!ORIGINAL_AUDIO_TOKENS.test(label)) return candidate;
-  const resolved = normalizeLang(target);
-  return {
-    ...candidate,
-    audioLang: resolved.code,
-    audioLabel: resolved.label,
-  };
-}
-
 const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
 };
-/** Candidates probed in the shared verification batch, spread across sources.
- * Back to the value this install has run for weeks. Raising it to 96 only made
- * every resolve probe more upstreams at once, which is the kind of thing that
- * gets a CDN to start refusing us — coverage must never be bought that way. */
+/** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 36;
-/** Lanes any single source may contribute to one response. Eight, not four: it
- * is the value that let a five-dub source list all ten of its rows on the live
- * catalogue, and the response-wide caps still bound the total. */
-const MAX_LANES_PER_SOURCE = 8;
-
-/** Order a source's lanes so every distinct audio language gets a slot before
- * any second quality of the same language. Without this, a source that returns
- * one file per language spent its whole window on 480p copies of one dub and
- * the rest of its languages never reached the response. */
-export function languageFirstOrder(candidates: RawStreamCandidate[]): RawStreamCandidate[] {
-  const seen = new Set<string>();
-  const firsts: RawStreamCandidate[] = [];
-  const rest: RawStreamCandidate[] = [];
-  const firstSeen = new Set<RawStreamCandidate>();
-  for (const candidate of candidates) {
-    const lang = candidate.audioLang ? normalizeLang(candidate.audioLang).code : '';
-    if (!lang || lang === 'und') {
-      firsts.push(candidate);
-      firstSeen.add(candidate);
-      continue;
-    }
-    if (seen.has(lang)) {
-      rest.push(candidate);
-      continue;
-    }
-    seen.add(lang);
-    firsts.push(candidate);
-    firstSeen.add(candidate);
-  }
-  return [...firsts, ...rest];
-}
-
-/** Per-source detail of the newest resolve, so "no sources" can be answered
- * from the perf endpoint: raw = the adapter's own count, live = lanes that also
- * passed the manifest probe. */
-export interface ResolveLaneDetail { id: string; raw: number; live: number; error?: string; }
-let lastResolveLanes: { at: string; type: string; tmdbId: string; lanes: ResolveLaneDetail[] } | null = null;
-export function lastResolveDiagnostics(): typeof lastResolveLanes {
-  return lastResolveLanes;
-}
+/** Lanes any single source may contribute to one response. */
+const MAX_LANES_PER_SOURCE = 4;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
-  /** Identical resolves share one run: the browser asking six times in a row for
-   * the same title must not start six races over twenty adapters. */
-  private readonly playbackInFlight = new Map<string, Promise<UniformPlaybackResponse | null>>();
-  private sharedResolveCount = 0;
-  /**
-   * How many resolves may *run* at once. This is the memory bound: a resolve
-   * holds twenty adapters, their lanes and their probes for its whole budget, so
-   * the process footprint is (parallelism x cost of one resolve), and nothing in
-   * the machine can make it grow with uptime.
-   *
-   * Waiting is a queue, never a refusal — the outage was a ceiling that answered
-   * 503, not a ceiling as such. Callers wait their turn and every one of them is
-   * answered with a full response; a duplicate arriving while its own resolve is
-   * queued or running attaches to it and does not take a second place.
-   */
-  private resolveParallelism = (() => {
-    // Default 0 = no ceiling. This is the behaviour the install ran for weeks,
-    // and it is the only default that is safe while the player times out at six
-    // seconds: a request that waits for a slot has already lost its viewer.
-    // Memory is held down by the shared probe pool and by collapsing duplicates,
-    // not by making viewers queue. Set a number to re-enable the valve.
-    const raw = Number(process.env.ELFURA_RESOLVE_PARALLELISM ?? 0);
-    if (!Number.isFinite(raw)) return Number.POSITIVE_INFINITY;
-    if (raw === 0) return Number.POSITIVE_INFINITY;
-    return Math.max(1, Math.min(512, Math.floor(raw)));
-  })();
-  private resolveActiveCount = 0;
-  private resolvePeakCount = 0;
-  private readonly resolveWaiters: (() => void)[] = [];
   private readonly ramCache = new Map<string, { expiresAt: number; result: RawSourceResult }>();
   private readonly inFlight = new Map<string, Promise<RawSourceResult>>();
   private readonly segmentCache = new Map<
@@ -546,144 +452,7 @@ export class SourceRegistry {
     return p;
   }
 
-  /** Identity of one resolve: everything that can change the answer. */
-  private static playbackKey(params: {
-    type: 'movie' | 'tv';
-    tmdbId: string;
-    season?: number;
-    episode?: number;
-    sourceId?: string;
-    anilistId?: string;
-    anilistEpisode?: number;
-    preferredLang?: string;
-    late?: boolean;
-  }): string {
-    return [
-      params.type,
-      params.tmdbId,
-      params.season ?? 0,
-      params.episode ?? 0,
-      params.sourceId ?? '',
-      params.anilistId ?? '',
-      params.anilistEpisode ?? 0,
-      params.preferredLang ?? '',
-      params.late === true ? 1 : 0,
-    ].join('|');
-  }
-
-  stats(): { sharedResolves: number; inFlightPlayback: number } {
-    return { sharedResolves: this.sharedResolveCount, inFlightPlayback: this.playbackInFlight.size };
-  }
-
-  /** Live admission state, so the endpoint shows the memory bound working. */
-  admissionStats(): { active: number; queued: number; parallelism: number; peak: number } {
-    return {
-      active: this.resolveActiveCount,
-      queued: this.resolveWaiters.length,
-      // 0 means unlimited, which JSON can express and Infinity cannot.
-      parallelism: Number.isFinite(this.resolveParallelism) ? this.resolveParallelism : 0,
-      peak: this.resolvePeakCount,
-    };
-  }
-
-  /** Test hook: the bound is per registry, not per process. */
-  setResolveParallelism(value: number): void {
-    const next = Math.floor(Number(value));
-    if (Number.isFinite(next) && next >= 1) this.resolveParallelism = Math.min(512, next);
-  }
-
-  /**
-   * How long a resolve may wait for a slot before it runs anyway.
-   *
-   * The player abandons a playback request after six seconds and the resolve
-   * itself spends 4.6 of them working, so a wait longer than about a second turns
-   * into "no sources" that the viewer sees and nobody can explain. The queue is
-   * therefore a soft valve: it smooths a burst, and past this window it stops
-   * protecting memory and starts costing viewers. Overshooting the ceiling is
-   * always preferable to answering nobody.
-   */
-  private resolveQueuePatienceMs = Math.max(
-    0,
-    Math.min(3000, Number(process.env.ELFURA_RESOLVE_QUEUE_PATIENCE_MS ?? 900) || 0),
-  );
-
-  /** Test hook for the patience window. */
-  setResolveQueuePatience(ms: number): void {
-    const next = Math.floor(Number(ms));
-    if (Number.isFinite(next) && next >= 0) this.resolveQueuePatienceMs = Math.min(3000, next);
-  }
-
-  /** Take one of the running slots, waiting in FIFO order when they are all busy. */
-  private async withResolveSlot<T>(task: () => Promise<T>): Promise<T> {
-    let occupied = false;
-    if (this.resolveActiveCount >= this.resolveParallelism) {
-      let grantedCallback: (() => void) | null = null;
-      const patienced = new Promise<boolean>((resolve) => {
-        const timer = this.resolveQueuePatienceMs > 0
-          ? setTimeout(() => resolve(false), this.resolveQueuePatienceMs)
-          : null;
-        grantedCallback = () => {
-          if (timer) clearTimeout(timer);
-          resolve(true);
-        };
-        this.resolveWaiters.push(grantedCallback);
-      });
-      // false = the patience window closed first: run anyway, over the ceiling.
-      occupied = await patienced;
-      if (!occupied) {
-        const index = grantedCallback ? this.resolveWaiters.indexOf(grantedCallback) : -1;
-        if (index >= 0) this.resolveWaiters.splice(index, 1);
-      }
-    } else {
-      occupied = true;
-    }
-    this.resolveActiveCount += 1;
-    if (this.resolveActiveCount > this.resolvePeakCount) this.resolvePeakCount = this.resolveActiveCount;
-    try {
-      return await task();
-    } finally {
-      this.resolveActiveCount -= 1;
-      if (occupied) this.resolveWaiters.shift()?.();
-    }
-  }
-
-  /** Public entry: collapse duplicates of a resolve that is already running. */
   async resolvePlayback(params: {
-    type: 'movie' | 'tv';
-    tmdbId: string;
-    season?: number;
-    episode?: number;
-    sourceId?: string;
-    anilistId?: string;
-    anilistEpisode?: number;
-    preferredLang?: string;
-    streamPathPrefix?: string;
-    late?: boolean;
-  }): Promise<UniformPlaybackResponse | null> {
-    const key = SourceRegistry.playbackKey(params);
-    const running = this.playbackInFlight.get(key);
-    if (running) {
-      this.sharedResolveCount += 1;
-      return running;
-    }
-    // Registered before a slot is taken, so the duplicates that pile up while a
-    // resolve waits in the queue attach to it instead of queueing behind it.
-    let settle: (value: UniformPlaybackResponse | null) => void = () => {};
-    let fail: (reason: unknown) => void = () => {};
-    const shared = new Promise<UniformPlaybackResponse | null>((resolve, reject) => {
-      settle = resolve;
-      fail = reject;
-    });
-    this.playbackInFlight.set(key, shared);
-    void this.withResolveSlot(() => this.resolvePlaybackOnce(params))
-      .then(settle, fail)
-      .finally(() => {
-        if (this.playbackInFlight.get(key) === shared) this.playbackInFlight.delete(key);
-      });
-    return shared;
-  }
-
-  private async resolvePlaybackOnce(params: {
     type: 'movie' | 'tv';
     tmdbId: string;
     season?: number;
@@ -851,7 +620,7 @@ export class SourceRegistry {
       // Breadth first: probe each adapter's best lanes before any adapter's
       // leftovers. A single source with 20 candidates must not starve every
       // other source out of the shared verification budget.
-      const perAdapter = ready.map((entry) => languageFirstOrder(entry.result.candidates));
+      const perAdapter = ready.map((entry) => entry.result.candidates);
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
       const tagged: RawStreamCandidate[] = [];
       for (let i = 0; i < breadth; i += 1) {
@@ -1042,7 +811,7 @@ export class SourceRegistry {
       for (const slot of slots) {
         if (!slot) continue;
         let added = 0;
-        for (const cand of languageFirstOrder(slot.result.candidates)) {
+        for (const cand of slot.result.candidates) {
           if (added >= MAX_LANES_PER_SOURCE) break;
           if (seenUrls.has(cand.url) || blockedByRuntime.has(cand.url)) continue;
           const evidence = cachedCandidateEvidence(cand);
@@ -1062,12 +831,6 @@ export class SourceRegistry {
       }
     }
 
-    // "ORG"/"Original" from an upstream means the Hindi track on every one of
-    // these providers; name it honestly instead of showing a vague original.
-    for (const entry of candidateEntries) {
-      entry.candidate = retagOriginalAudio(entry.adapter, entry.candidate);
-    }
-
     const counts = new Map<string, Map<string, number>>();
     const sequences = new Map<string, number>();
     for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
@@ -1085,25 +848,6 @@ export class SourceRegistry {
           droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
       );
     }
-
-    // Keep the per-source breakdown of this resolve for the perf endpoint, so a
-    // client-side "no sources" can be traced to the exact source that was empty.
-    lastResolveLanes = {
-      at: new Date().toISOString(),
-      type: params.type,
-      tmdbId: params.tmdbId,
-      lanes: activeAdapters.map((adapter) => {
-        const hit = verifiedEntries.find((entry) => entry.adapter.id === adapter.id);
-        const report = adapterReport.get(adapter.id);
-        const lane: ResolveLaneDetail = {
-          id: adapter.id,
-          raw: hit ? hit.result.candidates.length : (report?.raw ?? 0),
-          live: hit ? hit.liveCandidates.length : 0,
-        };
-        if (!hit && report?.error) lane.error = report.error;
-        return lane;
-      }),
-    };
 
     if (!uniformOptions.length) {
       // Operator-only diagnostics (server console; never sent to clients).
