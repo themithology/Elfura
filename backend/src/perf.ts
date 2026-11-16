@@ -52,6 +52,9 @@ const routes = new Map<string, number>();
 const clients = new Map<string, number>();
 const MAX_ROUTES = 48;
 const MAX_CLIENTS = 4096;
+/** The last few resolve outcomes: did the request arrive, and what came back? */
+const MAX_RESOLVES = 8;
+const resolves: { at: string; type: string; tmdbId: string; status: number; sources: number; ms: number }[] = [];
 const gc = { count: 0, pauseMs: 0, maxPauseMs: 0 };
 
 let started = false;
@@ -93,6 +96,12 @@ export function noteRoute(pathname: string): void {
     if (oldest !== undefined) routes.delete(oldest);
   }
   routes.set(key, next);
+}
+
+/** Record the outcome of a playback resolve, so "no sources" has an answer. */
+export function noteResolve(entry: { type: string; tmdbId: string; status: number; sources: number; ms: number }): void {
+  resolves.push({ at: new Date().toISOString(), ...entry });
+  if (resolves.length > MAX_RESOLVES) resolves.shift();
 }
 
 /** Count a request by (hashed) client, so one retry loop is visible as one. */
@@ -274,6 +283,8 @@ export interface PerfSnapshot {
   inFlight: Record<string, number>;
   /** Process-wide and per-client concurrency for the expensive endpoint. */
   queues: Record<string, number>;
+  /** Last resolve outcomes, newest last: status, lane count and duration. */
+  resolves: { at: string; type: string; tmdbId: string; status: number; sources: number; ms: number }[];
   /** Plain-language verdict, so a log dump answers "was it the CPU?". */
   verdict: string;
 }
@@ -338,6 +349,7 @@ export function perfSnapshot(): PerfSnapshot {
     },
     inFlight,
     queues: queueStats(),
+    resolves: resolves.slice(),
     verdict: verdict(),
   };
 }

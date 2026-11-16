@@ -28,7 +28,7 @@ import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
-import { healthSummary, noteClient, noteRateLimit, noteRequest, noteRoute, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
+import { healthSummary, noteClient, noteRateLimit, noteRequest, noteResolve, noteRoute, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
 import { PerKeyConcurrency, ResolveGate, registerQueueStats } from './limits.js';
 import {
   applyCorsHeaders,
@@ -136,17 +136,15 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
-  // Artwork and playback are what a normal page load spends its requests on.
-  // Sharing one 120/min bucket with them meant a catalogue page plus a stream
-  // could lock the user out of both for the rest of the minute — and the retry
-  // traffic made it look like the sources had died. They get their own,
-  // generous windows; the abuse-sensitive endpoints keep the base limit.
-  const artLimiter = new SlidingWindowLimiter(
-    Math.max(600, Number(process.env.ELFURA_ART_RATE_LIMIT || 0) || cfg.rateLimitPerMin * 6),
-  );
-  const playbackLimiter = new SlidingWindowLimiter(
-    Math.max(180, Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0) || cfg.rateLimitPerMin * 3),
-  );
+  // Artwork and playback are page-load traffic, not abuse, and the box has CPU
+  // to spare: both are UNLIMITED unless an operator sets a ceiling. Sharing one
+  // small bucket with them was what answered 429 to a catalogue page and made a
+  // working install look like every source had died. Abuse-sensitive endpoints
+  // (login, admin, diagnostics, analytics) keep their own limits below.
+  const artCeiling = Number(process.env.ELFURA_ART_RATE_LIMIT || 0);
+  const playbackCeiling = Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0);
+  const artLimiter = artCeiling > 0 ? new SlidingWindowLimiter(artCeiling) : null;
+  const playbackLimiter = playbackCeiling > 0 ? new SlidingWindowLimiter(playbackCeiling) : null;
   const roxy = new RoxyStore(cfg.secret);
   // Pop-under ads live in the embed player only; this decides per request.
   const ads = new AdSettingsStore();
@@ -183,18 +181,23 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
-  // Resolutions are the only request that costs the whole process real work; a
-  // burst of them is what makes artwork and every lane answer late. Bound the
-  // machine and bound each client, and tell callers when to come back.
-  const resolveGate = new ResolveGate(
-    Math.max(2, Number(process.env.ELFURA_RESOLVE_CONCURRENCY || 8)),
-    Math.max(2, Number(process.env.ELFURA_RESOLVE_QUEUE || 24)),
-    Math.max(500, Number(process.env.ELFURA_RESOLVE_QUEUE_MS || 6000)),
-  );
-  const resolvePerClient = new PerKeyConcurrency(Math.max(1, Number(process.env.ELFURA_RESOLVE_PER_IP || 4)));
+  // Concurrency ceilings are OFF by default: this hardware has headroom and the
+  // player no longer fans out one request per provider, so nothing needs to be
+  // queued. The guards stay available for a small container — set either value
+  // above zero to switch them back on.
+  const resolveConcurrency = Number(process.env.ELFURA_RESOLVE_CONCURRENCY || 0);
+  const resolvePerIp = Number(process.env.ELFURA_RESOLVE_PER_IP || 0);
+  const resolveGate = resolveConcurrency > 0
+    ? new ResolveGate(
+        resolveConcurrency,
+        Math.max(2, Number(process.env.ELFURA_RESOLVE_QUEUE || 24)),
+        Math.max(500, Number(process.env.ELFURA_RESOLVE_QUEUE_MS || 6000)),
+      )
+    : null;
+  const resolvePerClient = resolvePerIp > 0 ? new PerKeyConcurrency(resolvePerIp) : null;
   registerQueueStats(() => {
-    const gate = resolveGate.stats();
-    return { resolveActive: gate.active, resolveQueued: gate.queued, resolveClients: resolvePerClient.stats().clients };
+    const gate = resolveGate?.stats() ?? { active: 0, queued: 0 };
+    return { resolveActive: gate.active, resolveQueued: gate.queued, resolveClients: resolvePerClient?.stats().clients ?? 0 };
   });
 
   let cachedEmbedTemplate: string | null = null;
@@ -466,7 +469,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'request forbidden' });
         return;
       }
-      if (!artLimiter.allow(`art:${getClientIp(req)}`)) {
+      if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
         noteRateLimit('art');
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
@@ -514,7 +517,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!playbackLimiter.allow(`pb:${clientIp}`)) {
+      if (playbackLimiter && !playbackLimiter.allow(`pb:${clientIp}`)) {
         noteRateLimit('playback');
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
         return;
@@ -583,16 +586,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         }
       }
 
-      // One client keeps one or two resolves open. More than a handful at once
-      // is a retry loop or a fan-out, and it must not eat the whole gate.
-      if (!resolvePerClient.enter(clientIp)) {
+      // Opt-in only: a per-client in-flight cap for tight containers.
+      if (resolvePerClient && !resolvePerClient.enter(clientIp)) {
         noteRateLimit('playback-concurrent');
         sendJson(res, 429, { ok: false, error: 'too many resolves in flight', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
         return;
       }
+      const resolveStartedMs = Date.now();
       let resolved: Awaited<ReturnType<typeof registry.resolvePlayback>> | null;
       try {
-        const slot = await resolveGate.run(() => trackPhase('playback', () => registry.resolvePlayback({
+        const task = () => trackPhase('playback', () => registry.resolvePlayback({
           type: mediaType,
           tmdbId,
           anilistId,
@@ -602,16 +605,31 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
-        })));
-        if (!slot.ok) {
-          noteRateLimit('playback-queue');
-          sendJson(res, 503, { ok: false, error: 'server busy', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
-          return;
+        }));
+        if (resolveGate) {
+          const slot = await resolveGate.run(task);
+          if (!slot.ok) {
+            noteRateLimit('playback-queue');
+            sendJson(res, 503, { ok: false, error: 'server busy', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
+            return;
+          }
+          resolved = slot.value;
+        } else {
+          resolved = await task();
         }
-        resolved = slot.value;
       } finally {
-        resolvePerClient.leave(clientIp);
+        resolvePerClient?.leave(clientIp);
       }
+
+      noteResolve({
+        type: mediaType,
+        tmdbId,
+        status: resolved ? 200 : 404,
+        sources: Array.isArray((resolved as { sources?: unknown[] } | null)?.sources)
+          ? (resolved as { sources: unknown[] }).sources.length
+          : 0,
+        ms: Date.now() - resolveStartedMs,
+      });
 
       if (!resolved) {
         sendJson(res, 404, { ok: false, error: 'no playable streams available for this title' }, allowOrigin);
