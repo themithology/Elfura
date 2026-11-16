@@ -371,6 +371,19 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         } catch { reply(400, { error: 'Invalid request' }); }
         return;
       }
+      if (pathname === '/roxy/api/egress' && method === 'GET') {
+        // The one question worth answering before any proxy, relay or header
+        // work: can this server reach the internet at all, and is the failure
+        // specific to the provider hosts? A network filter that resets by
+        // hostname looks exactly like "every source is blocked", which is how an
+        // operator ends up buying proxies for a problem that is not theirs.
+        if (!proxyCheckLimiter.allow('egress-check')) { reply(429, { error: 'Check limit reached; retry shortly' }); return; }
+        try {
+          const report = await reportEgress();
+          reply(200, report);
+        } catch { reply(500, { error: 'Egress check failed' }); }
+        return;
+      }
       if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }
       if (pathname === '/roxy/api/relay' && method === 'POST') {
         // The panel is the intended input here: a beginner should not have to
