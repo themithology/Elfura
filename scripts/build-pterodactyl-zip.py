@@ -282,6 +282,13 @@ def main() -> None:
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))
         write_entry(zf, "tsconfig.json", RUNTIME_TSCONFIG_JSON.encode("utf-8"))
+        # The relay Worker ships with the bundle: the operator who needs it is on a
+        # panel with no shell, so "deploy this file" must not mean "clone the repo".
+        for worker_file in ("worker.js", "README.md"):
+            source = ROOT / "cloudflare-worker" / worker_file
+            if source.is_file():
+                write_entry(zf, f"cloudflare-worker/{worker_file}", source.read_bytes())
+
         write_entry(zf, "README.md", (ROOT / "README.md").read_bytes())
         write_entry(zf, "RULES.md", (ROOT / "RULES.md").read_bytes())
 

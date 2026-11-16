@@ -229,6 +229,27 @@ Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET`
 
 Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
 
+### Recommended: Cloudflare Worker relay (no `.env` editing)
+
+A proxy list costs money per request and gets throttled — discovery alone fires
+dozens of requests per page load. A Cloudflare Worker is the better egress: one URL,
+one hop, no credential rotation, and the free plan's 100,000 requests/day is far above
+what discovery uses.
+
+1. Deploy `cloudflare-worker/worker.js` — see [cloudflare-worker/README.md](./cloudflare-worker/README.md)
+   for the browser-only steps and the `TOKEN` secret.
+2. In `/roxy`, open **Egress relay**, paste the Worker URL and the token, then **Save**.
+3. Press **Test relay**. It answers with Cloudflare's exit address, which should not be
+   this server's address.
+
+The boot log then says `discovery requests are relayed through <host>`. If the Worker
+ever fails three times in a row it is skipped for a minute and requests go direct, so a
+broken relay degrades to the previous behaviour instead of stalling every source. Media
+playback never goes through the relay.
+
+The URL and token can also be set as `ELFURA_UPSTREAM_RELAY` / `ELFURA_RELAY_TOKEN`, in
+which case the environment or `.env` wins and the panel shows the value as locked.
+
 ### Proxy list (no `.env` editing)
 
 If source discovery fails because provider websites refuse this server's IP, upload a proxy list instead of editing files. Open `/roxy`, sign in, and use the **Proxy pool** panel: pick your provider's `.txt` file and press **Upload proxy list**, or paste the lines into the box and press **Save pasted list**. One proxy per line, in any of these shapes:

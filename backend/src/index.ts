@@ -27,10 +27,11 @@ import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } 
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { MAX_PROXY_TEXT_BYTES, proxyPool } from './proxy-pool.js';
-import { checkDirect, checkProxies, proxyProbeTarget } from './proxy-check.js';
+import { checkDirect, checkProxies, checkRelay, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
-import { egressProblem, installEgressProfile, isEgressProfileInstalled } from './egress.js';
+import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
+import { clearRelayUrl, currentRelayUrl, relaySource, saveRelayUrl } from './relay-config.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -187,6 +188,14 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       applied: isEgressProfileInstalled(),
       problem: egressProblem(),
       probeTarget: proxyProbeTarget(),
+      // The relay is a single URL, so its state is a small object rather than a
+      // list: is one set, where did it come from, and did it work last time.
+      relay: {
+        ...relayStatus(),
+        url: currentRelayUrl(),
+        source: relaySource(),
+        installed: isEgressProfileInstalled(),
+      },
     };
   };
   const sameOrigin = (req: http.IncomingMessage) => {
@@ -357,6 +366,51 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           }
           reply(200, { results, direct, probeTarget: proxyProbeTarget() });
         } catch { reply(400, { error: 'Invalid request' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }
+      if (pathname === '/roxy/api/relay' && method === 'POST') {
+        // The panel is the intended input here: a beginner should not have to
+        // learn that the right place is a line in .env.
+        try {
+          const body = await readJsonBody(req, 4096);
+          if ('clear' in body && body.clear) {
+            if (relaySource() === 'environment' || relaySource() === 'dotenv') {
+              reply(400, { error: 'The relay URL is set in the environment or .env, which takes precedence. Remove it there to use the panel.' });
+              return;
+            }
+            const ok = clearRelayUrl();
+            reply(ok ? 200 : 500, { ...proxySummary().relay, ...(ok ? {} : { error: 'Could not save the change' }) });
+            return;
+          }
+          if (typeof body.url !== 'string') { reply(400, { error: 'expected {url}' }); return; }
+          const url = body.url.trim().replace(/\/+$/, '');
+          if (!url) { reply(400, { error: 'Paste the Worker URL first' }); return; }
+          // A real Worker is always https. Loopback http is allowed only so the
+          // relay path can be exercised locally; a public http relay would send
+          // the token in clear text.
+          const loopback = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i.test(url);
+          if (!/^https:\/\/[^\s]+$/i.test(url) && !loopback) {
+            reply(400, { error: 'The URL must start with https:// and contain no spaces' });
+            return;
+          }
+          if (relaySource() === 'environment' || relaySource() === 'dotenv') {
+            reply(400, { error: 'The relay URL is set in the environment or .env, which takes precedence. Remove it there to use the panel.' });
+            return;
+          }
+          const token = typeof body.token === 'string' ? body.token.trim() : '';
+          if (!saveRelayUrl(url, token)) { reply(500, { error: 'Could not save the relay URL; check the data directory is writable' }); return; }
+          reply(200, proxySummary().relay);
+        } catch { reply(400, { error: 'Invalid request' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/relay/test' && method === 'POST') {
+        if (!proxyCheckLimiter.allow('relay-check')) { reply(429, { error: 'Test limit reached; retry shortly' }); return; }
+        const url = currentRelayUrl();
+        if (!url) { reply(400, { error: 'No relay URL saved yet' }); return; }
+        const result = await checkRelay(url);
+        reportRelayProbe(result.ok, result.ip, result.ms, result.error);
+        reply(200, { ...result, relay: proxySummary().relay });
         return;
       }
       if (pathname === '/roxy/api/source-websites' && method === 'GET') { reply(200, { sites: roxySourceWebsites(cfg) }); return; }

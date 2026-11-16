@@ -13,6 +13,7 @@
  */
 import { loadUndici } from './undici-loader.js';
 import type { ProxyEntry } from './proxy-pool.js';
+import { readRelayToken } from './relay-config.js';
 
 /** A tiny text endpoint that answers with the caller's address. */
 export function proxyProbeTarget(): string {
@@ -115,4 +116,76 @@ export async function checkProxies(entries: ProxyEntry[], concurrency = 5): Prom
   await Promise.all(workers);
   const order = new Map(entries.map((entry, position) => [entry.id, position]));
   return results.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}
+
+/**
+ * Can the Worker relay reach the internet, and from which address?
+ *
+ * This is the check that matters for a relay install, and it is cheap: one
+ * request, one hop. The Worker is asked to fetch the same "what is my IP"
+ * endpoint a proxy probe uses, so the panel can show the address a provider
+ * website will actually see.
+ */
+export async function checkRelay(
+  relayUrl: string,
+  timeoutMs = 12_000,
+): Promise<{ ok: boolean; status: number; ip: string; ms: number; error: string; targetUrl: string }> {
+  const started = Date.now();
+  const target = proxyProbeTarget();
+  const base = relayUrl.trim().replace(/\/+$/, '');
+  if (!base) return { ok: false, status: 0, ip: '', ms: 0, error: 'No relay URL set', targetUrl: target };
+  // Same rule as the save route: https everywhere, except loopback so the relay
+  // path can be exercised against a local stand-in for the Worker.
+  const loopback = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i.test(base);
+  if (!/^https:\/\//i.test(base) && !loopback) {
+    return { ok: false, status: 0, ip: '', ms: 0, error: 'The relay URL must start with https://', targetUrl: target };
+  }
+  try {
+    // The Worker refuses anything without its token, so a probe that omits it
+    // would report a healthy relay as broken.
+    const token = readRelayToken();
+    const headers: Record<string, string> = { 'x-elfura-target': target };
+    if (token) headers['x-elfura-token'] = token;
+    const response = await fetch(base, {
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const body = (await response.text()).trim().slice(0, 200);
+    if (response.status === 401 || response.status === 403) {
+      return {
+        ok: false,
+        status: response.status,
+        ip: '',
+        ms: Date.now() - started,
+        error: 'The Worker rejected the request — check ELFURA_RELAY_TOKEN matches the TOKEN in the Worker',
+        targetUrl: target,
+      };
+    }
+    if (response.status === 522 || response.status === 523 || response.status === 530) {
+      return {
+        ok: false,
+        status: response.status,
+        ip: '',
+        ms: Date.now() - started,
+        error: 'Cloudflare could not reach the Worker — is it deployed and is the URL correct?',
+        targetUrl: target,
+      };
+    }
+    // The Worker reports why it failed in a header so the panel can say more
+    // than "HTTP 502".
+    const reason = response.headers.get('x-elfura-error') || '';
+    const ip = IPV4.test(body) || IPV6.test(body) ? body : '';
+    const ok = response.status >= 200 && response.status < 400;
+    return {
+      ok,
+      status: response.status,
+      ip,
+      ms: Date.now() - started,
+      error: ok ? '' : reason || `HTTP ${response.status}`,
+      targetUrl: target,
+    };
+  } catch (error) {
+    return { ok: false, status: 0, ip: '', ms: Date.now() - started, error: readableError(error), targetUrl: target };
+  }
 }

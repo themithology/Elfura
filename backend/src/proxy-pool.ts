@@ -262,24 +262,41 @@ export class ProxyPool {
   }
 
   /**
-   * The next few proxies for one request: healthy first, each request starting
-   * one further along, cooled-down entries last so a fully dead list still gets
-   * attempted rather than silently doing nothing.
+   * The next proxies for one request: healthy entries only, each request
+   * starting one further along.
+   *
+   * An earlier version fell back to a cooling (already failing) proxy once the
+   * healthy ones ran out, on the theory that "a fully dead list should still be
+   * attempted rather than silently doing nothing". That is exactly wrong against
+   * a metered provider: a list that is dead or rate-limited got dialled on every
+   * single request — three dials per source probe, twenty-one sources per
+   * resolve — and the operator's account was throttled for "1,000 requests in a
+   * second" while nothing was actually working. Cooling now means cooling: the
+   * request goes direct, which costs the provider nothing and still lets the
+   * source succeed on this server's own address.
    */
   nextCandidates(limit = 3): ProxyEntry[] {
     const total = this.entries.length;
     if (!total) return [];
     const now = Date.now();
     const healthy: ProxyEntry[] = [];
-    const cooling: ProxyEntry[] = [];
     for (let i = 0; i < total; i += 1) {
       const entry = this.entries[(this.cursor + i) % total];
       const health = this.health.get(entry.id);
-      if (health && health.until > now) cooling.push(entry);
-      else healthy.push(entry);
+      if (!health || health.until <= now) healthy.push(entry);
     }
     this.cursor = (this.cursor + 1) % total;
-    return [...healthy, ...cooling].slice(0, Math.max(1, limit));
+    return healthy.slice(0, Math.max(1, limit));
+  }
+
+  /** True when every entry is resting; the panel uses this to explain the pause. */
+  allCooling(): boolean {
+    if (!this.entries.length) return false;
+    const now = Date.now();
+    return this.entries.every((entry) => {
+      const health = this.health.get(entry.id);
+      return !!health && health.until > now;
+    });
   }
 
   reportSuccess(id: string): void {
