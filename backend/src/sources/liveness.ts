@@ -534,7 +534,11 @@ export async function verifyAndFilterCandidates(
  * is what has to be bounded here: nothing is refused, every resolve still runs
  * to completion, they just do not all fetch at the same instant.
  */
-const PROBE_PARALLELISM = Math.max(4, Number(process.env.ELFURA_PROBE_PARALLELISM || 32));
+// 64, not 32: a resolve runs up to twenty probe workers of its own, so a shared
+// pool of 32 made every busy moment a queue, and queued lanes reach the response
+// unverified. Each probe holds at most one bounded manifest, so this is tens of
+// megabytes at worst — far cheaper than showing a viewer an empty list.
+const PROBE_PARALLELISM = Math.max(4, Number(process.env.ELFURA_PROBE_PARALLELISM || 64));
 let probeActive = 0;
 const probeWaiters: ((granted: boolean) => void)[] = [];
 
@@ -542,7 +546,9 @@ export function probePoolStats(): { active: number; queued: number } {
   return { active: probeActive, queued: probeWaiters.length };
 }
 
-async function withProbeSlot<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+/** `undefined` means "the budget ended while this probe was still queued": the
+ * lane is unproven, not dead, and no request was made for it. */
+async function withProbeSlot<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T | undefined> {
   let granted = false;
   if (probeActive >= PROBE_PARALLELISM) {
     granted = await new Promise<boolean>((resolve) => {
@@ -558,7 +564,10 @@ async function withProbeSlot<T>(task: () => Promise<T>, signal?: AbortSignal): P
       probeWaiters.push(waiter);
       signal?.addEventListener('abort', onAbort, { once: true });
     });
-    if (!granted) return task(); // aborted while waiting: let the caller see it
+    // Aborted while waiting: do not run it. Firing every queued probe at once on
+    // expiry is a burst precisely when the box is already busy, and a probe that
+    // starts after the deadline cannot answer anything anyway.
+    if (!granted) return undefined;
   } else {
     probeActive += 1;
     granted = true;
@@ -619,7 +628,7 @@ export async function verifyAndFilterCandidatesDetailed(
         const idx = cursor++;
         const [k, target] = entries[idx];
         const res = await withProbeSlot(() => runSingleProbe(target, budgetSig), budgetSig);
-        outcomes.set(k, res);
+        if (res) outcomes.set(k, res);
       }
     }),
   );
@@ -702,13 +711,14 @@ export async function verifyAndFilterCandidatesDetailed(
       ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
       : undefined,
   });
+  const kept: RawStreamCandidate[] = [];
+  /** Lanes no probe ever reached: unproven (not dead), kept behind the proven. */
+  const unproven: RawStreamCandidate[] = [];
+  let verifiedAliveCount = 0;
   const hasVerifiedAlive = candidates.some((cand) => {
     const outcome = outcomeFor(cand);
     return !!outcome.primary?.alive || !!outcome.standby?.alive;
   });
-
-  const kept: RawStreamCandidate[] = [];
-  let verifiedAliveCount = 0;
 
   for (const cand of candidates) {
     const { primary: primaryOutcome, standby: standbyOutcome } = outcomeFor(cand);
@@ -723,7 +733,7 @@ export async function verifyAndFilterCandidatesDetailed(
     });
 
     // Always prefer a verified healthy lane, including a standby whose primary
-    // timed out. Once any healthy option exists, never advertise unprobed lanes.
+    // timed out.
     if (standbyOutcome?.alive && !primaryOutcome?.alive && hasStandby) {
       verifiedAliveCount++;
       kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
@@ -737,10 +747,25 @@ export async function verifyAndFilterCandidatesDetailed(
       kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
       continue;
     }
+    // Three outcomes, not two, and they are not interchangeable:
+    //   probed + alive            -> listed first
+    //   probed + failed/timeout   -> hidden while a healthy lane exists, because
+    //                                advertising a lane that just timed out is
+    //                                what made the list feel broken
+    //   never probed              -> listed, behind the proven ones
+    // The last case is the one that lost sources: a lane still queued for a probe
+    // slot when the batch budget ended has no outcome at all, and it was being
+    // discarded as if it had failed. A busy process then reported fewer sources
+    // than an idle one, and at high concurrency it dropped whole sources.
+    const probed = !!primaryOutcome || !!standbyOutcome;
+    if (!probed) {
+      unproven.push(cand);
+      continue;
+    }
     if (hasVerifiedAlive) continue;
 
-    // Last-resort mode only: no candidate verified healthy, so an unconfirmed
-    // slow origin is preferable to returning no playback option at all.
+    // Last-resort mode: no candidate verified healthy, so an unconfirmed slow
+    // origin is preferable to returning no playback option at all.
     if (primaryOutcome?.confirmedDead) {
       if (hasStandby && !standbyOutcome?.confirmedDead) {
         kept.push(applyOutcomeToCandidate(promoteStandby(), standbyOutcome));
@@ -753,7 +778,7 @@ export async function verifyAndFilterCandidatesDetailed(
     kept.push(applyOutcomeToCandidate(cleanedStandby, primaryOutcome));
   }
 
-  return { candidates: kept, verifiedAliveCount };
+  return { candidates: [...kept, ...unproven], verifiedAliveCount };
 }
 
 /**
