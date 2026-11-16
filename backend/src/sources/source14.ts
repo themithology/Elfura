@@ -138,7 +138,13 @@ export function parseRiveRow(row: unknown, provider: string, rank: number): Pars
   const language = labelLanguage(labelText);
   if (provider === 'citadel' && !language) return null; // citadel rows always name their audio
   const quality = qualityText(item.quality ?? item.label);
-  const identity = url.pathname.replace(/\/index_[a-z0-9_-]+\.m3u8$/i, '/index.m3u8');
+  // Citadel publishes one playlist per language rendition (index_hin, index_eng…).
+  // Collapsing the filename made two genuine dubs look like one file wearing two
+  // labels, and the merge guard then dropped BOTH — that is why a whole source
+  // came back as a single language.
+  const identity = provider === 'citadel'
+    ? url.pathname
+    : url.pathname.replace(/\/index_[a-z0-9_-]+\.m3u8$/i, '/index.m3u8');
 
   return {
     key: `${url.origin}${identity}:${language?.code ?? 'und'}`,
@@ -148,8 +154,11 @@ export function parseRiveRow(row: unknown, provider: string, rank: number): Pars
     quality,
     ...(language
       ? {
-          claimedAudioLang: language.code,
-          audioLabel: `${language.label} · ${provider.charAt(0).toUpperCase()}${provider.slice(1)} label (unverified)`,
+          // The label names the actual audio track. It is published as the
+          // language, not as a "claim": the liveness probe still confirms it
+          // against the manifest and can promote a genuinely multi-audio file.
+          audioLang: language.code,
+          audioLabel: language.label,
         }
       : {}),
     headers: { 'User-Agent': UA, Referer: `${ORIGIN}/`, Origin: ORIGIN },

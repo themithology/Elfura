@@ -87,6 +87,30 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
 };
 
+
+/** Anime lanes keep their own original language (Japanese); everything else
+ * that ships a bare "Original"/"ORG" tag is Hindi, as verified on the live
+ * catalogue. Overridable with ELFURA_ORIGINAL_LANG (e.g. 'ja', 'und'). */
+const ANIME_SOURCES = new Set(['source-16', 'source-17']);
+const ORIGINAL_AUDIO_TOKENS = /^(?:orig(?:inal)?|org|original\s+audio(?:\s+track)?|default)$/i;
+
+export function retagOriginalAudio(
+  adapter: SourceAdapter,
+  candidate: RawStreamCandidate,
+): RawStreamCandidate {
+  if (ANIME_SOURCES.has(adapter.id)) return candidate;
+  const target = (process.env.ELFURA_ORIGINAL_LANG ?? 'hi').trim().toLowerCase();
+  if (!target || target === 'und') return candidate;
+  const label = String(candidate.audioLabel ?? '').trim();
+  if (!ORIGINAL_AUDIO_TOKENS.test(label)) return candidate;
+  const resolved = normalizeLang(target);
+  return {
+    ...candidate,
+    audioLang: resolved.code,
+    audioLabel: resolved.label,
+  };
+}
+
 const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
@@ -829,6 +853,12 @@ export class SourceRegistry {
             `beyond the verified set (per-source cap ${MAX_LANES_PER_SOURCE}, verified first).`,
         );
       }
+    }
+
+    // "ORG"/"Original" from an upstream means the Hindi track on every one of
+    // these providers; name it honestly instead of showing a vague original.
+    for (const entry of candidateEntries) {
+      entry.candidate = retagOriginalAudio(entry.adapter, entry.candidate);
     }
 
     const counts = new Map<string, Map<string, number>>();
