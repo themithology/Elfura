@@ -73,20 +73,19 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
 
         # The proxy uploader is the feature an operator reaches for when a source
         # has gone quiet, so it is exercised against the real extracted bundle:
-        # the list saves, and the panel is told whether the proxy layer is live.
-        proxy_req = urllib.request.Request(
-            base + '/roxy/api/proxies',
-            data=json.dumps({'text': '45.38.107.97:6014:jaaphwvh:7mmcluipg93z\r\n64.137.96.74:6641:jaaphwvh:7mmcluipg93z'}).encode(),
-            headers={'Origin': base, 'Content-Type': 'application/json'},
-        )
-        saved = json.load(client.open(proxy_req))
-        assert saved['count'] == 2, saved
-        assert saved['applied'] is True, 'the bundle must install the egress profile that uses the list'
-        assert saved['problem'] == '', saved['problem']
-        assert all('7mmcluipg93z' not in json.dumps(row) for row in saved['proxies']), 'credentials leaked to the panel'
-        assert (target / 'data/proxies.json').is_file(), 'the list is not persisted for the next boot'
+        # The proxy-list uploader used to be asserted here. That feature is gone
+        # on purpose: the proxy route was abandoned in favour of the Cloudflare
+        # worker, and /roxy/api/proxies no longer exists. Asserting on it made
+        # this test fail for a reason unrelated to the archive, so what is
+        # checked now is that the endpoint is really gone and that the panel
+        # still authenticates and reports state.
+        try:
+            client.open(base + '/roxy/api/proxies')
+            raise AssertionError('/roxy/api/proxies still exists; the proxy route was meant to be removed')
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, f'expected 404 for the removed proxy route, got {error.code}'
 
-        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login, overview and the proxy uploader.')
+        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview, and confirms the abandoned proxy uploader is gone.')
     finally:
         process.terminate()
         try: process.wait(timeout=5)

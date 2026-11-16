@@ -17,7 +17,8 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "typecheck": "npm run typecheck:player && npm run typecheck:backend",
     "typecheck:player": "tsc --noEmit",
-    "typecheck:backend": "tsc -p backend/tsconfig.json --noEmit"
+    "typecheck:backend": "tsc -p backend/tsconfig.json --noEmit",
+    "test:zip": "npm run build:pterodactyl && python3 scripts/test-pterodactyl-zip.py"
   },
   "dependencies": {
     "undici": "^6.29.1",
