@@ -180,9 +180,13 @@ export class SourceRegistry {
    * queued or running attaches to it and does not take a second place.
    */
   private resolveParallelism = (() => {
-    const raw = Number(process.env.ELFURA_RESOLVE_PARALLELISM ?? 32);
-    if (!Number.isFinite(raw)) return 32;
-    // 0 is the old behaviour on purpose: no ceiling at all.
+    // Default 0 = no ceiling. This is the behaviour the install ran for weeks,
+    // and it is the only default that is safe while the player times out at six
+    // seconds: a request that waits for a slot has already lost its viewer.
+    // Memory is held down by the shared probe pool and by collapsing duplicates,
+    // not by making viewers queue. Set a number to re-enable the valve.
+    const raw = Number(process.env.ELFURA_RESOLVE_PARALLELISM ?? 0);
+    if (!Number.isFinite(raw)) return Number.POSITIVE_INFINITY;
     if (raw === 0) return Number.POSITIVE_INFINITY;
     return Math.max(1, Math.min(512, Math.floor(raw)));
   })();
@@ -588,10 +592,50 @@ export class SourceRegistry {
     if (Number.isFinite(next) && next >= 1) this.resolveParallelism = Math.min(512, next);
   }
 
+  /**
+   * How long a resolve may wait for a slot before it runs anyway.
+   *
+   * The player abandons a playback request after six seconds and the resolve
+   * itself spends 4.6 of them working, so a wait longer than about a second turns
+   * into "no sources" that the viewer sees and nobody can explain. The queue is
+   * therefore a soft valve: it smooths a burst, and past this window it stops
+   * protecting memory and starts costing viewers. Overshooting the ceiling is
+   * always preferable to answering nobody.
+   */
+  private resolveQueuePatienceMs = Math.max(
+    0,
+    Math.min(3000, Number(process.env.ELFURA_RESOLVE_QUEUE_PATIENCE_MS ?? 900) || 0),
+  );
+
+  /** Test hook for the patience window. */
+  setResolveQueuePatience(ms: number): void {
+    const next = Math.floor(Number(ms));
+    if (Number.isFinite(next) && next >= 0) this.resolveQueuePatienceMs = Math.min(3000, next);
+  }
+
   /** Take one of the running slots, waiting in FIFO order when they are all busy. */
   private async withResolveSlot<T>(task: () => Promise<T>): Promise<T> {
+    let occupied = false;
     if (this.resolveActiveCount >= this.resolveParallelism) {
-      await new Promise<void>((resolve) => this.resolveWaiters.push(resolve));
+      let grantedCallback: (() => void) | null = null;
+      const patienced = new Promise<boolean>((resolve) => {
+        const timer = this.resolveQueuePatienceMs > 0
+          ? setTimeout(() => resolve(false), this.resolveQueuePatienceMs)
+          : null;
+        grantedCallback = () => {
+          if (timer) clearTimeout(timer);
+          resolve(true);
+        };
+        this.resolveWaiters.push(grantedCallback);
+      });
+      // false = the patience window closed first: run anyway, over the ceiling.
+      occupied = await patienced;
+      if (!occupied) {
+        const index = grantedCallback ? this.resolveWaiters.indexOf(grantedCallback) : -1;
+        if (index >= 0) this.resolveWaiters.splice(index, 1);
+      }
+    } else {
+      occupied = true;
     }
     this.resolveActiveCount += 1;
     if (this.resolveActiveCount > this.resolvePeakCount) this.resolvePeakCount = this.resolveActiveCount;
@@ -599,7 +643,7 @@ export class SourceRegistry {
       return await task();
     } finally {
       this.resolveActiveCount -= 1;
-      this.resolveWaiters.shift()?.();
+      if (occupied) this.resolveWaiters.shift()?.();
     }
   }
 
@@ -621,18 +665,6 @@ export class SourceRegistry {
     if (running) {
       this.sharedResolveCount += 1;
       return running;
-    }
-    // A late pass exists to pick up what the first response missed, so when the
-    // first response is *still running* there is nothing for it to add: attach
-    // to that run instead of starting a second full one. Players ask three times
-    // per load, which made a third of all playback traffic a duplicate of work
-    // already in flight.
-    if (params.late === true) {
-      const firstPass = this.playbackInFlight.get(SourceRegistry.playbackKey({ ...params, late: false }));
-      if (firstPass) {
-        this.sharedResolveCount += 1;
-        return firstPass;
-      }
     }
     // Registered before a slot is taken, so the duplicates that pile up while a
     // resolve waits in the queue attach to it instead of queueing behind it.

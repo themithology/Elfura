@@ -94,8 +94,50 @@ try {
   const later = await registry.resolvePlayback({ type: 'movie', tmdbId: '2000' });
   assert.notEqual(later, duplicates[0], 'the bound is a queue, not a response cache');
 
+  // The valve is soft on purpose. The player abandons a playback request after
+  // six seconds, so a resolve that waits too long for a slot has already lost its
+  // viewer: past the patience window it runs anyway and the ceiling is exceeded.
+  const slow = new SourceRegistry(cfg);
+  slow.setResolveParallelism(1);
+  slow.setResolveQueuePatience(150);
+  slow.adapters = [
+    {
+      id: 'source-1',
+      label: 'Source 1',
+      enabled: () => true,
+      async resolve() {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return {
+          candidates: [
+            {
+              key: 'lane-a',
+              url: 'https://cdn.example.test/master.m3u8',
+              type: 'hls',
+              quality: '720p',
+              rank: 1,
+            },
+          ],
+        };
+      },
+    },
+  ];
+  const impatientStarted = Date.now();
+  const impatient = await Promise.all(
+    ['3001', '3002', '3003'].map((tmdbId) => slow.resolvePlayback({ type: 'movie', tmdbId })),
+  );
+  const impatientMs = Date.now() - impatientStarted;
+  assert.ok(
+    impatient.every((a) => a && a.sources.length > 0),
+    'a closed patience window still answers every viewer',
+  );
+  assert.ok(
+    impatientMs < 1100,
+    `and does not sit in the queue past its patience (${impatientMs} ms for three 400 ms resolves)`,
+  );
+  assert.equal(slow.admissionStats().queued, 0, 'the impatient path leaves nobody queued');
+
   console.log(
-    '✓ resolve admission: resolves run three at a time, the rest wait, all twelve are answered in full',
+    '✓ resolve admission: the queue is a soft valve — three at a time, patience-bounded, everyone answered',
   );
 } finally {
   globalThis.fetch = realFetch;
