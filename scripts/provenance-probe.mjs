@@ -195,6 +195,41 @@ for (const provider of [...RIVE_PROVIDERS, ...FALLBACK_PROVIDERS]) {
     console.log(`- ${provider}: error ${err instanceof Error ? err.name : 'unknown'}`);
   }
 }
+console.log('## 2b. Source 14 citadel language lanes (every row)');
+/* Citadel publishes one playlist per language rendition. Print the label with
+   the last two path segments so the report shows whether two languages share a
+   directory (index_<lang>.m3u8) or live in per-language folders. */
+const laneShape = (value) => {
+  try {
+    const url = new URL(value);
+    const parts = url.pathname.replace(/[a-f0-9]{16,}/gi, '<hex>').split('/').filter(Boolean);
+    return `${url.hostname}/${parts.slice(-2).join('/')}`;
+  } catch {
+    return '<invalid>';
+  }
+};
+for (const tmdbId of ['579974', '872906', '693134', '1396']) {
+  const url = new URL(SCRAPPER);
+  url.searchParams.set('provider', 'citadel');
+  url.searchParams.set('id', tmdbId);
+  url.searchParams.set('season', '1');
+  url.searchParams.set('episode', '1');
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
+  try {
+    const response = await get(url.href, { Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' });
+    const body = JSON.parse(response.text);
+    const rows = Array.isArray(body?.data?.sources) ? body.data.sources : [];
+    console.log(`- citadel ${tmdbId}: http=${response.status} rows=${rows.length}`);
+    for (const row of rows.slice(0, 20)) {
+      if (!row || typeof row !== 'object') continue;
+      console.log(`    · ${String(row.quality ?? '').slice(0, 30)} | ${String(row.language ?? '')} → ${laneShape(row.url)}`);
+    }
+  } catch (err) {
+    console.log(`- citadel ${tmdbId}: error ${err instanceof Error ? err.name : 'unknown'}`);
+  }
+}
+console.log('');
+
 console.log('');
 
 /* ───────────────────────── Source 12 sweep ───────────────────────── */
