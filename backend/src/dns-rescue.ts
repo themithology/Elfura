@@ -159,7 +159,7 @@ async function systemResolverReliable(): Promise<{ reliable: boolean; failed: st
  * accept: adapters build `new Request(...)` objects and pass those directly, and a
  * Request from one implementation is not accepted by the other.
  */
-function normalizeFetchInput(input: unknown, init?: unknown): { url: string; init: Record<string, unknown> } {
+export function normalizeFetchInput(input: unknown, init?: unknown): { url: string; init: Record<string, unknown> } {
   const merged: Record<string, unknown> = { ...(init as Record<string, unknown> | undefined) };
   if (typeof input === 'string') return { url: input, init: merged };
   if (input instanceof URL) return { url: input.href, init: merged };
@@ -285,6 +285,14 @@ async function applyRescue(log: (line: string) => void, reason: string): Promise
   );
   return true;
 }
+
+/** Is the rescue in charge of resolution right now? */
+export function isRescueActive(): boolean {
+  return installed;
+}
+
+/** The lookup used by the rescued agent, for other agents to reuse. */
+export const rescueLookup = rescuedLookup;
 
 /** Test hook: resolve through the rescue path without patching anything. */
 export async function rescueResolve(host: string): Promise<{ v4: string[]; v6: string[] }> {

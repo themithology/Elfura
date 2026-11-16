@@ -28,6 +28,7 @@ import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
+import { installEgressProfile } from './egress.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -846,14 +847,14 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   // Before anything resolves a hostname: if this container's resolver is dead
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
   // own lookups through public DNS so the adapters can work at all.
-  void installDnsRescue();
+  void installDnsRescue().then(() => installEgressProfile());
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     console.log(
       `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
         ` · adapter timeout: ${cfg.resolveTimeoutMs}ms` +
         ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
-        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 4600}ms`,
+        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
     const state = registry.describeSources();
     const sources = state.enabled.join(', ') || 'none';
