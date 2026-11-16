@@ -10,6 +10,12 @@ name: diagnose-compare
 # Nothing here touches the production server. It builds this commit and resolves
 # one title from a datacenter IP, which is what a player host looks like.
 on:
+  # workflow_dispatch only registers once this file is on the default branch, so a
+  # PR touching the comparison tooling is how it gets exercised before that.
+  pull_request:
+    paths:
+      - 'scripts/diagnose-compare.mjs'
+      - '.github/workflows/diagnose-compare.yml'
   workflow_dispatch:
     inputs:
       type:
