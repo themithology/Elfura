@@ -46,12 +46,22 @@ function headerHints(h: Record<string, unknown> | undefined): Record<string, str
   }
   return headers;
 }
-export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string[]): Promise<RawStreamCandidate[]> {
+export interface NxshaOptions {
+  /** Collected reasons for an empty result. Never contains URLs or ids. */
+  trace?: string[];
+}
+
+export async function fetchFromNxsha(
+  query: SourceQuery,
+  lanes?: readonly string[],
+  options: NxshaOptions = {},
+): Promise<RawStreamCandidate[]> {
   if (!/^\d{1,12}$/.test(query.tmdbId)) return [];
   const season = query.type === 'tv' ? query.season ?? 1 : 0, episode = query.type === 'tv' ? query.episode ?? 1 : 0;
   if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 0 || (query.type === 'tv' && episode < 1)) return [];
   const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
   const params = { tmdbId: query.tmdbId, imdb_id: '', type: query.type, season, episode };
+  const trace = options.trace;
   const get = async (endpoint: string, body: object) => {
     const url = `${ORIGIN}/api/${endpoint}?q=${nxEncode(body)}`;
     // nxsha is same-origin behind one host, so a redirect here is either an
@@ -62,15 +72,40 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
       headers: { 'User-Agent': UA, Referer: ORIGIN + '/', Accept: 'application/json' },
       signal,
     }, { allowSameOriginRedirects: true });
-    if (!response) throw new Error(reason ?? 'upstream unavailable');
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`upstream ${response.status}`); }
+    if (!response) {
+      // fetchNoRedirect reports the network failure instead of throwing it, so
+      // record it here — otherwise the outer catch sees nothing and the panel
+      // shows a bare "Error" for what is usually a reset or a refused connection.
+      trace?.push(`${endpoint}=${reason ?? 'no-response'}`);
+      throw new Error('upstream-unavailable');
+    }
+    if (!response.ok) {
+      trace?.push(`${endpoint}=http=${response.status}`);
+      await response.body?.cancel().catch(() => {});
+      throw new Error('upstream-unavailable');
+    }
     if (Number(response.headers.get('content-length') || 0) > 1_000_000 || !response.body) { await response.body?.cancel(); throw new Error('oversized response'); }
     const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
     try { while (true) { const { value, done } = await reader.read(); if (done) break; size += value.length; if (size > 1_000_000) throw new Error('oversized response'); chunks.push(value); } }
     finally { await reader.cancel().catch(() => {}); }
-    const envelope = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { _hash?: unknown };
-    if (typeof envelope._hash !== 'string') throw new Error('missing envelope');
-    return nxDecode(envelope._hash);
+    const raw = Buffer.concat(chunks).toString('utf8');
+    let envelope: { _hash?: unknown };
+    try {
+      envelope = JSON.parse(raw) as { _hash?: unknown };
+    } catch {
+      trace?.push(`${endpoint}=not-json:${raw.slice(0, 16).replace(/\s+/g, ' ')}`);
+      throw new Error('not-json');
+    }
+    if (typeof envelope._hash !== 'string') {
+      trace?.push(`${endpoint}=no-envelope`);
+      throw new Error('missing envelope');
+    }
+    try {
+      return nxDecode(envelope._hash);
+    } catch {
+      trace?.push(`${endpoint}=undecodable`);
+      throw new Error('undecodable');
+    }
   };
   try {
     const root = await get('servers', params);
@@ -78,6 +113,7 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
     // Restricted to Nitro and Indian-dub HLS lanes; avoid rejected providers,
     // season packs, embed-only hosts and unbounded request fan-out.
     const allowed = lanes ?? ['nitro', 'mhbox', 'awsind', 'rive-citadel', 'rive-primevids', 'rive-flowcast', 'rive-quasar', 'streamflix', 'vidapi', 'stvv'];
+    if (!available.length) trace?.push('servers=none');
     const ids = [...new Set(available.map(s => s.scraper).filter((x): x is string => !!x && allowed.includes(x)))].sort((a,b) => allowed.indexOf(a) - allowed.indexOf(b));
     const rows: Stream[] = []; let finished = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
     const all = Promise.all(ids.map(async provider => {
@@ -87,6 +123,11 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
     if (query.diag) await all;
     else if (ids.length) await Promise.race([all, new Promise<void>(r => { release = r; }), new Promise<void>(r => setTimeout(r, 2200))]);
     if (timer) clearTimeout(timer);
+    if (available.length && !ids.length) {
+      // The provider listed servers, but none matched the lanes we accept. That is
+      // worth saying: it means the provider renamed or dropped their scrapers.
+      trace?.push(`servers=${available.length}/0-matching-lanes`);
+    }
     const build = () => {
       const result: RawStreamCandidate[] = [], seen = new Set<string>();
       for (const s of rows) {
@@ -108,7 +149,19 @@ export async function fetchFromNxsha(query: SourceQuery, lanes?: readonly string
     const current = build();
     if (!query.diag && finished < ids.length && query.onLateResult) void all.then(() => query.onLateResult?.({ candidates: build() }));
     return current;
-  } catch { return []; }
+  } catch (err) {
+    // Keep the reason. Previously this was a bare `catch { return []; }`, so an
+    // empty result could be a network failure, a refused request, a changed
+    // envelope or a genuinely empty server list — and the panel said nothing.
+    if (!trace?.length) {
+      const name = err instanceof Error ? err.name : 'Error';
+      const code = (err as { cause?: { code?: string } })?.cause?.code;
+      // Prefer the underlying cause ("ECONNRESET") over the wrapper name
+      // ("TypeError"), which says nothing about what actually went wrong.
+      trace?.push(`servers=${code ?? (name === 'TimeoutError' ? 'timeout' : name)}`);
+    }
+    return [];
+  }
 }
 /**
  * The ScreenScape lane set, formerly its own adapter (source-7).
@@ -147,12 +200,14 @@ export function createSource5Adapter(
       // is preserved exactly: merging the two must not quietly start fetching six
       // extra lanes on every resolve of a source that was meant to be fast.
       const wantScreenscape = screenscapeEnabled();
+      const trace: string[] = [];
       const [primary, screenscape] = await Promise.all([
-        fetchFromNxsha(query),
+        fetchFromNxsha(query, undefined, { trace }),
         wantScreenscape
           ? fetchFromNxsha(
               { ...query, signal: discoverySignal, diag: [], onLateResult: undefined },
               SCREENSCAPE_LANES,
+              { trace },
             )
           : Promise.resolve([] as RawStreamCandidate[]),
       ]);
@@ -182,7 +237,7 @@ export function createSource5Adapter(
         ms: Date.now() - start,
         detail:
           `candidates=${primaryRows.length},screenscape=${screenscape.length},` +
-          `verified=${extraRows.length}`,
+          `verified=${extraRows.length}${trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''}`,
       });
       return { candidates: [...primaryRows, ...extraRows] };
     },
