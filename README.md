@@ -229,5 +229,18 @@ Open `/roxy` on the backend origin and sign in with the existing `ELFURA_SECRET`
 
 Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
 
+### Proxy list (no `.env` editing)
+
+If source discovery fails because provider websites refuse this server's IP, upload a proxy list instead of editing files. Open `/roxy`, sign in, and use the **Proxy pool** panel: pick your provider's `.txt` file and press **Upload proxy list**, or paste the lines into the box and press **Save pasted list**. One proxy per line, in any of these shapes:
+
+```
+45.38.107.97:6014:username:password     ← Webshare's export format
+http://username:password@host:port
+username:password@host:port
+host:port                                ← open proxy, no login
+```
+
+Press **Test all** to check the list. Each reachable proxy shows the exit address the internet sees, and the panel reports how many answered. If none answer, the panel also probes the same endpoint *without* a proxy: when that works, the proxies are the problem; when it also fails, the hosting network is. Working proxies are used for source discovery in rotation, three per request, with automatic failover and a direct fallback, so one dead proxy never removes a source. A proxy that fails three times rests for a minute and is marked `SKIPPED`. Passwords are written to `data/proxies.json` (mode 0600) and are never returned to the browser or written to the log. The uploaded list takes precedence over the single `ELFURA_UPSTREAM_PROXY` `.env` value. Media playback traffic is not routed through the list.
+
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
 

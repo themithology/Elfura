@@ -23,6 +23,8 @@
  */
 import dns from 'node:dns';
 
+import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
+
 const CACHE_TTL_MS = 5 * 60_000;
 const QUERY_TIMEOUT_MS = 2_500;
 
@@ -257,9 +259,12 @@ async function applyRescue(log: (line: string) => void, reason: string): Promise
   // `connect.lookup` is ours, so that is what gets installed — only here, only
   // after the system resolver has been proven dead and the public ones proven
   // alive, and only when an Agent can actually be built.
-  const undici = await import('undici').catch(() => null);
+  const undici = await loadUndici();
   if (!undici) {
-    log('[elfura-dns] undici is not installed, so lookups cannot be rescued; fix this container\'s resolver');
+    log(
+      `[elfura-dns] undici could not be loaded (${undiciUnavailableReason()}), so lookups cannot be rescued; ` +
+        `fix this container's resolver`,
+    );
     return false;
   }
 

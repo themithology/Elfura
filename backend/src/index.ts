@@ -21,14 +21,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
+import { hasConfiguredSecret, loadBackendConfig, readDotEnvOverlay, type BackendConfig } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
+import { MAX_PROXY_TEXT_BYTES, proxyPool } from './proxy-pool.js';
+import { checkDirect, checkProxies, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
-import { installEgressProfile } from './egress.js';
+import { egressProblem, installEgressProfile, isEgressProfileInstalled } from './egress.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -166,6 +168,27 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
+  const proxyCheckLimiter = new SlidingWindowLimiter(20);
+  /**
+   * What the operator needs to know about the proxy list, with no credential in
+   * it: how many entries exist, where they came from, and whether the network
+   * layer that would use them is actually installed.
+   */
+  const proxySummary = () => {
+    const envProxy = (
+      process.env.ELFURA_UPSTREAM_PROXY ??
+      readDotEnvOverlay().ELFURA_UPSTREAM_PROXY ??
+      ''
+    ).trim();
+    const snapshot = proxyPool.snapshot();
+    return {
+      ...snapshot,
+      envProxyConfigured: !!envProxy,
+      applied: isEgressProfileInstalled(),
+      problem: egressProblem(),
+      probeTarget: proxyProbeTarget(),
+    };
+  };
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -281,6 +304,60 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (pathname === '/roxy/api/clear' && method === 'POST') { roxy.clear(); const ok=await roxy.flush(); reply(ok?200:500,ok?{ok:true}:{error:'Could not persist deletion'}); return; }
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
+      }
+      if (pathname === '/roxy/api/proxies' && method === 'GET') { reply(200, proxySummary()); return; }
+      if (pathname === '/roxy/api/proxies' && method === 'POST') {
+        // The panel reads the picked .txt file and posts its text: a plain text
+        // body keeps the format exactly what the provider handed the operator.
+        try {
+          const body = await readJsonBody(req, MAX_PROXY_TEXT_BYTES + 4096);
+          if (typeof body.text !== 'string') { reply(400, { error: 'expected {text}' }); return; }
+          if (body.text.length > MAX_PROXY_TEXT_BYTES) { reply(413, { error: 'That list is too large' }); return; }
+          const result = proxyPool.replaceText(body.text);
+          if (!result.persisted) { reply(500, { ...proxySummary(), ...result, error: 'Could not save the proxy list' }); return; }
+          reply(200, { ...proxySummary(), ...result });
+        } catch { reply(400, { error: 'Invalid request' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/clear' && method === 'POST') {
+        const ok = proxyPool.clear();
+        reply(ok ? 200 : 500, { ...proxySummary(), ...(ok ? {} : { error: 'Could not save the change' }) });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
+        if (!proxyCheckLimiter.allow('proxy-check')) { reply(429, { error: 'Test limit reached; retry shortly' }); return; }
+        try {
+          const body = await readJsonBody(req, 4096);
+          const all = proxyPool.list();
+          if (!all.length) { reply(400, { error: 'No proxies uploaded yet' }); return; }
+          let selected = all;
+          if (typeof body.id === 'string' && body.id) {
+            const one = proxyPool.find(body.id);
+            if (!one) { reply(400, { error: 'Unknown proxy' }); return; }
+            selected = [one];
+          } else if (all.length > 25) {
+            // Bounded: the panel is a browser tab, not a load generator.
+            selected = all.slice(0, 25);
+          }
+          // Run the no-proxy control only when the list produced no success:
+          // then it answers the only question that matters ("is it my server
+          // or my proxies?"), and costs nothing on a healthy list.
+          const results = await checkProxies(selected);
+          const direct = results.some((result) => result.ok) ? null : await checkDirect();
+          // Feed the result back into the pool: a working proxy loses its
+          // failure count, a dead one starts resting, and the panel can show
+          // which exit address each proxy actually provides.
+          for (const result of results) {
+            if (result.ok) {
+              proxyPool.reportSuccess(result.id);
+              proxyPool.reportIp(result.id, result.ip);
+            } else {
+              proxyPool.reportFailure(result.id, result.error);
+            }
+          }
+          reply(200, { results, direct, probeTarget: proxyProbeTarget() });
+        } catch { reply(400, { error: 'Invalid request' }); }
+        return;
       }
       if (pathname === '/roxy/api/source-websites' && method === 'GET') { reply(200, { sites: roxySourceWebsites(cfg) }); return; }
       if (pathname === '/roxy/api/source-websites/request' && method === 'POST') {

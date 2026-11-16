@@ -17,6 +17,9 @@
  * egress address, but it is not needed and nothing breaks without it.
  */
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
+import { readDotEnvOverlay } from './config.js';
+import { proxyPool, type ProxyEntry } from './proxy-pool.js';
+import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 
 /** A ranged request is media, not discovery: never buffered, never retried. */
 function isMediaRequest(url: string, init: Record<string, unknown>): boolean {
@@ -75,27 +78,80 @@ function alternateProfile(headers: HeaderBag): HeaderBag {
 
 let installed = false;
 
+/**
+ * Why the proxy layer is not active, for the panel. Empty when it is.
+ *
+ * The failure paths in `installEgressProfile` all used to end in a bare `false`,
+ * so the operator saw "saved, restart to activate" forever with no clue which
+ * of the three things went wrong. The panel now prints this instead.
+ */
+let installProblem = '';
+
+export function egressProblem(): string {
+  return installProblem;
+}
+
+/** Close cached proxy dispatchers after the operator uploads a different list. */
+let cachedGeneration = -1;
+let proxyLogAnnounced = false;
+const proxyAgents = new Map<string, import('undici').Dispatcher>();
+
+function releaseProxies(): void {
+  for (const dispatcher of proxyAgents.values()) {
+    void Promise.resolve((dispatcher as { close?: () => unknown }).close?.()).catch(() => {});
+  }
+  proxyAgents.clear();
+}
+
 export async function installEgressProfile(log: (line: string) => void = console.log): Promise<boolean> {
   if (installed) return true;
-  if ((process.env.ELFURA_EGRESS_PROFILE ?? 'browser').toLowerCase() === 'off') return false;
+  const env = { ...readDotEnvOverlay(), ...process.env };
+  if ((env.ELFURA_EGRESS_PROFILE ?? 'browser').toLowerCase() === 'off') {
+    installProblem = 'ELFURA_EGRESS_PROFILE=off, so the browser profile and the proxy list are disabled on purpose.';
+    return false;
+  }
 
-  const undici = await import('undici').catch(() => null);
-  if (!undici) return false;
+  const undici = await loadUndici();
+  if (!undici) {
+    installProblem = `undici could not be loaded (${undiciUnavailableReason()}).`;
+    log(`[elfura-egress] undici could not be loaded (${undiciUnavailableReason()}); using Node's built-in fetch without a proxy`);
+    return false;
+  }
 
   const connect: Record<string, unknown> = { timeout: 10_000 };
   // Keep the DNS rescue's resolver if it took over: the profile must not undo it.
   if (isRescueActive()) connect.lookup = rescueLookup;
 
-  const proxy = (process.env.ELFURA_UPSTREAM_PROXY ?? '').trim();
-  let agent: import('undici').Dispatcher;
+  const proxy = (env.ELFURA_UPSTREAM_PROXY ?? '').trim();
+  let directAgent: import('undici').Dispatcher;
   try {
-    agent = proxy
+    directAgent = proxy
       ? new undici.ProxyAgent(proxy)
       : new undici.Agent({ connect: connect as never, allowH2: true, keepAliveTimeout: 10_000 });
-  } catch {
+  } catch (error) {
+    installProblem =
+      'the outbound agent could not be created: ' +
+      ((error as Error)?.message ?? String(error)) +
+      (proxy ? ' Check ELFURA_UPSTREAM_PROXY.' : '');
     log('[elfura-egress] could not build the outbound agent; leaving fetch untouched');
     return false;
   }
+
+  const fetch = undici.fetch;
+  type FetchResult = Awaited<ReturnType<typeof fetch>>;
+
+  /** One dispatcher per uploaded proxy, rebuilt when the list changes. */
+  const agentFor = (entry: ProxyEntry): import('undici').Dispatcher => {
+    if (cachedGeneration !== proxyPool.generation) {
+      releaseProxies();
+      cachedGeneration = proxyPool.generation;
+    }
+    const existing = proxyAgents.get(entry.id);
+    if (existing) return existing;
+    const created = new undici!.ProxyAgent(entry.url);
+    proxyAgents.set(entry.id, created);
+    return created;
+  };
 
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
@@ -109,29 +165,76 @@ export async function installEgressProfile(log: (line: string) => void = console
     const firstInit = {
       ...(normalized.init as object),
       headers: browserProfile(headers, normalized.url),
-      dispatcher: agent,
     };
-    let response = await undici.fetch(normalized.url, firstInit as never);
+
+    // Uploaded proxies take precedence over the single `.env` proxy, because an
+    // operator who uploaded a list asked for that list. Each request starts one
+    // proxy further along; a transport failure moves to the next, and when the
+    // whole list is unreachable the request still leaves over the direct agent
+    // rather than failing the source outright.
+    let dispatcher: import('undici').Dispatcher = directAgent;
+    let usedProxy: ProxyEntry | null = null;
+    let response: FetchResult | null = null;
+    const candidates = proxyPool.nextCandidates(3);
+    if (candidates.length && !proxyLogAnnounced) {
+      proxyLogAnnounced = true;
+      log(`[elfura-egress] proxy list active: ${proxyPool.size} uploaded prox${proxyPool.size === 1 ? 'y' : 'ies'}, rotating per request`);
+    }
+    for (const candidate of candidates) {
+      try {
+        const candidateDispatcher = agentFor(candidate);
+        response = await fetch(normalized.url, { ...firstInit, dispatcher: candidateDispatcher } as never);
+        proxyPool.reportSuccess(candidate.id);
+        dispatcher = candidateDispatcher;
+        usedProxy = candidate;
+        break;
+      } catch (error) {
+        proxyPool.reportFailure(candidate.id, error);
+      }
+    }
+    if (!response) {
+      response = await fetch(normalized.url, { ...firstInit, dispatcher: directAgent } as never);
+    }
 
     // 403 is what Cloudflare answers to a request it dislikes. One retry with a
     // plainer fingerprint costs nothing when it fails and is a source back when
-    // it works.
+    // it works. A refusal through a proxy may also be that proxy's reputation,
+    // so the retry is attempted over the next proxy when one is available.
     if (response.status === 403) {
       await response.body?.cancel().catch(() => {});
-      const retryInit = {
-        ...(normalized.init as object),
-        headers: alternateProfile(firstInit.headers as HeaderBag),
-        dispatcher: agent,
-      };
-      response = await undici.fetch(normalized.url, retryInit as never).catch(() => response);
+      const retryHeaders = alternateProfile(firstInit.headers as HeaderBag);
+      let retried: FetchResult | null = null;
+      if (usedProxy) {
+        const next = proxyPool.nextCandidates(1).find((entry) => entry.id !== usedProxy!.id);
+        if (next) {
+          try {
+            retried = await fetch(normalized.url, { ...firstInit, headers: retryHeaders, dispatcher: agentFor(next) } as never);
+            proxyPool.reportSuccess(next.id);
+            if (retried.status !== 403) return retried;
+            await retried.body?.cancel().catch(() => {});
+            retried = null;
+          } catch (error) {
+            proxyPool.reportFailure(next.id, error);
+          }
+        }
+      }
+      response = await fetch(normalized.url, { ...firstInit, headers: retryHeaders, dispatcher } as never).catch(
+        () => response,
+      );
     }
     return response;
   }) as typeof fetch;
 
   globalThis.fetch = profiledFetch;
   installed = true;
+  const uploaded = proxyPool.size;
   log(
-    `[elfura-egress] discovery requests use a browser profile${proxy ? ` via ${proxy.replace(/\/\/[^@]*@/, '//***@')}` : ' (HTTP/2, Chrome headers, one retry on 403)'}`,
+    `[elfura-egress] discovery requests use a browser profile` +
+      (uploaded
+        ? ` via ${uploaded} uploaded prox${uploaded === 1 ? 'y' : 'ies'}`
+        : proxy
+          ? ' via configured proxy'
+          : ' (HTTP/2, Chrome headers, one retry on 403)'),
   );
   return true;
 }

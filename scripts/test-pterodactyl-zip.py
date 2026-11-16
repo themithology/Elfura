@@ -36,6 +36,19 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
     assert (target / 'data/roxy.json').read_text() == persisted
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
+    # Panels that run `npm install` at boot must succeed. Vendoring undici as a
+    # `file:` dependency made npm execute undici's own `prepare` script
+    # (`husky && node ./scripts/platform-shell.js`), which aborted the whole
+    # install and left the proxy layer permanently unavailable. Offline check:
+    # the archive must carry no lifecycle scripts at all.
+    with zipfile.ZipFile(bundle) as archive:
+        for name in archive.namelist():
+            if name.endswith('/package.json'):
+                manifest = json.loads(archive.read(name))
+                assert not manifest.get('scripts'), f'{name} still declares lifecycle scripts: {manifest["scripts"]}'
+        assert 'vendor/undici/index.js' in archive.namelist(), 'the undici fallback copy is missing'
+        assert 'node_modules/undici/index.js' in archive.namelist(), 'the bundled undici is missing'
+
     env = dict(os.environ, HOST='127.0.0.1', SERVER_PORT=str(port))
     env.pop('ELFURA_SECRET', None); env.pop('ROXY_DATA_DIR', None)
     process = subprocess.Popen(['node', 'index.js'], cwd=tmp, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -57,7 +70,23 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         assert client.open(req).status == 200
         overview = json.load(client.open(base + '/roxy/api/overview'))
         assert overview['bans'] == ['https://example.org']
-        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview.')
+
+        # The proxy uploader is the feature an operator reaches for when a source
+        # has gone quiet, so it is exercised against the real extracted bundle:
+        # the list saves, and the panel is told whether the proxy layer is live.
+        proxy_req = urllib.request.Request(
+            base + '/roxy/api/proxies',
+            data=json.dumps({'text': '45.38.107.97:6014:jaaphwvh:7mmcluipg93z\r\n64.137.96.74:6641:jaaphwvh:7mmcluipg93z'}).encode(),
+            headers={'Origin': base, 'Content-Type': 'application/json'},
+        )
+        saved = json.load(client.open(proxy_req))
+        assert saved['count'] == 2, saved
+        assert saved['applied'] is True, 'the bundle must install the egress profile that uses the list'
+        assert saved['problem'] == '', saved['problem']
+        assert all('7mmcluipg93z' not in json.dumps(row) for row in saved['proxies']), 'credentials leaked to the panel'
+        assert (target / 'data/proxies.json').is_file(), 'the list is not persisted for the next boot'
+
+        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login, overview and the proxy uploader.')
     finally:
         process.terminate()
         try: process.wait(timeout=5)
