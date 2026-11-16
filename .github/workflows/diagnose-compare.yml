@@ -31,6 +31,9 @@ on:
         description: 'episode (tv only)'
         default: ''
 
+permissions:
+  contents: write
+
 jobs:
   compare:
     runs-on: ubuntu-latest
@@ -79,6 +82,10 @@ jobs:
       # whole comparison came about in the first place). Committing the report to
       # an orphan branch means the answer is always readable from the repository
       # itself, with no special access:  git show ci-diagnose:latest.txt
+      # Needs `permissions: contents: write`, which the repository's default
+      # workflow token does not have. Declared here so it works without a repo
+      # settings change; if the organization still refuses, the step says so in
+      # the log instead of pretending it published something.
       - name: Publish the report to the ci-diagnose branch
         if: always()
         continue-on-error: true
@@ -100,7 +107,11 @@ jobs:
           cat header.txt latest.txt > ci-diagnose.txt
           git add -f ci-diagnose.txt
           git commit -m "diagnose-compare run ${{ github.run_id }}"
-          git push --force origin HEAD:ci-diagnose
+          if git push --force origin HEAD:ci-diagnose; then
+            echo "published to branch ci-diagnose"
+          else
+            echo "::warning::could not push ci-diagnose (workflow token is read-only here); the artifact still has the report"
+          fi
 
       - name: Keep the raw report
         if: always()
