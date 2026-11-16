@@ -74,6 +74,34 @@ jobs:
             echo "raw=0 there is refused on your host, not broken in code."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The artifact is uploaded for humans, but the Actions log and artifact
+      # blobs live on a host that some networks cannot reach (which is how this
+      # whole comparison came about in the first place). Committing the report to
+      # an orphan branch means the answer is always readable from the repository
+      # itself, with no special access:  git show ci-diagnose:latest.txt
+      - name: Publish the report to the ci-diagnose branch
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -s /tmp/compare.txt ]; then echo 'no report produced'; exit 0; fi
+          cp /tmp/compare.txt /tmp/latest.txt
+          git config user.name  'diagnose-compare'
+          git config user.email 'diagnose-compare@users.noreply.github.com'
+          # A fresh orphan branch each run: no history to grow, no merge conflicts.
+          git checkout --orphan ci-diagnose-tmp
+          git rm -r --cached . >/dev/null 2>&1 || true
+          cp /tmp/latest.txt ./latest.txt
+          printf 'run %s\ncommit %s\ntitle %s/%s\n\n' \
+            "${{ github.run_id }}" "${{ github.sha }}" \
+            "${{ github.event.inputs.type || 'movie' }}" \
+            "${{ github.event.inputs.tmdb || '550' }}" > header.txt
+          cat header.txt latest.txt > ci-diagnose.txt
+          git add -f ci-diagnose.txt
+          git commit -m "diagnose-compare run ${{ github.run_id }}"
+          git push --force origin HEAD:ci-diagnose
+
       - name: Keep the raw report
         if: always()
         uses: actions/upload-artifact@v4
