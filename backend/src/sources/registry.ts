@@ -569,6 +569,18 @@ export class SourceRegistry {
       this.sharedResolveCount += 1;
       return running;
     }
+    // A late pass exists to pick up what the first response missed, so when the
+    // first response is *still running* there is nothing for it to add: attach
+    // to that run instead of starting a second full one. Players ask three times
+    // per load, which made a third of all playback traffic a duplicate of work
+    // already in flight.
+    if (params.late === true) {
+      const firstPass = this.playbackInFlight.get(SourceRegistry.playbackKey({ ...params, late: false }));
+      if (firstPass) {
+        this.sharedResolveCount += 1;
+        return firstPass;
+      }
+    }
     const started = this.resolvePlaybackOnce(params).finally(() => {
       if (this.playbackInFlight.get(key) === started) this.playbackInFlight.delete(key);
     });

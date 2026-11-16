@@ -315,7 +315,16 @@ export interface PerfSnapshot {
     loadAvg1: number;
     cgroup: CgroupStats;
   };
-  memory: { rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number };
+  memory: {
+    rssMb: number;
+    heapUsedMb: number;
+    heapTotalMb: number;
+    externalMb: number;
+    /** Buffers and sockets — undici pools, TLS records, probe manifests. */
+    arrayBuffersMb: number;
+    /** rss minus the JS heap. Grows with open connections, not with code. */
+    nonHeapMb: number;
+  };
   gc: { count: number; pauseMs: number; maxPauseMs: number };
   traffic: {
     requests: number;
@@ -382,6 +391,8 @@ export function perfSnapshot(): PerfSnapshot {
       heapUsedMb: Math.round(mem.heapUsed / 1048576),
       heapTotalMb: Math.round(mem.heapTotal / 1048576),
       externalMb: Math.round(mem.external / 1048576),
+      arrayBuffersMb: Math.round(mem.arrayBuffers / 1048576),
+      nonHeapMb: Math.max(0, Math.round((mem.rss - mem.heapTotal) / 1048576)),
     },
     gc: { count: gc.count, pauseMs: Math.round(gc.pauseMs), maxPauseMs: Math.round(gc.maxPauseMs) },
     traffic: {
