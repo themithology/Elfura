@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import { lookup } from 'node:dns/promises';
+import dns from 'node:dns';
 import net from 'node:net';
 import tls from 'node:tls';
 import path from 'node:path';
@@ -95,6 +96,40 @@ const EGRESS_TARGETS: { label: string; host: string; path: string }[] = [
 ];
 
 const STAGE_TIMEOUT_MS = 3000;
+/** Total per host, all four stages. Above this a stage is reported as skipped. */
+const TARGET_BUDGET_MS = 8000;
+
+/**
+ * `dns.lookup` takes no timeout and no signal, and a resolver that does not answer
+ * blocks it for as long as the libc resolver wants — minutes. That is enough to
+ * turn this endpoint into a 504 from whatever sits in front of the server, which
+ * is what happened in production. Every stage is therefore raced against a timer,
+ * and the report says "timeout" instead of hanging.
+ */
+function withDeadline<T>(promise: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(onTimeout());
+    }, ms);
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(onTimeout());
+      },
+    );
+  });
+}
 
 async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: string[] }> {
   const run = async (target: { label: string; host: string; path: string }): Promise<EgressStage> => {
@@ -103,15 +138,21 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
     const t0 = Date.now();
     let address = '';
     let family = 4;
-    try {
-      const resolved = await lookup(target.host, { all: false });
-      address = resolved.address;
-      family = resolved.family;
-      stage.dns = { ok: true, ms: Date.now() - t0, address, family };
-    } catch (err) {
-      stage.dns = { ok: false, ms: Date.now() - t0, error: (err as { code?: string })?.code || 'lookup-failed' };
+    const dnsResult = await withDeadline(
+      lookup(target.host, { all: false }).then(
+        (resolved) => ({ ok: true as const, address: resolved.address, family: resolved.family }),
+        (err: { code?: string }) => ({ ok: false as const, error: err?.code || 'lookup-failed' }),
+      ),
+      STAGE_TIMEOUT_MS,
+      () => ({ ok: false as const, error: 'timeout' }),
+    );
+    if (!dnsResult.ok) {
+      stage.dns = { ok: false, ms: Date.now() - t0, error: dnsResult.error };
       return stage;
     }
+    address = dnsResult.address;
+    family = dnsResult.family;
+    stage.dns = { ok: true, ms: Date.now() - t0, address, family };
 
     const tcpStart = Date.now();
     const tcpOk = await new Promise<boolean>((resolve) => {
@@ -130,6 +171,10 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
     });
     if (!tcpOk) return stage;
 
+    if (Date.now() - t0 > TARGET_BUDGET_MS) {
+      stage.tls = { ok: false, ms: 0, error: 'skipped-budget' };
+      return stage;
+    }
     const tlsStart = Date.now();
     const tlsOk = await new Promise<boolean>((resolve) => {
       const socket = tls.connect({ host: address, port: 443, servername: target.host, rejectUnauthorized: false });
@@ -176,9 +221,38 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
     return stage;
   };
 
-  const targets = await Promise.all(EGRESS_TARGETS.map((target) => run(target)));
+  // Overall cap. Whatever has finished by then is reported; whatever has not is
+  // named, so the endpoint always answers well inside any gateway timeout in
+  // front of it instead of becoming a 504.
+  const partial: EgressStage[] = [];
+  const pending = new Set(EGRESS_TARGETS.map((t) => t.label));
+  const runs = EGRESS_TARGETS.map((target) =>
+    run(target).then((stage) => {
+      partial.push(stage);
+      pending.delete(target.label);
+      return stage;
+    }),
+  );
+  const finished = await Promise.race([
+    Promise.all(runs).then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 9000)),
+  ]);
+  const ordered = [...partial].sort(
+    (a, b) => EGRESS_TARGETS.findIndex((t) => t.label === a.label) - EGRESS_TARGETS.findIndex((t) => t.label === b.label),
+  );
+  const targets = finished
+    ? ordered
+    : EGRESS_TARGETS.map(
+        (t) =>
+          partial.find((stage) => stage.label === t.label) ?? {
+            label: t.label,
+            host: t.host,
+            dns: { ok: false, ms: 0, error: 'report-timeout' },
+          },
+      );
 
   const verdict: string[] = [];
+  if (!finished) verdict.push(`report-cut-off: ${[...pending].join(',')} did not answer within 9 s`);
   const control = targets.find((t) => t.label === 'control-tmdb');
   const providers = targets.filter((t) => t.label !== 'control-tmdb');
   const allDnsOk = targets.every((t) => t.dns?.ok);
@@ -199,8 +273,27 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
 }
 
 /** Just the connection-stage report: no adapters, no TMDB, a few seconds at most. */
-export async function reportEgress(): Promise<{ targets: EgressStage[]; verdict: string[] }> {
-  return probeEgressStages();
+export async function reportEgress(): Promise<{
+  targets: EgressStage[];
+  verdict: string[];
+  resolver: string[];
+  elapsedMs: number;
+  node: string;
+}> {
+  const started = Date.now();
+  const report = await probeEgressStages();
+  return {
+    ...report,
+    resolver: (() => {
+      try {
+        return dns.getServers();
+      } catch {
+        return [];
+      }
+    })(),
+    elapsedMs: Date.now() - started,
+    node: process.version,
+  };
 }
 
 let buildInfoCache: { commit: string } | null = null;

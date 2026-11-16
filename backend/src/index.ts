@@ -894,6 +894,25 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         console.log(`[elfura-net] ${parts.join(' ')}`);
       })
       .catch(() => {});
+    // The same question, one layer deeper: if the adapters all report zero
+    // candidates, the console should say at which stage the outbound connection
+    // dies instead of leaving "timeout" as the only clue.
+    void reportEgress()
+      .then((report) => {
+        const rows = report.targets.map((t) => {
+          const where = !t.dns?.ok
+            ? `dns-fail(${t.dns?.error ?? '?'})`
+            : !t.tcp?.ok
+              ? `tcp-fail(${t.tcp?.error ?? '?'})`
+              : !t.tls?.ok
+                ? `tls-fail(${t.tls?.error ?? '?'})`
+                : `http-${t.http?.status ?? '?'}`;
+          return `${t.label}=${where}`;
+        });
+        console.log(`[elfura-egress] ${rows.join(' ')}`);
+        for (const line of report.verdict) console.log(`[elfura-egress] ${line}`);
+      })
+      .catch(() => {});
   });
   return { server, cfg, registry };
 }
