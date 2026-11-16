@@ -138,12 +138,15 @@ export function parseRiveRow(row: unknown, provider: string, rank: number): Pars
   const language = labelLanguage(labelText);
   if (provider === 'citadel' && !language) return null; // citadel rows always name their audio
   const quality = qualityText(item.quality ?? item.label);
-  // Citadel publishes one playlist per language rendition (index_hin, index_eng…).
-  // Collapsing the filename made two genuine dubs look like one file wearing two
-  // labels, and the merge guard then dropped BOTH — that is why a whole source
-  // came back as a single language.
+  // Citadel signs every row separately, and its path is only a CDN routing key:
+  // the same `/720/index_287.m3u8` showed up for two different titles and, for
+  // one title, under Hindi and Kannada labels with different signatures. The
+  // signature is what selects the rendition, so it is part of the identity.
+  // Anything narrower collapsed real language lanes into one "file" and the
+  // conflicting-label guard then dropped all of them, which is why a source with
+  // five dubs listed one.
   const identity = provider === 'citadel'
-    ? url.pathname
+    ? `${url.pathname}${url.search}`
     : url.pathname.replace(/\/index_[a-z0-9_-]+\.m3u8$/i, '/index.m3u8');
 
   return {

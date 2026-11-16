@@ -6,11 +6,11 @@ import { loadBackendConfig } from '../../dist/backend/config.js';
 const originalFetch = globalThis.fetch;
 const requests = [];
 const exp = Math.floor(Date.now() / 1000) + 3600;
-const makeUrl = (path, host = 'img1.fcxmb.com') => {
+const makeUrl = (path, host = 'img1.fcxmb.com', signature = 'signed_fixture_signature_1234567890==') => {
   const url = new URL(`https://${host}${path}`);
   url.searchParams.set('Expires', String(exp));
   url.searchParams.set('KeyName', 'Signature');
-  url.searchParams.set('Signature', 'signed_fixture_signature_1234567890==');
+  url.searchParams.set('Signature', signature);
   return url.href;
 };
 const rows = [
@@ -19,6 +19,10 @@ const rows = [
   { source: 'Citadel', format: 'hls', quality: '720p | English', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com') },
   // A different rendition file is a different lane, even on another mirror.
   { source: 'Citadel', format: 'hls', quality: '720p | Japanese', url: makeUrl('/hls_mps/abc123/720/index_288.m3u8', 'img2.fcxmb.com') },
+  // One path, two signatures: the signature selects the rendition, so both
+  // labels are real lanes. This is the shape that used to collapse to one.
+  { source: 'Citadel', format: 'hls', quality: '720p | Telugu', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com', 'signed_telugu_1234567890==') },
+  { source: 'Citadel', format: 'hls', quality: '720p | Kannada', url: makeUrl('/hls_mps/abc123/720/index_287.m3u8', 'img1.hscow.com', 'signed_kannada_1234567890==') },
   // The very same file wearing two language labels: drop both rather than guess.
   { source: 'Citadel', format: 'hls', quality: '720p | Bengali', url: makeUrl('/myhls_mps/2024/Dune2/Mirror_720/index_266.m3u8') },
   { source: 'Citadel', format: 'hls', quality: '720p | Kannada', url: makeUrl('/myhls_mps/2024/Dune2/Mirror_720/index_266.m3u8') },
@@ -72,19 +76,20 @@ try {
   const parsed = citadelCandidates(apiBody);
   assert.equal(
     parsed.length,
-    4,
-    'every language rendition is its own lane (hi, ta, en, ja); one file with two labels is dropped',
+    6,
+    'every language rendition is its own lane (hi, ta, en, ja, te, kn); one file with two labels is dropped',
   );
-  assert.deepEqual(new Set(parsed.map(candidate => candidate.audioLang)), new Set(['hi', 'ta', 'en', 'ja']));
+  assert.deepEqual(new Set(parsed.map(candidate => candidate.audioLang)), new Set(['hi', 'ta', 'en', 'ja', 'te', 'kn']));
   assert(
     parsed.every(candidate => candidate.audioLabel && !candidate.audioLabel.includes('unverified')),
     'the label names the real language, with no "unverified" wording',
   );
-  assert(parsed.every(candidate => !['bn', 'kn'].includes(candidate.audioLang ?? '')), 'conflicting mirror labels are dropped');
+  assert(parsed.every(candidate => candidate.audioLang !== 'bn'), 'the same signed url with two labels is dropped entirely');
+  assert.equal(parsed.filter(candidate => candidate.audioLang === 'kn').length, 1, 'a distinct signature keeps its own Kannada lane');
   assert(parsed.every(candidate => !JSON.stringify(candidate).includes('hindi.vtt')));
 
   const movie = await fetchFromCitadel({ type: 'movie', tmdbId: '693134' });
-  assert.equal(movie.length, 5, 'four citadel language rows plus one PrimeVids CDN row');
+  assert.equal(movie.length, 7, 'six citadel language rows plus one PrimeVids CDN row');
   const citadelRequest = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert(citadelRequest, 'the citadel provider is always asked');
   assert.equal(citadelRequest.url.searchParams.get('id'), '693134');
@@ -96,7 +101,7 @@ try {
   );
   requests.length = 0;
   const tv = await fetchFromCitadel({ type: 'tv', tmdbId: '1396', season: 2, episode: 3 });
-  assert.equal(tv.length, 5);
+  assert.equal(tv.length, 7, 'six citadel language rows plus the PrimeVids CDN row');
   const tvCitadel = requests.find(request => request.url.searchParams.get('provider') === 'citadel');
   assert.equal(tvCitadel.url.searchParams.get('season'), '2');
   assert.equal(tvCitadel.url.searchParams.get('episode'), '3');
@@ -125,7 +130,12 @@ try {
   requests.length = 0;
   const adapter = createSource14Adapter(() => true);
   const resolved = await adapter.resolve({ type: 'movie', tmdbId: '693134', diag: [] });
-  assert.equal(resolved.candidates.length, 4, 'every living language lane survives the adapter');
+  assert.equal(resolved.candidates.length, 6, 'every living language lane survives the adapter');
+  assert.deepEqual(
+    new Set(resolved.candidates.map(candidate => candidate.audioLang)),
+    new Set(['hi', 'ta', 'en', 'ja', 'te', 'kn']),
+    'no language is swallowed by a shared path',
+  );
   assert(resolved.candidates.every(candidate => candidate.diagnosticLane === 'C'));
 
   // PrimeVids rows carry no language, publish unsigned CDN URLs, and are merged

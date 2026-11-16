@@ -117,8 +117,37 @@ const resolveBudgetMs = (): number => {
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 36;
-/** Lanes any single source may contribute to one response. */
-const MAX_LANES_PER_SOURCE = 4;
+/** Lanes any single source may contribute to one response. Eight, not four: a
+ * source that carries five language dubs should list five lanes, and the
+ * response-wide caps still bound the total. */
+const MAX_LANES_PER_SOURCE = 8;
+
+/** Order a source's lanes so every distinct audio language gets a slot before
+ * any second quality of the same language. Without this, a source that returns
+ * one file per language spent its whole window on 480p copies of one dub and
+ * the rest of its languages never reached the response. */
+export function languageFirstOrder(candidates: RawStreamCandidate[]): RawStreamCandidate[] {
+  const seen = new Set<string>();
+  const firsts: RawStreamCandidate[] = [];
+  const rest: RawStreamCandidate[] = [];
+  const firstSeen = new Set<RawStreamCandidate>();
+  for (const candidate of candidates) {
+    const lang = candidate.audioLang ? normalizeLang(candidate.audioLang).code : '';
+    if (!lang || lang === 'und') {
+      firsts.push(candidate);
+      firstSeen.add(candidate);
+      continue;
+    }
+    if (seen.has(lang)) {
+      rest.push(candidate);
+      continue;
+    }
+    seen.add(lang);
+    firsts.push(candidate);
+    firstSeen.add(candidate);
+  }
+  return [...firsts, ...rest];
+}
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
@@ -644,7 +673,7 @@ export class SourceRegistry {
       // Breadth first: probe each adapter's best lanes before any adapter's
       // leftovers. A single source with 20 candidates must not starve every
       // other source out of the shared verification budget.
-      const perAdapter = ready.map((entry) => entry.result.candidates);
+      const perAdapter = ready.map((entry) => languageFirstOrder(entry.result.candidates));
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
       const tagged: RawStreamCandidate[] = [];
       for (let i = 0; i < breadth; i += 1) {
@@ -835,7 +864,7 @@ export class SourceRegistry {
       for (const slot of slots) {
         if (!slot) continue;
         let added = 0;
-        for (const cand of slot.result.candidates) {
+        for (const cand of languageFirstOrder(slot.result.candidates)) {
           if (added >= MAX_LANES_PER_SOURCE) break;
           if (seenUrls.has(cand.url) || blockedByRuntime.has(cand.url)) continue;
           const evidence = cachedCandidateEvidence(cand);

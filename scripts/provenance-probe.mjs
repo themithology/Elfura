@@ -464,6 +464,8 @@ const adapterCases = [
   ['source-14', createSource14Adapter(() => true), { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
   ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '693134' }],
   ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '913290' }],
+  ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '872906' }],
+  ['source-14', createSource14Adapter(() => true), { type: 'movie', tmdbId: '579974' }],
   ['source-12', createSource12Adapter(() => true), { type: 'tv', tmdbId: '1396', season: 1, episode: 1 }],
   ['source-12', createSource12Adapter(() => true), { type: 'movie', tmdbId: '872585' }],
 ];
@@ -487,6 +489,7 @@ for (const [id, adapter, query] of adapterCases) {
     languages.set(key, (languages.get(key) ?? 0) + 1);
   }
   console.log(`    audio: ${[...languages.entries()].map(([key, count]) => `${key}:${count}`).join(' ')}`);
+  console.log(`    labels: ${resolved.map((candidate) => candidate.audioLabel ?? '—').join(', ').slice(0, 200)}`);
   const qualities = [...new Set(resolved.map((candidate) => candidate.quality))].join('/');
   console.log(`    quality: ${qualities || 'none'} · hosts: ${[...new Set(resolved.map((c) => hostOf(c.url)))].slice(0, 4).join(',')}`);
 }
