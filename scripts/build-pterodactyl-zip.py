@@ -277,7 +277,7 @@ def main() -> None:
 
         # Operator tooling that depends on the pre-built dist/: mint per-install
         # AniVortex credentials inside the container, and probe them.
-        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs", "env-audit.mjs"):
+        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs", "env-audit.mjs", "egress-report.mjs"):
             helper_path = ROOT / "scripts" / helper
             if helper_path.is_file():
                 write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
@@ -290,6 +290,16 @@ def main() -> None:
         for prefix in ("vendor/ts-shim", "node_modules/typescript"):
             write_entry(zf, f"{prefix}/package.json", TS_SHIM_PKG_JSON.encode("utf-8"))
             write_entry(zf, f"{prefix}/index.cjs", TS_SHIM_INDEX_CJS.encode("utf-8"))
+
+        # undici is a real runtime dependency now, not a shim: the DNS rescue
+        # installs its fetch with an Agent whose connector resolves through
+        # explicit name servers, which is the only supported seam Node exposes.
+        undici_dir = ROOT / "node_modules" / "undici"
+        if undici_dir.is_dir():
+            for file_path in sorted(undici_dir.rglob("*")):
+                if file_path.is_file():
+                    rel = file_path.relative_to(undici_dir).as_posix()
+                    write_entry(zf, f"node_modules/undici/{rel}", file_path.read_bytes())
 
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():

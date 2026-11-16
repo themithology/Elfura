@@ -10,6 +10,11 @@
  */
 
 import fs from 'node:fs';
+import { lookup } from 'node:dns/promises';
+import { rescueResolve } from './dns-rescue.js';
+import dns from 'node:dns';
+import net from 'node:net';
+import tls from 'node:tls';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, type BackendConfig } from './config.js';
@@ -63,6 +68,259 @@ export async function probeOutbound(cfg: BackendConfig): Promise<Record<string, 
   return out;
 }
 
+/**
+ * Where does an outbound connection actually fail?
+ *
+ * "Every adapter returned zero candidates" has four very different causes: the
+ * name does not resolve, the TCP connection never opens, the TLS handshake hangs,
+ * or the site answers with a challenge. Reported as one flat timeout they are
+ * indistinguishable, and guessing between them costs hours. This walks the stages
+ * of a real connection to the hosts the adapters use, on the server itself, and
+ * says which stage failed.
+ */
+export interface EgressStage {
+  label: string;
+  host: string;
+  dns?: { ok: boolean; ms: number; address?: string; family?: number; error?: string };
+  tcp?: { ok: boolean; ms: number; error?: string };
+  tls?: { ok: boolean; ms: number; error?: string; cn?: string };
+  http?: { ok: boolean; ms: number; status?: number; error?: string };
+}
+
+const EGRESS_TARGETS: { label: string; host: string; path: string }[] = [
+  { label: 'control-tmdb', host: 'api.themoviedb.org', path: '/3/configuration' },
+  { label: 'rivestream', host: 'www.rivestream.app', path: '/' },
+  { label: 'rive-api', host: 'scrapper.rivestream.app', path: '/' },
+  { label: 'vidbolt', host: 'vidbolt.xyz', path: '/' },
+  { label: 'vidzee', host: 'player.vidzee.wtf', path: '/' },
+  { label: 'vixsrc', host: 'vixsrc.to', path: '/' },
+];
+
+const STAGE_TIMEOUT_MS = 3000;
+/** Total per host, all four stages. Above this a stage is reported as skipped. */
+const TARGET_BUDGET_MS = 8000;
+
+/**
+ * `dns.lookup` takes no timeout and no signal, and a resolver that does not answer
+ * blocks it for as long as the libc resolver wants — minutes. That is enough to
+ * turn this endpoint into a 504 from whatever sits in front of the server, which
+ * is what happened in production. Every stage is therefore raced against a timer,
+ * and the report says "timeout" instead of hanging.
+ */
+function withDeadline<T>(promise: Promise<T>, ms: number, onTimeout: () => T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(onTimeout());
+    }, ms);
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(onTimeout());
+      },
+    );
+  });
+}
+
+async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: string[] }> {
+  const run = async (target: { label: string; host: string; path: string }): Promise<EgressStage> => {
+    const stage: EgressStage = { label: target.label, host: target.host };
+
+    const t0 = Date.now();
+    let address = '';
+    let family = 4;
+    const dnsResult = await withDeadline(
+      lookup(target.host, { all: false }).then(
+        (resolved) => ({ ok: true as const, address: resolved.address, family: resolved.family }),
+        (err: { code?: string }) => ({ ok: false as const, error: err?.code || 'lookup-failed' }),
+      ),
+      STAGE_TIMEOUT_MS,
+      () => ({ ok: false as const, error: 'timeout' }),
+    );
+    if (!dnsResult.ok) {
+      stage.dns = { ok: false, ms: Date.now() - t0, error: dnsResult.error };
+      return stage;
+    }
+    address = dnsResult.address;
+    family = dnsResult.family;
+    stage.dns = { ok: true, ms: Date.now() - t0, address, family };
+
+    const tcpStart = Date.now();
+    const tcpOk = await new Promise<boolean>((resolve) => {
+      const socket = net.connect({ host: address, port: 443 });
+      let done = false;
+      const finish = (ok: boolean, error?: string) => {
+        if (done) return;
+        done = true;
+        stage.tcp = { ok, ms: Date.now() - tcpStart, ...(error ? { error } : {}) };
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(STAGE_TIMEOUT_MS, () => finish(false, 'timeout'));
+      socket.once('connect', () => finish(true));
+      socket.once('error', (err) => finish(false, (err as { code?: string })?.code || 'connect-error'));
+    });
+    if (!tcpOk) return stage;
+
+    if (Date.now() - t0 > TARGET_BUDGET_MS) {
+      stage.tls = { ok: false, ms: 0, error: 'skipped-budget' };
+      return stage;
+    }
+    const tlsStart = Date.now();
+    const tlsOk = await new Promise<boolean>((resolve) => {
+      const socket = tls.connect({ host: address, port: 443, servername: target.host, rejectUnauthorized: false });
+      let done = false;
+      const finish = (ok: boolean, error?: string) => {
+        if (done) return;
+        done = true;
+        stage.tls = {
+          ok,
+          ms: Date.now() - tlsStart,
+          ...(error ? { error } : {}),
+          ...(socket.getPeerCertificate?.()?.subject?.CN ? { cn: String(socket.getPeerCertificate().subject.CN) } : {}),
+        };
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(STAGE_TIMEOUT_MS, () => finish(false, 'timeout'));
+      socket.once('secureConnect', () => finish(true));
+      socket.once('error', (err) => finish(false, (err as { code?: string })?.code || 'tls-error'));
+    });
+    if (!tlsOk) return stage;
+
+    const httpStart = Date.now();
+    try {
+      const res = await fetch(`https://${target.host}${target.path}`, {
+        redirect: 'manual',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          Accept: 'application/json,text/html;q=0.9,*/*;q=0.8',
+        },
+        signal: AbortSignal.timeout(STAGE_TIMEOUT_MS),
+      });
+      await res.body?.cancel().catch(() => {});
+      stage.http = { ok: res.status < 500, ms: Date.now() - httpStart, status: res.status };
+    } catch (err) {
+      const cause = (err as { cause?: { code?: string } })?.cause;
+      stage.http = {
+        ok: false,
+        ms: Date.now() - httpStart,
+        error: (err instanceof Error ? err.name : 'Error') + (cause?.code ? `/${cause.code}` : ''),
+      };
+    }
+    return stage;
+  };
+
+  // Overall cap. Whatever has finished by then is reported; whatever has not is
+  // named, so the endpoint always answers well inside any gateway timeout in
+  // front of it instead of becoming a 504.
+  const partial: EgressStage[] = [];
+  const pending = new Set(EGRESS_TARGETS.map((t) => t.label));
+  const runs = EGRESS_TARGETS.map((target) =>
+    run(target).then((stage) => {
+      partial.push(stage);
+      pending.delete(target.label);
+      return stage;
+    }),
+  );
+  const finished = await Promise.race([
+    Promise.all(runs).then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 9000)),
+  ]);
+  const ordered = [...partial].sort(
+    (a, b) => EGRESS_TARGETS.findIndex((t) => t.label === a.label) - EGRESS_TARGETS.findIndex((t) => t.label === b.label),
+  );
+  const targets = finished
+    ? ordered
+    : EGRESS_TARGETS.map(
+        (t) =>
+          partial.find((stage) => stage.label === t.label) ?? {
+            label: t.label,
+            host: t.host,
+            dns: { ok: false, ms: 0, error: 'report-timeout' },
+          },
+      );
+
+  const verdict: string[] = [];
+  if (!finished) verdict.push(`report-cut-off: ${[...pending].join(',')} did not answer within 9 s`);
+  const control = targets.find((t) => t.label === 'control-tmdb');
+  const providers = targets.filter((t) => t.label !== 'control-tmdb');
+  const allDnsOk = targets.every((t) => t.dns?.ok);
+  const anyDnsFail = targets.some((t) => !t.dns?.ok);
+  if (anyDnsFail) {
+    const publicDns = await (async () => {
+      const started = Date.now();
+      const res = await rescueResolve('api.themoviedb.org');
+      return { ok: res.v4.length > 0 || res.v6.length > 0, ms: Date.now() - started };
+    })();
+    verdict.push(
+      publicDns.ok
+        ? 'system-resolver-dead-but-public-dns-works: DNS rescue takes over at boot (ELFURA_DNS_SERVERS)'
+        : 'system-resolver-dead-and-public-dns-unreachable: this container cannot resolve any name at all',
+    );
+  }
+  if (control && !control.tcp?.ok) verdict.push('egress-blocked: even the control host cannot open a TCP connection');
+  else if (control?.tcp?.ok && providers.some((t) => !t.tcp?.ok)) {
+    verdict.push('selective-egress-block: the control host connects but provider hosts do not (firewall, proxy or IP reputation)');
+  }
+  if (providers.some((t) => t.tcp?.ok && !t.tls?.ok)) verdict.push('tls-handshake-fails-to-provider-hosts');
+  if (providers.some((t) => t.tls?.ok && (t.http?.status ?? 0) >= 400)) {
+    verdict.push('providers-answer-with-refusal: TLS works, the site refuses this server (challenge, 403 or 429)');
+  }
+  if (allDnsOk && providers.every((t) => t.tls?.ok && (t.http?.status ?? 0) < 400)) {
+    verdict.push('egress-healthy: the server can reach the provider hosts, so re-check the adapters themselves');
+  }
+  return { targets, verdict };
+}
+
+/** Just the connection-stage report: no adapters, no TMDB, a few seconds at most. */
+export async function reportEgress(): Promise<{
+  targets: EgressStage[];
+  verdict: string[];
+  resolver: string[];
+  publicDns: { servers: string[]; ok: boolean; ms: number; address: string | null };
+  elapsedMs: number;
+  node: string;
+}> {
+  const started = Date.now();
+  const report = await probeEgressStages();
+  return {
+    ...report,
+    publicDns: await (async () => {
+      // If the container resolver is dead but public DNS answers, the rescue in
+      // dns-rescue.ts is the whole fix and the report should say so.
+      const started = Date.now();
+      const viaPublic = await rescueResolve('api.themoviedb.org');
+      return {
+        servers: (process.env.ELFURA_DNS_SERVERS ?? '1.1.1.1,8.8.8.8').split(',').map((v) => v.trim()),
+        ok: viaPublic.v4.length > 0 || viaPublic.v6.length > 0,
+        ms: Date.now() - started,
+        address: viaPublic.v4[0] ?? viaPublic.v6[0] ?? null,
+      };
+    })(),
+    resolver: (() => {
+      try {
+        return dns.getServers();
+      } catch {
+        return [];
+      }
+    })(),
+    elapsedMs: Date.now() - started,
+    node: process.version,
+  };
+}
+
 let buildInfoCache: { commit: string } | null = null;
 /** Commit stamp written into the deployment ZIP at packaging time. */
 export function readBuildInfo(): { commit: string } {
@@ -95,6 +353,7 @@ let inFlight: { key: string; promise: Promise<unknown> } | null = null;
 
 async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: DiagnosticsProbe) {
   const started = Date.now();
+  const egressPromise = probeEgressStages();
   const [meta, playback] = await Promise.all([
     (async () => {
       const t0 = Date.now();
@@ -161,6 +420,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       policy: playback.policy,
     },
     network: await probeOutbound(cfg),
+    egress: await egressPromise,
     diagnosis: {
       hints,
       scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/v1/stream relay response, device decoder, and audible language are not exercised by this endpoint.',

@@ -88,8 +88,8 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
 };
 
 const resolveBudgetMs = (): number => {
-  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 4600);
-  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
+  const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 5000);
+  return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
 };
 /** Candidates probed in the shared verification batch, spread across sources. */
 const VERIFY_BREADTH_TARGET = 36;

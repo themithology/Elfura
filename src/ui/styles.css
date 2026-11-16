@@ -2674,30 +2674,6 @@
 }
 .elf-loading-screen[data-visible='true'] .elf-loading-dvd { opacity: 0.92; }
 
-.elf-dvd-art {
-  position: absolute;
-  top: 0;
-  left: 0;
-  will-change: transform, filter;
-  transition: filter 260ms ease;
-}
-
-.elf-dvd-art {
-  max-width: min(34vw, 260px);
-  max-height: 118px;
-  object-fit: contain;
-  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.55));
-}
-
-@media (max-width: 720px) {
-  .elf-dvd-art { max-width: 58vw; max-height: 84px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .elf-loading-dvd { opacity: 0.28; }
-  .elf-dvd-art { transition: none; }
-}
-
 /* ── Startup screen: artwork only ─────────────────────────────────────────── */
 /* No status text, no quotes, no progress bar. A backdrop and a bouncing logo. */
 .elf-loading-screen .elf-state-shade {
@@ -2713,10 +2689,19 @@
 .elf-loading-dvd { opacity: 0; transition: opacity 320ms ease; }
 .elf-loading-screen[data-visible='true'] .elf-loading-dvd { opacity: 1; }
 .elf-dvd-art {
+  position: absolute;
+  top: 0;
+  left: 0;
   max-width: min(40vw, 320px);
   max-height: 140px;
-  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.7));
+  object-fit: contain;
+  will-change: transform;
+  /* Its own artwork, unaltered: no filters, no hue shifts, no glow. */
 }
 @media (max-width: 720px) {
   .elf-dvd-art { max-width: 62vw; max-height: 96px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still logo, full brightness — nothing moves, nothing is dimmed. */
+  .elf-loading-dvd { opacity: 1; }
 }

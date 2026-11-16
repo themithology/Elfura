@@ -640,6 +640,56 @@ export class ElfuraPlayer {
    * When an SDK consumer resolves through an absolute cross-origin `api` URL,
    * those tickets belong to that API origin, not to the site hosting the player.
    */
+  /**
+   * Fetch title artwork alone (TMDB only) and publish it as soon as it lands.
+   * Failure is silent: the playback response carries the same fields later.
+   */
+  private async prefetchArtwork(): Promise<void> {
+    const cfg = this.input.config;
+    if (!cfg.tmdb || cfg.src) return;
+    try {
+      const base = new URL(cfg.api || '/api/v1/playback', window.location.href);
+      const artUrl = new URL('/api/v1/art', base);
+      artUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
+      artUrl.searchParams.set('tmdb', String(cfg.tmdb));
+      if ((cfg.mediaType || '') === 'tv' || cfg.anilist) {
+        artUrl.searchParams.set('s', String(cfg.season ?? 1));
+        artUrl.searchParams.set('e', String(cfg.episode ?? 1));
+      }
+      const res = await fetch(artUrl.toString(), {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (this.destroyed || !res.ok) return;
+      const data = (await res.json()) as {
+        ok?: boolean;
+        media?: { title?: string; year?: string; logo?: string | null; backdrop?: string | null; poster?: string | null };
+      };
+      if (this.destroyed || !data?.ok || !data.media) return;
+      const art = data.media;
+      if (!art.backdrop && !art.logo && !art.title) return;
+      const merged: TitleMediaInfo = {
+        ...(this.mediaInfo ?? {
+          type: (cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) as 'movie' | 'tv',
+          tmdbId: String(cfg.tmdb),
+        }),
+        ...(art.title && !this.mediaInfo?.title ? { title: art.title } : {}),
+        ...(art.year && !this.mediaInfo?.year ? { year: art.year } : {}),
+        ...(art.logo ? { logo: art.logo } : {}),
+        ...(art.backdrop ? { backdrop: art.backdrop } : {}),
+        ...(art.poster && !this.mediaInfo?.poster ? { poster: art.poster } : {}),
+      } as TitleMediaInfo;
+      this.mediaInfo = merged;
+      if (!cfg.poster && (art.backdrop || art.poster)) {
+        cfg.poster = String(art.backdrop || art.poster);
+        this.video.poster = cfg.poster;
+      }
+      this.emit('media', merged);
+    } catch {
+      /* artwork is decorative: the playback response will carry it later */
+    }
+  }
+
   private resolveBackendMediaUrl(rawUrl: string): string {
     if (!/^\/(?!\/)/.test(rawUrl.trim())) return rawUrl;
     try {
@@ -1037,6 +1087,11 @@ export class ElfuraPlayer {
 
     // Preload hls.js concurrently while /api/v1/playback resolves on the backend
     void getHls().catch(() => undefined);
+
+    // Artwork is not playback: ask TMDB for the backdrop and logo on its own
+    // request so the startup screen is painted in a few hundred milliseconds
+    // instead of waiting for twenty adapters to race.
+    void this.prefetchArtwork();
 
     try {
       const apiBase = cfg.api || '/api/v1/playback';

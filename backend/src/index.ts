@@ -23,9 +23,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, loadBackendConfig, type BackendConfig } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
+import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
+import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
+import { installDnsRescue } from './dns-rescue.js';
+import { installEgressProfile } from './egress.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -40,7 +43,7 @@ import {
 } from './security.js';
 import { SourceRegistry } from './sources/registry.js';
 import { handleStreamRelay } from './relay.js';
-import { fetchTmdbCatalog, fetchTmdbSeasonEpisodes } from './tmdb.js';
+import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -127,11 +130,40 @@ try {
   /* older runtimes: keep the default order */
 }
 
+/**
+ * Prefer IPv4 for outbound resolves unless an operator says otherwise.
+ *
+ * A container with an IPv6 route that black-holes is a classic half-broken
+ * egress: every host with an AAAA record hangs until the connect attempt times
+ * out, while a host that answers only on IPv4 loads instantly. It looks exactly
+ * like "some sources just stopped working". IPv4-first removes that class of
+ * failure and costs nothing when IPv6 is healthy.
+ */
+if ((process.env.ELFURA_DNS_ORDER ?? 'ipv4first') === 'ipv4first') {
+  try {
+    dns.setDefaultResultOrder('ipv4first');
+  } catch {
+    /* older runtime: keep the default */
+  }
+}
+
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
   const registry = new SourceRegistry(cfg);
   const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  // Artwork and playback are what one page load spends its requests on, and the
+  // player reads any non-200 as "this title has no sources". Sharing the 120/min
+  // abuse bucket with them meant a viewer who browsed a catalogue — every card
+  // asks for artwork — exhausted the bucket and then saw "not available in all
+  // sources" for every title until the minute rolled over. They get their own
+  // windows, unlimited unless an operator sets a number.
+  const artCeiling = Number(process.env.ELFURA_ART_RATE_LIMIT || 0);
+  const playbackCeiling = Number(process.env.ELFURA_PLAYBACK_RATE_LIMIT || 0);
+  const artLimiter = artCeiling > 0 ? new SlidingWindowLimiter(artCeiling) : null;
+  const playbackLimiter = playbackCeiling > 0 ? new SlidingWindowLimiter(playbackCeiling) : null;
   const roxy = new RoxyStore(cfg.secret);
+  // Pop-under ads live in the embed player only; this decides per request.
+  const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
   const sameOrigin = (req: http.IncomingMessage) => {
@@ -156,6 +188,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  // The light egress report is cheap and is exactly what an operator reaches for
+  // when sources look dead, so it gets its own per-IP window instead of the
+  // process-wide six-a-minute budget the heavy report uses.
+  const egressLimiter = new SlidingWindowLimiter(30);
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -213,6 +249,35 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (!authenticated(req)) { reply(401,{error:'Sign in required'}); return; }
       if (pathname === '/roxy/api/logout' && method === 'POST') { res.setHeader('Set-Cookie',`roxy_session=; ${cookieFlags(req)}; Max-Age=0`); reply(200,{ok:true}); return; }
       if (pathname === '/roxy/api/overview' && method === 'GET') { reply(200,roxy.snapshot()); return; }
+      if (pathname === '/roxy/api/ads' && method === 'GET') {
+        reply(200, {
+          ...ads.get(),
+          src: popunderSrc(),
+          alwaysAdFree: ALWAYS_AD_FREE,
+          localhostExempt: true,
+          sitesSeen: roxy.snapshot().sites.map((row) => row.key).filter((key) => key && key !== '(direct / unknown)'),
+        });
+        return;
+      }
+      if (pathname === '/roxy/api/ads' && method === 'POST') {
+        try {
+          const body = await readJsonBody(req, 4096);
+          if (typeof body.enabled === 'boolean') {
+            ads.setEnabled(body.enabled);
+            reply(200, { ok: true, ...ads.get() });
+            return;
+          }
+          if (typeof body.site === 'string' && typeof body.adFree === 'boolean') {
+            const next = ads.setSiteAdFree(body.site, body.adFree);
+            reply(200, { ok: true, ...next });
+            return;
+          }
+          reply(400, { ok: false, error: 'expected {enabled} or {site, adFree}' });
+        } catch {
+          reply(400, { ok: false, error: 'Invalid request' });
+        }
+        return;
+      }
       if (pathname === '/roxy/api/clear' && method === 'POST') { roxy.clear(); const ok=await roxy.flush(); reply(ok?200:500,ok?{ok:true}:{error:'Could not persist deletion'}); return; }
       if (pathname === '/roxy/api/ban' && method === 'POST') {
         try { const b=await readJsonBody(req,4096);if(typeof b.site!=='string'||typeof b.ban!=='boolean'||!roxy.setBan(b.site,b.ban)){reply(400,{error:'Invalid site or action'});return;}const ok=await roxy.flush();reply(ok?200:500,ok?{ok:true}:{error:'Could not persist ban'}); }catch{reply(400,{error:'Invalid request'});} return;
@@ -274,6 +339,32 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const catalog = await fetchTmdbCatalog(cfg.tmdb);
       sendJson(res, 200, { ok: true, ...catalog }, allowOrigin, 'manifest');
+      return;
+    }
+
+    // 2b-bis. Connection-stage report on its own.
+    //
+    // The full /diagnose races twenty adapters before it answers, so it takes ten
+    // to twenty seconds and it is capped at six requests a minute for the whole
+    // process. This answers the one question "can this server open a connection to
+    // the hosts the adapters use, and at which stage does it fail" in a couple of
+    // seconds, on its own small per-IP window.
+    if (method === 'GET' && (pathname === '/diagnose/egress' || pathname === '/api/v1/egress')) {
+      if (!egressLimiter.allow(`egress:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'too many requests; try again in a minute' });
+        return;
+      }
+      try {
+        const egress = await reportEgress();
+        sendJson(res, 200, {
+          ok: true,
+          build: readBuildInfo().commit,
+          generatedAt: new Date().toISOString(),
+          egress,
+        });
+      } catch (err) {
+        sendJson(res, 200, { ok: false, error: err instanceof Error ? err.message : 'egress check failed' });
+      }
       return;
     }
 
@@ -370,6 +461,54 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     // 4. Single Uniform Playback Endpoint
+    // Artwork bootstrap. The player needs the backdrop and the title logo in
+    // the first few hundred milliseconds; waiting for the whole playback
+    // response (which races twenty adapters) is what left the startup screen
+    // blank for four seconds. TMDB-only, RAM cached, shares the same cache the
+    // later resolve uses, so it costs nothing and warms it.
+    if (method === 'GET' && (pathname === '/api/v1/art' || pathname === '/api/v1/metadata')) {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!allowOrigin) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+        return;
+      }
+      if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
+        return;
+      }
+      const type = (url.searchParams.get('type') || url.searchParams.get('mediaType') || 'movie').toLowerCase() === 'tv' ? 'tv' : 'movie';
+      const tmdbId = (url.searchParams.get('tmdb') || url.searchParams.get('tmdbId') || url.searchParams.get('id') || '').trim();
+      if (!/^[A-Za-z0-9_-]{1,24}$/.test(tmdbId)) {
+        sendJson(res, 400, { ok: false, error: 'valid tmdb parameter is required' }, allowOrigin);
+        return;
+      }
+      const season = type === 'tv' ? Math.max(1, Number(url.searchParams.get('s') || url.searchParams.get('season')) || 1) : undefined;
+      const episode = type === 'tv' ? Math.max(1, Number(url.searchParams.get('e') || url.searchParams.get('episode')) || 1) : undefined;
+      try {
+        const media = await fetchTmdbMetadata(cfg.tmdb, { type, tmdbId, season, episode });
+        sendJson(
+          res,
+          200,
+          {
+            ok: true,
+            media: {
+              type,
+              tmdbId,
+              title: media.title,
+              year: media.year,
+              logo: media.logo,
+              backdrop: media.backdrop,
+              poster: media.poster,
+            },
+          },
+          allowOrigin,
+        );
+      } catch {
+        sendJson(res, 200, { ok: false }, allowOrigin);
+      }
+      return;
+    }
+
     if ((method === 'GET' || method === 'POST') && pathname === '/api/v1/playback') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
       if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
@@ -377,7 +516,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!rateLimiter.allow(`pb:${clientIp}`)) {
+      if (playbackLimiter && !playbackLimiter.allow(`pb:${clientIp}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -645,10 +784,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
         // Escape `<` inside JSON to prevent script breakout
         const safeJson = JSON.stringify(bootData).replace(/</g, '\\u003c');
-        const injected = tpl.replace(
+        // Ads: embed player only. The decision uses the referring site, the
+        // request host, the admin switches and the always-free brand domains.
+        const adDecision = decideAds(
+          { parentSite, requestHost: String(req.headers['x-forwarded-host'] || req.headers.host || '') },
+          ads.get(),
+        );
+        const adTag = adDecision.serve ? popunderTag(adDecision.src) : '';
+        let injected = tpl.replace(
           '</head>',
           `  <script>window.__ELFURA_BOOT__=${safeJson};</script>\n</head>`,
         );
+        if (adTag) injected = injected.replace('</body>', `  ${adTag}\n</body>`);
         const buf = Buffer.from(injected, 'utf8');
         setCloudflareCache(res, 'no-store');
         res.writeHead(200, {
@@ -697,13 +844,17 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 }
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  // Before anything resolves a hostname: if this container's resolver is dead
+  // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
+  // own lookups through public DNS so the adapters can work at all.
+  void installDnsRescue().then(() => installEgressProfile());
   const { server, cfg, registry } = createBackendServer(overrides);
   server.listen(cfg.port, cfg.host, () => {
     console.log(
       `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
         ` · adapter timeout: ${cfg.resolveTimeoutMs}ms` +
         ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
-        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 4600}ms`,
+        ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
     const state = registry.describeSources();
     const sources = state.enabled.join(', ') || 'none';
@@ -747,6 +898,25 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
           ([label, r]) => `${label}=${r.ok ? `ok/${r.status}` : `fail(${r.code})`} ${r.ms}ms`,
         );
         console.log(`[elfura-net] ${parts.join(' ')}`);
+      })
+      .catch(() => {});
+    // The same question, one layer deeper: if the adapters all report zero
+    // candidates, the console should say at which stage the outbound connection
+    // dies instead of leaving "timeout" as the only clue.
+    void reportEgress()
+      .then((report) => {
+        const rows = report.targets.map((t) => {
+          const where = !t.dns?.ok
+            ? `dns-fail(${t.dns?.error ?? '?'})`
+            : !t.tcp?.ok
+              ? `tcp-fail(${t.tcp?.error ?? '?'})`
+              : !t.tls?.ok
+                ? `tls-fail(${t.tls?.error ?? '?'})`
+                : `http-${t.http?.status ?? '?'}`;
+          return `${t.label}=${where}`;
+        });
+        console.log(`[elfura-egress] ${rows.join(' ')}`);
+        for (const line of report.verdict) console.log(`[elfura-egress] ${line}`);
       })
       .catch(() => {});
   });
