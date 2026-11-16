@@ -163,6 +163,47 @@ await check('a key we do not know reports no-key, not a generic failure', async 
   assert.match(trace, /no-key/, `expected no-key for an unknown passphrase, got "${trace}"`);
 });
 
+await check('an unreadable primary fails over to the mirror', async () => {
+  // Two front-ends of one catalogue, each sealing with its own key. If the
+  // primary answers in a key we do not hold, the mirror is still readable and
+  // the source must not be reported dead.
+  const crypto = await import('node:crypto');
+  const MIRROR = 'S8x!Jk4ZP1uG8$my';
+  const sealed = (obj) => {
+    const salt = crypto.randomBytes(8);
+    let material = Buffer.alloc(0), prev = Buffer.alloc(0);
+    while (material.length < 48) {
+      prev = crypto.createHash('md5').update(Buffer.concat([prev, Buffer.from(MIRROR), salt])).digest();
+      material = Buffer.concat([material, prev]);
+    }
+    const cipher = crypto.createCipheriv('aes-256-cbc', material.subarray(0, 32), material.subarray(32, 48));
+    const body = JSON.stringify(obj);
+    return Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(body), cipher.final()]).toString('base64url');
+  };
+  const realFetch = globalThis.fetch;
+  const hosts = [];
+  globalThis.fetch = async (input) => {
+    const host = new URL(typeof input === 'string' ? input : input.url).hostname;
+    hosts.push(host);
+    if (host === 'nxsha.space') {
+      // Right shape, sealed with a key we do not have.
+      const salt = crypto.randomBytes(8);
+      const cipher = crypto.createCipheriv('aes-256-cbc', crypto.randomBytes(32), crypto.randomBytes(16));
+      const env = Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(Buffer.from('{"servers":[]}'.padEnd(96))), cipher.final()]).toString('base64url');
+      return Response.json({ _hash: env });
+    }
+    return Response.json({ _hash: sealed({ servers: [] }) });
+  };
+  const trace = [];
+  try {
+    await fetchFromNxsha(query, undefined, { trace });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  assert.ok(hosts.includes('web.nxsha.app'), `expected a retry against the mirror, saw ${JSON.stringify([...new Set(hosts)])}`);
+  assert.match(trace.join(' '), /failover=web\.nxsha\.app/, `expected a failover note, got "${trace.join(' ')}"`);
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.

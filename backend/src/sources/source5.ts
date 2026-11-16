@@ -14,6 +14,13 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/
 // silently turns every stream into "no results", so we keep the known history
 // and try each in order rather than trusting one constant to still be current.
 // Order matters: current first, then older ones still seen in the wild.
+// Each deployment seals with its own passphrase, so a host is only readable
+// with the key that belongs to it. Both are public front-ends of the same
+// catalogue.
+const ENDPOINTS: readonly { origin: string; pass: string }[] = [
+  { origin: 'https://nxsha.space', pass: 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3' },
+  { origin: 'https://web.nxsha.app', pass: 'S8x!Jk4ZP1uG8$my' },
+];
 const PASSES = [
   'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3',
   'S8x!Jk4ZP1uG8$my',
@@ -78,14 +85,18 @@ export async function fetchFromNxsha(
   const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
   const params = { tmdbId: query.tmdbId, imdb_id: '', type: query.type, season, episode };
   const trace = options.trace;
+  // Which deployment we are currently reading. Starts at the primary and flips
+  // once if the primary answers but none of our keys open it.
+  let active = ENDPOINTS[0];
+  const attempted: string[] = [];
   const get = async (endpoint: string, body: object) => {
-    const url = `${ORIGIN}/api/${endpoint}?q=${nxEncode(body)}`;
+    const url = `${active.origin}/api/${endpoint}?q=${nxEncode(body)}`;
     // nxsha is same-origin behind one host, so a redirect here is either an
     // http->https upgrade or a path move. Follow a same-origin hop; refuse
     // anything else. `redirect:'error'` used to make the former look like an
     // outage.
     const { response, reason } = await fetchNoRedirect(url, {
-      headers: { 'User-Agent': UA, Referer: ORIGIN + '/', Accept: 'application/json' },
+      headers: { 'User-Agent': UA, Referer: active.origin + '/', Accept: 'application/json' },
       signal,
     }, { allowSameOriginRedirects: true });
     if (!response) {
@@ -116,8 +127,9 @@ export async function fetchFromNxsha(
       trace?.push(`${endpoint}=no-envelope`);
       throw new Error('missing envelope');
     }
+    attempted.push(active.origin);
     try {
-      return nxDecode(envelope._hash);
+      return nxDecodeWith(envelope._hash, active.pass);
     } catch (error) {
       // Distinguish the three ways this fails, because they mean opposite
       // things. `bad-envelope` = the payload is not an OpenSSL envelope at all
@@ -135,8 +147,26 @@ export async function fetchFromNxsha(
       throw new Error('undecodable');
     }
   };
+  /**
+   * The same catalogue is served by more than one front-end, each sealing with
+   * its own public key. If the primary answers but no key of ours opens it, try
+   * the alternate deployment before calling the source dead — that is a mirror
+   * we can still read, not a lost provider.
+   */
+  const getWithFailover = async (endpoint: string, body: object) => {
+    try {
+      return await get(endpoint, body);
+    } catch (error) {
+      if ((error as Error).message !== 'undecodable') throw error;
+      const alternate = ENDPOINTS.find(e => e.origin !== active.origin);
+      if (!alternate) throw error;
+      active = alternate;
+      trace?.push(`failover=${new URL(alternate.origin).host}`);
+      return await get(endpoint, body);
+    }
+  };
   try {
-    const root = await get('servers', params);
+    const root = await getWithFailover('servers', params);
     const available = Array.isArray(root.servers) ? root.servers : [];
     // Restricted to Nitro and Indian-dub HLS lanes; avoid rejected providers,
     // season packs, embed-only hosts and unbounded request fan-out.
@@ -145,7 +175,7 @@ export async function fetchFromNxsha(
     const ids = [...new Set(available.map(s => s.scraper).filter((x): x is string => !!x && allowed.includes(x)))].sort((a,b) => allowed.indexOf(a) - allowed.indexOf(b));
     const rows: Stream[] = []; let finished = 0; let release: (() => void) | undefined; let timer: ReturnType<typeof setTimeout> | undefined;
     const all = Promise.all(ids.map(async provider => {
-      try { const res = await get('sources', { ...params, ex_lang: true, provider }); if (Array.isArray(res.sources)) rows.push(...res.sources.slice(0, 12)); } catch { /* one lane failing is expected */ }
+      try { const res = await getWithFailover('sources', { ...params, ex_lang: true, provider }); if (Array.isArray(res.sources)) rows.push(...res.sources.slice(0, 12)); } catch { /* one lane failing is expected */ }
       finally { finished++; if (!query.diag && rows.length && !timer) timer = setTimeout(() => release?.(), 350); }
     }));
     if (query.diag) await all;
