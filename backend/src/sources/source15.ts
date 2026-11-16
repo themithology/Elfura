@@ -129,6 +129,7 @@ async function solvePlaybackInit(
   pageUrl: string,
   cookie: string,
   signal: AbortSignal,
+  trace?: string[],
 ): Promise<string | null> {
   const headers = {
     'User-Agent': UA,
@@ -154,8 +155,15 @@ async function solvePlaybackInit(
   const pow = firstRecord.pow as { challenge?: unknown; difficulty?: unknown; challengeId?: unknown };
   if (typeof pow.challenge !== 'string' || typeof pow.difficulty !== 'number' ||
       (typeof pow.challengeId !== 'string' && typeof pow.challengeId !== 'number')) return null;
-  const nonce = await solveMapplePow(pow.challenge, pow.difficulty, MAX_POW_ATTEMPTS, signal);
-  if (nonce === null) return null;
+  // Difficulty is chosen by the site and can rise; expected work is 2^difficulty
+  // hashes, so a fixed attempt cap that used to be generous can quietly become
+  // too small and surface as an unexplained failure. Size the budget to the
+  // difficulty, capped so a hostile value cannot pin a core.
+  const expected = Math.min(4_000_000, Math.ceil(2 ** Math.min(pow.difficulty, 22) * 4));
+  const attempts = Math.max(MAX_POW_ATTEMPTS, expected);
+  const nonce = await solveMapplePow(pow.challenge, pow.difficulty, attempts, signal);
+  if (nonce === null) { trace?.push(`pow-unsolved difficulty=${pow.difficulty} attempts=${attempts}`); return null; }
+  trace?.push(`pow-solved difficulty=${pow.difficulty} attempts<=${attempts}`);
   const second = await fetch(`${SITE}/api/playback-init`, {
     method: 'POST', headers, redirect: 'manual', signal,
     body: JSON.stringify({ ...body, pow: { challengeId: pow.challengeId, nonce } }),
@@ -293,8 +301,11 @@ export async function fetchFromMapple(query: SourceQuery, options: MappleOptions
       if (requestToken) trace?.push('request-token=inline');
     }
     if (!requestToken) { trace?.push('no-request-token'); return []; }
-    const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal);
-    if (!streamToken) { trace?.push('pow-unsolved'); return []; }
+    const streamToken = await solvePlaybackInit(query, mediaType, requestToken, pageUrl, cookie, signal, trace);
+    if (!streamToken) {
+      if (!trace?.some(t => t.startsWith('pow-unsolved'))) trace?.push('playback-init-refused');
+      return [];
+    }
     const results = await Promise.all(SERVERS.map((server, index) => serverCandidate(
       server, query, mediaType, pageUrl, requestToken, streamToken, cookie, signal, index,
     ).catch(() => null)));

@@ -516,6 +516,45 @@ await check('an inline token is still accepted when the API is gone', async () =
   assert.doesNotMatch(trace.join(' '), /no-request-token/, 'the inline token must still be usable');
 });
 
+await check('the proof-of-work solver produces a digest that really meets the difficulty', async () => {
+  // Verified independently of our own counting: hash the nonce back and count
+  // the leading zero bits. A solver that "succeeds" without meeting the target
+  // would be rejected by the site and look like a refusal.
+  const crypto = await import('node:crypto');
+  const { solveMapplePow } = await import('../../dist/backend/sources/source15.js');
+  const challenge = 'challenge-abc';
+  const leading = (buf) => {
+    let n = 0;
+    for (const b of buf) { if (b === 0) { n += 8; continue; } for (let bit = 7; bit >= 0; bit--) { if ((b & (1 << bit)) !== 0) return n; n++; } }
+    return n;
+  };
+  const difficulty = 10;
+  const nonce = await solveMapplePow(challenge, difficulty, 300000);
+  assert.notEqual(nonce, null, 'the solver must find a nonce at a modest difficulty');
+  const digest = crypto.createHash('sha256').update(challenge).update(String(nonce)).digest();
+  assert.ok(leading(digest) >= difficulty, `nonce ${nonce} only reaches ${leading(digest)} zero bits, needs ${difficulty}`);
+});
+
+await check('a proof-of-work the budget cannot cover is reported with its difficulty', async () => {
+  // The site chooses the difficulty. When it rises past our budget the honest
+  // report is the difficulty, not a bare failure: it says the budget is the
+  // problem, not the challenge.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/api/request-token')) return Response.json({ token: 'tok-from-api-123' });
+    if (u.endsWith('/api/playback-init')) {
+      // Difficulty 30 is far beyond anything solvable in a request.
+      return Response.json({ requiresPow: true, pow: { challenge: 'c', difficulty: 30, challengeId: 'id1' } });
+    }
+    return new Response('<html></html>', { status: 200 });
+  };
+  const trace = [];
+  try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); }
+  finally { globalThis.fetch = realFetch; }
+  assert.match(trace.join(' '), /pow-unsolved difficulty=30/, `expected the difficulty in the report, got "${trace.join(' ')}"`);
+});
+
 console.log('\nSource 19 — multi-stage discovery');
 
 await check('a title that is not in the catalogue says so', async () => {
