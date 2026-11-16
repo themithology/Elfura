@@ -116,15 +116,14 @@ const resolveBudgetMs = (): number => {
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 4600;
 };
 /** Candidates probed in the shared verification batch, spread across sources.
- * The old 36 over ~20 adapters meant only the first two lanes of any source were
- * ever checked; the rest were listed unverified. The machine has headroom, so a
- * source now gets four to five lanes probed instead of two — which is what lets
- * a five-language source show five *verified* languages. */
-const VERIFY_BREADTH_TARGET = 96;
-/** Lanes any single source may contribute to one response. Twelve, not four: a
- * source that carries five dubs at two qualities should list all ten, and the
- * response-wide caps still bound the total. */
-const MAX_LANES_PER_SOURCE = 12;
+ * Back to the value this install has run for weeks. Raising it to 96 only made
+ * every resolve probe more upstreams at once, which is the kind of thing that
+ * gets a CDN to start refusing us — coverage must never be bought that way. */
+const VERIFY_BREADTH_TARGET = 36;
+/** Lanes any single source may contribute to one response. Eight, not four: it
+ * is the value that let a five-dub source list all ten of its rows on the live
+ * catalogue, and the response-wide caps still bound the total. */
+const MAX_LANES_PER_SOURCE = 8;
 
 /** Order a source's lanes so every distinct audio language gets a slot before
  * any second quality of the same language. Without this, a source that returns

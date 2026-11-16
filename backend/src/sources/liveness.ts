@@ -561,7 +561,7 @@ export async function verifyAndFilterCandidatesDetailed(
 
   const outcomes = new Map<string, LivenessProbeOutcome>();
   const entries = [...uniqueTargets.entries()].sort((a, b) => a[1].priority - b[1].priority);
-  const concurrency = Math.min(32, entries.length);
+  const concurrency = Math.min(20, entries.length);
   let cursor = 0;
 
   await Promise.all(
