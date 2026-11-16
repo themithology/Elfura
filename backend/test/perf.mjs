@@ -59,6 +59,17 @@ assert.equal(limited.traffic.requests, 1);
 assert.equal(limited.traffic.rateLimited, 3);
 assert.deepEqual(limited.traffic.rateLimitedByBucket, { art: 1, playback: 2 });
 
+// 3b. A burst from one client must be visible as one client, not as traffic.
+const { noteClient, noteRoute } = await import('../../dist/backend/perf.js');
+for (let i = 0; i < 5; i += 1) {
+  noteRoute(`/api/v1/playback?id=${i}`);
+  noteClient('client-a');
+}
+noteClient('client-b');
+const byClient = perfSnapshot().traffic;
+assert.equal(byClient.distinctClients, 2, 'one retry loop is one client');
+assert.deepEqual(byClient.topRoutes[0], { route: '/api/v1/playback', count: 5 }, 'ids collapse into one route');
+
 // 4. Shapes are complete and numeric — no NaN sneaks into the JSON.
 for (const value of [
   limited.eventLoop.p50Ms,

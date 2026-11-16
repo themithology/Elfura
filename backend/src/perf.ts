@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
+import { queueStats } from './limits.js';
 
 /** A loop delay above this is reported in the console as a stall. */
 const STALL_WARN_MS = Math.max(50, Number(process.env.ELFURA_STALL_WARN_MS || 250));
@@ -45,6 +46,12 @@ const rateLimits = new Map<string, { denied: number; lastAt: number }>();
  * later, long after the work that blocked the loop has finished, so the answer
  * to "what was running?" is usually this rather than the live counter. */
 let lastPhase: { name: string; at: number } = { name: 'idle', at: 0 };
+/** Which endpoint is being hit, and by how many distinct clients. Without this
+ * a burst of resolves is indistinguishable from a lot of viewers. */
+const routes = new Map<string, number>();
+const clients = new Map<string, number>();
+const MAX_ROUTES = 48;
+const MAX_CLIENTS = 4096;
 const gc = { count: 0, pauseMs: 0, maxPauseMs: 0 };
 
 let started = false;
@@ -74,6 +81,29 @@ export function phaseStart(name: string): () => void {
 
 export function noteRequest(): void {
   totals.requests += 1;
+}
+
+/** Count a request by endpoint, collapsing ids so routes stay few. */
+export function noteRoute(pathname: string): void {
+  const segments = pathname.split(/[?#]/)[0].split('/').filter(Boolean).slice(0, 3);
+  const key = `/${segments.join('/')}`;
+  const next = (routes.get(key) ?? 0) + 1;
+  if (next === 1 && routes.size >= MAX_ROUTES) {
+    const oldest = routes.keys().next().value;
+    if (oldest !== undefined) routes.delete(oldest);
+  }
+  routes.set(key, next);
+}
+
+/** Count a request by (hashed) client, so one retry loop is visible as one. */
+export function noteClient(key: string): void {
+  if (!key) return;
+  const next = (clients.get(key) ?? 0) + 1;
+  if (next === 1 && clients.size >= MAX_CLIENTS) {
+    const oldest = clients.keys().next().value;
+    if (oldest !== undefined) clients.delete(oldest);
+  }
+  clients.set(key, next);
 }
 
 /** Called wherever the process answers 429, so a lockout is visible. */
@@ -234,8 +264,16 @@ export interface PerfSnapshot {
   };
   memory: { rssMb: number; heapUsedMb: number; heapTotalMb: number; externalMb: number };
   gc: { count: number; pauseMs: number; maxPauseMs: number };
-  traffic: { requests: number; rateLimited: number; rateLimitedByBucket: Record<string, number> };
+  traffic: {
+    requests: number;
+    rateLimited: number;
+    rateLimitedByBucket: Record<string, number>;
+    distinctClients: number;
+    topRoutes: { route: string; count: number }[];
+  };
   inFlight: Record<string, number>;
+  /** Process-wide and per-client concurrency for the expensive endpoint. */
+  queues: Record<string, number>;
   /** Plain-language verdict, so a log dump answers "was it the CPU?". */
   verdict: string;
 }
@@ -288,8 +326,18 @@ export function perfSnapshot(): PerfSnapshot {
       externalMb: Math.round(mem.external / 1048576),
     },
     gc: { count: gc.count, pauseMs: Math.round(gc.pauseMs), maxPauseMs: Math.round(gc.maxPauseMs) },
-    traffic: { requests: totals.requests, rateLimited: totals.rateLimited, rateLimitedByBucket: byBucket },
+    traffic: {
+      requests: totals.requests,
+      rateLimited: totals.rateLimited,
+      rateLimitedByBucket: byBucket,
+      distinctClients: clients.size,
+      topRoutes: [...routes.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([route, count]) => ({ route, count })),
+    },
     inFlight,
+    queues: queueStats(),
     verdict: verdict(),
   };
 }

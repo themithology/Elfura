@@ -2860,60 +2860,78 @@ export class ElfuraPlayer {
     this.exhaustedRecoveryInFlight = true;
     const snapshot = `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     const recoveryLoadSeq = this.engineLoadSeq;
-    const groups = cfg.source ? [String(cfg.source)] : this.sourceGroups;
+    // One request, not one per provider. This used to fan out a `?source=` call
+    // for every provider group — up to 32 simultaneous resolves, each with its
+    // own metadata fetch — so a single player could push 30+ resolutions into
+    // flight and lock the whole deployment out of its own rate limiter. A full
+    // resolve already returns every group, so the fan-out was pure amplification.
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
     if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') headers['X-Elfura-Envelope'] = '1';
+    const stillCurrent = () =>
+      !this.destroyed &&
+      recoveryLoadSeq === this.engineLoadSeq &&
+      snapshot === `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
     void (async () => {
       let activated = false;
-      await Promise.all(groups.map(async group => {
-        try {
-          const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
-          url.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
-          url.searchParams.set('tmdb', String(cfg.tmdb));
-          if (cfg.anilist) url.searchParams.set('anilist', String(cfg.anilist));
-          if (cfg.anilist && cfg.anilistEpisode !== undefined) url.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
-          if ((cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
-          url.searchParams.set('source', group);
-          if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
-          if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
-          const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10000) });
-          if (!res.ok) return [];
+      try {
+        const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
+        url.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
+        url.searchParams.set('tmdb', String(cfg.tmdb));
+        if (cfg.anilist) url.searchParams.set('anilist', String(cfg.anilist));
+        if (cfg.anilist && cfg.anilistEpisode !== undefined) url.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
+        if ((cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) === 'tv') { url.searchParams.set('s', String(cfg.season ?? 1)); url.searchParams.set('e', String(cfg.episode ?? 1)); }
+        if (cfg.source) url.searchParams.set('source', String(cfg.source));
+        if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
+        if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
+
+        // A 429 or 503 is a "wait", not a failure: honour Retry-After once and
+        // then stop. Retrying immediately is what turned a busy second into a
+        // minute-long lockout.
+        const request = () => fetch(url.toString(), { headers, signal: AbortSignal.timeout(12_000) });
+        let res = await request();
+        if (res.status === 429 || res.status === 503) {
+          const retryAfter = Number(res.headers.get('Retry-After'));
+          const waitMs = Math.min(8_000, Math.max(500, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2_000));
+          await new Promise((resolve) => setTimeout(resolve, waitMs));
+          if (!stillCurrent()) return;
+          res = await request();
+        }
+        if (res.ok && stillCurrent()) {
           const raw = await res.json() as { s?: number; p?: string; sources?: SourceOption[] };
           const data = raw.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
             ? await openSealedEnvelope<{ sources?: SourceOption[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce)) : raw;
-          const candidates = (data.sources ?? []).filter(c => c.sourceId === group);
-          if (activated || this.destroyed || recoveryLoadSeq !== this.engineLoadSeq || snapshot !== `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) return;
-
-      const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
-      const ids = new Set(this.sources.map(s => s.id));
-      const recovered: SourceOption[] = [];
-      for (const candidate of candidates) {
-        if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
-        let id = candidate.id, n = 0;
-        while (ids.has(id) || this.failedSourceIds.has(id)) id = `${candidate.id}:recovery-${++n}`;
-        const option: SourceOption = { ...candidate, id, url: this.resolveBackendMediaUrl(candidate.url),
-          audioTracks: candidate.audioTracks?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})),
-          subtitles: candidate.subtitles?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})) };
-        ids.add(id);
-        if (option.fingerprint) fingerprints.add(option.fingerprint);
-        this.sources.push(option); recovered.push(option);
-      }
-      if (recovered.length) {
-        this.reorderSourcesHierarchy(this.desiredAudioLang);
-        this.emit('sourcesUpdated', this.sources);
-      }
-      const next = this.sources.find(s => !this.isCandidateFailed(s));
-      if (!next) return;
-      activated = true;
+          const candidates = (data.sources ?? []).filter(c => !cfg.source || c.sourceId === cfg.source);
+          const fingerprints = new Set(this.sources.map(s => s.fingerprint).filter(Boolean));
+          const ids = new Set(this.sources.map(s => s.id));
+          const recovered: SourceOption[] = [];
+          for (const candidate of candidates) {
+            if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
+            let id = candidate.id, n = 0;
+            while (ids.has(id) || this.failedSourceIds.has(id)) id = `${candidate.id}:recovery-${++n}`;
+            const option: SourceOption = { ...candidate, id, url: this.resolveBackendMediaUrl(candidate.url),
+              audioTracks: candidate.audioTracks?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})),
+              subtitles: candidate.subtitles?.map(t => ({...t, url:this.resolveBackendMediaUrl(t.url)})) };
+            ids.add(id);
+            if (option.fingerprint) fingerprints.add(option.fingerprint);
+            this.sources.push(option); recovered.push(option);
+          }
+          if (recovered.length) {
+            this.reorderSourcesHierarchy(this.desiredAudioLang);
+            this.emit('sourcesUpdated', this.sources);
+          }
+          const next = this.sources.find(s => !this.isCandidateFailed(s));
+          if (next) {
+            activated = true;
+            this.exhaustedRecoveryInFlight = false;
+            void this.activateSourceOption(next, true);
+            return;
+          }
+        }
+      } catch { /* no recovery available; report the failure below */ }
       this.exhaustedRecoveryInFlight = false;
-      void this.activateSourceOption(next, true);
-        } catch { /* another provider may still succeed */ }
-      }));
-      if (!activated && !this.destroyed && recoveryLoadSeq === this.engineLoadSeq && snapshot === `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`) {
-        this.exhaustedRecoveryInFlight = false;
-        terminal();
-      }
+      if (activated) return;
+      terminal();
     })();
   }
 

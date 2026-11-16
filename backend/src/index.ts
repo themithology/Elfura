@@ -28,7 +28,8 @@ import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
-import { healthSummary, noteRateLimit, noteRequest, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
+import { healthSummary, noteClient, noteRateLimit, noteRequest, noteRoute, perfSnapshot, phaseStart, startPerfMonitor } from './perf.js';
+import { PerKeyConcurrency, ResolveGate, registerQueueStats } from './limits.js';
 import {
   applyCorsHeaders,
   getClientIp,
@@ -67,6 +68,7 @@ function sendJson(
   body: unknown,
   allowOrigin = '*',
   cachePolicy: 'no-store' | 'manifest' = 'no-store',
+  extraHeaders: Record<string, string> = {},
 ): void {
   applyCorsHeaders(res, allowOrigin);
   setCloudflareCache(res, cachePolicy);
@@ -75,6 +77,7 @@ function sendJson(
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': String(payload.byteLength),
     'X-Content-Type-Options': 'nosniff',
+    ...extraHeaders,
   });
   res.end(payload);
 }
@@ -180,6 +183,19 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  // Resolutions are the only request that costs the whole process real work; a
+  // burst of them is what makes artwork and every lane answer late. Bound the
+  // machine and bound each client, and tell callers when to come back.
+  const resolveGate = new ResolveGate(
+    Math.max(2, Number(process.env.ELFURA_RESOLVE_CONCURRENCY || 8)),
+    Math.max(2, Number(process.env.ELFURA_RESOLVE_QUEUE || 24)),
+    Math.max(500, Number(process.env.ELFURA_RESOLVE_QUEUE_MS || 6000)),
+  );
+  const resolvePerClient = new PerKeyConcurrency(Math.max(1, Number(process.env.ELFURA_RESOLVE_PER_IP || 4)));
+  registerQueueStats(() => {
+    const gate = resolveGate.stats();
+    return { resolveActive: gate.active, resolveQueued: gate.queued, resolveClients: resolvePerClient.stats().clients };
+  });
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -217,6 +233,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
+    noteRoute(pathname);
+    noteClient(crypto.createHash('sha256').update(getClientIp(req)).digest('base64url').slice(0, 10));
 
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
     if (pathname === '/roxy' || pathname === '/roxy/') {
@@ -498,7 +516,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const clientIp = getClientIp(req);
       if (!playbackLimiter.allow(`pb:${clientIp}`)) {
         noteRateLimit('playback');
-        sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
+        sendJson(res, 429, { ok: false, error: 'rate limit exceeded', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
         return;
       }
 
@@ -565,17 +583,35 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         }
       }
 
-      const resolved = await trackPhase('playback', () => registry.resolvePlayback({
-        type: mediaType,
-        tmdbId,
-        anilistId,
-        season,
-        episode,
-        anilistEpisode,
-        sourceId,
-        preferredLang,
-        late: url.searchParams.get('late') === '1',
-      }));
+      // One client keeps one or two resolves open. More than a handful at once
+      // is a retry loop or a fan-out, and it must not eat the whole gate.
+      if (!resolvePerClient.enter(clientIp)) {
+        noteRateLimit('playback-concurrent');
+        sendJson(res, 429, { ok: false, error: 'too many resolves in flight', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
+        return;
+      }
+      let resolved: Awaited<ReturnType<typeof registry.resolvePlayback>> | null;
+      try {
+        const slot = await resolveGate.run(() => trackPhase('playback', () => registry.resolvePlayback({
+          type: mediaType,
+          tmdbId,
+          anilistId,
+          season,
+          episode,
+          anilistEpisode,
+          sourceId,
+          preferredLang,
+          late: url.searchParams.get('late') === '1',
+        })));
+        if (!slot.ok) {
+          noteRateLimit('playback-queue');
+          sendJson(res, 503, { ok: false, error: 'server busy', retryAfter: 2 }, allowOrigin, 'no-store', { 'Retry-After': '2' });
+          return;
+        }
+        resolved = slot.value;
+      } finally {
+        resolvePerClient.leave(clientIp);
+      }
 
       if (!resolved) {
         sendJson(res, 404, { ok: false, error: 'no playable streams available for this title' }, allowOrigin);
