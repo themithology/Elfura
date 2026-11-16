@@ -94,7 +94,7 @@ const EGRESS_TARGETS: { label: string; host: string; path: string }[] = [
   { label: 'vixsrc', host: 'vixsrc.to', path: '/' },
 ];
 
-const STAGE_TIMEOUT_MS = 5000;
+const STAGE_TIMEOUT_MS = 3000;
 
 async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: string[] }> {
   const run = async (target: { label: string; host: string; path: string }): Promise<EgressStage> => {
@@ -198,6 +198,11 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
   return { targets, verdict };
 }
 
+/** Just the connection-stage report: no adapters, no TMDB, a few seconds at most. */
+export async function reportEgress(): Promise<{ targets: EgressStage[]; verdict: string[] }> {
+  return probeEgressStages();
+}
+
 let buildInfoCache: { commit: string } | null = null;
 /** Commit stamp written into the deployment ZIP at packaging time. */
 export function readBuildInfo(): { commit: string } {
@@ -230,6 +235,7 @@ let inFlight: { key: string; promise: Promise<unknown> } | null = null;
 
 async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: DiagnosticsProbe) {
   const started = Date.now();
+  const egressPromise = probeEgressStages();
   const [meta, playback] = await Promise.all([
     (async () => {
       const t0 = Date.now();
@@ -296,7 +302,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
       policy: playback.policy,
     },
     network: await probeOutbound(cfg),
-    egress: await probeEgressStages(),
+    egress: await egressPromise,
     diagnosis: {
       hints,
       scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/v1/stream relay response, device decoder, and audible language are not exercised by this endpoint.',

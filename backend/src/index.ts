@@ -26,7 +26,7 @@ import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { collectDiagnostics, probeOutbound, readBuildInfo } from './diagnostics.js';
+import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -186,6 +186,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  // The light egress report is cheap and is exactly what an operator reaches for
+  // when sources look dead, so it gets its own per-IP window instead of the
+  // process-wide six-a-minute budget the heavy report uses.
+  const egressLimiter = new SlidingWindowLimiter(30);
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -333,6 +337,32 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const catalog = await fetchTmdbCatalog(cfg.tmdb);
       sendJson(res, 200, { ok: true, ...catalog }, allowOrigin, 'manifest');
+      return;
+    }
+
+    // 2b-bis. Connection-stage report on its own.
+    //
+    // The full /diagnose races twenty adapters before it answers, so it takes ten
+    // to twenty seconds and it is capped at six requests a minute for the whole
+    // process. This answers the one question "can this server open a connection to
+    // the hosts the adapters use, and at which stage does it fail" in a couple of
+    // seconds, on its own small per-IP window.
+    if (method === 'GET' && (pathname === '/diagnose/egress' || pathname === '/api/v1/egress')) {
+      if (!egressLimiter.allow(`egress:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'too many requests; try again in a minute' });
+        return;
+      }
+      try {
+        const egress = await reportEgress();
+        sendJson(res, 200, {
+          ok: true,
+          build: readBuildInfo().commit,
+          generatedAt: new Date().toISOString(),
+          egress,
+        });
+      } catch (err) {
+        sendJson(res, 200, { ok: false, error: err instanceof Error ? err.message : 'egress check failed' });
+      }
       return;
     }
 
