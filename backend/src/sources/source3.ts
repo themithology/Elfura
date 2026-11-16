@@ -10,6 +10,7 @@
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { fetchNoRedirect } from './upstream-fetch.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -48,6 +49,7 @@ export async function fetchFromVidSyncPro(
   origin: string,
   query: SourceQuery,
   endpoints: { core?: boolean; stream?: boolean } = { core: true, stream: true },
+  trace?: string[],
 ): Promise<RawStreamCandidate[]> {
   const prefAudio = query.preferredLang
     ? normalizeLang(query.preferredLang)
@@ -62,19 +64,39 @@ export async function fetchFromVidSyncPro(
       : `type=tv&id=${encodeURIComponent(query.tmdbId)}&season=${query.season ?? 1}&episode=${query.episode ?? 1}`;
   const streamQs = `${qs}&stage=primary${audioQs}`;
 
+  // Collect why a grab failed instead of collapsing every outcome to null.
+  // Without this a 404 on both documented endpoints reported `candidates=0` and
+  // nothing else, which is indistinguishable from the provider having no streams
+  // for the title — the failure mode that hid the source-18 redirect bug too.
+  const grabReasons = trace ?? [];
   const grab = async (endpoint: string) => {
     try {
       const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(6500)]) : AbortSignal.timeout(6500);
-      const res = await fetch(endpoint, {
-        headers: {
-          Accept: 'application/json',
-          Referer: `${origin}/`,
-          'User-Agent': BROWSER_UA,
+      // A redirect here is the provider moving its API, not a dead host.
+      const { response: res, reason } = await fetchNoRedirect(
+        endpoint,
+        {
+          headers: {
+            Accept: 'application/json',
+            Referer: `${origin}/`,
+            'User-Agent': BROWSER_UA,
+          },
+          signal: sig,
         },
-        signal: sig,
-      });
-      return res.ok ? await res.json() : null;
-    } catch {
+        { allowSameOriginRedirects: true },
+      );
+      if (!res) {
+        grabReasons.push(reason ?? 'no-response');
+        return null;
+      }
+      if (!res.ok) {
+        grabReasons.push(`http=${res.status}`);
+        await res.body?.cancel().catch(() => {});
+        return null;
+      }
+      return await res.json();
+    } catch (err) {
+      grabReasons.push(err instanceof Error ? err.name : 'error');
       return null;
     }
   };
@@ -240,11 +262,12 @@ export function createSource3Adapter(cfg: BackendConfig['source3'], group: 1 | 3
         const result = await promise;
         sync = result;
         settled++;
-        query.diag?.push({adapter:`source-${group}`, lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}`});
+        query.diag?.push({adapter:`source-${group}`, lane, ok:result.length > 0, ms:Date.now()-startedAt, detail:`candidates=${result.length}${grabReasons.length ? ` ${grabReasons.slice(0, 3).join(' ')}` : ''}`});
         if (result.length && !timer && !query.diag) timer = setTimeout(() => release?.(), 700);
       };
+      const grabReasons: string[] = [];
       const allLanes = Promise.allSettled([
-        measure('stream', fetchFromVidSyncPro(origin, query)),
+        measure('stream', fetchFromVidSyncPro(origin, query, { core: true, stream: true }, grabReasons)),
       ]);
       if (query.diag) await allLanes;
       else await Promise.race([allLanes, new Promise<void>((resolve) => { release = resolve; })]);
