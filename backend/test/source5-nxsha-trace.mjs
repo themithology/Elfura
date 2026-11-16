@@ -132,6 +132,37 @@ await check('an unsafe id costs no request at all', async () => {
   }
 });
 
+await check('a rotation to an older known passphrase still decodes', async () => {
+  // The site rotates its public client passphrase; when it does, every stream
+  // silently becomes "no results". nxDecode holds the known history and tries
+  // each, so an envelope sealed with the previous key must still open.
+  const crypto = await import('node:crypto');
+  const { nxDecode } = await import('../../dist/backend/sources/source5.js');
+  const OLD = 'S8x!Jk4ZP1uG8$my';
+  const salt = crypto.randomBytes(8);
+  let material = Buffer.alloc(0), prev = Buffer.alloc(0);
+  while (material.length < 48) {
+    prev = crypto.createHash('md5').update(Buffer.concat([prev, Buffer.from(OLD), salt])).digest();
+    material = Buffer.concat([material, prev]);
+  }
+  const cipher = crypto.createCipheriv('aes-256-cbc', material.subarray(0, 32), material.subarray(32, 48));
+  const body = JSON.stringify({ servers: [{ scraper: 'moviebox' }] });
+  const env = Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(body), cipher.final()]).toString('base64url');
+  assert.equal(nxDecode(env).servers?.[0]?.scraper, 'moviebox', 'the previous passphrase must still open its own envelopes');
+});
+
+await check('a key we do not know reports no-key, not a generic failure', async () => {
+  // Envelope with the right magic but sealed under an unknown key: the shape a
+  // genuine upstream rotation takes. Must be distinguishable from a stub.
+  const crypto = await import('node:crypto');
+  const salt = crypto.randomBytes(8);
+  const cipher = crypto.createCipheriv('aes-256-cbc', crypto.randomBytes(32), crypto.randomBytes(16));
+  const env = Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(Buffer.from('{"servers":[]}'.padEnd(64))), cipher.final()]).toString('base64url');
+  const { rows, trace } = await traceWith(async () => Response.json({ _hash: env }));
+  assert.deepEqual(rows, []);
+  assert.match(trace, /no-key/, `expected no-key for an unknown passphrase, got "${trace}"`);
+});
+
 // ---------------------------------------------------------------------------
 // Source 4 — same idea, but the failure being explained is discovery, not
 // transport: a 200 watch page whose RSC chunks do not carry the v1 payload.

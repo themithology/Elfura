@@ -9,15 +9,23 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 
 const ORIGIN = 'https://nxsha.space';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
-// Public web-client protocol passphrase, not a private credential. May rotate.
-const PASS = 'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3';
+// Public web-client protocol passphrases, not private credentials. The site
+// rotates them (public extractors record at least one rotation), and a rotation
+// silently turns every stream into "no results", so we keep the known history
+// and try each in order rather than trusting one constant to still be current.
+// Order matters: current first, then older ones still seen in the wild.
+const PASSES = [
+  'f4488ab4da401203d23baa129fc546153898162524635d6776826d0c867ccaa3',
+  'S8x!Jk4ZP1uG8$my',
+] as const;
+const PASS = PASSES[0];
 type Server = { scraper?: string };
 type Stream = { url?: string; type?: string; label?: string; quality?: string; language?: string; isEmbed?: boolean; headers?: Record<string, unknown> };
 type NxPayload = { servers?: Server[]; sources?: Stream[] };
-function derive(salt: Buffer) {
+function derive(salt: Buffer, pass: string = PASS) {
   let material = Buffer.alloc(0), previous = Buffer.alloc(0);
   while (material.length < 48) {
-    previous = crypto.createHash('md5').update(Buffer.concat([previous, Buffer.from(PASS), salt])).digest();
+    previous = crypto.createHash('md5').update(Buffer.concat([previous, Buffer.from(pass), salt])).digest();
     material = Buffer.concat([material, previous]);
   }
   return { key: material.subarray(0, 32), iv: material.subarray(32, 48) };
@@ -28,13 +36,21 @@ export function nxEncode(input: object): string {
   const body = JSON.stringify({ ...input, _req_ts: Date.now(), _req_salt: crypto.randomBytes(6).toString('base64url') });
   return Buffer.concat([Buffer.from('Salted__'), salt, cipher.update(body), cipher.final()]).toString('base64url');
 }
-export function nxDecode(input: string): NxPayload {
+export function nxDecodeWith(input: string, pass: string): NxPayload {
   if (!/^[A-Za-z0-9_-]+$/.test(input) || input.length > 1_000_000) throw new Error('invalid payload');
   const bytes = Buffer.from(input, 'base64url');
   if (bytes.length < 32 || bytes.subarray(0, 8).toString() !== 'Salted__') throw new Error('invalid envelope');
-  const { key, iv } = derive(bytes.subarray(8, 16));
+  const { key, iv } = derive(bytes.subarray(8, 16), pass);
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
   return JSON.parse(Buffer.concat([decipher.update(bytes.subarray(16)), decipher.final()]).toString('utf8')) as NxPayload;
+}
+/** Try every passphrase we know of, current first. */
+export function nxDecode(input: string): NxPayload {
+  let last: unknown;
+  for (const pass of PASSES) {
+    try { return nxDecodeWith(input, pass); } catch (error) { last = error; }
+  }
+  throw last instanceof Error ? last : new Error('undecodable');
 }
 function headerHints(h: Record<string, unknown> | undefined): Record<string, string> {
   const headers: Record<string, string> = { 'User-Agent': UA, Referer: ORIGIN + '/' };
@@ -102,8 +118,20 @@ export async function fetchFromNxsha(
     }
     try {
       return nxDecode(envelope._hash);
-    } catch {
-      trace?.push(`${endpoint}=undecodable`);
+    } catch (error) {
+      // Distinguish the three ways this fails, because they mean opposite
+      // things. `bad-envelope` = the payload is not an OpenSSL envelope at all
+      // (we got a stub). `bad-magic` = right length, wrong header.  `no-key` =
+      // a real envelope that our passphrase does not open, i.e. upstream
+      // rotated the key and the constant needs updating.  Collapsing these
+      // into one word is what made this look like an outage.
+      const bytes = Buffer.from(String(envelope._hash), 'base64url');
+      const magic = bytes.subarray(0, 8).toString('latin1');
+      const reason = bytes.length < 32 ? 'bad-envelope'
+        : magic !== 'Salted__' ? 'bad-magic'
+        : (error as NodeJS.ErrnoException).code === 'ERR_OSSL_BAD_DECRYPT' ? 'no-key'
+        : 'no-key';
+      trace?.push(`${endpoint}=undecodable:${reason}:${bytes.length}b`);
       throw new Error('undecodable');
     }
   };
