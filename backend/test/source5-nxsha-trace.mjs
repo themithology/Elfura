@@ -132,5 +132,50 @@ await check('an unsafe id costs no request at all', async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Source 4 — same idea, but the failure being explained is discovery, not
+// transport: a 200 watch page whose RSC chunks do not carry the v1 payload.
+// ---------------------------------------------------------------------------
+const { fetchFromBingr } = await import('../../dist/backend/sources/source4.js');
+
+async function bingrTrace(handler) {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = handler;
+  const trace = [];
+  try {
+    const rows = await fetchFromBingr({ type: 'movie', tmdbId: '550' }, { trace });
+    return { rows, trace: trace.join(' ') };
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+console.log('\nSource 4 — discovery reporting');
+
+await check('a watch page without the payload says so, and whether a token was seen', async () => {
+  // This is the CI shape: HTTP 200, a real Next.js page, no `v1.` blob in the
+  // RSC chunks. Previously indistinguishable from a network outage.
+  const { rows, trace } = await bingrTrace(async () =>
+    new Response('<html><script>self.__next_f.push([1,"{\"a\":1}"])</script></html>', { status: 200 }),
+  );
+  assert.deepEqual(rows, []);
+  assert.match(trace, /blob=none/, `expected blob=none, got "${trace}"`);
+  assert.match(trace, /token=no/, `expected token=no, got "${trace}"`);
+});
+
+await check('a refused watch page reports the status', async () => {
+  const { rows, trace } = await bingrTrace(async () => new Response('nope', { status: 404 }));
+  assert.deepEqual(rows, []);
+  assert.match(trace, /http=404/, `expected http=404, got "${trace}"`);
+});
+
+await check('an undecodable payload reports the decode error', async () => {
+  const { rows, trace } = await bingrTrace(async () =>
+    new Response('<script>self.__next_f.push([1,"v1."])</script>', { status: 200 }),
+  );
+  assert.deepEqual(rows, []);
+  assert.match(trace, /blob=none|undecodable/, `expected a decode reason, got "${trace}"`);
+});
+
 console.log(`\n${failures.length ? `${failures.length} FAILED` : 'all checks passed'}\n`);
 process.exit(failures.length ? 1 : 0);

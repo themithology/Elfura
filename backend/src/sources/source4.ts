@@ -50,7 +50,11 @@ async function readBounded(response: Response, limit: number): Promise<string> {
   } finally { await reader.cancel().catch(() => {}); }
 }
 
-export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandidate[]> {
+/** Failure trace: why an empty result is empty. Same shape as source-5. */
+export interface BingrOptions { trace?: string[] }
+
+export async function fetchFromBingr(query: SourceQuery, options: BingrOptions = {}): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
   if (!/^\d{1,12}$/.test(query.tmdbId)) return [];
   const season = query.season ?? 1, episode = query.episode ?? 1;
   if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 1) return [];
@@ -62,20 +66,29 @@ export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandi
       { headers: { 'User-Agent': UA, Referer: ORIGIN + path, Accept: '*/*' }, signal },
       { allowSameOriginRedirects: true },
     );
-    if (!r) return '';
-    if (!r.ok) { await r.body?.cancel(); return ''; }
+    if (!r) { trace?.push(`${path}=no-response`); return ''; }
+    if (!r.ok) { trace?.push(`${path}=http=${r.status}`); await r.body?.cancel(); return ''; }
     return readBounded(r, limit);
   };
   try {
     const html = await get(ORIGIN + path, 2_000_000);
+    if (!html) return [];
     let rsc = '';
     for (const m of html.matchAll(/self\.__next_f\.push\(\[1,"((?:[^"\\]|\\[\s\S])*)"\]\)/g)) {
       try { rsc += JSON.parse('"' + m[1] + '"') as string; } catch { /* ignore malformed chunk */ }
     }
     const token = rsc.match(/"token":"([^"\\]{1,2048})"/)?.[1];
     const blob = rsc.match(/v1\.[A-Za-z0-9_-]{60,}/)?.[0];
-    if (!blob) return [];
-    const first = decodeBingrPayload(blob);
+    if (!blob) {
+      // The page is server-rendered but only sometimes carries the payload in
+      // its RSC chunks; the player also fetches it from /api/sources. Say which
+      // half was missing instead of returning a bare [].
+      trace?.push(`rsc=${rsc.length} blob=none token=${token ? 'yes' : 'no'}`);
+      return [];
+    }
+    let first: Payload;
+    try { first = decodeBingrPayload(blob); }
+    catch (error) { trace?.push(`undecodable:${(error as Error).message}`); return []; }
     const ids = (Array.isArray(first.servers) ? first.servers : []).map(s => s.id).filter((id): id is string => typeof id === 'string' && /^[a-z0-9_-]{1,40}$/i.test(id));
     // Race all advertised servers; the outer registry bounds startup and warms
     // the cache for later recovery if an upstream completes after that deadline.
@@ -88,7 +101,10 @@ export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandi
         if (query.type === 'tv') { q.set('s', String(season)); q.set('e', String(episode)); }
         const body = await get(`${ORIGIN}/api/sources?${q}`, 1_500_000);
         if (body.startsWith('v1.')) rows.push(decodeBingrPayload(body.trim()));
-      } catch { /* an individual lane must not block the others */ }
+      } catch (error) { /* an individual lane must not block the others */
+        const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+        trace?.push(`${id}=${code}`);
+      }
       finally {
         settled++;
         if (!query.diag && rows.some(r => r.streams?.length) && !timer) timer = setTimeout(() => release?.(), 350);
@@ -116,15 +132,22 @@ export async function fetchFromBingr(query: SourceQuery): Promise<RawStreamCandi
     const current = build();
     if (!query.diag && settled < lanes.length && query.onLateResult) void all.then(() => query.onLateResult?.({ candidates: build() }));
     return current;
-  } catch { return []; }
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
+    trace?.push(`failed=${code}`);
+    return [];
+  }
 }
 
 export function createSource4Adapter(enabled: () => boolean): SourceAdapter {
   return { id: 'source-4', label: 'Source 4', enabled,
     async resolve(query): Promise<RawSourceResult> {
       const start = Date.now();
-      const candidates = await fetchFromBingr(query);
-      query.diag?.push({ adapter: 'source-4', lane: 'B', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
+      const trace: string[] = [];
+      const candidates = await fetchFromBingr(query, { trace });
+      const why = [...new Set(trace)].slice(0, 4).join(' ');
+      query.diag?.push({ adapter: 'source-4', lane: 'B', ok: candidates.length > 0, ms: Date.now() - start,
+        detail: `candidates=${candidates.length}${why ? ` ${why}` : ''}` });
       return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'B' } : c) };
     } };
 }
