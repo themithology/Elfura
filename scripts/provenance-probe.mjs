@@ -346,6 +346,44 @@ for (const [tmdbId, type] of [['872906', 'movie'], ['693134', 'movie']]) {
 }
 console.log('');
 
+console.log('## 2e. What a citadel row actually contains');
+/* Row keys decide whether the API tells us the audio languages of a file, or
+   only a per-row label we have to trust. Print one full row per title with the
+   URL reduced to host + path shape. */
+for (const [tmdbId, type] of [['872906', 'movie'], ['693134', 'movie']]) {
+  const url = new URL(SCRAPPER);
+  url.searchParams.set('provider', 'citadel');
+  url.searchParams.set('id', tmdbId);
+  if (type === 'tv') {
+    url.searchParams.set('season', '1');
+    url.searchParams.set('episode', '1');
+  }
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
+  try {
+    const response = await get(url.href, { Referer: 'https://www.rivestream.app/', Origin: 'https://www.rivestream.app' });
+    const body = JSON.parse(response.text);
+    const rows = (body?.data?.sources ?? []).filter((row) => row && typeof row === 'object');
+    console.log(`- ${type}:${tmdbId}: ${rows.length} row(s); top keys: ${Object.keys(body?.data ?? {}).join(',') || 'none'}`);
+    const sample = rows[0];
+    if (!sample) continue;
+    console.log(`    row keys: ${Object.keys(sample).join(',')}`);
+    const shape = Object.fromEntries(
+      Object.entries(sample).map(([key, value]) => {
+        if (typeof value === 'string' && /^https?:/.test(value)) return [key, laneShape(value)];
+        if (value && typeof value === 'object') return [key, JSON.stringify(value).slice(0, 160)];
+        return [key, String(value).slice(0, 80)];
+      }),
+    );
+    console.log(`    row: ${JSON.stringify(shape)}`);
+    const languageRows = rows.filter((row) => row.language !== undefined && row.language !== null && String(row.language) !== '');
+    console.log(`    rows with a language field: ${languageRows.length}/${rows.length}`);
+    if (languageRows.length) console.log(`    languages: ${[...new Set(languageRows.map((row) => String(row.language)))].join(',')}`);
+  } catch (err) {
+    console.log(`- ${type}:${tmdbId}: error ${err instanceof Error ? err.name : 'unknown'}`);
+  }
+}
+console.log('');
+
 /* ───────────────────────── Source 12 sweep ───────────────────────── */
 
 const VZ = 'https://vidzen.fun';
