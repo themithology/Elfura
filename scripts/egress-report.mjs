@@ -41,6 +41,34 @@ for (const target of report.targets) {
 console.log('');
 console.log('verdict:');
 for (const line of report.verdict) console.log(`  - ${line}`);
+// The relay, if one is configured. This is the check an operator needs after
+// pasting a URL and token into the panel: it says whether the stored values are
+// present and whether the Worker answers, without printing the token.
+try {
+  const { currentRelayUrl, readRelayToken, relaySource } = await import('../dist/backend/relay-config.js');
+  const { checkRelay } = await import('../dist/backend/proxy-check.js');
+  const url = currentRelayUrl();
+  console.log('');
+  if (!url) {
+    console.log('relay: none configured (discovery leaves from this server direct)');
+  } else {
+    const token = readRelayToken();
+    console.log(`relay: ${url}`);
+    console.log(`  source: ${relaySource() || 'unknown'}   token: ${token ? `present (${token.length} chars)` : 'MISSING'}`);
+    if (!token) {
+      console.log('  -> paste the TOKEN secret from the Worker into /roxy, or the Worker will answer 403');
+    }
+    const probe = await checkRelay(url);
+    console.log(
+      probe.ok
+        ? `  test: ok ${probe.ms}ms, exit address ${probe.ip || 'not reported'}`
+        : `  test: FAILED ${probe.ms}ms ${probe.error}`,
+    );
+  }
+} catch (error) {
+  console.log(`relay: could not be checked (${error instanceof Error ? error.message : String(error)})`);
+}
+
 console.log('');
 console.log('How to read it:');
 console.log('  control-tmdb fails        -> this server has no working outbound egress at all');

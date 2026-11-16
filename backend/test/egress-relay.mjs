@@ -136,14 +136,25 @@ try {
 
   saveRelayUrl(workerUrl, TOKEN);
 
-  // ---- three failures pause the relay instead of stalling every request ----
-  for (let i = 0; i < 3; i += 1) reportRelayProbe(false, '', 0, 'connect ECONNREFUSED');
+  // ---- a manual probe never pauses ----------------------------------------
+  for (let i = 0; i < 5; i += 1) reportRelayProbe(false, '', 0, 'Bad or missing x-elfura-token');
+  assert.equal(relayStatus().pausedUntil, 0, 'pressing Test relay with a wrong token must not disable the relay');
+  assert.match(relayStatus().lastError, /token/, 'but the reason is remembered for the panel');
+
+  // ---- real traffic failing three times does pause -------------------------
+  saveRelayUrl('http://127.0.0.1:1', TOKEN); // nothing listens there
+  for (let i = 0; i < 3; i += 1) await fetch(`http://127.0.0.1:${providerPort}/hello`).catch(() => {});
   assert.ok(relayStatus().pausedUntil > Date.now(), 'a dead relay rests instead of adding a timeout to every probe');
+  // Check the pause BEFORE restoring the working URL: saving a new URL is the
+  // operator saying "I fixed it", which deliberately clears the pause.
   const pausedAt = relayStatus().attempts;
   const direct = await fetch(`http://127.0.0.1:${providerPort}/hello`);
   await direct.text();
   assert.equal(direct.status, 200, 'the request still succeeds by going direct');
   assert.equal(relayStatus().attempts, pausedAt, 'and does not dial the paused relay');
+
+  saveRelayUrl(workerUrl, TOKEN);
+  assert.equal(relayStatus().pausedUntil, 0, 'saving the URL again clears the pause');
 
   console.log('✓ relay: browser profile and token reach the Worker, res.url survives redirects, failures pause instead of stalling');
 } finally {

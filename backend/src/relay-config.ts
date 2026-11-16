@@ -36,6 +36,28 @@ export function readSavedRelayUrl(): string {
   }
 }
 
+/**
+ * Called after the operator saves. Saving is the operator saying "I changed
+ * something", so any health learned about the previous value is stale and the
+ * relay must not stay paused while the panel claims it is configured.
+ *
+ * Assigned here rather than imported to keep this module free of a cycle:
+ * egress.ts imports this file, so this file cannot import egress.ts.
+ */
+let onRelayChanged: (() => void) | null = null;
+
+export function setRelayChangeHandler(handler: () => void): void {
+  onRelayChanged = handler;
+}
+
+function notifyChange(): void {
+  try {
+    onRelayChanged?.();
+  } catch {
+    /* a reporting hook must never break saving */
+  }
+}
+
 /** `environment`, `dotenv`, `panel` or '' — the panel shows which one won. */
 export function relaySource(): 'environment' | 'dotenv' | 'panel' | '' {
   if ((process.env.ELFURA_UPSTREAM_RELAY ?? '').trim()) return 'environment';
@@ -82,6 +104,7 @@ export function saveRelayUrl(url: string, token = ''): boolean {
     const existing = readRelayToken();
     fs.writeFileSync(file, JSON.stringify({ url: url.trim(), token: token.trim() || existing }, null, 2) + '\n', { mode: 0o600 });
     fs.chmodSync(file, 0o600);
+    notifyChange();
     return true;
   } catch {
     return false;
@@ -91,6 +114,7 @@ export function saveRelayUrl(url: string, token = ''): boolean {
 export function clearRelayUrl(): boolean {
   try {
     fs.rmSync(relayConfigPath(), { force: true });
+    notifyChange();
     return true;
   } catch {
     return false;

@@ -31,7 +31,7 @@ import { checkDirect, checkProxies, checkRelay, proxyProbeTarget } from './proxy
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
 import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
-import { clearRelayUrl, currentRelayUrl, relaySource, saveRelayUrl } from './relay-config.js';
+import { clearRelayUrl, currentRelayUrl, readRelayToken, relaySource, saveRelayUrl } from './relay-config.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -195,6 +195,9 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         url: currentRelayUrl(),
         source: relaySource(),
         installed: isEgressProfileInstalled(),
+        // Whether a token exists, never the token: without this the panel cannot
+        // tell "you never saved it" from "you saved the wrong one".
+        tokenSaved: !!readRelayToken(),
       },
     };
   };

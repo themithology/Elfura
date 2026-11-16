@@ -74,6 +74,32 @@ function isIpEcho(target) {
   }
 }
 
+/**
+ * Is this a plain public hostname?
+ *
+ * Rejects anything that could point inside the network: literal IPv4 and IPv6,
+ * localhost, link-local (169.254/16, fe80::/10 — the cloud metadata services),
+ * and the internal suffixes. This runs on every request regardless of
+ * ALLOWED_HOSTS, because the allowlist is about *which providers* are permitted
+ * and this is about *what is an address at all*.
+ */
+function isPublicHostname(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return false;
+  // Literal IPv4, including the 169.254.169.254 metadata endpoint and 0.0.0.0.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
+  // Literal IPv6 (contains a colon once brackets are stripped).
+  if (host.includes(':')) return false;
+  // A single label is an internal name, never a public host.
+  if (!host.includes('.')) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (host.endsWith('.internal') || host.endsWith('.local') || host.endsWith('.home.arpa')) return false;
+  // Cloudflare-internal and our own relays: no reason to fetch those, and a loop
+  // through another Worker is how a relay becomes a proxy chain.
+  if (host.endsWith('.workers.dev') || host.endsWith('.pages.dev')) return false;
+  return true;
+}
+
 function isAllowed(target, allowed) {
   let host;
   try {
@@ -81,12 +107,6 @@ function isAllowed(target, allowed) {
   } catch {
     return false;
   }
-  // Block anything that is not a plain public hostname: no credentials in the
-  // URL, no bare addresses, no internal names. A relay that can be pointed at
-  // 127.0.0.1 or a LAN address is an SSRF hole, not a proxy.
-  if (!host || host.startsWith('[') || /^[\d.]+$/.test(host)) return false;
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local')) return false;
-  if (host.endsWith('.workers.dev') || host.endsWith('.pages.dev')) return false;
   return allowed.some((entry) => host === entry || host.endsWith('.' + entry) || host.includes(entry));
 }
 
@@ -116,10 +136,25 @@ function corsHeaders() {
   };
 }
 
+/**
+ * Header values are ByteStrings: anything outside 0-255 throws a TypeError and
+ * turns a helpful error into a 500 from the Worker. Operator-facing messages are
+ * written for humans and can contain arrows or quotes, so they are sanitised
+ * before going into x-elfura-error. (Found the hard way: "add one in Settings →
+ * Variables" crashed the whole relay.)
+ */
+function headerSafe(text) {
+  return String(text || '')
+    .replace(/[^\x20-\x7e]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
+
 function fail(status, message) {
   return new Response(JSON.stringify({ ok: false, error: message }), {
     status,
-    headers: { 'content-type': 'application/json', 'x-elfura-error': message, ...corsHeaders() },
+    headers: { 'content-type': 'application/json', 'x-elfura-error': headerSafe(message), ...corsHeaders() },
   });
 }
 
@@ -128,19 +163,45 @@ export default {
     const cors = corsHeaders();
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
+    // Opening the Worker URL in a browser is how an operator checks it is live.
+    // This page reveals nothing and needs no token, so it answers before the
+    // gate rather than making a working Worker look broken.
+    const askedForHtml = (request.headers.get('accept') || '').includes('text/html');
+    if (!request.headers.get('x-elfura-target') && askedForHtml) {
+      return new Response(
+        '<!doctype html><meta charset="utf-8"><title>Elfura relay</title>' +
+          '<body style="font:16px system-ui;max-width:40em;margin:4em auto;line-height:1.6">' +
+          '<h1>Elfura egress relay</h1>' +
+          '<p>This Worker is running. It is not a website: it only relays requests that ' +
+          'Elfura signs with the <code>TOKEN</code> secret.</p>' +
+          '<p>Nothing to configure here. Open <code>/roxy</code> &rarr; <b>Egress relay</b>, ' +
+          'paste this URL and the token, then press <b>Test relay</b>.</p>' +
+          '<p>To watch traffic live, open <b>Logs</b> on this Worker page in the Cloudflare ' +
+          'dashboard: every relayed request appears there as a JSON line.</p></body>',
+        { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+      );
+    }
+
     // A Worker with no TOKEN secret is open to the whole internet. Refuse to be
     // that relay rather than trusting the deployer read the instructions.
     const token = env.TOKEN || '';
     if (!token) return fail(500, 'Worker has no TOKEN secret set; add one in Settings → Variables and Secrets');
     const supplied = request.headers.get('x-elfura-token') || '';
     // Constant-time-ish comparison: length first, then a fixed loop.
-    if (supplied.length !== token.length) return fail(403, 'Bad or missing x-elfura-token');
+    if (supplied.length !== token.length) {
+      console.log(JSON.stringify({ evt: 'relay-reject', reason: 'token', supplied: !!supplied }));
+      return fail(403, 'Bad or missing x-elfura-token');
+    }
     let diff = 0;
     for (let i = 0; i < token.length; i += 1) diff |= supplied.charCodeAt(i) ^ token.charCodeAt(i);
-    if (diff !== 0) return fail(403, 'Bad or missing x-elfura-token');
+    if (diff !== 0) {
+      console.log(JSON.stringify({ evt: 'relay-reject', reason: 'token-mismatch' }));
+      return fail(403, 'Bad or missing x-elfura-token');
+    }
 
     const target = request.headers.get('x-elfura-target') || '';
     if (!target) return fail(400, 'Missing x-elfura-target header');
+
 
     let url;
     try {
@@ -158,15 +219,25 @@ export default {
       .split(',')
       .map((entry) => entry.trim().toLowerCase())
       .filter(Boolean);
-    const allowed = extra.length ? extra : DEFAULT_ALLOWED;
-    if (!extra.length && !isIpEcho(target) && !isAllowed(target, allowed)) {
-      return fail(403, `Host not allowed by this relay: ${url.hostname}. Add it to the ALLOWED_HOSTS secret, or set ALLOWED_HOSTS=* to allow everything.`);
+    const openToAll = extra.includes('*');
+
+    // The safety rule is checked FIRST and unconditionally. An earlier version
+    // only ran it when ALLOWED_HOSTS was empty, so setting the secret quietly
+    // re-opened the hole it was meant to close: `x-elfura-target:
+    // http://169.254.169.254/latest/meta-data/` was fetched and answered with a
+    // 401 from the metadata service. A relay that can be aimed at link-local or
+    // private addresses is an SSRF weapon, not a proxy.
+    if (!openToAll && !isIpEcho(target) && !isPublicHostname(url.hostname)) {
+      return fail(403, `Refusing internal, literal or private address ${url.hostname}`);
     }
-    if (extra.includes('*')) {
-      // Explicit opt-out still refuses internal names through isAllowed above.
-      if (!isAllowed(target, ['*'].concat(DEFAULT_ALLOWED))) {
-        return fail(403, `Refusing to fetch internal or literal address ${url.hostname}`);
+    if (!openToAll) {
+      const allowed = extra.length ? extra : DEFAULT_ALLOWED;
+      if (!isIpEcho(target) && !isAllowed(target, allowed)) {
+        return fail(403, `Host not allowed by this relay: ${url.hostname}. Add it to the ALLOWED_HOSTS secret, or set ALLOWED_HOSTS=* to allow everything.`);
       }
+    } else if (!isPublicHostname(url.hostname)) {
+      // ALLOWED_HOSTS=* relaxes the provider list, never the address rules.
+      return fail(403, `Refusing internal, literal or private address ${url.hostname}`);
     }
 
     const method = (request.headers.get('x-elfura-method') || 'GET').toUpperCase();
@@ -193,7 +264,10 @@ export default {
       }
     }
 
+    // Live traffic in the dashboard (Workers → your Worker → Logs). Without this
+    // an operator has no way to answer "is anything actually coming through?".
     const started = Date.now();
+    console.log(JSON.stringify({ evt: 'relay', host: url.hostname, path: url.pathname.slice(0, 60), method }));
     let upstream;
     try {
       upstream = await fetch(url.toString(), {
@@ -204,8 +278,10 @@ export default {
       });
     } catch (error) {
       const message = (error && error.message) || 'fetch failed';
+      console.log(JSON.stringify({ evt: 'relay-error', host: url.hostname, error: message }));
       return fail(502, `Worker could not reach ${url.hostname}: ${message}`);
     }
+    console.log(JSON.stringify({ evt: 'relay-done', host: url.hostname, status: upstream.status, ms: Date.now() - started }));
 
     // The IP-echo tests read a body, so rewrite that one case to the address the
     // target actually saw. Everything else is passed through untouched.

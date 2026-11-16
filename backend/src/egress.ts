@@ -26,7 +26,7 @@ import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.
 import { readDotEnvOverlay } from './config.js';
 import { proxyPool, type ProxyEntry } from './proxy-pool.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
-import { currentRelayUrl, readRelayToken } from './relay-config.js';
+import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
 
 /** A ranged request is media, not discovery: never buffered, never retried. */
 function isMediaRequest(url: string, init: Record<string, unknown>): boolean {
@@ -157,7 +157,15 @@ export function relayStatus(): RelayStatus {
   return { ...relay, configured: !!url, host: url ? relayHost(url) : '' };
 }
 
-/** Remember what a probe learned, so the panel can report the relay's health. */
+/**
+ * Remember what a manual test learned.
+ *
+ * Deliberately does NOT pause the relay. A test is a diagnosis: if the token is
+ * wrong the operator is going to press the button again after fixing it, and
+ * three clicks must not leave the relay disabled for a minute with the panel
+ * still saying "not tested yet". Pausing is for real traffic only — see the
+ * request path in installEgressProfile.
+ */
 export function reportRelayProbe(ok: boolean, ip: string, ms: number, error: string): void {
   relay.lastChecked = Date.now();
   relay.lastMs = ms;
@@ -171,7 +179,6 @@ export function reportRelayProbe(ok: boolean, ip: string, ms: number, error: str
   }
   relay.consecutiveFailures += 1;
   relay.lastError = error;
-  if (relay.consecutiveFailures >= RELAY_PAUSE_AFTER) relay.pausedUntil = Date.now() + RELAY_PAUSE_MS;
 }
 
 /** Test hook: forget everything a previous install or probe learned. */
@@ -190,6 +197,15 @@ export function resetRelayForTest(): void {
   });
   relayLogAnnounced = false;
 }
+
+// Saving a URL or token resets what the previous value taught us, so the panel
+// reflects the new one immediately instead of showing a stale pause or a stale
+// error from the old token.
+setRelayChangeHandler(() => {
+  relay.consecutiveFailures = 0;
+  relay.pausedUntil = 0;
+  relay.lastError = '';
+});
 
 function relayHost(url: string): string {
   try {
@@ -402,9 +418,14 @@ export async function installEgressProfile(log: (line: string) => void = console
         if (response.status !== 403) return response;
         await response.body?.cancel().catch(() => {});
       } catch (error) {
-        reportRelayProbe(false, '', 0, (error as Error)?.message ?? String(error));
-        // A relay that cannot be reached at all is reported once, then retried
-        // on the next request after the pause rather than on every probe.
+        relay.consecutiveFailures += 1;
+        relay.lastError = (error as Error)?.message ?? String(error);
+        relay.lastChecked = Date.now();
+        // Real traffic failing three times in a row means the relay is not
+        // working at all, so it rests instead of adding a timeout to every one
+        // of the twenty-one source probes a resolve fires. A manual test never
+        // pauses: see reportRelayProbe.
+        if (relay.consecutiveFailures >= RELAY_PAUSE_AFTER) relay.pausedUntil = Date.now() + RELAY_PAUSE_MS;
       }
     }
 
