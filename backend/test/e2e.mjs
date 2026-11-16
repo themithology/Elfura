@@ -1513,7 +1513,7 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  assert.equal(health.sourceCount, 3, 'a bare count is fine');
+  assert.equal(health.sourceCount, 4, 'a bare count is fine (source-22 = Vidly subtitles)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1524,7 +1524,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 3);
+  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 joined the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);

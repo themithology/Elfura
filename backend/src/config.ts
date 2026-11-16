@@ -90,6 +90,8 @@ export interface BackendConfig {
   source19?: { enabled: boolean };
   source20?: { enabled: boolean };
   source21?: { enabled: boolean };
+  /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
+  source22?: { enabled: boolean };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -239,6 +241,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
+    source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

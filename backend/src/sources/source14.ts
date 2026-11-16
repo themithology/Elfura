@@ -259,12 +259,35 @@ export async function fetchFromCitadel(query: SourceQuery, trace?: string[]): Pr
     }),
   );
 
-  const bodies: Record<string, unknown> = {};
-  for (const [provider, body] of results) if (body) bodies[provider] = body;
-  return riveCandidatesByProvider(bodies).map((candidate) => ({
-    ...candidate,
-    rank: candidate.rank + (classifyUpstreamUrl(candidate.url) === 'relay' ? RELAY_RANK_PENALTY : 0),
-  }));
+  // Accumulate per provider instead of merging everything into one body map.
+  // The old shape made a six-backend lane report as a single "source-14": when
+  // three backends timed out and a fourth answered 200 with zero rows, the result
+  // was 12 rows with no indication that half the lane was gone. Now each provider
+  // contributes its own rows and tags them, so a partial outage is visible in the
+  // row set itself and not only in a trace string.
+  const out: RawStreamCandidate[] = [];
+  for (const [provider, body] of results) {
+    if (!body) continue;
+    const rows = riveCandidatesByProvider({ [provider]: body });
+    for (const candidate of rows) {
+      // The backend name already rides in the key/fingerprint from
+      // riveCandidatesByProvider, so nothing extra is attached here; what matters
+      // is that each backend contributes separately instead of being merged.
+      out.push({
+        ...candidate,
+        rank: candidate.rank + (classifyUpstreamUrl(candidate.url) === 'relay' ? RELAY_RANK_PENALTY : 0),
+      });
+    }
+  }
+  // Deduplicate by fingerprint: two backends occasionally serve the same master,
+  // and listing it twice makes the source menu look richer than it is.
+  const seen = new Set<string>();
+  return out.filter((candidate) => {
+    const id = candidate.fingerprint ?? candidate.key ?? candidate.url;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 }
 
 export function createSource14Adapter(enabled: () => boolean): SourceAdapter {
@@ -283,7 +306,10 @@ export function createSource14Adapter(enabled: () => boolean): SourceAdapter {
         lane: 'C',
         ok: candidates.length > 0,
         ms: Date.now() - started,
-        detail: `rows=${raw.length},manifestReachable=${candidates.length} ${trace.join(' ')}`.trim(),
+        detail:
+          `rows=${raw.length},manifestReachable=${candidates.length} ` +
+          `backends=${trace.filter((t) => t.includes('=200/')).length}/${RIVE_PROVIDERS.length} ` +
+          trace.join(' ').trim(),
       });
       return {
         candidates: candidates.map((candidate) => (query.diag ? { ...candidate, diagnosticLane: 'C' } : candidate)),

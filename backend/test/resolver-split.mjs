@@ -358,9 +358,25 @@ await check('resolver back: playback answers again', () => {
 cleanup();
 await wait(400);
 const autoPort = 8903;
-// A socket left in TIME_WAIT from an earlier test would fail this for a reason
-// unrelated to what it checks, so confirm the port is clear first.
+// Two things can hold this port: a socket in TIME_WAIT from an earlier test, and
+// a server left running by an earlier *interrupted* run. The second is the one
+// that actually bit us — the port answers, so an autostart boot reports
+// EADDRINUSE and the check fails for a reason that has nothing to do with the
+// behaviour under test. Clear both before asserting.
 await waitForPortClosed(autoPort);
+try {
+  // Only a process listening on *our* test port is killed, by port, not by name.
+  const owners = execSync(`ss -ltnp 2>/dev/null | grep ':${autoPort} ' || true`).toString();
+  for (const match of owners.matchAll(/pid=(\d+)/g)) {
+    try {
+      execSync(`kill -9 ${match[1]}`);
+    } catch {
+      /* already gone */
+    }
+  }
+} catch {
+  /* ss unavailable: fall through to the wait below */
+}
 const auto = spawnElfura([], {
   SERVER_PORT: String(autoPort),
   ELFURA_RESOLVER_AUTOSTART: '1',

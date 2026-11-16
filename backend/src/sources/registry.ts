@@ -36,6 +36,7 @@ import { createSource18Adapter } from './source18.js';
 import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
+import { createSource22Adapter } from './source22.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -179,6 +180,7 @@ export class SourceRegistry {
       createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
+      createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
     ];
   }
 
@@ -1015,7 +1017,11 @@ export class SourceRegistry {
       return null;
     }
 
-    // Only OpenSubtitles tracks are exposed. No provider subtitle fallback.
+    // Only OpenSubtitles tracks are exposed by default. No provider subtitle
+    // fallback — with one exception: the Vidly index (source-22), which is a
+    // separate, unauthenticated subtitle catalogue. It is used only when
+    // OpenSubtitles produced nothing, so it can add languages but can never
+    // displace a working OpenSubtitles track.
     const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
 
     if (shouldResolveOpenSubtitles && media.imdbId) {
@@ -1040,6 +1046,31 @@ export class SourceRegistry {
         for (const opt of uniformOptions) {
           opt.subtitles = [...sealedFallbackSubs];
         }
+      }
+    }
+
+    // Vidly subtitle index: a language fallback, never a replacement.
+    // `query.extraSubtitles` was filled in by the source-22 lane during the same
+    // resolve, so this costs no extra request and no extra wait.
+    const vidlyTracks = query.extraSubtitles ?? [];
+    if (vidlyTracks.length && uniformOptions.length) {
+      const sealedVidly = vidlyTracks.map((track) => ({
+        lang: track.lang,
+        label: track.label,
+        format: 'vtt' as const,
+        url: `${streamBase}?t=${encodeURIComponent(
+          sealStreamTicket(this.cfg.secret, {
+            u: track.url,
+            ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+            k: 's',
+          }),
+        )}`,
+      }));
+      for (const opt of uniformOptions) {
+        const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
+        const added = sealedVidly.filter((track) => !already.has(track.lang));
+        // Never overwrite a language we already have: OpenSubtitles wins.
+        if (added.length) opt.subtitles = [...(opt.subtitles ?? []), ...added];
       }
     }
 
