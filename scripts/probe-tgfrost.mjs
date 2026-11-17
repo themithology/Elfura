@@ -127,4 +127,30 @@ for (const m of blob.matchAll(/(?:servers?|sources?|providers?)\s*[:=]\s*(\[[\s\
   }
 }
 
+// ---------------------------------- 4. is the CDN publicly constructible? ---
+// TG FROST plays DASH straight off sacdn.hakunaymatata.com/dash/<dir>/ and
+// bcdnt.hakunaymatata.com/<bucket>/<hash>.mp4. If those answer without a TG
+// FROST session, the backend is directly reachable and we need no dependency on
+// TG FROST at all - which is the actual goal. A directory observed in the
+// browser probe is used verbatim; segments already returned 200 for it.
+const OBSERVED_DIR = '379171015097733864_1_1_1080_h265';
+const OBSERVED_MP4 = 'https://bcdnt.hakunaymatata.com/resource/a43e7f34e8358a922c8b181114bd4db6.mp4';
+for (const [label, url] of [
+  ...['master.m3u8', 'manifest.mpd', 'index.mpd', 'master.mpd'].map((f) => [
+    `sacdn:${f}`,
+    `https://sacdn.hakunaymatata.com/dash/${OBSERVED_DIR}/${f}`,
+  ]),
+  ['bcdnt:mp4-range', OBSERVED_MP4],
+  ['sacdn:init-segment', `https://sacdn.hakunaymatata.com/dash/${OBSERVED_DIR}/init-stream3.m4s`],
+  // The player is reached through a worker relay; check whether the relay is
+  // open (no session) or bound to TG FROST.
+  ['reelsdownload:subs', 'https://embed.reelsdownload.online/api/subs/vtt'],
+]) {
+  const r = await get(label, url, { Range: 'bytes=0-2048' });
+  if (r.status) {
+    const head = r.text.slice(0, 120).replace(/\s+/g, ' ');
+    log(label, `HTTP ${r.status} bytes=${r.text.length} :: ${head}`);
+  }
+}
+
 console.log('[tg:done]');
