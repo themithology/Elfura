@@ -93,6 +93,18 @@ export interface BackendConfig {
   /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
   source22?: { enabled: boolean };
 
+  /**
+   * VidLink. A real JSON API (measured: /api/b returns application/json), so it
+   * is a cheap deterministic lane rather than a scrape.
+   */
+  source24: {
+    enabled: boolean;
+    origin: string;
+    timeoutMs: number;
+    /** Comes through a third-party API front, so it must not outrank origin CDNs. */
+    rank: number;
+  };
+
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -245,6 +257,12 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
     source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
+    source24: {
+      enabled: env.ELFURA_VIDLINK_ENABLED !== '0',
+      origin: (env.ELFURA_VIDLINK_ORIGIN || 'https://vidlink.pro/api/b').replace(/\/+$/, ''),
+      timeoutMs: Math.max(3000, Number(env.ELFURA_VIDLINK_TIMEOUT_MS || 12_000)),
+      rank: 55,
+    },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
