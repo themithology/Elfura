@@ -974,7 +974,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Length': String(buf.byteLength),
           'X-Content-Type-Options': 'nosniff',
-          'Referrer-Policy': 'same-origin',
+          // Deliberately frameable: this document exists to be embedded. There
+          // is no X-Frame-Options and the CSP names no frame-ancestors, so both
+          // old and new browsers allow it. Do not copy the /roxy DENY above here.
+          // A cross-site iframe is the whole point of this document. Under
+          // `same-origin` the browser strips the referer exactly when the parent
+          // is third-party, which is when the origin check most needs it - the
+          // embed then looks like an anonymous caller and gets refused with the
+          // player showing "Couldn't find this title". Full referrer, and the
+          // document is frameable so a partner site may actually embed it.
+          'Referrer-Policy': 'no-referrer-when-downgrade',
         });
         res.end(method === 'HEAD' ? undefined : buf);
         return;

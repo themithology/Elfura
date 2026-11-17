@@ -41,6 +41,41 @@ export function isLikelyAutomatedScraper(req: IncomingMessage, isProd: boolean):
   return false;
 }
 
+/**
+ * True when the request is aimed at the host that served the page it comes
+ * from: the request's own Host equals the Referer's host.
+ *
+ * This is the case that decides whether an embed works. Our /embed/* document
+ * is served BY US, so its fetch to /api/v1/playback carries OUR host as the
+ * Referer even when the top-level page is a third-party site. Judging that
+ * request by its parent's origin gets a perfectly same-origin call refused, and
+ * the player then reports "Couldn't find this title" while the document itself
+ * rendered fine.
+ *
+ * Only the hosts are compared, so an http/https mismatch behind a reverse proxy
+ * (TLS terminated in front of us) does not cause a false negative.
+ */
+function requestTargetsItsOwnHost(req: IncomingMessage): boolean {
+  const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  if (!rawHost) return false;
+  const selfHost = rawHost.replace(/:\d+$/, '');
+  const referer = typeof req.headers.referer === 'string' ? req.headers.referer : '';
+  if (!referer) return false;
+  try {
+    const refHost = new URL(referer).host.toLowerCase().replace(/:\d+$/, '');
+    if (refHost && refHost === selfHost) return true;
+  } catch {
+    /* ignore malformed referer */
+  }
+  // Sec-Fetch-Site is set by the browser and cannot be forged by page script.
+  // same-origin means the request came from a document on this very origin,
+  // which is exactly what an embedded player of ours is.
+  return req.headers['sec-fetch-site'] === 'same-origin';
+}
+
 export function resolveAllowedOrigin(req: IncomingMessage, allowedOrigins: string[]): string | null {
   const originHeader = typeof req.headers.origin === 'string' ? req.headers.origin.replace(/\/+$/, '') : '';
   let refererOrigin = '';
@@ -50,6 +85,20 @@ export function resolveAllowedOrigin(req: IncomingMessage, allowedOrigins: strin
     } catch {
       /* ignore malformed referer */
     }
+  }
+
+  // Our own page calling our own API. Checked before the allowlist so an embed
+  // is not judged by the origin of the site that framed it, and checked before
+  // the '*' branch so the echoed origin is one a browser will accept.
+  if (requestTargetsItsOwnHost(req)) {
+    const selfOrigin = (() => {
+      const raw = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+      if (!raw) return '';
+      const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'https';
+      return `${proto}://${raw}`;
+    })();
+    if (selfOrigin) return selfOrigin;
+    if (originHeader) return originHeader;
   }
 
   if (allowedOrigins.includes('*')) {

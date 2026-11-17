@@ -2821,9 +2821,80 @@ try {
     assert.equal(isAnonymousSegmentUrl(leakyUrl, true), false, `Must block leaky/unsafe offload URL: ${leakyUrl}`);
   }
 
-  //   (b) Embed response carries `Referrer-Policy: same-origin` + `<meta name="referrer" content="same-origin">`
-  assert.equal(embedRes.headers.get('referrer-policy'), 'same-origin');
-  assert(embedHtml.includes('name="referrer" content="same-origin"'));
+  //   (b0) The failure this file kept reproducing: an embed framed by a
+  //   third-party site gets refused even though it is our own document.
+  //
+  //   Two independent causes, both covered here:
+  //     - the document announced `same-origin`, so the browser stripped the
+  //       referer whenever the parent was cross-site;
+  //     - the origin check compared the request against the PARENT's origin and
+  //       rejected it, instead of noticing the caller was our own page.
+  {
+    const embedUrl = new URL(embedRes.url);
+    const embedBase = embedUrl.origin;
+    const embedPath = embedUrl.pathname;
+    // The boot token is scoped to the title the embed was minted for. Asking for
+    // anything else would test token scope, not origin handling.
+    const embedTv = embedPath.match(/^\/embed\/tv\/(\d+)\/(\d+)\/(\d+)$/);
+    const embedMovie = embedPath.match(/^\/embed\/movie\/(\d+)$/);
+    const scopeParams = embedTv
+      ? { type: 'tv', tmdb: embedTv[1], s: embedTv[2], e: embedTv[3] }
+      : embedMovie
+        ? { type: 'movie', tmdb: embedMovie[1] }
+        : null;
+    assert(scopeParams, `could not derive the embed title from ${embedPath}`);
+    const refusals = [
+      // Our embed document as the referrer, parent site third-party.
+      { Referer: `${embedBase}${embedPath}` },
+      // A proxy in front of us reports the client-facing Host.
+      { Referer: `${embedBase}${embedPath}`, 'X-Forwarded-Host': new URL(embedBase).host, 'X-Forwarded-Proto': 'https' },
+      // The browser's own same-origin signal, no referer at all.
+      { 'Sec-Fetch-Site': 'same-origin' },
+    ];
+    for (const extra of refusals) {
+      const params = new URLSearchParams(scopeParams);
+      const r = await fetch(`${apiBase}/api/v1/playback?${params}`, {
+        // The boot token from the embed document is part of the scenario: an
+        // embedded player always has one, and its absence would make this a
+        // test of token enforcement rather than of origin handling.
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': browserHeaders['User-Agent'],
+          'X-Playback-Token': boot.pltoken,
+          ...extra,
+        },
+      });
+      assert.equal(
+        r.status,
+        200,
+        `an embed served from our own host must resolve even when framed cross-site (got ${r.status} for ${JSON.stringify(extra)})`,
+      );
+    }
+    // And the guard must still bite: a genuinely foreign caller is refused.
+    const foreign = await fetch(`${apiBase}/api/v1/playback?${new URLSearchParams(scopeParams)}`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': browserHeaders['User-Agent'],
+        'X-Playback-Token': boot.pltoken,
+        Origin: 'https://not-allowed.example',
+        Referer: 'https://not-allowed.example/player',
+        'Sec-Fetch-Site': 'cross-site',
+      },
+    });
+    assert.equal(foreign.status, 403, 'a foreign origin is still refused when an allowlist is configured');
+  }
+
+  //   (b) The embed document must NOT suppress its referrer.
+  //
+  //   This assertion used to demand `same-origin` in both the header and the
+  //   meta tag, which is exactly what broke embedded playback: in a third-party
+  //   iframe the browser then strips the referer, our own API call arrives
+  //   looking anonymous, the origin check refuses it, and the player shows
+  //   "Couldn't find this title" - while the same player works on our own site.
+  //   The embed exists to be framed, so it has to identify itself.
+  assert.equal(embedRes.headers.get('referrer-policy'), 'no-referrer-when-downgrade');
+  assert(embedHtml.includes('name="referrer" content="no-referrer-when-downgrade"'));
+  assert(!embedHtml.includes('content="same-origin"'), 'the embed must send a referer when framed cross-site');
 
   //   (c) CLI scrapers / downloaders (`yt-dlp`, `ffmpeg`/`Lavf`, `curl`) are blocked with 403 on `/api/v1/playback` & `/api/v1/stream`
   for (const botUa of ['yt-dlp/2026.10.01', 'Lavf/61.1.100', 'curl/8.7.1']) {
