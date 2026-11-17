@@ -157,4 +157,35 @@ for (const [label, url] of [
   }
 }
 
+// ------------------------------------ 5. is a header mimic enough? -----------
+// Key result from the run above: the SAME runner got HTTP 200 for these exact
+// URLs from inside Chromium, but a plain Node fetch gets TypeError. Same IP, so
+// this is not IP blocking - it is TLS/header fingerprinting. That distinction
+// decides the design: if browser headers are enough, we can fetch directly and
+// never depend on the TG FROST player at all.
+const TG_ORIGIN = 'https://tgfrost.lovable.app';
+const browserish = {
+  'User-Agent': UA,
+  Accept: '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'identity',
+  Referer: `${TG_ORIGIN}/`,
+  Origin: TG_ORIGIN,
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'cross-site',
+};
+for (const [label, url, headers] of [
+  ['mimic:sacdn-init', `https://sacdn.hakunaymatata.com/dash/${OBSERVED_DIR}/init-stream3.m4s`, browserish],
+  ['mimic:bcdnt-mp4', OBSERVED_MP4, browserish],
+  ['mimic:reelsdownload', 'https://embed.reelsdownload.online/api/subs/vtt', browserish],
+  // No Range and no custom headers at all, to separate "Range confuses it"
+  // from "the client is refused".
+  ['bare:sacdn-init', `https://sacdn.hakunaymatata.com/dash/${OBSERVED_DIR}/init-stream3.m4s`, {}],
+]) {
+  const r = await get(label, url, headers);
+  if (!r.status) log(label, `ERR ${r.error || 'no-response'}`);
+  else log(label, `HTTP ${r.status} bytes=${r.text.length} :: ${r.text.slice(0, 60).replace(/\s+/g, ' ')}`);
+}
+
 console.log('[tg:done]');
