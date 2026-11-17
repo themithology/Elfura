@@ -165,5 +165,70 @@ for (const { type, rest } of CASES) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The last link: does a sealed option actually PLAY through the relay?
+//
+// Every other probe stopped before this. A stream can be advertised and still
+// fail here - bad ticket, wrong origin, relay refusing the upstream - and that
+// failure is exactly what a viewer sees as "the source is broken".
+// ---------------------------------------------------------------------------
+const PLAY_CASES = (process.env.PIPE_PLAY || 'tv:71446/1/1,movie:1368337').split(',')
+  .map((t) => {
+    const [type, rest] = t.trim().split(':');
+    return { type, rest };
+  });
+
+for (const { type, rest } of PLAY_CASES) {
+  const id = rest.split('/')[0];
+  const qs = new URLSearchParams({ type, tmdbId: id });
+  if (type === 'tv') {
+    qs.set('season', rest.split('/')[1] || '1');
+    qs.set('episode', rest.split('/')[2] || '1');
+  }
+  const out = await getJson(`/api/v1/playback?${qs.toString()}`);
+  const options = Array.isArray(out.body?.sources) ? out.body.sources : [];
+  if (!options.length) {
+    log(`play ${type}/${rest}`, 'no options to play');
+    continue;
+  }
+  // One option per source, so a single source's relay failure cannot be read
+  // as a pipeline-wide one.
+  const perSource = new Map();
+  for (const o of options) if (!perSource.has(o.sourceId)) perSource.set(o.sourceId, o);
+
+  for (const [sourceId, option] of perSource) {
+    const url = `http://127.0.0.1:${port}${option.url}`;
+    try {
+      const res = await fetch(url, {
+        headers: { ...headers, Accept: '*/*' },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(25_000),
+      });
+      // Only read a bounded slice: enough to tell a manifest from an error page.
+      const reader = res.body?.getReader();
+      let bytes = 0;
+      let head = '';
+      if (reader) {
+        const chunk = await reader.read();
+        if (chunk.value) {
+          bytes = chunk.value.length;
+          head = Buffer.from(chunk.value).toString('utf8').slice(0, 120);
+        }
+        await reader.cancel().catch(() => {});
+      }
+      const isManifest = head.trimStart().startsWith('#EXTM3U');
+      const variants = (head.match(/#EXT-X-STREAM-INF/g) || []).length;
+      log(
+        `play ${type}/${rest} ${sourceId}`,
+        `HTTP ${res.status} manifest=${isManifest} variants=${variants} ct=${res.headers.get('content-type') || '-'} ` +
+        `first=${bytes}B quality=${option.quality} type=${option.type}` +
+        (isManifest ? '' : ` head="${head.slice(0, 70).replace(/\s+/g, ' ')}"`)
+      );
+    } catch (error) {
+      log(`play ${type}/${rest} ${sourceId}`, `ERR ${error?.cause?.code || error.name}`);
+    }
+  }
+}
+
 server.close();
 console.log('[pipe:done]');
