@@ -91,6 +91,7 @@ jobs:
           node scripts/probe-bingr-embed.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-bingr-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-bingr-entry.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-greybox.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
