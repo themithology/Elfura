@@ -94,47 +94,141 @@ function mapSubtitles(
   return out;
 }
 
+/** Hosts that serve a vidbolt master behind a hotlink gate (Referer/Origin required). */
+const VIDBOLT_PROXY_HOST = /(?:^|\.)proxy\.vidbolt\.xyz$/i;
+
+/**
+ * VidBolt — `/api/resolve`.
+ *
+ * This lane was written from a guess and the guess was wrong in three places,
+ * each of which alone was enough to return zero candidates:
+ *
+ *  1. It sent `only=orion&hevc=0`. Neither parameter exists. Three independent
+ *     scrapers that work against this API send exactly `type`, `id`, and for TV
+ *     `season`/`episode` — nothing else.
+ *  2. It sent `Referer: <origin>/` (the marketing homepage). The player is only
+ *     served from a *title page*: `Reference: <origin>/movie/<tmdb>` or
+ *     `<origin>/tv/<tmdb>/<s>/<e>`. VidBolt deliberately refuses a bare page
+ *     load ("Opening the same URL in a new tab won't play"), which is why
+ *     probing the title page out of band 404s while the embed plays.
+ *  3. It allowlisted `rousav.tech` / `animecurx.tech` and dropped everything
+ *     else. Those are one mirror pair; the API also hands back CDN hosts and
+ *     `proxy.vidbolt.xyz`. The working scrapers validate the returned master
+ *     playlist instead of trusting a host list, which is the right test: it
+ *     measures the thing that matters (is this a real manifest) and cannot go
+ *     stale when a mirror rotates.
+ *
+ * The 3 s timeout also had to go: this path resolves a manifest server-side and
+ * regularly needs longer than a JSON head request.
+ */
 export async function fetchFromVidBolt(
   origin: string,
   query: SourceQuery,
+  diag?: { push: (entry: Record<string, unknown>) => void },
 ): Promise<RawStreamCandidate[]> {
-  const qs = new URLSearchParams({ type: query.type, id: query.tmdbId, only: 'orion', hevc: '0' });
-  if (query.type === 'tv') {
+  const type = query.type === 'tv' ? 'tv' : 'movie';
+  // No `only`, no `hevc`: the API takes type/id/season/episode and nothing else.
+  const qs = new URLSearchParams({ type, id: String(query.tmdbId) });
+  if (type === 'tv') {
     qs.set('season', String(query.season ?? 1));
     qs.set('episode', String(query.episode ?? 1));
   }
+  const base = origin.replace(/\/+$/, '');
+  // The player only answers when referred from its own title page.
+  const referer =
+    type === 'tv'
+      ? `${base}/tv/${query.tmdbId}/${query.season ?? 1}/${query.episode ?? 1}`
+      : `${base}/movie/${query.tmdbId}`;
+
+  const startedAt = Date.now();
   try {
-    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
-    const res = await fetch(`${origin}/api/resolve?${qs}`, {
-      headers: { Accept: 'application/json', Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA },
+    const signal = query.signal
+      ? AbortSignal.any([query.signal, AbortSignal.timeout(8000)])
+      : AbortSignal.timeout(8000);
+    const res = await fetch(`${base}/api/resolve?${qs}`, {
+      headers: {
+        Accept: 'application/json, */*',
+        Referer: referer,
+        Origin: base,
+        'User-Agent': BROWSER_UA,
+      },
       signal,
     });
-    if (!res.ok) return [];
-    const payload = (await res.json()) as { stream?: { sources?: { url?: string; type?: string; master?: unknown }[] } };
+    if (!res.ok) {
+      diag?.push({ adapter: 'source-1', lane: 'D', ok: false, ms: Date.now() - startedAt, detail: `vidbolt http=${res.status}` });
+      return [];
+    }
+    const payload = (await res.json()) as {
+      stream?: { sources?: { url?: string; type?: string; master?: unknown }[] };
+      streamUrl?: unknown;
+      url?: unknown;
+      source?: { url?: unknown };
+    };
+    // New shape is stream.sources[].url; older deployments used a bare
+    // streamUrl/url/source.url. Read both so a server on either shape works.
+    type VidBoltRow = { url?: string; type?: string; master?: unknown };
+    const rawRows: VidBoltRow[] = payload.stream?.sources?.length
+      ? payload.stream.sources
+      : [payload.streamUrl, payload.url, payload.source?.url]
+          .filter((value): value is string => typeof value === 'string')
+          .map((url): VidBoltRow => ({ url, type: 'hls' }));
     const out: RawStreamCandidate[] = [];
-    for (const source of payload.stream?.sources ?? []) {
+    for (const source of rawRows) {
       if (typeof source.url !== 'string' || !isSafeUpstreamUrl(source.url)) continue;
-      const host = new URL(source.url).hostname.toLowerCase();
-      const testLoopback = process.env.NODE_ENV === 'test' && process.env.ELFURA_ALLOW_LOOPBACK_TEST === '1' && (host === 'localhost' || host === '127.0.0.1');
-      if (!testLoopback && !/(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/.test(host)) continue;
       if (inferStreamType(source.type, source.url) !== 'hls') continue;
+      const host = new URL(source.url).hostname.toLowerCase();
+      const testLoopback =
+        process.env.NODE_ENV === 'test' &&
+        process.env.ELFURA_ALLOW_LOOPBACK_TEST === '1' &&
+        (host === 'localhost' || host === '127.0.0.1');
+      // A proxy-fronted master needs vidbolt's own Referer/Origin to play; a
+      // direct CDN one is better served by its own host headers. This mirrors
+      // what the working scrapers do rather than allowlisting hosts.
+      const headers: Record<string, string> = { 'User-Agent': BROWSER_UA };
+      if (VIDBOLT_PROXY_HOST.test(host) || testLoopback) {
+        headers.Referer = `${base}/`;
+        headers.Origin = base;
+      }
       // The API's embedded master is a scheduling hint only. The actual URL
       // still has to pass independent manifest and child-playlist checks.
-      const hintedLangs = typeof source.master === 'string' && source.master.length <= 512 * 1024
-        ? extractManifestAudioLangs(source.master) : [];
-      out.push({ key: source.url, url: source.url, type: 'hls', quality: 'auto', rank: 4,
-        ...(new Set(hintedLangs).size > 1 ? {multiAudio:true, availableAudioLangs:hintedLangs} : {}),
+      const hintedLangs =
+        typeof source.master === 'string' && source.master.length <= 512 * 1024
+          ? extractManifestAudioLangs(source.master)
+          : [];
+      out.push({
+        key: source.url,
+        url: source.url,
+        type: 'hls',
+        quality: 'auto',
+        rank: 4,
+        ...(new Set(hintedLangs).size > 1
+          ? { multiAudio: true, availableAudioLangs: hintedLangs }
+          : {}),
         // The movie CDN has served 1080p and 720p bytes under 720p and 480p labels.
         // Keep adaptive playback, but do not advertise untrustworthy manual heights.
         ...(host === 'img.rousav.tech' ? { qualityLabelsUnreliable: true } : {}),
-        headers: { Referer: `${origin}/`, Origin: origin, 'User-Agent': BROWSER_UA } });
+        headers,
+      });
     }
+    diag?.push({
+      adapter: 'source-1',
+      lane: 'D',
+      ok: out.length > 0,
+      ms: Date.now() - startedAt,
+      detail: out.length ? `vidbolt candidates=${out.length}` : `vidbolt no-playable-hls rows=${rawRows.length}`,
+    });
     return out;
-  } catch {
+  } catch (error) {
+    diag?.push({
+      adapter: 'source-1',
+      lane: 'D',
+      ok: false,
+      ms: Date.now() - startedAt,
+      detail: `vidbolt ${(error as Error).name}`,
+    });
     return [];
   }
 }
-
 async function fetchFromRiftBoot(
   cfg: BackendConfig['source1'],
   query: SourceQuery,

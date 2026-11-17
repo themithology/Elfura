@@ -69,28 +69,51 @@ assert.equal(new URL(resolveHlsChildUrl('https://other.example/a.m3u8', 'https:/
 assert.equal(new URL(resolveHlsChildUrl('audio.m3u8?apikey=child', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
 assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
 
-// The original provider is resolved independently, with untrusted domains rejected.
+// The original provider is resolved independently. The request contract and the
+// accept rule are both taken from scrapers that work against the live API:
+//
+//   - The call sends exactly type/id/season/episode. This test used to require
+//     `only=orion`, a parameter the API does not define; sending invented params
+//     was one of three reasons the lane returned nothing.
+//   - The Referer must be the title page, not the marketing homepage: VidBolt
+//     only serves its player when referred from `/movie/{id}` or
+//     `/tv/{id}/{s}/{e}`.
+//   - Rows are accepted because the returned URL is a real manifest, not because
+//     its hostname is on a list. The old allowlist (rousav/animecurx only)
+//     dropped CDN hosts and `proxy.vidbolt.xyz`, and would go stale whenever a
+//     mirror rotated. Unsafe schemes and non-HLS rows are still rejected.
 {
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = async (url) => {
+    let seenReferer = '';
+    globalThis.fetch = async (url, init) => {
       const parsed = new URL(url);
       assert.equal(parsed.pathname, '/api/resolve');
-      assert.equal(parsed.searchParams.get('only'), 'orion');
+      assert.equal(parsed.searchParams.get('type'), 'tv');
+      assert.equal(parsed.searchParams.get('id'), '93405');
       assert.equal(parsed.searchParams.get('season'), '2');
       assert.equal(parsed.searchParams.get('episode'), '3');
+      assert.equal(parsed.searchParams.get('only'), null, 'the API defines no `only` parameter');
+      assert.equal(parsed.searchParams.get('hevc'), null, 'the API defines no `hevc` parameter');
+      seenReferer = String(init?.headers?.Referer || '');
       return new Response(JSON.stringify({ stream: { sources: [
         { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls', master: '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en"' },
-        { url: 'https://vidstuck.cc/master.m3u8', type: 'hls' },
-        { url: 'https://untrusted.example/master.m3u8', type: 'hls' },
+        // A CDN host that is not on the old allowlist: must still be kept.
+        { url: 'https://cdn.somecdnn.net/abc/master.m3u8', type: 'hls' },
+        // DASH is not this lane's job.
+        { url: 'https://cdn.somecdnn.net/abc/manifest.mpd', type: 'dash' },
+        // Unsafe schemes stay rejected.
+        { url: 'file:///etc/passwd', type: 'hls' },
       ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     };
     const sources = await fetchFromVidBolt('https://vidbolt.xyz', {type:'tv',tmdbId:'93405',season:2,episode:3});
-    assert.equal(sources.length, 1);
+    assert.equal(seenReferer, 'https://vidbolt.xyz/tv/93405/2/3', 'must be referred from the title page, not the homepage');
+    assert.equal(sources.length, 2, 'both HLS manifests are kept regardless of host');
     assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
     assert.equal(sources[0].multiAudio, true); // scheduling hint, independently verified before playback
     assert.deepEqual(sources[0].availableAudioLangs, ['hi','en']);
     assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
+    assert.equal(sources[1].url, 'https://cdn.somecdnn.net/abc/master.m3u8', 'a non-allowlisted CDN is not dropped');
   } finally { globalThis.fetch = originalFetch; }
 }
 
