@@ -63,8 +63,11 @@ const browser = await chromium.launch({
 });
 
 try {
+  // ONE page for all titles. Opening a second page hung on the runner
+  // (unsettled top-level await at newPage), and the listeners are global
+  // anyway, so reusing the page loses nothing.
+  const page = await browser.newPage({ userAgent: UA });
   for (const [type, id, label] of TITLES) {
-    const page = await browser.newPage({ userAgent: UA });
     page.on('request', (r) => {
       try {
         note('req', r.url(), null, r.resourceType());
@@ -90,7 +93,9 @@ try {
       .evaluate(() => document.body?.innerText?.replace(/\s+/g, ' ').slice(0, 220) || '')
       .catch(() => '');
     log('ui', `${label} :: ${statusText}`);
-    await page.close();
+    // Detach so one title's in-flight requests do not bleed into the next.
+    page.removeAllListeners('request');
+    page.removeAllListeners('response');
   }
 
   // ---- report -------------------------------------------------------------
