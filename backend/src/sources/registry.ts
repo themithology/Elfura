@@ -98,16 +98,29 @@ const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 5000);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
 };
-/** Candidates probed in the shared verification batch, spread across sources. */
-const VERIFY_BREADTH_TARGET = 36;
+/**
+ * Candidates probed in the shared verification batch, spread across sources.
+ *
+ * With 21 adapters this divided down to the floor of 2 lanes per source, so a
+ * multi-language source had 2 of its 21 lanes verified and the rest reached the
+ * player unprobed. 160 gives roughly 7 each at the current board size, which is
+ * enough to cover a language ladder on the sources that carry one while still
+ * capping the total probe work.
+ */
+const VERIFY_BREADTH_TARGET = 160;
 /**
  * How many extra lanes one adapter may add in the coverage pass, beyond the
  * verified set. Verified lanes are not counted, so this only limits how much a
- * single prolific source can pad the tail of the list. Set high enough that a
- * source with many genuinely distinct mirrors contributes all of them: the
- * goal is every working source the viewer can try.
+ * single prolific source can pad the tail of the list.
+ *
+ * This was 12 and it was measurably losing streams. A multi-language source
+ * returns one lane per language (Greybox: 21 for a film, 14 for an episode;
+ * bingr: 10), and a cap of 12 cut that to five, so the language variety a
+ * source was chosen for never reached the player. Set to 200: the intended
+ * ceiling here is "all of them", and the real limits are the liveness probe and
+ * the per-adapter candidate caps upstream of this point.
  */
-const MAX_LANES_PER_SOURCE = 12;
+const MAX_LANES_PER_SOURCE = 200;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
