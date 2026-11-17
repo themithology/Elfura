@@ -81,6 +81,7 @@ jobs:
           node scripts/probe-browser-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-tgfrost-servers.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-tgvid.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgvid-rpc.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
