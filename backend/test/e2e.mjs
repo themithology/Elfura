@@ -200,6 +200,100 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   }
 }
 
+// Greybox (source-25): the simplest lane, with two traps worth testing.
+//
+// 1. The payload mixes ABSOLUTE CDN manifests with RELATIVE /api/media?u=...
+//    proxy URLs, and the relative ones are the majority. They were measured
+//    live (8/8 returned #EXTM3U), so dropping them as "an indirection" would
+//    silently discard most of the source. The test asserts they are resolved
+//    against the origin and kept.
+// 2. Real payloads carry language qualifiers ('en-2') and junk ('und', 'x7').
+//    A junk code reaches the player as a junk filter, so it is normalised away
+//    while 'en-2' collapses to 'en'.
+{
+  const { createSource25Adapter } = await import('../../dist/backend/sources/source25.js');
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.pathname, '/api/player/sources', 'one call, no token, no second round trip');
+      assert.equal(parsed.searchParams.get('media'), 'movie');
+      assert.equal(parsed.searchParams.get('id'), '1368337');
+      return new Response(
+        JSON.stringify({
+          sources: [
+            // A relative proxy URL: must be resolved and kept.
+            { id: 'orion:orion-hi', provider: 'Orion', label: 'Orion', url: '/api/media?u=m1.abc', type: 'hls', quality: '1080p', height: 1080, language: 'hi', audio: [], subtitles: [] },
+            // An absolute CDN URL.
+            { id: 'carbon:carbon-en', provider: 'Carbon', label: 'Carbon', url: 'https://cdn.example.com/a/en.m3u8', type: 'hls', quality: '720p', height: 720, language: 'en-2',
+              subtitles: [{ id: 's1', label: 'English', language: 'en', url: '/api/sub?u=vtt1', format: 'vtt', default: true }],
+              intro: { start: 5, end: 65 }, credits: { start: 5000, end: 5100 } },
+            // Junk language must not become a filter; an unparseable quality
+            // string falls back to auto. ('1000p' would legitimately bucket to
+            // 720p, so it is not a junk case - worth getting right in the test
+            // rather than asserting a fallback the adapter should not perform.)
+            { id: 'junk', provider: 'Nova', label: 'Nova', url: '/api/media?u=m1.junk', type: 'hls', quality: 'zzz', language: 'x7' },
+            // Exact duplicate collapses.
+            { id: 'dup', provider: 'Orion', label: 'Orion', url: 'https://cdn.example.com/a/en.m3u8', type: 'hls', quality: '720p', language: 'en' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const adapter = createSource25Adapter({ enabled: true, origin: 'https://greyboxtv.duckdns.org', timeoutMs: 5000, rank: 50 });
+    const out = await adapter.resolve({ type: 'movie', tmdbId: '1368337', diag: [] });
+
+    assert.equal(out.candidates.length, 3, 'four rows, one duplicate, so three candidates');
+    const urls = out.candidates.map((c) => c.url);
+    assert(
+      urls.includes('https://greyboxtv.duckdns.org/api/media?u=m1.abc'),
+      'a relative proxy URL is resolved against the origin, not dropped',
+    );
+    assert(urls.includes('https://cdn.example.com/a/en.m3u8'), 'absolute URLs pass through untouched');
+    assert.equal(new Set(urls).size, urls.length, 'duplicates collapse');
+
+    // Language normalisation.
+    const hi = out.candidates.find((c) => c.url.includes('m1.abc'));
+    assert.equal(hi?.claimedAudioLang, 'hi', 'a plain language is carried as claimed, not verified');
+    assert(hi?.audioLang === undefined, 'declared language must never be published as verified audio');
+    const en = out.candidates.find((c) => c.url === 'https://cdn.example.com/a/en.m3u8');
+    assert.equal(en?.claimedAudioLang, 'en', "'en-2' collapses to 'en'");
+    const junk = out.candidates.find((c) => c.url.includes('m1.junk'));
+    assert.equal(junk?.claimedAudioLang, undefined, "'x7' is junk and must not become a language filter");
+    assert.equal(junk?.quality, 'auto', 'an unparseable quality falls back to auto');
+
+    // Subtitles ride along, resolved the same way.
+    assert.equal(en?.subtitles?.length, 1, 'subtitles are carried on the candidate');
+    assert(en?.subtitles?.[0]?.url.startsWith('https://greyboxtv.duckdns.org/api/sub'), 'relative subtitle URLs resolve too');
+
+    // Segments come from the provider's own intro/credits markers.
+    assert.equal(out.segments?.intro?.[0], 5);
+    assert.equal(out.segments?.outro?.[0], 5000);
+
+    // Every row missing its url, or a non-200, must be a clean empty.
+    globalThis.fetch = async () => new Response(JSON.stringify({ sources: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const empty = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(empty.candidates.length, 0, 'an empty payload yields no candidates and no throw');
+
+    globalThis.fetch = async () => new Response('nope', { status: 503 });
+    const failed = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(failed.candidates.length, 0, 'a 503 yields no candidates and no throw');
+
+    // TV must pass season/episode, or every episode resolves to the same thing.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.searchParams.get('media'), 'tv');
+      assert.equal(parsed.searchParams.get('season'), '2');
+      assert.equal(parsed.searchParams.get('episode'), '7');
+      return new Response(JSON.stringify({ sources: [{ url: 'https://cdn.example.com/b/tv.m3u8', type: 'hls', quality: '1080p', height: 1080, language: 'ar' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const tv = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 2, episode: 7, diag: [] });
+    assert.equal(tv.candidates.length, 1, 'TV resolves with season and episode');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // Regression: the movie host and the TV host are DIFFERENT, and only the movie
 // one used to be allowlisted. Measured on a GitHub runner (run 44039400814):
 // vidbolt returns img.rousav.tech for movies and gzip.rousav.tech for TV. The
@@ -1646,7 +1740,7 @@ try {
   // source-22 (Vidly subtitles) and source-24 (VidLink). It was 3 before
   // VidLink was added, and 4 before that only because source-1 was split across
   // two entries — the two 4s mean different things, hence the explicit list.
-  assert.equal(health.sourceCount, 4, 'a bare count is fine (sources 1, 3, 22, 24 in this fixture)');
+  assert.equal(health.sourceCount, 5, 'a bare count is fine (sources 1, 3, 22, 24, 25 in this fixture)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1657,7 +1751,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 and source-24 join the lane set');
+  assert.equal(diag.playback.resolution.adapters.length, 5, 'source-22, source-24 and source-25 join the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);

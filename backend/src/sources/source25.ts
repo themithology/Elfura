@@ -174,7 +174,6 @@ export function createSource25Adapter(cfg: BackendConfig['source25']): SourceAda
         const langs = collectLanguages(rows);
         const out: RawStreamCandidate[] = [];
         const seen = new Set<string>();
-        let subtitles: RawTrackRef[] | undefined;
         const segments: SkipSegments = {};
         let haveSegments = false;
 
@@ -198,24 +197,12 @@ export function createSource25Adapter(cfg: BackendConfig['source25']): SourceAda
           const height = Number(row.height);
           const lang = normalizeLanguage(row.language);
 
-          out.push({
-            key: absolute,
-            url: absolute,
-            type: inferType(absolute, row.type),
-            quality,
-            ...(Number.isFinite(height) && height >= 200 ? { qualityLadder: [height] } : {}),
-            // Declared, not verified. The registry proves audio from the manifest.
-            ...(lang ? { claimedAudioLang: lang } : {}),
-            ...(langs.length ? { availableAudioLangs: langs } : {}),
-            headers: mediaHeaders,
-            // Provider order encodes its own priority; keep it but stay behind
-            // the origin CDNs we resolve directly.
-            rank: cfg.rank + Math.min(out.length, 30),
-          });
-
-          // Subtitles ride along with their stream; collect the first good set.
-          if (!subtitles && Array.isArray(row.subtitles)) {
-            const tracks: RawTrackRef[] = [];
+          // Subtitles belong to the row that declared them, not to whichever
+          // candidate happens to land first: two providers on the same title
+          // routinely carry different subtitle sets, and merging them onto one
+          // stream invents tracks that stream does not have.
+          const tracks: RawTrackRef[] = [];
+          if (Array.isArray(row.subtitles)) {
             const subSeen = new Set<string>();
             for (const s of row.subtitles as { url?: unknown; language?: unknown; label?: unknown; format?: unknown }[]) {
               const su = typeof s?.url === 'string' ? s.url.trim() : '';
@@ -233,8 +220,24 @@ export function createSource25Adapter(cfg: BackendConfig['source25']): SourceAda
                 headers: mediaHeaders,
               });
             }
-            if (tracks.length) subtitles = tracks;
           }
+
+          out.push({
+            key: absolute,
+            url: absolute,
+            type: inferType(absolute, row.type),
+            quality,
+            ...(Number.isFinite(height) && height >= 200 ? { qualityLadder: [height] } : {}),
+            // Declared, not verified. The registry proves audio from the manifest.
+            ...(lang ? { claimedAudioLang: lang } : {}),
+            ...(langs.length ? { availableAudioLangs: langs } : {}),
+            ...(tracks.length ? { subtitles: tracks } : {}),
+            headers: mediaHeaders,
+            // Provider order encodes its own priority; keep it but stay behind
+            // the origin CDNs we resolve directly.
+            rank: cfg.rank + Math.min(out.length, 30),
+          });
+
 
           // Intro / credits markers, when the provider supplies them.
           const intro = row.intro;
@@ -254,11 +257,6 @@ export function createSource25Adapter(cfg: BackendConfig['source25']): SourceAda
           diag(false, `greybox rows=${rows.length} no-playable-url`);
           return { candidates: [] };
         }
-
-        // Attach subtitles to the best-ranked candidate so they survive the
-        // registry boundary even when the resolution is sealed early.
-        const first = out[0];
-        if (subtitles && first) first.subtitles = subtitles;
 
         diag(true, `greybox candidates=${out.length} langs=${langs.length}`);
         return { candidates: out, ...(haveSegments ? { segments } : {}) };

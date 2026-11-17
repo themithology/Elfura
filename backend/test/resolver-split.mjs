@@ -33,7 +33,7 @@ import assert from 'node:assert/strict';
 // 19 -> 20 when source-24 (VidLink) was added. The earlier 20 was a different
 // 20: it counted a dead vidbolt-only stub alongside the real adapter, so the
 // number matching is a coincidence, not a regression.
-const MIN_LISTED_SOURCES = 20;
+const MIN_LISTED_SOURCES = 21;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -224,7 +224,7 @@ await check('resolver lists every source with health', () => {
   // candidate. The two are now one row that owns all four upstreams, and
   // source-2 stays unmounted because its nxsha lane duplicates source-5.
   // The count is rows, not reach: no upstream was lost.
-  assert.equal(MIN_LISTED_SOURCES, 20, 'the configured board');
+  assert.equal(MIN_LISTED_SOURCES, 21, 'the configured board');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
