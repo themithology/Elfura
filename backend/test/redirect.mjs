@@ -58,7 +58,7 @@ const withServer = async (redirect, run) => {
   }
 };
 
-const on = (to, extra = {}) => ({ to, from: [], status: 301, keep: ['/api/', '/player', '/embed.html'], ...extra });
+const on = (to, extra = {}) => ({ to, from: [], status: 301, keep: [], paths: [], ...extra });
 
 // ---- 1. Every page moves, path and query intact ---------------------------
 await withServer(on('https://def.com'), async (call) => {
@@ -74,7 +74,7 @@ await withServer(on('https://def.com'), async (call) => {
   assert.equal(tv.location, 'https://def.com/embed/tv/1399/1/3');
 
   const player = await call('/player?id=550&type=movie', 'abc.com');
-  assert.equal(player.status, 200, '/player is in the keep list by default');
+  assert.equal(player.location, 'https://def.com/player?id=550&type=movie', 'the player moves with the site');
 
   const query = await call('/search?q=dune&page=2', 'abc.com');
   assert.equal(query.location, 'https://def.com/search?q=dune&page=2', 'the query string must survive');
@@ -123,8 +123,43 @@ await withServer(on('https://def.com/new/home', { status: 302 }), async (call) =
   assert.equal(res.location, 'https://def.com/new/home/embed/movie/550?x=1');
 });
 
-// ---- 6. Off by default ---------------------------------------------------
-await withServer({ to: '', from: [], status: 301, keep: [] }, async (call) => {
+// ---- 6. Scoped: only the embed pages move -------------------------------
+// The realistic shape of "put the embeds on embed.theogpiratebot.to": the main
+// domain keeps serving its own pages, only /embed/* changes hands.
+await withServer(
+  on('https://embed.theogpiratebot.to', {
+    from: ['theogpiratebot.to'],
+    paths: ['/embed/', '/player'],
+    keep: ['/api/', '/roxy'],
+  }),
+  async (call) => {
+    assert.equal(
+      (await call('/embed/movie/550', 'theogpiratebot.to')).location,
+      'https://embed.theogpiratebot.to/embed/movie/550',
+      'embeds move',
+    );
+    assert.equal(
+      (await call('/embed/tv/1399/1/3', 'theogpiratebot.to')).location,
+      'https://embed.theogpiratebot.to/embed/tv/1399/1/3',
+    );
+    assert.equal((await call('/', 'theogpiratebot.to')).status, 200, 'the main site must not move');
+    // Any other page keeps its own answer - whatever it is (this app has no
+    // /about, so 404 is correct) - the point is that it is not redirected.
+    assert.equal((await call('/about', 'theogpiratebot.to')).location, null, 'non-embed pages must not move');
+    assert.equal((await call('/api/v1/health', 'theogpiratebot.to')).status, 200);
+    assert.equal((await call('/embed/movie/550', 'theogpiratebot.online')).status, 200, 'other domains untouched');
+    assert.equal((await call('/embed/movie/550', 'embed.theogpiratebot.to')).status, 200, 'no self-redirect');
+  },
+);
+
+// A prefix without a trailing slash is an exact match, not a prefix.
+await withServer(on('https://def.com', { paths: ['/embed'] }), async (call) => {
+  assert.equal((await call('/embed', 'abc.com')).location, 'https://def.com/embed');
+  assert.equal((await call('/embed/movie/550', 'abc.com')).status, 200, '/embed must not swallow /embed/movie/550');
+});
+
+// ---- 7. Off by default ---------------------------------------------------
+await withServer({ to: '', from: [], status: 301, keep: [], paths: [] }, async (call) => {
   assert.equal((await call('/embed/movie/550', 'abc.com')).status, 200, 'no setting means no redirect');
 });
 

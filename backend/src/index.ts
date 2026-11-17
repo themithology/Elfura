@@ -261,6 +261,15 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     if (cfg.redirect.keep.some((entry) => (entry.endsWith('/') ? pathname.startsWith(entry) : pathname === entry))) {
       return null;
     }
+    // Scoped redirects: only these path prefixes move, everything else on the
+    // host keeps serving. A trailing slash means "this prefix", so /embed/
+    // covers /embed/movie/550 but not /embedding-whatever.
+    if (
+      cfg.redirect.paths.length &&
+      !cfg.redirect.paths.some((entry) => (entry.endsWith('/') ? pathname.startsWith(entry) : pathname === entry))
+    ) {
+      return null;
+    }
     return cfg.redirect.to + pathname + search;
   };
 
@@ -1245,6 +1254,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       console.log(
         `[elfura-redirect] ${cfg.redirect.status} to ${cfg.redirect.to}` +
           (cfg.redirect.from.length ? ` from ${cfg.redirect.from.join(', ')}` : ' from every other host') +
+          (cfg.redirect.paths.length ? ` (only ${cfg.redirect.paths.join(', ')})` : '') +
           ` · API and /roxy are exempt`,
       );
     }

@@ -139,6 +139,14 @@ export interface BackendConfig {
     status: 301 | 302;
     /** Paths that must keep answering on the old host. */
     keep: string[];
+    /**
+     * Path prefixes that redirect. Empty means the whole host.
+     *
+     * This is what makes "move the embeds to embed.example.to" expressible
+     * without moving the main site: the same domain can keep serving its pages
+     * while only /embed/* and /player* point somewhere else.
+     */
+    paths: string[];
   };
 }
 
@@ -345,15 +353,26 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       // Empty means off, which is the default: nothing changes until it is set.
       ...(() => {
         const target = parseRedirectTarget(env.ELFURA_REDIRECT_TO);
-        const keepRaw = (env.ELFURA_REDIRECT_KEEP || '/api/,/player,/embed.html').trim();
+        // Empty by default. /api and /roxy are exempted in the middleware itself
+        // because they are load-bearing; anything else the operator wants pinned
+        // to the old host has to be said out loud. A non-empty default here also
+        // silently defeated ELFURA_REDIRECT_PATHS=/player, since keep was checked
+        // first and /player was in it.
+        const keepRaw = (env.ELFURA_REDIRECT_KEEP || '').trim();
+        const list = (raw: string) =>
+          raw
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
         return {
           to: target ? target.baseUrl : '',
           from: target ? parseRedirectHosts(env.ELFURA_REDIRECT_FROM, target.baseUrl) : [],
           status: (Number(env.ELFURA_REDIRECT_STATUS || 301) === 302 ? 302 : 301) as 301 | 302,
-          keep: keepRaw
-            .split(',')
-            .map((entry) => entry.trim())
-            .filter(Boolean),
+          keep: list(keepRaw),
+          // Empty means the whole host, which is the documented behaviour of
+          // setting ELFURA_REDIRECT_TO on its own. Scoping is opt-in so this
+          // addition cannot change what an existing config does.
+          paths: list((env.ELFURA_REDIRECT_PATHS || '').trim()),
         };
       })(),
     },
