@@ -125,6 +125,21 @@ export interface BackendConfig {
     openSubtitlesBase: string;
     timeoutMs: number;
   };
+  /**
+   * Whole-site redirect to a new domain.
+   *
+   * `from` lists the hosts this deployment answers for; `to` is the host that
+   * should serve them from now on. A lookup that does not match `from` is never
+   * redirected, so a redirect left switched on cannot break access through the
+   * new domain later - the classic way a migration locks its owner out.
+   */
+  redirect: {
+    to: string;
+    from: string[];
+    status: 301 | 302;
+    /** Paths that must keep answering on the old host. */
+    keep: string[];
+  };
 }
 
 function parseOrigins(raw?: string): string[] {
@@ -133,6 +148,49 @@ function parseOrigins(raw?: string): string[] {
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+}
+
+/**
+ * Parse ELFURA_REDIRECT_TO into a host (or host+path prefix).
+ *
+ * Accepts `def.com`, `def.com/`, `https://def.com`, `https://def.com/watch`.
+ * Returns '' when unset, and refuses anything that is not an http(s) target so a
+ * typo cannot turn every page into an unfollowable Location header.
+ */
+export function parseRedirectTarget(raw?: string): { host: string; baseUrl: string } | null {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  if (!parsed.hostname) return null;
+  // Keep any path the operator gave us (a redirect to /watch is legal), but drop
+  // the query and hash: those belong to the request being redirected.
+  const basePath = parsed.pathname.replace(/\/+$/, '');
+  return {
+    host: parsed.host.toLowerCase(),
+    baseUrl: `${parsed.protocol}//${parsed.host}${basePath}`,
+  };
+}
+
+/** Hostnames (lowercased) that ELFURA_REDIRECT_TO should be applied to. */
+export function parseRedirectHosts(raw?: string, target?: string | null): string[] {
+  const listed = (raw || '')
+    .split(/[,\s]+/)
+    .map((entry) => {
+      const parsed = parseRedirectTarget(entry);
+      return parsed ? parsed.host : '';
+    })
+    .filter(Boolean);
+  // A single-host install should not have to name itself: with no list, the
+  // redirect applies to every request that is not already aimed at the target,
+  // which is the behaviour of a "this domain moved" switch.
+  return listed.filter((host) => host !== (target || '').toLowerCase());
 }
 
 const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
@@ -281,6 +339,23 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       origin: (env.ELFURA_GREYBOX_ORIGIN || 'https://greyboxtv.duckdns.org').replace(/\/+$/, ''),
       timeoutMs: Math.max(3000, Number(env.ELFURA_GREYBOX_TIMEOUT_MS || 12_000)),
       rank: 50,
+    },
+    redirect: {
+      // ELFURA_REDIRECT_TO=def.com  (or https://def.com/any/base/path)
+      // Empty means off, which is the default: nothing changes until it is set.
+      ...(() => {
+        const target = parseRedirectTarget(env.ELFURA_REDIRECT_TO);
+        const keepRaw = (env.ELFURA_REDIRECT_KEEP || '/api/,/player,/embed.html').trim();
+        return {
+          to: target ? target.baseUrl : '',
+          from: target ? parseRedirectHosts(env.ELFURA_REDIRECT_FROM, target.baseUrl) : [],
+          status: (Number(env.ELFURA_REDIRECT_STATUS || 301) === 302 ? 302 : 301) as 301 | 302,
+          keep: keepRaw
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean),
+        };
+      })(),
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
