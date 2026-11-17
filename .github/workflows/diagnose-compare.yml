@@ -96,6 +96,7 @@ jobs:
           node scripts/probe-greybox-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-pipeline.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-embed-iframe.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-embed-browser.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
