@@ -79,6 +79,7 @@ jobs:
           npm install --no-save --no-package-lock playwright-core @sparticuz/chromium >/dev/null 2>&1 || true
           node scripts/probe-tgfrost-browser.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-browser-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgfrost-servers.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
