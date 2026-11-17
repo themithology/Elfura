@@ -66,7 +66,7 @@ jobs:
       - name: Probe vidbolt and vidsync directly
         if: always()
         continue-on-error: true
-        run: node scripts/probe-vidbolt-vidsync.mjs 2>&1 | tee /tmp/probe.txt
+        run: node scripts/probe-vidbolt-vidsync.mjs 2>&1 | tee -a /tmp/compare.txt
 
       - name: Write a summary
         if: always()
