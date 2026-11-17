@@ -3,18 +3,21 @@
  * Does zxcstream actually hand over playable streams, and is the 31-server list
  * real or 31 labels on 4 backends?
  *
- * The previous probes were wrong twice over: the token endpoint rotates (now
- * discovered from the JS chunks) and the request field names are obfuscated hex
- * keys. The source call is NOT the details call either - details only returns
- * metadata. The real one is:
+ * The earlier probes were wrong twice over: the token endpoint rotates (so it
+ * is discovered from the JS chunks) and the request field names are obfuscated
+ * hex keys. The source call is also NOT the details call - details returns
+ * metadata only. The real one is:
  *
  *   GET /backend_/sources/{serverKey}?<obfuscated field map>=...
  *   -> links[].link is base64 "Salted__" AES-256-CBC
  *
  * decrypted with an OpenSSL-compatible EVP_BytesToKey derivation (the mirror's
- * decryptCryptoJS). This probe runs that whole chain end to end and, crucially,
- * asks the SAME title from several serverKeys to test whether the 31 named
- * servers are distinct backends or four backends relabelled.
+ * decryptCryptoJS). This runs the whole chain and then asks the SAME title from
+ * several serverKeys: if hosts and quality sets come back identical, the 31
+ * named servers are four backends wearing 31 labels.
+ *
+ * The runner IP gets Cloudflare 429/1015 quickly, so one token is shared across
+ * serverKeys and 429s back off.
  */
 import crypto from 'node:crypto';
 
@@ -84,6 +87,17 @@ async function postJson(url, body, referer) {
   }
 }
 
+/** Retry on 429 with backoff - the runner IP gets Cloudflare-throttled fast. */
+async function withRetry(fn, tries = 4) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    last = await fn();
+    if (last.status !== 429 && last.status !== 1015) return last;
+    await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
+  }
+  return last;
+}
+
 // ---- discover the live contract -------------------------------------------
 const page = await getText(`${HOST}/player/movie/128`);
 const chunks = [...new Set(page.text.match(/\/_next\/static\/chunks\/[a-zA-Z0-9_.~-]+\.js/g) || [])];
@@ -120,7 +134,7 @@ if (!tokenEndpoint || !fieldMap.id) {
 }
 
 // ---- resolve one title on one serverKey -----------------------------------
-async function resolve(serverKey, c) {
+async function resolve(serverKey, c, shared) {
   const referer = c.type === 'tv'
     ? `${HOST}/player/tv/${c.id}/${c.season || 1}/${c.episode || 1}`
     : `${HOST}/player/movie/${c.id}`;
@@ -135,17 +149,22 @@ async function resolve(serverKey, c) {
     tokenBody[fieldMap.episode] = Number(c.episode) || 1;
   }
 
-  const tok = await postJson(`${HOST}${tokenEndpoint}`, tokenBody, referer);
-  if (!tok.status) return { err: `token ERR ${tok.error}` };
-  let tokData;
-  try { tokData = JSON.parse(tok.text); } catch { return { err: `token non-json HTTP ${tok.status}` }; }
-  if (!tokData?.token) return { err: `token HTTP ${tok.status} no token` };
+  // Reuse a token across serverKeys when one is in hand. That spares the rate
+  // limit and also answers whether the token is bound to a specific serverKey.
+  let tokData = shared?.tokData;
+  if (!tokData) {
+    const tok = await withRetry(() => postJson(`${HOST}${tokenEndpoint}`, tokenBody, referer));
+    if (!tok.status) return { err: `token ERR ${tok.error}` };
+    try { tokData = JSON.parse(tok.text); } catch { return { err: `token non-json HTTP ${tok.status}` }; }
+    if (!tokData?.token) return { err: `token HTTP ${tok.status} no token` };
+    if (shared) shared.tokData = tokData;
+  }
 
-  // Metadata gives us title/year/date, which the source query wants.
-  const det = await getText(
+  // Metadata supplies title/year/date, which the source query wants.
+  const det = await withRetry(() => getText(
     `${HOST}/backend/imdb/details/${c.type}/${c.id}?language=en&token=${encodeURIComponent(tokData.token)}`,
     { Origin: HOST, Referer: referer, Accept: 'application/json' }
-  );
+  ));
   let meta = {};
   try { meta = JSON.parse(det.text); } catch { /* metadata is best-effort */ }
 
@@ -166,10 +185,10 @@ async function resolve(serverKey, c) {
   }
   if (meta.imdb_id) q.set(fieldMap.imdbId, String(meta.imdb_id));
 
-  const src = await getText(
+  const src = await withRetry(() => getText(
     `${HOST}/backend_/sources/${encodeURIComponent(serverKey)}?${q.toString()}`,
     { Origin: HOST, Referer: referer, Accept: 'application/json' }
-  );
+  ));
   if (!src.status) return { err: `sources ERR ${src.error}` };
 
   let data;
@@ -182,9 +201,8 @@ async function resolve(serverKey, c) {
     return { ...item, link };
   }).filter((i) => typeof i.link === 'string' && i.link.startsWith('http'));
 
-  const hosts = [...new Set(decoded.map((i) => {
-    try { return new URL(i.link).hostname; } catch { return '?'; }
-  }))];
+  const hostOf = (u) => { try { return new URL(u).hostname; } catch { return '?'; } };
+  const hosts = [...new Set(decoded.map((i) => hostOf(i.link)))];
   const kinds = [...new Set(decoded.map((i) => i.type || (i.link.includes('.mpd') ? 'dash' : 'hls')))];
   const quals = [...new Set(decoded.map((i) => i.quality).filter(Boolean))];
 
@@ -192,40 +210,47 @@ async function resolve(serverKey, c) {
     http: src.status,
     rawCount: raw.length,
     count: decoded.length,
-    hosts,
-    kinds,
-    quals,
-    keys: Object.keys(data).slice(0, 8),
-    sample: decoded.slice(0, 2).map((i) => ({
+    hosts, kinds, quals,
+    sample: decoded.slice(0, 3).map((i) => ({
       type: i.type, quality: i.quality, lang: i.lang,
-      // host + path only, never the full signed URL
-      host: (() => { try { return new URL(i.link).hostname; } catch { return '?'; } })(),
+      host: hostOf(i.link),
       ext: (i.link.match(/\.(m3u8|mpd|mp4)(\?|$)/) || [])[1] || 'none',
     })),
   };
 }
 
-const CASES = [
-  { key: 'AethoAtlas', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-  { key: 'AethoAtlas', c: { type: 'tv', id: '1399', season: 1, episode: 1, label: 'Game of Thrones' } },
-  { key: 'AethoValstrax', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-  { key: 'AethoUrsa', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-  { key: 'AethoAlatreon', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-  { key: 'AethoOrion', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-  { key: 'AethoRousav', c: { type: 'movie', id: '550', label: 'Fight Club' } },
-];
+const line = (r) =>
+  `HTTP ${r.http} raw=${r.rawCount} kept=${r.count} kinds=${r.kinds.join(',') || '-'} ` +
+  `quals=${r.quals.join(',') || '-'} hosts=${r.hosts.join('|') || '-'}`;
 
-for (const { key, c } of CASES) {
-  log('---', `${key} ${c.type}/${c.id}`);
+// Pass 1: one shared token, several serverKeys, same title.
+const shared = {};
+const SERVER_KEYS = [
+  'AethoAtlas', 'AethoValstrax', 'AethoUrsa', 'AethoAlatreon', 'AethoOrion', 'AethoRousav',
+];
+const MOVIE = { type: 'movie', id: '550', label: 'Fight Club' };
+
+log('=== pass 1: 6 serverKeys, movie/550, one shared token');
+for (const key of SERVER_KEYS) {
+  log('---', key);
   try {
-    const r = await resolve(key, c);
+    const r = await resolve(key, MOVIE, shared);
     if (r.err) { log('  result', r.err); continue; }
-    log('  result', `HTTP ${r.http} raw=${r.rawCount} kept=${r.count} kinds=${r.kinds.join(',') || '-'} quals=${r.quals.join(',') || '-'} hosts=${r.hosts.join('|') || '-'}`);
+    log('  result', line(r));
     if (r.sample.length) log('  sample', JSON.stringify(r.sample));
-  } catch (error) {
-    log('  result', `threw ${error.message}`);
-  }
-  await new Promise((r) => setTimeout(r, 1200)); // be polite; 429s seen earlier
+  } catch (error) { log('  result', `threw ${error.message}`); }
+  await new Promise((r) => setTimeout(r, 2500));
 }
+
+// Pass 2: TV, fresh token.
+log('=== pass 2: TV, fresh token');
+try {
+  const r = await resolve('AethoAtlas', { type: 'tv', id: '1399', season: 1, episode: 1, label: 'Game of Thrones' }, {});
+  if (r.err) log('  result', r.err);
+  else {
+    log('  result', line(r));
+    if (r.sample.length) log('  sample', JSON.stringify(r.sample));
+  }
+} catch (error) { log('  result', `threw ${error.message}`); }
 
 console.log('[zxc3:done]');
