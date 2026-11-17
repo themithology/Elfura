@@ -2891,6 +2891,56 @@ try {
     // The refusal that matters is the missing token, asserted above.
   }
 
+  //   (b0-ter) A stale embed token must not be terminal.
+  //
+  //   The embed carries a token minted when the DOCUMENT was served. Cache it at
+  //   an edge, let it age past its TTL, or let the browser rewrite the user agent
+  //   (in-app browsers and privacy modes do), and the first resolution answers
+  //   401 - which the player renders as "couldn't reach sources", while the main
+  //   site keeps working because it mints its token on demand. The request must
+  //   therefore be served with a fresh token instead of refused.
+  {
+    // Fetch the embed as one browser, then call playback as another. Same
+    // document, different fingerprint: the cached/re-served-document case.
+    const staleEmbed = await fetch(`${apiBase}/embed/movie/550`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) InAppBrowser/1.0' },
+    });
+    const staleHtml = await staleEmbed.text();
+    const staleBoot = JSON.parse(
+      (staleHtml.match(/window\.__ELFURA_BOOT__=(\{[^<]+\});/) || [])[1] || '{}',
+    );
+    assert(staleBoot.pltoken, 'embed serves a token to fingerprint');
+    const mismatched = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': browserHeaders['User-Agent'],
+        'X-Playback-Token': staleBoot.pltoken,
+      },
+    });
+    assert.equal(
+      mismatched.status,
+      200,
+      'a token minted for another user agent must be re-minted, not refused with 401',
+    );
+
+    // An outright garbage token is the same class of failure and must recover too.
+    const garbage = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': browserHeaders['User-Agent'],
+        'X-Playback-Token': 'not.a-real-token',
+      },
+    });
+    assert.equal(garbage.status, 200, 'an unparseable token must not be a hard failure either');
+
+    // But a request with NO token at all is a different matter: that is an
+    // anonymous caller, and REQUIRE_PLAYBACK_TOKEN still applies to it.
+    const anonymous = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: { Accept: 'application/json', 'User-Agent': browserHeaders['User-Agent'] },
+    });
+    assert.equal(anonymous.status, 401, 'no token at all is still refused');
+  }
+
   //   (b0-bis) The owner domains must never be collateral damage.
   //
   //   theogpiratebot.online and .to are the sites this deployment exists to

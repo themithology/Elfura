@@ -372,6 +372,41 @@ export class ElfuraPlayer {
     if (!silent) this.emit('error', { code: 'all-sources-failed', message: 'Playback did not start in time' });
   }
 
+  /**
+   * Mint a fresh playback token for this document.
+   *
+   * Reads `cfg.pltoken` / `cfg.nonce` in place, so the caller can simply rebuild
+   * its headers. Deliberately silent: if the session endpoint is unavailable the
+   * original 401 is reported, which is the honest answer.
+   */
+  private async refreshPlaybackToken(
+    apiUrl: URL,
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    const cfg = this.input.config;
+    try {
+      const sessionUrl = new URL('/api/v1/session', apiUrl);
+      const res = await fetch(sessionUrl.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: cfg.mediaType || 'movie',
+          tmdb: String(cfg.tmdb ?? ''),
+          ...(cfg.anilist ? { anilist: String(cfg.anilist) } : {}),
+        }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(3500)]),
+      });
+      if (!res.ok) return false;
+      const body = (await res.json()) as { pltoken?: string; nonce?: string };
+      if (!body?.pltoken) return false;
+      cfg.pltoken = body.pltoken;
+      if (body.nonce) cfg.nonce = body.nonce;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Re-run resolution after a terminal unavailable state without reloading the host page. */
   async retrySources(): Promise<void> {
     this.cancelStartup(true);
@@ -1143,8 +1178,30 @@ export class ElfuraPlayer {
         headers['X-Elfura-Envelope'] = '1';
       }
 
-      const res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
+      let res = await fetch(apiUrl.toString(), { headers, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
       if (!isCurrent()) return;
+
+      // An embedded player carries a token minted when the DOCUMENT was served.
+      // If that document came from a cache, the token aged out, or the browser
+      // rewrote the user agent, the first resolution answers 401 and this shows
+      // "couldn't reach sources" - while the main site works, because it mints
+      // its token at request time. Mint a fresh one and retry once rather than
+      // making the viewer reload until it happens to match.
+      if (res.status === 401) {
+        const fresh = await this.refreshPlaybackToken(apiUrl, controller.signal);
+        if (!isCurrent()) return;
+        if (fresh) {
+          const retryHeaders: Record<string, string> = { Accept: 'application/json' };
+          retryHeaders['X-Playback-Token'] = String(cfg.pltoken);
+          if (canOpenEnvelope) retryHeaders['X-Elfura-Envelope'] = '1';
+          res = await fetch(apiUrl.toString(), {
+            headers: retryHeaders,
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
+          });
+          if (!isCurrent()) return;
+        }
+      }
+
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
         const errBody = (await res.json().catch(() => ({}))) as { error?: string };

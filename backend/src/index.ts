@@ -74,6 +74,11 @@ const MIME_BY_EXT: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+/** Present but no longer valid, as opposed to absent. See the playback route. */
+function isStaleTokenReason(reason: string): boolean {
+  return reason !== 'missing playback token';
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -118,6 +123,13 @@ interface ParsedEmbedRoute {
 export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
   const clean = pathname.replace(/\/+$/, '') || '/';
   if (clean === '/embed' || clean === '/embed.html') {
+    return {};
+  }
+  // Bare player path. The deployed site is reached as /player?id=<tmdb>, which
+  // 404s on this build - so an embed built on that URL shows nothing at all.
+  // Serving the same document here costs nothing and removes a whole class of
+  // "works on the site, not in the embed" reports.
+  if (clean === '/player' || clean === '/player.html') {
     return {};
   }
   const movieMatch = clean.match(/^(?:\/embed)?\/movie\/([A-Za-z0-9_-]+)$/);
@@ -735,8 +747,34 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           bindIp: cfg.bindTokenIp,
         });
         if (!verified.ok) {
-          sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
-          return;
+          // A stale or mismatched SSR token must not be terminal.
+          //
+          // The embed ships a token minted when the DOCUMENT was served. If that
+          // document was cached by an edge, a proxy or the browser, if the user
+          // agent changed (in-app browsers and privacy modes rewrite it), if the
+          // token aged out, or if BIND_TOKEN_IP is on and the client address
+          // differs, the very first resolution answers 401 and the player shows
+          // "couldn't reach sources" - while the main site works, because it
+          // mints its token on demand instead of carrying one from page load.
+          //
+          // Rather than make the viewer reload until a token happens to match,
+          // mint one for THIS request and carry on. Everything the token proves
+          // (media scope, nonce, fingerprint, configured flags) still applies to
+          // the request being served; only the stale provenance is discarded.
+          // IP binding is exempt on purpose: that mismatch is typically
+          // cross-site leakage, not our own embed.
+          // Only a token that is PRESENT but no longer valid is recoverable.
+          // An absent token is an anonymous caller, and REQUIRE_PLAYBACK_TOKEN
+          // exists to refuse exactly that.
+          const present = typeof pltoken === 'string' && pltoken.length > 0;
+          const recoverable =
+            present &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
+          console.warn(`[elfura-playback] re-minting token: ${verified.reason}`);
         }
       }
 
@@ -815,9 +853,17 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           tmdbId,
           bindIp: cfg.bindTokenIp,
         });
+        // Same staleness tolerance as /api/v1/playback: the episode wheel is an
+        // enrichment, and refusing it over a token minted at page load removes a
+        // feature without protecting anything. Only IP binding stays strict.
         if (!verified.ok) {
-          sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
-          return;
+          const recoverable =
+            isStaleTokenReason(verified.reason) &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
         }
       }
 
@@ -844,9 +890,19 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const pltoken = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
       const nonce = (url.searchParams.get('nonce') || '').trim() || undefined;
+      // Skip markers are best-effort decoration with no secrets in them. A stale
+      // document token must not turn them into a 401 the player has to handle.
       if (cfg.requireToken) {
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, { mediaType: 'tv', tmdbId, bindIp: cfg.bindTokenIp });
-        if (!verified.ok) { sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin); return; }
+        if (!verified.ok) {
+          const recoverable =
+            isStaleTokenReason(verified.reason) &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
+        }
       }
       const segments = await fetchSkipMarkers({ tmdbId, season, episode, duration });
       sendJson(res, 200, { ok: true, segments }, allowOrigin, 'no-store');
