@@ -117,6 +117,29 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   } finally { globalThis.fetch = originalFetch; }
 }
 
+// Regression: the movie host and the TV host are DIFFERENT, and only the movie
+// one used to be allowlisted. Measured on a GitHub runner (run 44039400814):
+// vidbolt returns img.rousav.tech for movies and gzip.rousav.tech for TV. The
+// old rule `(?:^|\.)(?:rousav\.tech|animecurx\.tech)$` matched `img.rousav.tech`
+// but NOT `gzip.rousav.tech`, so every TV request returned zero candidates while
+// a movie test looked healthy — a lane that only appears half-dead.
+{
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ stream: { sources: [
+        { url: 'https://gzip.rousav.tech/tv/show/index.m3u8', type: 'hls' },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const tv = await fetchFromVidBolt('https://vidbolt.xyz', { type: 'tv', tmdbId: '1399', season: 1, episode: 1 });
+    assert.equal(tv.length, 1, 'the TV CDN host must be accepted');
+    assert.equal(tv[0].url, 'https://gzip.rousav.tech/tv/show/index.m3u8');
+    // A gated mirror carries vidbolt's own Referer/Origin so the segment fetch
+    // is not refused as a hotlink.
+    assert.equal(tv[0].headers?.Referer, 'https://vidbolt.xyz/');
+    assert.equal(tv[0].headers?.Origin, 'https://vidbolt.xyz');
+  } finally { globalThis.fetch = originalFetch; }
+}
+
 // 2. Embed route matcher
 assert.deepEqual(matchEmbedPath('/embed/movie/278'), { mediaType: 'movie', tmdbId: '278' });
 assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {

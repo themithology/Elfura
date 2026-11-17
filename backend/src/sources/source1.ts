@@ -94,8 +94,18 @@ function mapSubtitles(
   return out;
 }
 
-/** Hosts that serve a vidbolt master behind a hotlink gate (Referer/Origin required). */
-const VIDBOLT_PROXY_HOST = /(?:^|\.)proxy\.vidbolt\.xyz$/i;
+/**
+ * Hosts that serve a vidbolt master behind a hotlink gate.
+ *
+ * Measured, not guessed (GitHub-runner probe, run 44039400814): the API returns
+ * `img.rousav.tech` for movies and `gzip.rousav.tech` for TV. The old allowlist
+ * was `(?:^|\.)(?:rousav\.tech|animecurx\.tech)$` — which matches the movie host
+ * and NOT the TV host, so every TV request produced zero candidates while movie
+ * requests quietly worked. That is why this lane looked half-alive on a movie
+ * test and dead on a series. A `rousav.tech` apex-or-subdomain match covers both,
+ * and proxy.vidbolt.xyz stays listed for the unwrapped-proxy shape.
+ */
+const VIDBOLT_GATED_HOST = /(?:^|\.)(?:rousav\.tech|animecurx\.tech|proxy\.vidbolt\.xyz)$/i;
 
 /**
  * VidBolt — `/api/resolve`.
@@ -181,11 +191,12 @@ export async function fetchFromVidBolt(
         process.env.NODE_ENV === 'test' &&
         process.env.ELFURA_ALLOW_LOOPBACK_TEST === '1' &&
         (host === 'localhost' || host === '127.0.0.1');
-      // A proxy-fronted master needs vidbolt's own Referer/Origin to play; a
-      // direct CDN one is better served by its own host headers. This mirrors
-      // what the working scrapers do rather than allowlisting hosts.
+      // A gated mirror (rousav/animecurx/proxy.vidbolt.xyz) needs vidbolt's own
+      // Referer/Origin to play. The working scrapers attach those to exactly
+      // these hosts, so a bare CDN keeps its own headers and is not poisoned
+      // with someone else's Origin.
       const headers: Record<string, string> = { 'User-Agent': BROWSER_UA };
-      if (VIDBOLT_PROXY_HOST.test(host) || testLoopback) {
+      if (VIDBOLT_GATED_HOST.test(host) || testLoopback) {
         headers.Referer = `${base}/`;
         headers.Origin = base;
       }
