@@ -71,7 +71,7 @@ const failures = [];
 page.on('requestfailed', (r) => failures.push({ url: r.url(), err: r.failure()?.errorText }));
 page.on('response', async (res) => {
   const u = new URL(res.url());
-  requests.push({ path: u.pathname, status: res.status(), host: u.host });
+  requests.push({ path: u.pathname, status: res.status(), host: u.host, full: res.url() });
 });
 page.on('console', (m) => {
   if (m.type() === 'error') log('console error', m.text().slice(0, 160));
@@ -108,8 +108,22 @@ const interesting = requests.filter((r) =>
   ['/api/v1/playback', '/api/v1/session', '/api/v1/health', '/api/v1/stream'].includes(r.path) ||
   r.path.startsWith('/embed'),
 );
-for (const r of interesting) log('request', `${r.status} ${r.path}`);
-if (failures.length) for (const f of failures.slice(0, 8)) log('FAILED', `${f.err} ${new URL(f.url).pathname}`);
+for (const r of interesting) log('request', `${r.status} ${r.host} ${r.path}`);
+// The failing ones need their full identity: same path, different host is the
+// only way a route that clearly works can also be missing.
+const bad = interesting.filter((r) => r.status !== 200);
+if (bad.length) {
+  const tally = new Map();
+  for (const r of bad) {
+    const key = `${r.status} ${r.host}${r.path}`;
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+  for (const [key, n] of tally) log('non-200', `${n}x ${key}`);
+  log('sample bad url', bad[0].full.slice(0, 180));
+} else {
+  log('non-200', 'none');
+}
+if (failures.length) for (const f of failures.slice(0, 8)) log('FAILED', `${f.err} ${f.url.slice(0, 140)}`);
 
 await browser.close();
 elfura.close();
