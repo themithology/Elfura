@@ -102,11 +102,16 @@ for (const variant of Object.keys(VARIANTS)) {
     try {
       const d = f.contentDocument || f.contentWindow.document;
       const t = (sel) => (d.querySelector(sel) || {}).textContent || '';
+      // The unavailable panel lives in the DOM permanently and is revealed by
+      // data-unavailable on the shell, so reading its text unconditionally
+      // reports a failure that is not on screen. Only report it when shown.
+      const shell = d.querySelector('.elf-shell') || d.body;
+      const shown = shell?.dataset?.unavailable === 'true';
       return {
-        unavailableShown: !!d.querySelector('[data-unavailable="true"]'),
-        title: t('.elf-unavailable-title'),
-        message: t('.elf-unavailable-message'),
+        unavailableShown: shown,
+        ...(shown ? { title: t('.elf-unavailable-title'), message: t('.elf-unavailable-message') } : {}),
         videoSet: !!d.querySelector('video')?.currentSrc,
+        videoPlaying: (d.querySelector('video')?.currentTime ?? 0) > 0,
       };
     } catch (e) {
       return { crossOriginBlocked: true, error: String(e).slice(0, 80) };
