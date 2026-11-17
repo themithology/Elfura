@@ -36,6 +36,7 @@ import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
+import { createBrowserLaneAdapter } from './source23.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -196,6 +197,9 @@ export class SourceRegistry {
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
       createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
+      // Browser-rendered capture. Off unless ELFURA_BROWSER_LANE=1, because a
+      // browser process is expensive and this must never be a silent default.
+      createBrowserLaneAdapter(cfg.browserLane),
     ];
   }
 
