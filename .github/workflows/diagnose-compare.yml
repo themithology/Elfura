@@ -87,6 +87,7 @@ jobs:
           node scripts/probe-vidlink-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-zxcstream.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-zxcstream-discovery.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-zxcstream-sources.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
