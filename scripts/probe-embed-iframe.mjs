@@ -151,8 +151,13 @@ async function playback(port, { ref, origin, label }) {
     store.setBan(host, true);
     log(`ban ${host}`, `isBanned=${store.isBanned(host)} (expected false - owner domain)`);
   }
-  store.setBan('spam.example', true);
-  log('ban spam.example', `isBanned=${store.isBanned('spam.example')} (expected true)`);
+  // siteOrigin() requires a scheme, so a bare host silently bans nothing - that
+  // is existing behaviour and why the real call sites pass full URLs. Use the
+  // same shape here so this measures the exemption and not URL parsing.
+  const banned = 'https://spam.example';
+  store.setBan(banned, true);
+  log('ban spam.example', `isBanned=${store.isBanned(banned)} (expected true)`);
+  log('ban spam subdomain', `isBanned=${store.isBanned('https://a.spam.example')} (expected false - bans are per-origin)`);
 }
 
 console.log('[ifr:done]');
