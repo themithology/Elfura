@@ -71,7 +71,16 @@ interface ChromiumLauncher {
   launch(options: { executablePath: string; args: string[] }): Promise<BrowserInstance>;
 }
 
-/** Manifest URLs we are willing to lift out of a captured network call. */
+/**
+ * Manifest URLs we are willing to lift out of a captured network call.
+ *
+ * Deliberately not host-restricted. The first version of this file also
+ * excluded `*.workers.dev` media, copying the rule in source-1 - but the lane
+ * was measured returning DASH from `cinemaos-relay.*.workers.dev` on all six
+ * titles, and that guard would have thrown every one of them away. Excluding a
+ * host because the backend cannot read it is only correct when the backend is
+ * the one fetching: here a browser already fetched it.
+ */
 const MEDIA_MANIFEST_RE = /\.(?:m3u8|mpd)(?:[?#]|$)/i;
 /** A DASH/HLS playlist body must start with one of these to be worth keeping. */
 const PLAYLIST_HEAD_RE = /^\s*(?:#EXTM3U|<\?xml|<MPD[\s>])/i;
