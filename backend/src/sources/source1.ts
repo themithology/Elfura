@@ -475,22 +475,22 @@ async function fetchFromVidRock(
       }
 
       if (!streamUrl || !isSafeUpstreamUrl(streamUrl) || seen.has(streamUrl)) continue;
-      let mediaHost = '';
       try {
-        mediaHost = new URL(streamUrl).hostname.toLowerCase();
+        const mediaHost = new URL(streamUrl).hostname.toLowerCase();
+        // Workers lanes are TLS/browser-gated and return a placeholder rather
+        // than an HLS manifest to the backend. Never advertise them as playable.
+        //
+        // I tried removing this (TG FROST serves DASH through
+        // `cinemaos-relay.*.workers.dev`, and "maximum sources" argues against
+        // dropping anything by hostname). Reverted on evidence: the same GitHub
+        // runner that plays those streams fine inside a real browser gets a
+        // TypeError for them from a plain fetch, with browser headers mirrored
+        // exactly. It is TLS-fingerprint gating, not a header gap, so a backend
+        // fetch cannot read these manifests at all. The guard is correct.
+        if (mediaHost === 'workers.dev' || mediaHost.endsWith('.workers.dev')) continue;
       } catch {
         continue;
       }
-      // A `*.workers.dev` stream used to be dropped outright, on the theory that
-      // worker lanes are browser-gated and hand back a placeholder instead of a
-      // manifest. That is too strong. A Cloudflare Worker is a general-purpose
-      // relay — it is exactly what this project already recommends for egress —
-      // and TG FROST serves DASH through one (`cinemaos-relay.*.workers.dev`).
-      // Classifying it as a relay and ranking it below origin CDNs is correct;
-      // deleting it before liveness runs is not, because that also deletes every
-      // real manifest behind a Worker, and the operator asked for maximum
-      // sources. Liveness decides, not the hostname.
-      if (mediaHost === 'workers.dev') continue; // bare apex is never a stream host
       seen.add(streamUrl);
 
       let audioLang: string | undefined;
