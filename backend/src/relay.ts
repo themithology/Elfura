@@ -72,6 +72,18 @@ const segmentCorsInFlight = new Map<string, Promise<boolean>>();
  * Returns true ONLY if `rawUrl` points to a generic, provider-anonymous edge CDN
  * with zero aggregator/source/worker names, zero API keys, and safe protocol.
  */
+/**
+ * Is this URL only resolvable by the browser that loaded it?
+ *
+ * Used to decide whether a segment can be offloaded as a plain URL. There is no
+ * origin allowlist anywhere in this path, by design: the player is embedded on
+ * partner sites, so an unexpected Origin is normal traffic, not an attack.
+ *
+ * The checks that remain are about the UPSTREAM URL rather than the caller:
+ * non-https, embedded credentials, IP-bound tokens, and the deny patterns that
+ * exist so we never turn this relay into an open proxy. Those are what protect
+ * the deployment, and they are independent of who is asking.
+ */
 export function isAnonymousSegmentUrl(rawUrl: string, requireHttps = true): boolean {
   if (!isSafeUpstreamUrl(rawUrl)) return false;
   if (IP_BOUND_TOKEN_RE.test(rawUrl)) return false;

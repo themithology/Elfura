@@ -1804,10 +1804,27 @@ try {
   assert.equal(catalog.movies[0].backdrop, 'https://image.tmdb.org/t/p/w1280/deadpool-wide.jpg');
   assert(!JSON.stringify(catalog).includes('api_key'), 'Catalog must never expose TMDB credentials');
 
-  const badOriginRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
-    headers: { Origin: 'https://evil-scraper.example', 'User-Agent': browserHeaders['User-Agent'] },
+  // There is no origin allowlist: the API is public and the player is embedded
+  // on partner sites, so an unfamiliar Origin is ordinary traffic. What protects
+  // the endpoint is the token, and what follows pins that instead - an unknown
+  // origin WITH a valid boot token must succeed, and the same request WITHOUT
+  // one must still be refused. Asserting a 403 here would just re-encode the
+  // allowlist that was removed.
+  const foreignOriginRes = await fetch(
+    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&nonce=${encodeURIComponent('')}`,
+    { headers: { Origin: 'https://any-embedding-site.example', 'User-Agent': browserHeaders['User-Agent'] } },
+  );
+  assert.equal(
+    foreignOriginRes.status,
+    401,
+    'an unknown origin is not itself a reason to refuse; the missing token is',
+  );
+
+  // A scraper user agent is still blocked, which is the protection that remains.
+  const botRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
+    headers: { Origin: 'https://any-embedding-site.example', 'User-Agent': 'yt-dlp/2026.10.01' },
   });
-  assert.equal(badOriginRes.status, 403);
+  assert.equal(botRes.status, 403, 'downloader user agents are still refused');
 
   const noTokRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
     headers: browserHeaders,
@@ -2870,18 +2887,29 @@ try {
         `an embed served from our own host must resolve even when framed cross-site (got ${r.status} for ${JSON.stringify(extra)})`,
       );
     }
-    // And the guard must still bite: a genuinely foreign caller is refused.
-    const foreign = await fetch(`${apiBase}/api/v1/playback?${new URLSearchParams(scopeParams)}`, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': browserHeaders['User-Agent'],
-        'X-Playback-Token': boot.pltoken,
-        Origin: 'https://not-allowed.example',
-        Referer: 'https://not-allowed.example/player',
-        'Sec-Fetch-Site': 'cross-site',
-      },
-    });
-    assert.equal(foreign.status, 403, 'a foreign origin is still refused when an allowlist is configured');
+    // A foreign origin is no longer refused by itself - there is no allowlist.
+    // The refusal that matters is the missing token, asserted above.
+  }
+
+  //   (b0-bis) The owner domains must never be collateral damage.
+  //
+  //   theogpiratebot.online and .to are the sites this deployment exists to
+  //   serve. Two separate mechanisms could have taken them out: the ad tag, and
+  //   the operator ban list. Both are pinned here, including www and subdomains,
+  //   so no future rule can quietly black out the owner's own player.
+  {
+    const { ALWAYS_AD_FREE, siteMatches, decideAds } = await import('../../dist/backend/ads.js');
+    const owners = ['theogpiratebot.online', 'www.theogpiratebot.online', 'theogpiratebot.to', 'www.theogpiratebot.to', 'player.theogpiratebot.online'];
+    for (const host of owners) {
+      assert(siteMatches(host, ALWAYS_AD_FREE), `${host} must match the always-ad-free list`);
+      const decision = decideAds(
+        { parentSite: host, requestHost: 'elfura.example' },
+        { enabled: true, adFreeSites: [] },
+      );
+      assert.equal(decision.serve, false, `${host} must never receive an ad`);
+    }
+    // A look-alike must NOT be treated as an owner domain.
+    assert(!siteMatches('nottheogpiratebot.online', ALWAYS_AD_FREE), 'a look-alike domain must not be exempt');
   }
 
   //   (b) The embed document must NOT suppress its referrer.

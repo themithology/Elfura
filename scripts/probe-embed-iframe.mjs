@@ -95,6 +95,22 @@ async function playback(port, { ref, origin, label }) {
   server.close();
 }
 
+// ---- Case 2b: the owner domains, and an arbitrary embedder, must all work --
+{
+  const { server, port } = await boot(['https://elfura.example']);
+  log('--- config', 'ALLOWED_ORIGINS=https://elfura.example  (allowlist must now be irrelevant)');
+  for (const host of [
+    'https://theogpiratebot.online',
+    'https://www.theogpiratebot.online',
+    'https://theogpiratebot.to',
+    'https://www.theogpiratebot.to',
+    'https://random-embedder.example',
+  ]) {
+    await playback(port, { ref: `${host}/player?id=550`, origin: host, label: `embed by ${host}` });
+  }
+  server.close();
+}
+
 // ---- Case 3: does the embed document itself carry a usable token? ---------
 {
   const { server, port } = await boot(['https://elfura.example']);
@@ -125,6 +141,18 @@ async function playback(port, { ref, origin, label }) {
     }
   }
   server.close();
+}
+
+// ---- Case 4: can an operator ban black out the owner domains? ------------
+{
+  const { RoxyStore } = await import('../dist/backend/roxy-store.js');
+  const store = new RoxyStore(Buffer.from('probe-secret'), '/tmp/ifr-roxy-' + Date.now());
+  for (const host of ['theogpiratebot.online', 'theogpiratebot.to', 'www.theogpiratebot.online']) {
+    store.setBan(host, true);
+    log(`ban ${host}`, `isBanned=${store.isBanned(host)} (expected false - owner domain)`);
+  }
+  store.setBan('spam.example', true);
+  log('ban spam.example', `isBanned=${store.isBanned('spam.example')} (expected true)`);
 }
 
 console.log('[ifr:done]');

@@ -1,6 +1,7 @@
 /** Private, bounded operator analytics. No addresses, paths, cookies or stream URLs are stored. */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { ALWAYS_AD_FREE, siteMatches } from './ads.js';
 import path from 'node:path';
 
 const RETENTION = 3 * 24 * 60 * 60 * 1000;
@@ -58,7 +59,23 @@ export class RoxyStore {
     return !this.storageError;
   }
   close() { clearInterval(this.timer); if (this.pending) { clearTimeout(this.pending); this.pending = null; void this.flush(); } }
-  isBanned(site: string) { return !!site && this.bans.has(siteOrigin(site)); }
+  /**
+   * Bans are operator decisions, but a ban must never take out the sites this
+   * deployment actually serves. ALWAYS_AD_FREE holds the owner domains; they are
+   * exempt here too, so a stray click in the panel cannot black out the player
+   * on theogpiratebot.online / .to (including www and any subdomain).
+   */
+  isBanned(site: string) {
+    if (!site) return false;
+    const origin = siteOrigin(site);
+    if (!origin) return false;
+    try {
+      if (siteMatches(new URL(origin).hostname, ALWAYS_AD_FREE)) return false;
+    } catch {
+      /* fall through to a plain lookup */
+    }
+    return this.bans.has(origin);
+  }
   setBan(site: string, ban: boolean) { const origin = siteOrigin(site); if (!origin) return false; if (ban) this.bans.add(origin); else this.bans.delete(origin); this.save(); return true; }
   clear() { this.events = []; this.viewers.clear(); this.played.clear(); this.failed.clear(); this.save(); }
   ticket(site: string, type: 'movie' | 'tv', tmdb: string) {

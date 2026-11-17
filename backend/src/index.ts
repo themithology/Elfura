@@ -489,8 +489,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // returned; upstream credentials and endpoint URLs stay server-side.
     if (method === 'GET' && pathname === '/api/v1/catalog') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       if (!rateLimiter.allow(`catalog:${getClientIp(req)}`)) {
@@ -587,8 +587,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // 3. Session token bootstrap (for standalone SDK & dev embeds)
     if (method === 'POST' && pathname === '/api/v1/session') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'origin not permitted' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -628,10 +628,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // later resolve uses, so it costs nothing and warms it.
     if (method === 'GET' && (pathname === '/api/v1/art' || pathname === '/api/v1/metadata')) {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
-        return;
-      }
       if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
@@ -671,8 +667,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
     if ((method === 'GET' || method === 'POST') && pathname === '/api/v1/playback') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -788,8 +784,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // 4b. TV Season & Episode Catalog Endpoint (for Episode Wheel & Instant Binge Pre-Warm)
     if (method === 'GET' && pathname === '/api/v1/episodes') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -836,7 +832,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // Independent, best-effort TV skip markers. Never runs on the playback critical path.
     if (method === 'GET' && pathname === '/api/v1/segments') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }); return; }
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }, allowOrigin); return; }
       if (!rateLimiter.allow(`segments:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false }, allowOrigin); return; }
       const tmdbId = (url.searchParams.get('tmdb') || '').trim();
       const season = Number(url.searchParams.get('s'));
@@ -863,14 +859,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'automated scraper blocked' });
         return;
       }
-      const hasExplicitOriginOrRef = !!(req.headers.origin || req.headers.referer);
-      const allowOrigin =
-        resolveAllowedOrigin(req, cfg.allowedOrigins) ??
-        (!hasExplicitOriginOrRef ? (cfg.allowedOrigins[0] ?? '*') : null);
-      if (!allowOrigin) {
-        sendJson(res, 403, { ok: false, error: 'origin not permitted' });
-        return;
-      }
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
       const ticketParam = url.searchParams.get('t') || '';
       const forceProxy = url.searchParams.get('p') === '1';
       await handleStreamRelay(req, res, {
