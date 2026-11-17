@@ -85,6 +85,7 @@ jobs:
           node scripts/probe-tgvid-scrape.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-nuvio-api.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-vidlink-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-zxcstream.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
       - name: Write a summary
         if: always()
