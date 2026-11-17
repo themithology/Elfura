@@ -79,6 +79,19 @@ async function playback(port, { ref, origin, label }) {
   // as the referrer even though the top frame is third-party.
   await playback(port, { ref: `http://127.0.0.1:${port}/embed/movie/550`, label: 'our embed page as referer' });
   await playback(port, { ref: `${PARENT}/page`, origin: `http://127.0.0.1:${port}`, label: 'parent referer, our Origin' });
+  // The browser's own signal, which cannot be forged by page script.
+  {
+    const res = await fetch(`http://127.0.0.1:${port}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 Chrome/137.0',
+        'Sec-Fetch-Site': 'same-origin',
+        Referer: `${PARENT}/player?id=550`,
+      },
+      signal: AbortSignal.timeout(30_000),
+    }).catch(() => null);
+    log('parent referer + Sec-Fetch-Site same-origin', `HTTP ${res?.status ?? 'ERR'}`);
+  }
   server.close();
 }
 
