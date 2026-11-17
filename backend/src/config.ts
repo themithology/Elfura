@@ -93,24 +93,6 @@ export interface BackendConfig {
   /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
   source22?: { enabled: boolean };
 
-  /**
-   * Browser-rendered capture lane. OFF by default: a browser process costs
-   * hundreds of MB, so this must be an explicit operator choice, never a
-   * default that quietly doubles the RAM footprint.
-   */
-  browserLane: {
-    enabled: boolean;
-    /** The embed page driven to produce the first HTTPS request. */
-    embedOrigin: string;
-    /** How long to let the player resolve before reading what it requested. */
-    settleMs: number;
-    /** Hard cap on the page load. */
-    pageTimeoutMs: number;
-    /** Captured streams come through a relay front, so they rank below origin CDNs. */
-    rank: number;
-    userAgent: string;
-    referer: string;
-  };
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -263,18 +245,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
     source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
-    // Opt-in only. Set ELFURA_BROWSER_LANE=1 to mount source-23; leave it unset
-    // and nothing here costs anything (no import, no process, no memory).
-    browserLane: {
-      enabled: env.ELFURA_BROWSER_LANE === '1',
-      embedOrigin: (env.ELFURA_BROWSER_EMBED || 'https://tgfrost.lovable.app').replace(/\/+$/, ''),
-      settleMs: Math.max(1000, Number(env.ELFURA_BROWSER_SETTLE_MS || 14_000)),
-      pageTimeoutMs: Math.max(5000, Number(env.ELFURA_BROWSER_PAGE_TIMEOUT_MS || 30_000)),
-      rank: 60,
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
-      referer: (env.ELFURA_BROWSER_EMBED || 'https://tgfrost.lovable.app').replace(/\/+$/, '') + '/',
-    },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')
