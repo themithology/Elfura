@@ -77,22 +77,95 @@ function reexecForMemory() {
   if (!process.execArgv.some((arg) => arg.startsWith('--max-semi-space-size'))) {
     flags.push('--max-semi-space-size=16');
   }
-  if (!flags.length) return false;
+  // No memory flags needed is not a reason to skip supervision: a crash still
+  // has to come back on its own.
+  if (!flags.length && process.env.ELFURA_SUPERVISE === '0') return false;
 
-  console.log(`[elfura-memory] starting with ${flags.join(' ')} to keep RAM flat in a small container`);
-  const child = spawn(
-    process.execPath,
-    [...inheritableExecArgv(), ...flags, fileURLToPath(import.meta.url), ...process.argv.slice(2)],
-    { stdio: 'inherit', env: { ...process.env, [REENTRY_FLAG]: '1' } },
-  );
-  // The parent exists only to supervise: if the server dies, the host sees it.
-  child.on('exit', (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
-    else process.exit(code ?? 0);
-  });
-  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
-    process.on(sig, () => child.kill(sig));
+  if (flags.length) {
+    console.log(`[elfura-memory] starting with ${flags.join(' ')} to keep RAM flat in a small container`);
   }
+  return supervise(flags);
+}
+
+/**
+ * Restart the server when it exits, instead of exiting with it.
+ *
+ * The parent re-launched the child to apply memory flags, then forwarded the
+ * child's exit straight to the host. So any crash - one bad request, an OOM, an
+ * upstream socket doing something strange - ended the process, and the panel sat
+ * there showing the server as offline until somebody restarted it by hand.
+ *
+ * Pterodactyl cannot restart what has already gone, but it keeps the process it
+ * started: if that process stays alive and re-spawns its worker, the service
+ * comes back on its own within a second.
+ *
+ * A deliberate shutdown never loops: a signal (panel stop, restart, host reboot)
+ * is forwarded to the child and the supervisor then exits with it. The attempt
+ * limiter stops a startup crash from spinning forever, which would otherwise
+ * look like a healthy container while serving nothing.
+ */
+const RESTART_BASE_DELAY_MS = 700;
+const RESTART_MAX_DELAY_MS = 30_000;
+/** Consecutive fast failures before giving up, so a boot loop is visible. */
+const MAX_QUICK_RESTARTS = 12;
+/** A run longer than this counts as healthy and resets the backoff. */
+const HEALTHY_RUN_MS = 30_000;
+
+function supervise(flags) {
+  let stopping = false;
+  let quickRestarts = 0;
+  let timer = null;
+
+  const start = () => {
+    const startedAt = Date.now();
+    const child = spawn(
+      process.execPath,
+      [...inheritableExecArgv(), ...flags, fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+      { stdio: 'inherit', env: { ...process.env, [REENTRY_FLAG]: '1' } },
+    );
+
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+      process.on(sig, () => {
+        stopping = true;
+        if (timer) clearTimeout(timer);
+        child.kill(sig);
+      });
+    }
+
+    child.on('exit', (code, signal) => {
+      if (stopping) {
+        // A signal in flight means the host asked for this; pass it through and
+        // let the supervisor finish rather than resurrecting the worker.
+        if (signal) process.kill(process.pid, signal);
+        else process.exit(code ?? 0);
+        return;
+      }
+
+      const ranFor = Date.now() - startedAt;
+      if (ranFor >= HEALTHY_RUN_MS) quickRestarts = 0;
+      else quickRestarts += 1;
+
+      if (quickRestarts > MAX_QUICK_RESTARTS) {
+        console.error(
+          `[elfura-supervisor] the server failed ${quickRestarts} times in a row without staying up ` +
+            `(last exit code ${code}, signal ${signal ?? 'none'}). Giving up so the failure is visible ` +
+            `in the panel instead of looping silently. Fix the start-up error above, then restart.`,
+        );
+        process.exit(code ?? 1);
+        return;
+      }
+
+      const delay = Math.min(RESTART_MAX_DELAY_MS, RESTART_BASE_DELAY_MS * 2 ** Math.max(0, quickRestarts - 1));
+      console.error(
+        `[elfura-supervisor] server exited unexpectedly (code ${code}, signal ${signal ?? 'none'}) ` +
+          `after ${Math.round(ranFor / 1000)}s; restarting in ${delay}ms ` +
+          `(attempt ${quickRestarts}/${MAX_QUICK_RESTARTS})`,
+      );
+      timer = setTimeout(start, delay);
+    });
+  };
+
+  start();
   return true;
 }
 

@@ -282,7 +282,37 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
   };
 
-  const server = http.createServer(async (req, res) => {
+  /** The routing body below; assigned before anything can reach it. */
+  let routeRequest: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>;
+
+  /**
+   * Every route below is async, and a throw inside an async request handler
+   * becomes an unhandled rejection - which Node treats as fatal, so the whole
+   * process dies and the panel shows the server as simply offline. One bad
+   * request must never be able to take the service down, so the handler is
+   * wrapped: unexpected errors are logged with the route and answered with a
+   * 500 when the response is still writable.
+   */
+  const handleRequest = async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
+    try {
+      await routeRequest(req, res);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      try {
+        console.error(`[elfura-http] ${req.method} ${String(req.url).split('?')[0]} failed: ${detail}`);
+      } catch {
+        /* logging must never throw either */
+      }
+      if (!res.headersSent) {
+        sendJson(res, 500, { ok: false, error: 'internal server error' });
+      } else {
+        try { res.end(); } catch { /* socket already gone */ }
+      }
+    }
+  };
+  const server = http.createServer(handleRequest);
+
+  routeRequest = async (req, res) => {
     const method = (req.method || 'GET').toUpperCase();
     let url: URL;
     try {
@@ -1063,7 +1093,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     sendJson(res, 404, { ok: false, error: 'not found' });
-  });
+  };
 
   server.on('close', () => roxy.close());
   return { server, cfg, registry };
@@ -1088,12 +1118,59 @@ function readMemoryUsage(): {
   };
 }
 
+/** Installed once, whatever the entry point. */
+let processGuardsInstalled = false;
+
+/**
+ * Keep a stray async error from killing the service.
+ *
+ * Node treats an unhandled rejection as fatal by default, so before this a
+ * single unexpected throw anywhere - a timer callback, an adapter's background
+ * work, a socket callback - terminated the process. The panel then shows the
+ * server as offline until a human notices, which is exactly the "it crashed and
+ * never came back" behaviour. Log loudly and stay up: a degraded process still
+ * serves every request it can, and an exited one serves none.
+ *
+ * Opt out with ELFURA_EXIT_ON_UNCAUGHT=1 for a host that would rather restart
+ * (systemd, pm2, Pterodactyl's own restart-on-exit) and wants the hard failure.
+ */
+export function installProcessGuards(): void {
+  if (processGuardsInstalled) return;
+  processGuardsInstalled = true;
+
+  const fatal = process.env.ELFURA_EXIT_ON_UNCAUGHT === '1';
+
+  process.on('unhandledRejection', (reason) => {
+    const detail = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
+    console.error(`[elfura-fatal] unhandled rejection: ${detail}`);
+    if (fatal) process.exit(1);
+  });
+
+  process.on('uncaughtException', (error) => {
+    console.error(`[elfura-fatal] uncaught exception: ${error?.stack || error}`);
+    // An uncaught exception may have left shared state inconsistent, so a host
+    // that can restart us should be allowed to. The default keeps serving.
+    if (fatal) process.exit(1);
+  });
+}
+
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  installProcessGuards();
   // Before anything resolves a hostname: if this container's resolver is dead
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
   // own lookups through public DNS so the adapters can work at all.
   void installDnsRescue().then(() => installEgressProfile());
   const { server, cfg, registry } = createBackendServer(overrides);
+  // A port that cannot be bound is not a survivable state: the guards below
+  // deliberately keep the process alive through unexpected throws, which would
+  // turn EADDRINUSE into a container that reports itself healthy while serving
+  // nothing. Exit instead, so the supervisor retries and the log says why.
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(
+      `[elfura-backend] cannot listen on ${cfg.host}:${cfg.port} (${error.code || error.message}); exiting so the supervisor can retry`,
+    );
+    process.exit(1);
+  });
   server.listen(cfg.port, cfg.host, () => {
     console.log(
       `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
@@ -1192,6 +1269,7 @@ if (isDirectMain) {
  * config, they only differ in what they expose over HTTP.
  */
 export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
+  installProcessGuards();
   const { cfg, registry } = createBackendServer(overrides);
   const token = (process.env.ELFURA_RESOLVER_TOKEN ?? process.env.ELFURA_SECRET ?? '').trim();
   if (!token) {
@@ -1216,6 +1294,12 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
   // The egress profile must be installed before the first provider request, and
   // the DNS rescue before the first hostname lookup — exactly as in media mode.
   void installDnsRescue().then(() => installEgressProfile());
+  // Same reasoning as the media server: an unbound port must not masquerade as
+  // a running process.
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(`[elfura-resolver] cannot listen (${error.code || error.message}); exiting so the supervisor can retry`);
+    process.exit(1);
+  });
   server.listen(port, listenHost, () => {
     // Deliberately vague. This fills a Pterodactyl console that anyone with panel
     // access can read, so it does not name the port, the bind address or how many
