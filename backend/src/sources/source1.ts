@@ -475,14 +475,22 @@ async function fetchFromVidRock(
       }
 
       if (!streamUrl || !isSafeUpstreamUrl(streamUrl) || seen.has(streamUrl)) continue;
+      let mediaHost = '';
       try {
-        const mediaHost = new URL(streamUrl).hostname.toLowerCase();
-        // Workers lanes are TLS/browser-gated and return a placeholder rather
-        // than an HLS manifest to the backend. Never advertise them as playable.
-        if (mediaHost === 'workers.dev' || mediaHost.endsWith('.workers.dev')) continue;
+        mediaHost = new URL(streamUrl).hostname.toLowerCase();
       } catch {
         continue;
       }
+      // A `*.workers.dev` stream used to be dropped outright, on the theory that
+      // worker lanes are browser-gated and hand back a placeholder instead of a
+      // manifest. That is too strong. A Cloudflare Worker is a general-purpose
+      // relay — it is exactly what this project already recommends for egress —
+      // and TG FROST serves DASH through one (`cinemaos-relay.*.workers.dev`).
+      // Classifying it as a relay and ranking it below origin CDNs is correct;
+      // deleting it before liveness runs is not, because that also deletes every
+      // real manifest behind a Worker, and the operator asked for maximum
+      // sources. Liveness decides, not the hostname.
+      if (mediaHost === 'workers.dev') continue; // bare apex is never a stream host
       seen.add(streamUrl);
 
       let audioLang: string | undefined;

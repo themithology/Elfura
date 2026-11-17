@@ -27,16 +27,29 @@ const log = (t, v) => console.log(`[tgb] ${t} :: ${v}`);
 // Titles the operator named. Different backends answer different titles, which
 // is the whole complaint, so the matrix is the point.
 const TITLES = [
+  // The operator's list. "It doesn't have consistent sources" is the complaint
+  // under test, so these run as a matrix: anime TV, Korean drama, a US prestige
+  // series, and a plain movie. TG_TITLES overrides (e.g. "tv:94664/1/1,movie:550").
+  ['tv', '94664/1/1', 'Mushoku Tensei (anime)'],
+  ['tv', '291496/1/1', 'Our Sticky Love (K-drama)'],
+  ['tv', '94605/1/1', 'Arcane'],
+  ['tv', '1399/1/1', 'Game of Thrones'],
+  ['tv', '207347/1/1', 'Blue Box (anime)'],
   ['movie', '550', 'Fight Club'],
-  ['movie', '969681', 'docs example'],
-  ['tv', '94605', 'Arcane'],
+  ...(process.env.TG_TITLES
+    ? process.env.TG_TITLES.split(',').map((t) => {
+        const [kind, rest] = t.trim().split(':');
+        return [kind, rest, `${kind}/${rest}`];
+      })
+    : []),
 ];
 if (process.env.TG_TITLE) TITLES.unshift(['movie', process.env.TG_TITLE, 'override']);
 
 const SKIP = /lovable\.app|lovable\.dev|\.r2\.dev|discord|googleapis|gstatic|fonts\.|w3\.org|schema\.org|jsdelivr|unpkg|cloudflareinsights|sentry|react\.dev|supabase\.co\/(?:rest|auth)\/v1\/|favicon|\.png|\.jpg|\.jpeg|\.svg|\.woff2?|\.css/i;
 const MEDIA = /\.(m3u8|mpd|ts|m4s|mp4|key)(\?|$)/i;
 
-const seen = new Map(); // key -> { host, path, status, type, n }
+const seen = new Map(); // key -> { host, path, status, type, n, titles:Set }
+let currentTitle = '?';
 const interesting = [];
 
 function note(kind, url, status, type) {
@@ -54,7 +67,8 @@ function note(kind, url, status, type) {
   if (status) row.status = status;
   if (type) row.type = type;
   seen.set(key, row);
-  if ((!isMedia && seen.size <= 400) || isMedia) interesting.push({ kind, host: u.hostname, path: u.pathname, status, type });
+  row.titles = row.titles || new Set();
+  row.titles.add(currentTitle);
 }
 
 const browser = await chromium.launch({
@@ -79,7 +93,8 @@ try {
       } catch { /* ignore */ }
     });
 
-    const target = type === 'tv' ? `${BASE}/embed/tv/${id}/1/1` : `${BASE}/embed/movie/${id}`;
+    currentTitle = label;
+    const target = type === 'tv' ? `${BASE}/embed/tv/${id}` : `${BASE}/embed/movie/${id}`;
     log('open', `${label} ${type}/${id}`);
     try {
       await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -113,6 +128,15 @@ try {
     const types = [...new Set(list.map((r) => r.type).filter(Boolean))].slice(0, 4).join(',');
     log('host', `${host} n=${list.length} status=${statuses || '-'} type=${types || '-'} ${paths}`);
   }
+  // Which hosts answered under each title: the inconsistency the operator
+  // reported shows up here as different host sets per title.
+  const perTitle = new Map();
+  for (const r of rows) for (const t of r.titles || []) {
+    if (!perTitle.has(t)) perTitle.set(t, new Set());
+    perTitle.get(t).add(r.host);
+  }
+  for (const [t, hosts] of perTitle) log('per-title', `${t} -> ${[...hosts].join(' ')}`);
+
   const media = rows.filter((r) => r.media);
   log('media endpoints', media.length);
   for (const m of media.slice(0, 25)) {
