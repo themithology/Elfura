@@ -111,7 +111,16 @@ for (const variant of Object.keys(VARIANTS)) {
         unavailableShown: shown,
         ...(shown ? { title: t('.elf-unavailable-title'), message: t('.elf-unavailable-message') } : {}),
         videoSet: !!d.querySelector('video')?.currentSrc,
-        videoPlaying: (d.querySelector('video')?.currentTime ?? 0) > 0,
+        videoTime: Number((d.querySelector('video')?.currentTime ?? 0).toFixed(2)),
+        readyState: d.querySelector('video')?.readyState ?? 0,
+        // The overlay is what the viewer actually sees; a playable engine behind
+        // a spinner/pause screen is still a failure for them.
+        overlays: {
+          unavailable: shell?.dataset?.unavailable === 'true',
+          buffering: shell?.dataset?.buffering === 'true',
+          pauseScreen: shell?.dataset?.pauseScreen === 'true',
+          initialLoading: shell?.dataset?.initialLoading === 'true',
+        },
       };
     } catch (e) {
       return { crossOriginBlocked: true, error: String(e).slice(0, 80) };
