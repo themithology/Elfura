@@ -40,11 +40,21 @@ const ELFURA = `http://127.0.0.1:${elfuraPort}`;
 log('backend', ELFURA);
 
 // --- a parent site on a DIFFERENT origin -----------------------------------
+// Each of these is a way a real partner site embeds us. The query form is what
+// the deployed site's own player page uses, so it has to be exercised too.
+const VARIANTS = {
+  path: `${ELFURA}/embed/tv/94605/1/1`,
+  query: `${ELFURA}/embed?type=tv&id=94605&s=1&e=1`,
+  queryPlayer: `${ELFURA}/player?type=tv&id=94605&s=1&e=1`,
+  moviePath: `${ELFURA}/embed/movie/1368337`,
+};
+let VARIANT = process.env.EMB_VARIANT || 'path';
+
 const parent = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><html><body style="margin:0;background:#111">
-<h1 style="color:#0f0;font:14px monospace">third-party site</h1>
-<iframe id="f" src="${ELFURA}/embed/tv/94605/1/1"
+<h1 style="color:#0f0;font:14px monospace">third-party site / ${VARIANT}</h1>
+<iframe id="f" src="${VARIANTS[VARIANT]}"
         allow="autoplay; fullscreen; encrypted-media"
         allowfullscreen
         style="width:900px;height:520px;border:0"></iframe>
@@ -78,52 +88,47 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => log('page error', String(e).slice(0, 160)));
 
-await page.goto(PARENT, { waitUntil: 'domcontentloaded' });
-log('loaded parent', 'waiting for the embed to resolve');
-await page.waitForTimeout(30_000);
+for (const variant of Object.keys(VARIANTS)) {
+  VARIANT = variant;
+  requests.length = 0;
+  failures.length = 0;
+  log(`=== variant ${variant}`, VARIANTS[variant].replace(ELFURA, ''));
+  await page.goto(PARENT, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(28_000);
 
-// What did the player end up showing?
-const state = await page.evaluate(() => {
-  const f = document.getElementById('f');
-  let inner = null;
-  try {
-    const d = f.contentDocument || f.contentWindow.document;
-    const shell = d.querySelector('.elf-shell') || d.body;
-    inner = {
-      unavailable: d.querySelector('[data-unavailable="true"]') ? true : false,
-      title: (d.querySelector('.elf-unavailable-title') || {}).textContent || '',
-      message: (d.querySelector('.elf-unavailable-message') || {}).textContent || '',
-      videoSrc: d.querySelector('video')?.currentSrc ? 'set' : 'none',
-      text: (shell?.innerText || '').slice(0, 200),
-    };
-  } catch (e) {
-    inner = { crossOriginBlocked: true, error: String(e).slice(0, 80) };
-  }
-  return inner;
-});
-log('iframe state', JSON.stringify(state));
+  const state = await page.evaluate(() => {
+    const f = document.getElementById('f');
+    try {
+      const d = f.contentDocument || f.contentWindow.document;
+      const t = (sel) => (d.querySelector(sel) || {}).textContent || '';
+      return {
+        unavailableShown: !!d.querySelector('[data-unavailable="true"]'),
+        title: t('.elf-unavailable-title'),
+        message: t('.elf-unavailable-message'),
+        videoSet: !!d.querySelector('video')?.currentSrc,
+      };
+    } catch (e) {
+      return { crossOriginBlocked: true, error: String(e).slice(0, 80) };
+    }
+  });
+  log(`  ${variant} state`, JSON.stringify(state));
 
-// The network, in order, for the endpoints that matter.
-const interesting = requests.filter((r) =>
-  ['/api/v1/playback', '/api/v1/session', '/api/v1/health', '/api/v1/stream'].includes(r.path) ||
-  r.path.startsWith('/embed'),
-);
-for (const r of interesting) log('request', `${r.status} ${r.host} ${r.path}`);
-// The failing ones need their full identity: same path, different host is the
-// only way a route that clearly works can also be missing.
-const bad = interesting.filter((r) => r.status !== 200);
-if (bad.length) {
-  const tally = new Map();
-  for (const r of bad) {
-    const key = `${r.status} ${r.host}${r.path}`;
-    tally.set(key, (tally.get(key) ?? 0) + 1);
+  const bad = requests.filter((r) => !['/api/v1/playback', '/api/v1/stream'].includes(r.path));
+  const non200 = bad.filter((r) => r.status >= 400);
+  if (non200.length) {
+    const tally = new Map();
+    for (const r of non200) {
+      const key = `${r.status} ${r.host} ${r.path}`;
+      tally.set(key, (tally.get(key) ?? 0) + 1);
+    }
+    for (const [k, n] of tally) log(`  ${variant} non-200`, `${n}x ${k}`);
   }
-  for (const [key, n] of tally) log('non-200', `${n}x ${key}`);
-  log('sample bad url', bad[0].full.slice(0, 180));
-} else {
-  log('non-200', 'none');
+  const playbacks = requests.filter((r) => r.path === '/api/v1/playback');
+  log(
+    `  ${variant} playback`,
+    `${playbacks.length} calls, statuses ${[...new Set(playbacks.map((r) => r.status))].join(',') || 'none'}`,
+  );
 }
-if (failures.length) for (const f of failures.slice(0, 8)) log('FAILED', `${f.err} ${f.url.slice(0, 140)}`);
 
 await browser.close();
 elfura.close();
