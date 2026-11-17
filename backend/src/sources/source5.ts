@@ -8,7 +8,7 @@ import { fetchNoRedirect } from './upstream-fetch.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const ORIGIN = 'https://nxsha.space';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 // Public web-client protocol passphrases, not private credentials. The site
 // rotates them (public extractors record at least one rotation), and a rotation
 // silently turns every stream into "no results", so we keep the known history

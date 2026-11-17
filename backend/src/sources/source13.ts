@@ -9,7 +9,7 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 const API = 'https://freakyniki.elaxo.lol/';
 const PROXY_HOST = 'freakyniki.elaxo.lol';
 const PLAYER = 'https://player-4aq.pages.dev/';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const TARGET_HOSTS = new Set(['vip.1x2.space', 'tik.1x2.space', 'suprox.xpass.top']);
 const MAX_JSON_BYTES = 128_000;
 const MAX_ROWS = 8;

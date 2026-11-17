@@ -60,7 +60,7 @@ function safeHeaders(stream: AnivexaStream, mediaUrl: URL): Record<string, strin
     try { out.Origin = new URL(out.Referer).origin; } catch { /* use media origin */ }
   }
   if (!Object.keys(out).some((key) => key.toLowerCase() === 'user-agent')) {
-    out['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+    out['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
   }
   if (!out.Origin && !out.Referer) out.Origin = mediaUrl.origin;
   return out;

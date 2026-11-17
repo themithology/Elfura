@@ -10,7 +10,7 @@ import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
 const SITE = 'https://mapple.fun';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const PLAYER_API_KEY = 'mptv_sk_a8f29c4e7b3d1f'; // Public player protocol value, not a private credential.
 // The site renamed its hosters from Nexus/Cipher/Pulse to Greek gods (its watch
 // page renders "Poseidon · Source 1 / 13", with Zeus and Athena beside it). The
