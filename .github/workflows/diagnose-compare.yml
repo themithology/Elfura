@@ -70,6 +70,15 @@ jobs:
           node scripts/probe-vidbolt-vidsync.mjs 2>&1 | tee -a /tmp/compare.txt || true
           node scripts/probe-tgfrost.mjs 2>&1 | tee -a /tmp/compare.txt || true
 
+      # A real browser, because TG FROST resolves server-side: only the wire
+      # shows which backends actually answer. Deps are not saved to the lockfile.
+      - name: Watch the TG FROST player's network
+        if: always()
+        continue-on-error: true
+        run: |
+          npm install --no-save --no-package-lock playwright-core @sparticuz/chromium >/dev/null 2>&1 || true
+          node scripts/probe-tgfrost-browser.mjs 2>&1 | tee -a /tmp/compare.txt || true
+
       - name: Write a summary
         if: always()
         run: |
