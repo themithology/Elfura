@@ -187,7 +187,16 @@ export class SourceHealthStore {
       });
     };
     for (const source of known) push(source.id, source.label);
-    for (const [id] of this.states) if (!seen.has(id)) push(id, id);
+    // Do NOT replay ids the current build does not ship. A source-health file
+    // outlives the code that wrote it: when a provider is dropped, renamed, or
+    // two rows merge into one, the old ids stay on disk forever and this loop
+    // used to turn each one into a permanent phantom row in the panel — an
+    // id that nothing can resolve, cannot be switched off from the UI, and is
+    // counted as if it were a working source. `known` is the authoritative
+    // board; state for anything else is dead weight and is pruned on save.
+    for (const id of [...this.states.keys()]) {
+      if (!seen.has(id)) this.states.delete(id);
+    }
     return rows;
   }
 

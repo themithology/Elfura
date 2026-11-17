@@ -1513,7 +1513,10 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  assert.equal(health.sourceCount, 4, 'a bare count is fine (source-22 = Vidly subtitles)');
+  // 3, not 4: source-1 is now a single row owning vidrift+vidsync+vidrock+vidbolt.
+  // It was previously split across two registry entries (a vidbolt-only stub and
+  // the real adapter), and the pair is what made this 4.
+  assert.equal(health.sourceCount, 3, 'a bare count is fine (source-22 = Vidly subtitles)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1524,7 +1527,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 joined the lane set');
+  assert.equal(diag.playback.resolution.adapters.length, 3, 'source-22 joined the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);
@@ -1648,9 +1651,12 @@ try {
     assert(!rawJsonStr.toLowerCase().includes(forbidden.toLowerCase()), `Leaked internal string: ${forbidden}`);
   }
 
-  // The replacement Source 2 must resolve VidRift directly, not the removed adapter.
-  const riftOption = pb.sources.find((s) => s.sourceId === 'source-2');
-  assert(riftOption, 'Expected the VidRift fixture in Source 2');
+  // VidRift is a Source 1 upstream and must be attributed to Source 1. It used to
+  // be found under 'source-2' because createSource1Adapter derived its id from
+  // the upstream-selection group (2 = vidrift/vidrock/vidbolt), so the adapter
+  // reported itself as source-2 while the real source-2 adapter was unregistered.
+  const riftOption = pb.sources.find((s) => s.sourceId === 'source-1');
+  assert(riftOption, 'Expected the VidRift fixture in Source 1');
   const riftMasterRes = await fetch(`${apiBase}${riftOption.url}`, { headers: browserHeaders });
   assert.equal(riftMasterRes.status, 200);
   assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
@@ -3225,6 +3231,10 @@ try {
     const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
+      // Computed, never a literal: the adapter discards signed rows within 15 s
+      // of expiry, so a hardcoded `Expires` silently stops testing anything on
+      // the day it lapses.
+      const cExpiry = Math.floor(Date.now() / 1000) + 3600;
 
       // VidSync: single-language Castle row with IP-signed directUrl (403) + working `/api/core/proxy`
       if (cu.pathname === '/api/stream' || cu.pathname === '/api/core/streams') {
@@ -3237,7 +3247,7 @@ try {
                     {
                       provider: { id: 'castle', name: 'Castle' },
                       url: '/api/core/proxy?data=castle_en_1080&quality=1080p',
-                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=${cExpiry}&KeyName=Signature&Signature=abc`,
                       type: 'hls',
                       quality: '1080p',
                       audioLanguage: 'en',
@@ -3261,7 +3271,7 @@ try {
                     {
                       provider: { id: 'castle', name: 'Castle' },
                       url: '/api/core/proxy?data=castle_en_720&quality=720p',
-                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=${cExpiry}&KeyName=Signature&Signature=abc`,
                       type: 'hls',
                       quality: '720p',
                       audioLanguage: 'en',

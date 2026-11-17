@@ -25,6 +25,11 @@
  * no streams looks like an outage.
  */
 import assert from 'node:assert/strict';
+
+// Every source the registry mounts by default. Kept in one place so a row
+// silently disappearing is a loud failure rather than a soft `>=` that a
+// duplicate row could satisfy.
+const MIN_LISTED_SOURCES = 19;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -209,7 +214,13 @@ await check('public health exposes a count, never a list', async () => {
 });
 
 await check('resolver lists every source with health', () => {
-  assert.ok(Array.isArray(listed.sources) && listed.sources.length >= 20);
+  // 19, not 20: source-1 used to be split into two registry rows — the real
+  // adapter (vidrift/vidsync/vidrock) plus a vidbolt-only stub that called
+  // /api/resolve, an endpoint vidbolt does not have, so it could never return a
+  // candidate. The two are now one row that owns all four upstreams, and
+  // source-2 stays unmounted because its nxsha lane duplicates source-5.
+  // The count is rows, not reach: no upstream was lost.
+  assert.equal(MIN_LISTED_SOURCES, 19, 'the configured board');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
@@ -283,7 +294,7 @@ const panelHeaders = { cookie, origin: mediaBase };
 const panelAlive = await (await fetch(`${mediaBase}/roxy/api/sources`, { headers: panelHeaders })).json();
 await check('control panel shows per-source health', () => {
   assert.equal(panelAlive.unavailable, false);
-  assert.ok(Array.isArray(panelAlive.sources) && panelAlive.sources.length >= 20);
+  assert.equal(panelAlive.sources.length, MIN_LISTED_SOURCES);
   assert.equal(panelAlive.resolver.kind, 'remote', 'media server must be using the out-of-process resolver');
 });
 
@@ -352,7 +363,7 @@ await waitFor(`${resolverBase}/resolver/api/health`);
 const panelBack = await (await fetch(`${mediaBase}/roxy/api/sources`, { headers: panelHeaders })).json();
 await check('resolver back: panel recovers with no media restart', () => {
   assert.equal(panelBack.unavailable, false);
-  assert.ok(panelBack.sources.length >= 20);
+  assert.equal(panelBack.sources.length, MIN_LISTED_SOURCES);
 });
 
 // source-1 has no health file after the restart, so the switch is fresh state.
@@ -461,7 +472,7 @@ await check('autostart: one command starts both processes', async () => {
       headers: { 'x-elfura-resolver-token': secret },
     })
   ).json();
-  assert.ok(listed.sources.length >= 20);
+  assert.equal(listed.sources.length, MIN_LISTED_SOURCES);
 });
 
 await check('autostart: media server uses the resolver it started', async () => {
@@ -476,7 +487,7 @@ await check('autostart: media server uses the resolver it started', async () => 
   ).json();
   assert.equal(payload.unavailable, false);
   assert.equal(payload.resolver.kind, 'remote', 'autostart must actually isolate discovery, not silently stay in-process');
-  assert.ok(payload.sources.length >= 20);
+  assert.equal(payload.sources.length, MIN_LISTED_SOURCES);
 });
 
 // An explicit ELFURA_RESOLVER_URL must win: an operator running a resolver

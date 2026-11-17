@@ -413,11 +413,19 @@ async function fetchFromVidRock(
 /* Source 1 Adapter Factory                                            */
 /* ------------------------------------------------------------------ */
 
-export function createSource1Adapter(cfg: BackendConfig['source1'], group: 1 | 2 = 1, options: { includeVidBolt?: boolean } = {}): SourceAdapter {
-  const id = `source-${group}`;
+export function createSource1Adapter(
+  cfg: BackendConfig['source1'],
+  group: 1 | 2 = 2,
+  options: { includeVidBolt?: boolean; id?: string; label?: string } = {},
+): SourceAdapter {
+  // `group` selects which upstreams to run (2 = vidrift + vidrock + vidbolt);
+  // it must NOT decide the adapter's identity. Deriving the id from it is how
+  // this adapter ended up registered as `source-2` while a different file
+  // owned that name, which made every lane it produced unattributable.
+  const id = options.id ?? `source-${group}`;
   return {
     id,
-    label: `Source ${group}`,
+    label: options.label ?? (options.id ? `Source ${options.id.replace(/\D/g, '')}` : `Source ${group}`),
     enabled: () => cfg.enabled,
 
     async resolve(query: SourceQuery): Promise<RawSourceResult> {

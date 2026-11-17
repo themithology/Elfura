@@ -36,13 +36,21 @@ async function check(name, fn) {
 }
 
 // ---- Captured payload shapes ------------------------------------------------
+// Signed citadel URLs are rejected once they are within 15 s of expiry, so a
+// literal `Expires` copied from a capture turns this file into a time bomb: it
+// passed on the day it was written and failed silently months later. Compute the
+// expiry instead, and keep the rest of the URL verbatim.
+const CITADEL_SIG = 'Zb60Im-ZMwgxrgBbdSsocE4BjJHQQEgA1kHVrjNNrP9VgJXZviHn205QkRMGAMQyIUa-qudbOVPmTI-XB08xAw==';
+const citadelUrl = (path) =>
+  `https://img1.hscow.com${path}?Expires=${Math.floor(Date.now() / 1000) + 3600}&KeyName=Signature&Signature=${CITADEL_SIG}`;
+
 const citadelBody = {
   data: {
     sources: [
       {
         quality: '720p | English',
-        // Verbatim from the live API. Expiry is in the future by design.
-        url: 'https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1794874383&KeyName=Signature&Signature=Zb60Im-ZMwgxrgBbdSsocE4BjJHQQEgA1kHVrjNNrP9VgJXZviHn205QkRMGAMQyIUa-qudbOVPmTI-XB08xAw==',
+        // Shape verbatim from the live API; only the expiry is computed.
+        url: citadelUrl('/hls/78164859/720/index_287.m3u8'),
         source: 'Citadel',
         format: 'hls',
       },
@@ -84,9 +92,7 @@ await check('citadel /hls/ paths are accepted, not just /hls_mps/ (regression)',
   // dropped — and in the live payload that is the 720p rendition, the best
   // quality citadel publishes. The symptom was a source that returned 26
   // captions and zero playable streams.
-  const sig = 'Zb60Im-ZMwgxrgBbdSsocE4BjJHQQEgA1kHVrjNNrP9VgJXZviHn205QkRMGAMQyIUa-qudbOVPmTI-XB08xAw==';
-  const mk = (path) =>
-    `https://img1.hscow.com${path}?Expires=1794874383&KeyName=Signature&Signature=${sig}`;
+  const mk = citadelUrl;
   // citadel always names its audio in `quality` ("720p | English") and the
   // adapter refuses a citadel row that does not, so the fixture has to match.
   for (const path of ['/hls/78164859/720/index_287.m3u8', '/hls_mps/78164859/480/index_287.m3u8', '/myhls_mps/78164859/480/index_287.m3u8']) {

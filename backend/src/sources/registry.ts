@@ -17,7 +17,7 @@ import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
-import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
+import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
@@ -148,19 +148,30 @@ export class SourceRegistry {
 
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      // Source 1 contains direct upstreams independently identified in Aethoflix.
-      // VidBolt/Orion is a direct upstream used by Aethoflix. No Aethoflix
-      // or ZXC mirror requests are made by this group.
-      {
-        id: 'source-1', label: 'Source 1', enabled: () => cfg.source1.enabled,
-        resolve: async (query) => {
-          const start = Date.now();
-          const candidates = await fetchFromVidBolt(cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', query);
-          query.diag?.push({ adapter: 'source-1', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
-          return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) };
-        },
-      },
-      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      // Source 1 is one adapter owning all four direct upstreams it was built
+      // for: vidrift (rift), vidsync (sync), vidrock (rock) and vidbolt.
+      //
+      // It used to be split across two registry entries, and the split was
+      // silently destructive: `createSource1Adapter(cfg, 2, ...)` derives its id
+      // as `source-${group}`, so the entry carrying vidrift and vidrock was
+      // registered as **source-2**. The real source-2 adapter
+      // (createSource2Adapter) is imported nowhere, so nothing collided and
+      // nothing errored — the vidrift/vidrock results simply appeared in the
+      // panel under a source that had nothing to do with them, while the
+      // `source-1` row was the vidbolt-only stub with vidbolt explicitly
+      // disabled below. Four upstreams, and the panel could not attribute one
+      // of them correctly.
+      createSource1Adapter(cfg.source1, 2, { includeVidBolt: true, id: 'source-1' }),
+      // source-2 is deliberately NOT registered. Its adapter exists in
+      // ./source2.ts and is exercised directly by the e2e suite, but
+      // `cfg.source2` is pinned to `{enabled:false, embedOrigin:'', nxshaOrigin:'',
+      // vidstuckOrigin:''}` and legacy SOURCE2_* env vars are stripped (see
+      // config.ts), because its upstreams — nxsha `/api/extract`, `/api/scan`,
+      // `/api/sources` and the vidstuck/vidbolt resolver — are gone. Mounting it
+      // on the default config made it run anyway and re-introduce those dead
+      // endpoints into live traffic; e2e asserts `removedSourceCalls === 0`
+      // ('legacy SOURCE2 settings must not activate removed providers').
+      // Before mounting it, establish which of its upstreams still answers.
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
       // source-7 was never independent: it reused source-5's fetcher against the
