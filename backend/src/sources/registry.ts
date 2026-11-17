@@ -103,11 +103,14 @@ const resolveBudgetMs = (): number => {
  *
  * With 21 adapters this divided down to the floor of 2 lanes per source, so a
  * multi-language source had 2 of its 21 lanes verified and the rest reached the
- * player unprobed. 160 gives roughly 7 each at the current board size, which is
- * enough to cover a language ladder on the sources that carry one while still
- * capping the total probe work.
+ * player unprobed. 84 gives roughly four each at the current board size.
+ *
+ * 160 was tried first and was too greedy: the probe ran long enough to eat the
+ * resolve budget, and slower adapters that had candidates never got sealed at
+ * all - two whole sources were lost to gain thirteen slots. Four per source,
+ * language-aware, is the balance.
  */
-const VERIFY_BREADTH_TARGET = 160;
+const VERIFY_BREADTH_TARGET = 84;
 /**
  * How many extra lanes one adapter may add in the coverage pass, beyond the
  * verified set. Verified lanes are not counted, so this only limits how much a
@@ -769,7 +772,26 @@ export class SourceRegistry {
       // Breadth first: probe each adapter's best lanes before any adapter's
       // leftovers. A single source with 20 candidates must not starve every
       // other source out of the shared verification budget.
-      const perAdapter = ready.map((entry) => entry.result.candidates);
+      //
+      // Ordering within an adapter is language-aware. A multi-language source
+      // emits one lane per language in provider order, so plain index order
+      // probes its first N languages and skips the rest - the exact variety the
+      // source was added for. Taking one lane per distinct language first means
+      // a 21-lane source spends its probe budget across 8 languages instead of
+      // 21 rows of the same one.
+      const perAdapter = ready.map((entry) => {
+        const byLanguage = new Map<string, RawStreamCandidate[]>();
+        for (const cand of entry.result.candidates) {
+          const lang = cand.claimedAudioLang ?? cand.audioLang ?? '';
+          const bucket = byLanguage.get(lang);
+          if (bucket) bucket.push(cand);
+          else byLanguage.set(lang, [cand]);
+        }
+        if (byLanguage.size < 2) return entry.result.candidates;
+        const ordered: RawStreamCandidate[] = [];
+        for (const bucket of byLanguage.values()) ordered.push(...bucket);
+        return ordered;
+      });
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
       const tagged: RawStreamCandidate[] = [];
       for (let i = 0; i < breadth; i += 1) {
