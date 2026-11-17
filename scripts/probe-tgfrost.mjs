@@ -147,7 +147,11 @@ for (const [label, url] of [
   ['reelsdownload:subs', 'https://embed.reelsdownload.online/api/subs/vtt'],
 ]) {
   const r = await get(label, url, { Range: 'bytes=0-2048' });
-  if (r.status) {
+  // Log failures too: a silent skip here would read as "not tested" when the
+  // real answer is "refused", and the two mean opposite things.
+  if (!r.status) {
+    log(label, `ERR ${r.error || 'no-response'} (direct fetch from the runner)`);
+  } else {
     const head = r.text.slice(0, 120).replace(/\s+/g, ' ');
     log(label, `HTTP ${r.status} bytes=${r.text.length} :: ${head}`);
   }
