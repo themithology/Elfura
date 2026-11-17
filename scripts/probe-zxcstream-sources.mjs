@@ -207,7 +207,14 @@ async function resolve(serverKey, c, shared) {
   if (!src.status) return { err: `sources ERR ${src.error}` };
 
   let data;
-  try { data = JSON.parse(src.text); } catch { return { err: `sources non-json HTTP ${src.status}` }; }
+  try {
+    data = JSON.parse(src.text);
+  } catch {
+    // A 404 body distinguishes "route missing" from "unknown serverKey".
+    const head = src.text.slice(0, 120).replace(/\s+/g, ' ');
+    const nextNotFound = /This page could not be found|404/i.test(src.text) ? 'next404' : 'other';
+    return { err: `sources non-json HTTP ${src.status} [${nextNotFound}] ${head}` };
+  }
 
   const raw = Array.isArray(data?.links) ? data.links : [];
   const decoded = raw.map((item) => {
@@ -240,9 +247,10 @@ const line = (r) =>
 
 // Pass 1: one shared token, several serverKeys, same title.
 const shared = {};
-const SERVER_KEYS = [
-  'AethoAtlas', 'AethoValstrax', 'AethoUrsa', 'AethoAlatreon', 'AethoOrion', 'AethoRousav',
-];
+// Definition keys are lowercase ('atlas'); the display names ('AethoAtlas') are
+// what the mirror *labels* them. Both are tried, because a 404 cannot tell us
+// which one the route expects.
+const SERVER_KEYS = ['atlas', 'AethoAtlas', 'valstrax', 'ursa', 'alatreon'];
 const MOVIE = { type: 'movie', id: '550', label: 'Fight Club' };
 
 log('=== pass 1: 6 serverKeys, movie/550, one shared token');
