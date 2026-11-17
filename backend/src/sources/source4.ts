@@ -5,7 +5,7 @@ import { normalizeLang } from './lang.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 import { fetchNoRedirect } from './upstream-fetch.js';
 
-const ORIGIN = 'https://bingr.one';
+const ORIGIN = 'https://bingr.st';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 type Payload = { servers?: { id?: string }[]; streams?: { url?: string; language?: string; quality?: string; type?: string }[] };
 
@@ -103,7 +103,7 @@ export async function fetchFromBingr(query: SourceQuery, options: BingrOptions =
         if (body.startsWith('v1.')) rows.push(decodeBingrPayload(body.trim()));
       } catch (error) { /* an individual lane must not block the others */
         const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
-        trace?.push(`${id}=${code}`);
+        trace?.push(`lane:${id}=${code}`);
       }
       finally {
         settled++;

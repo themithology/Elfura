@@ -3,7 +3,7 @@
  * Is the bingr "crack" real, and does the embed-host entry actually work where
  * our current source4 entry does not?
  *
- * Our source4 reaches bingr through https://bingr.one/watch/{type}/{id}, mines
+ * Our source4 reaches bingr through https://bingr.st/watch/{type}/{id}, mines
  * the sealed v1. payload out of the RSC chunks, then races /api/sources across
  * every advertised server id. The mirror repo dodges all of that: it fetches
  * the plain embed page on vidly.pro / embed.filmu.in, and the sealed v1. blob
@@ -65,7 +65,7 @@ async function fetchPage(url) {
         'User-Agent': UA,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        Referer: 'https://bingr.one/',
+        Referer: 'https://bingr.st/',
       },
       redirect: 'follow',
       signal: AbortSignal.timeout(12_000),
@@ -128,9 +128,9 @@ for (const host of HOSTS) {
 }
 
 // Control: can a datacenter IP even reach the canonical watch page?
-const ctl = await fetchPage('https://bingr.one/watch/movie/550');
+const ctl = await fetchPage('https://bingr.st/watch/movie/550');
 const ctlBlob = ctl.html.match(/v1\.[A-Za-z0-9_-]{40,}/);
-log('control bingr.one/watch/movie/550', ctl.status
+log('control bingr.st/watch/movie/550', ctl.status
   ? `HTTP ${ctl.status} bytes=${ctl.html.length} blob=${ctlBlob ? 'yes' : 'no'}`
   : `ERR ${ctl.error}`);
 

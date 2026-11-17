@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Why does source-4 read 403 on bingr.one/watch when a plain fetch reads 200?
+ * Why does source-4 read 403 on bingr.st/watch when a plain fetch reads 200?
  *
  * Both requests hit the same URL, so the difference is in the request, not the
  * upstream. Two things differ between our adapter and a bare fetch:
@@ -21,14 +21,14 @@ const UA131 =
 const log = (t, v) => console.log(`[bent] ${t} :: ${v}`);
 
 const PATH = '/watch/movie/550';
-const FULL = `https://bingr.one${PATH}`;
+const FULL = `https://bingr.st${PATH}`;
 
 const VARIANTS = [
   { name: 'manual+selfReferer+UA22', redirect: 'manual', referer: FULL, ua: UA22 },
-  { name: 'manual+originReferer+UA22', redirect: 'manual', referer: 'https://bingr.one/', ua: UA22 },
+  { name: 'manual+originReferer+UA22', redirect: 'manual', referer: 'https://bingr.st/', ua: UA22 },
   { name: 'manual+noReferer+UA22', redirect: 'manual', referer: null, ua: UA22 },
   { name: 'follow+selfReferer+UA22', redirect: 'follow', referer: FULL, ua: UA22 },
-  { name: 'follow+originReferer+UA22', redirect: 'follow', referer: 'https://bingr.one/', ua: UA22 },
+  { name: 'follow+originReferer+UA22', redirect: 'follow', referer: 'https://bingr.st/', ua: UA22 },
   { name: 'manual+selfReferer+UA131', redirect: 'manual', referer: FULL, ua: UA131 },
   { name: 'follow+noReferer+UA131', redirect: 'follow', referer: null, ua: UA131 },
 ];
@@ -55,6 +55,28 @@ for (const v of VARIANTS) {
   await new Promise((r) => setTimeout(r, 500));
 }
 
+// Verify the new domain serves the same way the old one did, and that the
+// embed hosts agree, so switching ORIGIN is a move and not a gamble.
+const NEWDOMAIN = [
+  { url: 'https://bingr.st/', label: 'bingr.st root' },
+  { url: 'https://bingr.st/watch/movie/550', label: 'bingr.st watch' },
+];
+for (const v of NEWDOMAIN) {
+  try {
+    const res = await fetch(v.url, {
+      headers: { 'User-Agent': UA131, Accept: 'text/html,application/xhtml+xml,*/*;q=0.8' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(12_000),
+    });
+    const body = await res.text();
+    const loc = res.headers.get('location');
+    log(v.label, `HTTP ${res.status} ${/v1\.[A-Za-z0-9_-]{40,}/.test(body) ? 'blob=yes' : 'blob=no'} bytes=${body.length}${loc ? ` location=${loc}` : ''}`);
+  } catch (error) {
+    log(v.label, `ERR ${error.name}`);
+  }
+  await new Promise((r) => setTimeout(r, 400));
+}
+
 // The entry hosts our adapter does not currently use.
 for (const host of ['https://vidly.pro', 'https://embed.filmu.in']) {
   try {
@@ -62,7 +84,7 @@ for (const host of ['https://vidly.pro', 'https://embed.filmu.in']) {
       headers: {
         'User-Agent': UA131,
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        Referer: 'https://bingr.one/',
+        Referer: 'https://bingr.st/',
       },
       redirect: 'manual',
       signal: AbortSignal.timeout(12_000),

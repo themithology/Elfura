@@ -1,5 +1,5 @@
 // Research probe; never print tokens, payloads, signed media URLs, or content.
-const base='https://bingr.one', ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const base='https://bingr.st', ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const cases=[['movie','872585'],['movie','299534'],['tv','93405'],['tv','85937']];
 function decode(blob){
   const bytes=Buffer.from(blob.slice(3),'base64url'), iv=bytes.subarray(0,12), data=Buffer.from(bytes.subarray(12));
