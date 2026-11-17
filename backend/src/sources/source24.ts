@@ -52,6 +52,22 @@ export function createSource24Adapter(
   cfg: BackendConfig['source24'],
 ): SourceAdapter {
   const apiBase = cfg.origin.replace(/\/+$/, '');
+  /**
+   * The site origin, which is NOT the API base.
+   *
+   * `cfg.origin` points at `https://vidlink.pro/api/b`, and using it as the
+   * Referer/Origin sends `https://vidlink.pro/api/b` as the origin — which the
+   * API treats as a foreign caller. It must be `https://vidlink.pro`. Derive it
+   * from the API URL rather than hardcoding, so an override of the origin still
+   * produces a correct referer.
+   */
+  const siteOrigin = (() => {
+    try {
+      return new URL(apiBase).origin;
+    } catch {
+      return apiBase;
+    }
+  })();
 
   /** TMDB id -> the token `/api/b` expects. Returns null on any failure. */
   async function encryptId(tmdbId: string, signal: AbortSignal): Promise<string | null> {
@@ -105,8 +121,8 @@ export function createSource24Adapter(
         const headers = {
           Accept: 'application/json,*/*',
           'User-Agent': BROWSER_UA,
-          Referer: `${apiBase}/`,
-          Origin: apiBase,
+          Referer: `${siteOrigin}/`,
+          Origin: siteOrigin,
           Connection: 'keep-alive',
         };
 
@@ -129,7 +145,7 @@ export function createSource24Adapter(
           streams?: { url?: unknown; quality?: unknown }[];
         };
 
-        const mediaHeaders = { 'User-Agent': BROWSER_UA, Referer: `${apiBase}/`, Origin: apiBase };
+        const mediaHeaders = { 'User-Agent': BROWSER_UA, Referer: `${siteOrigin}/`, Origin: siteOrigin };
         const out: RawStreamCandidate[] = [];
         const seen = new Set<string>();
 
@@ -149,8 +165,14 @@ export function createSource24Adapter(
         };
 
         // Highest quality first: a ladder is more useful than 'auto'.
+        //
+        // A quality entry is normally `{url}`, but the API has been seen to put
+        // a bare URL string there instead. Reading only `value.url` then drops
+        // it silently — the provider returns three renditions and we report
+        // one, with no error anywhere. Accept both shapes.
         for (const [key, value] of Object.entries(payload.stream?.qualities ?? {})) {
-          push(value?.url, qualityLabel(key));
+          const url = typeof value === 'string' ? value : (value as { url?: unknown })?.url;
+          push(url, qualityLabel(key));
         }
         // The playlist is the adaptive master and is usually the best option.
         push(payload.stream?.playlist, 'auto');

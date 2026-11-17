@@ -117,6 +117,89 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   } finally { globalThis.fetch = originalFetch; }
 }
 
+// VidLink (source-24): a real JSON API, and the one trap in it. `/api/b` does
+// NOT take a TMDB id — it takes a token from enc-dec.app, and with a raw id it
+// answers `null` rather than an error. That silent null is what makes a working
+// provider look dead, so the test asserts the request that matters: the id is
+// encrypted first, and only the token reaches the API.
+{
+  const { createSource24Adapter } = await import('../../dist/backend/sources/source24.js');
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  try {
+    globalThis.fetch = async (url, init) => {
+      const parsed = new URL(url);
+      calls.push({ host: parsed.hostname, path: parsed.pathname, search: parsed.search });
+      if (parsed.hostname === 'enc-dec.app') {
+        // The encryptor's real shape.
+        return new Response(JSON.stringify({ status: 200, result: 'TOKEN123' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // The API must be called with the token, never the raw tmdb id.
+      assert.equal(parsed.pathname, '/api/b/movie/TOKEN123', 'the API takes the encrypted token, not the raw id');
+      assert.equal(init?.headers?.Referer, 'https://vidlink.pro/');
+      assert.equal(init?.headers?.Origin, 'https://vidlink.pro');
+      return new Response(
+        JSON.stringify({
+          stream: {
+            // `playlist` is a SIBLING of `qualities`, not a member of it — the
+            // real API shape. Putting it inside is a live mistake I made in this
+            // fixture once, and it made the adapter look broken when it was not.
+            qualities: {
+              '1080p': { url: 'https://bcdn.hakunaymatata.com/a/1080.mp4' },
+              '720p': { url: 'https://bcdn.hakunaymatata.com/a/720.mp4' },
+              // A duplicate of an already-seen URL must collapse.
+              '480p': { url: 'https://bcdn.hakunaymatata.com/a/720.mp4' },
+            },
+            playlist: 'https://bcdn.hakunaymatata.com/a/master.m3u8',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const adapter = createSource24Adapter({ enabled: true, origin: 'https://vidlink.pro/api/b', timeoutMs: 5000, rank: 55 });
+    const out = await adapter.resolve({ type: 'movie', tmdbId: '550', diag: [] });
+    assert.equal(calls.length, 2, 'one encrypt call, one API call');
+    assert.equal(out.candidates.length, 3, 'two qualities plus the playlist, deduped');
+    const urls = out.candidates.map((c) => c.url);
+    assert(urls.includes('https://bcdn.hakunaymatata.com/a/master.m3u8'), 'the adaptive playlist is carried');
+    assert(new Set(urls).size === urls.length, 'duplicate quality URLs collapse');
+    const hls = out.candidates.find((c) => c.url.endsWith('.m3u8'));
+    assert.equal(hls?.type, 'hls', 'a .m3u8 is typed as hls');
+    const mp4 = out.candidates.find((c) => c.url.endsWith('.mp4'));
+    assert.equal(mp4?.type, 'mp4');
+    // A provider that returns nothing must be a clean empty, not a throw.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'enc-dec.app') {
+        return new Response(JSON.stringify({ status: 200, result: 'T' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('null', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const empty = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(empty.candidates.length, 0, 'a null body must yield no candidates and not throw');
+
+    // A bare string inside `qualities` is a URL, not an object to ignore.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'enc-dec.app') {
+        return new Response(JSON.stringify({ status: 200, result: 'T' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(
+        JSON.stringify({ stream: { qualities: { '1080p': 'https://bcdn.hakunaymatata.com/str/1080.mp4', '720p': { url: 'https://bcdn.hakunaymatata.com/str/720.mp4' } } } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const mixed = await adapter.resolve({ type: 'movie', tmdbId: '2', diag: [] });
+    assert.equal(mixed.candidates.length, 2, 'a string-shaped quality entry must not be dropped');
+    assert(mixed.candidates.some((c) => c.url.endsWith('/str/1080.mp4')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // Regression: the movie host and the TV host are DIFFERENT, and only the movie
 // one used to be allowlisted. Measured on a GitHub runner (run 44039400814):
 // vidbolt returns img.rousav.tech for movies and gzip.rousav.tech for TV. The
@@ -1559,10 +1642,11 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  // 3, not 4: source-1 is now a single row owning vidrift+vidsync+vidrock+vidbolt.
-  // It was previously split across two registry entries (a vidbolt-only stub and
-  // the real adapter), and the pair is what made this 4.
-  assert.equal(health.sourceCount, 3, 'a bare count is fine (source-22 = Vidly subtitles)');
+  // 4: source-1 (one row owning vidrift+vidsync+vidrock+vidbolt), source-3,
+  // source-22 (Vidly subtitles) and source-24 (VidLink). It was 3 before
+  // VidLink was added, and 4 before that only because source-1 was split across
+  // two entries — the two 4s mean different things, hence the explicit list.
+  assert.equal(health.sourceCount, 4, 'a bare count is fine (sources 1, 3, 22, 24 in this fixture)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1573,7 +1657,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 3, 'source-22 joined the lane set');
+  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 and source-24 join the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);
