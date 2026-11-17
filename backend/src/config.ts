@@ -105,6 +105,19 @@ export interface BackendConfig {
     rank: number;
   };
 
+  /**
+   * Greybox. Plain JSON with no token or encryption, and per-stream language
+   * labels, so it is both the cheapest lane and the most useful for
+   * multi-language titles.
+   */
+  source25: {
+    enabled: boolean;
+    origin: string;
+    timeoutMs: number;
+    /** Aggregates third-party providers, so it sits behind direct CDNs. */
+    rank: number;
+  };
+
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -262,6 +275,12 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       origin: (env.ELFURA_VIDLINK_ORIGIN || 'https://vidlink.pro/api/b').replace(/\/+$/, ''),
       timeoutMs: Math.max(3000, Number(env.ELFURA_VIDLINK_TIMEOUT_MS || 12_000)),
       rank: 55,
+    },
+    source25: {
+      enabled: env.ELFURA_GREYBOX_ENABLED !== '0',
+      origin: (env.ELFURA_GREYBOX_ORIGIN || 'https://greyboxtv.duckdns.org').replace(/\/+$/, ''),
+      timeoutMs: Math.max(3000, Number(env.ELFURA_GREYBOX_TIMEOUT_MS || 12_000)),
+      rank: 50,
     },
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
