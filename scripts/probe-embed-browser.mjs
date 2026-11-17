@@ -46,6 +46,7 @@ const VARIANTS = {
   path: `${ELFURA}/embed/tv/94605/1/1`,
   query: `${ELFURA}/embed?type=tv&id=94605&s=1&e=1`,
   queryPlayer: `${ELFURA}/player?type=tv&id=94605&s=1&e=1`,
+  playerPath: `${ELFURA}/player`,
   moviePath: `${ELFURA}/embed/movie/1368337`,
 };
 let VARIANT = process.env.EMB_VARIANT || 'path';
