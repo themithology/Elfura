@@ -126,6 +126,21 @@ for (const c of chunks.slice(0, 40)) {
   }
   if (tokenEndpoint && fieldMap.id) break;
 }
+// Enumerate every backend-ish path so the sources prefix is discovered, not
+// guessed. The mirror hardcodes '/backend_/sources' but that segment rotates
+// like the token endpoint does, so a hardcoded value 404s.
+const backendPaths = new Set();
+const stringPaths = new Set();
+for (const c of chunks.slice(0, 40)) {
+  const r = await getText(`${HOST}${c}`);
+  if (!r.status) continue;
+  for (const m of r.text.matchAll(/["'`](\/backend[^"'`\s]{0,60})["'`]/g)) backendPaths.add(m[1]);
+  // template-literal forms: `/backend_/sources/${...}`
+  for (const m of r.text.matchAll(/["'`](\/backend[^"'`]*?)\$\{/g)) stringPaths.add(m[1]);
+}
+log('backend paths', [...backendPaths].slice(0, 30).join(' ') || 'none');
+log('template prefixes', [...stringPaths].slice(0, 20).join(' ') || 'none');
+
 log('token endpoint', tokenEndpoint || 'NOT FOUND');
 log('field map', fieldMap.id ? 'acquired' : 'NOT FOUND');
 if (!tokenEndpoint || !fieldMap.id) {
