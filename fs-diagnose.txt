@@ -1,0 +1,37 @@
+[elfura-sources] source-17 movie/550: 0 candidates in 6ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 7ms :: 0 req
+[elfura-sources] source-3 movie/550: 0 candidates in 285ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-13 movie/550: 0 candidates in 642ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/550: 0 candidates in 710ms :: 1 req · mapple.fun 403
+[elfura-sources] source-9 movie/550: 0 candidates in 754ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-22 movie/550: 0 candidates in 749ms :: 1 req · vidly.pro 200
+[elfura-sources] source-11 movie/550: 0 candidates in 764ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-19 movie/550: 0 candidates in 1060ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-21 movie/550: 0 candidates in 1371ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-18 movie/550: 0 candidates in 1749ms :: 2 req · blakiteapi.xyz 200×2
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 14ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/550: 0 candidates in 17ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/550: 0 candidates in 29ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 59ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-19 movie/550: 0 candidates in 57ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-18 movie/550: 0 candidates in 184ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-21 movie/550: 0 candidates in 201ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-11 movie/550: 0 candidates in 204ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/550: 0 candidates in 395ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] movie/550: listed 6 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-25 movie/550: 0 candidates in 2477ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 691ms :: 0 req
+[elfura-sources] source-8 movie/550: 0 candidates in 2497ms :: 5 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-8 movie/550: 0 candidates in 693ms :: 0 req
+[elfura-sources] source-20 movie/550: 0 candidates in 2480ms :: 2 req · moviesapi.to 200 · patient-cherry.workerscloud32.workers.dev 200
+[elfura-sources] source-20 movie/550: 0 candidates in 692ms :: 0 req
+[elfura-sources] source-12 movie/550: 0 candidates in 2488ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-12 movie/550: 0 candidates in 693ms :: 0 req
+[elfura-sources] source-14 movie/550: 0 candidates in 2486ms :: 6 req · scrapper.rivestream.app 200×4 · scrapper.rivestream.app 23×2
+[elfura-sources] source-14 movie/550: 0 candidates in 693ms :: 0 req
+[fs] {"variant":"direct","before":{"url":"http://127.0.0.2:37219/embed/movie/550","hasShell":true,"fullscreenEnabled":true,"fsButton":true,"fsButtonHidden":false},"control":{"ok":false,"error":"no result"},"appResult":{"fullscreenElementIsShell":false,"fullscreenElement":null,"datasetFullscreen":"false"},"notes":["Allow attribute will take precedence over 'allowfullscreen'.","[elfura] postMessage failed DataCloneError: Failed to execute 'postMessage' on 'Window': HTMLDivElement object could not be cloned."]}
+[fs] {"variant":"redirect","before":{"url":"http://127.0.0.3:37219/embed/movie/550","hasShell":true,"fullscreenEnabled":true,"fsButton":true,"fsButtonHidden":false},"control":{"ok":false,"error":"no result"},"appResult":{"fullscreenElementIsShell":false,"fullscreenElement":null,"datasetFullscreen":"false"},"notes":["Allow attribute will take precedence over 'allowfullscreen'.","[elfura] postMessage failed DataCloneError: Failed to execute 'postMessage' on 'Window': HTMLDivElement object could not be cloned."]}
+[fs] requests {"direct":{"path":"/embed/movie/550","dest":"iframe","mode":"navigate","site":"cross-site","host":"127.0.0.2:37219","referer":"http://127.0.0.1:41189/"},"redirect":{"path":"/embed/movie/550","dest":"iframe","mode":"navigate","site":"cross-site","host":"127.0.0.3:37219","referer":"http://127.0.0.1:41189/"}}
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
