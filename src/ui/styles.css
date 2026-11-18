@@ -90,7 +90,10 @@
   display: flex;
   justify-content: center;
   pointer-events: none;
-  font-family: var(--elf-sub-font, Inter, sans-serif);
+  /* Fallback only: the renderer always sets --elf-sub-font. Kept in step with
+     DEFAULT_SUB_STYLE so a missing variable cannot silently drop the caption
+     back to a typeface the reference look does not use. */
+  font-family: var(--elf-sub-font, 'Trebuchet MS', Tahoma, Arial, sans-serif);
   transition: transform 0.24s var(--elf-ease);
 }
 .elf-sub-root[data-edge='bottom'] {

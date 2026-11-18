@@ -93,12 +93,43 @@ export interface BackendConfig {
   /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
   source22?: { enabled: boolean };
 
+  /**
+   * VidLink. A real JSON API (measured: /api/b returns application/json), so it
+   * is a cheap deterministic lane rather than a scrape.
+   */
+  source24: {
+    enabled: boolean;
+    origin: string;
+    timeoutMs: number;
+    /** Comes through a third-party API front, so it must not outrank origin CDNs. */
+    rank: number;
+  };
+
+  /**
+   * Greybox. Plain JSON with no token or encryption, and per-stream language
+   * labels, so it is both the cheapest lane and the most useful for
+   * multi-language titles.
+   */
+  source25: {
+    enabled: boolean;
+    origin: string;
+    timeoutMs: number;
+    /** Aggregates third-party providers, so it sits behind direct CDNs. */
+    rank: number;
+  };
+
+
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
     enabled: boolean;
     openSubtitlesBase: string;
     timeoutMs: number;
   };
+  /**
+   * Whole-site redirect to a new domain (ELFURA_REDIRECT_TO), or '' for off.
+   * Only the host is replaced; path and query are kept as they are.
+   */
+  redirectTo: string;
 }
 
 function parseOrigins(raw?: string): string[] {
@@ -107,6 +138,27 @@ function parseOrigins(raw?: string): string[] {
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+}
+
+/**
+ * Turn ELFURA_REDIRECT_TO into an origin, or '' when unset.
+ *
+ * Accepts `def.com`, `def.com/`, `https://def.com` and returns `https://def.com`.
+ * Only the host is used: the request's own path is what gets appended, so a
+ * base path in the setting would be a second, conflicting source of truth.
+ */
+export function parseRedirectTo(raw?: string): string {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (!parsed.hostname) return '';
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
 }
 
 const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
@@ -244,6 +296,19 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
     source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
+    source24: {
+      enabled: env.ELFURA_VIDLINK_ENABLED !== '0',
+      origin: (env.ELFURA_VIDLINK_ORIGIN || 'https://vidlink.pro/api/b').replace(/\/+$/, ''),
+      timeoutMs: Math.max(3000, Number(env.ELFURA_VIDLINK_TIMEOUT_MS || 12_000)),
+      rank: 55,
+    },
+    source25: {
+      enabled: env.ELFURA_GREYBOX_ENABLED !== '0',
+      origin: (env.ELFURA_GREYBOX_ORIGIN || 'https://greyboxtv.duckdns.org').replace(/\/+$/, ''),
+      timeoutMs: Math.max(3000, Number(env.ELFURA_GREYBOX_TIMEOUT_MS || 12_000)),
+      rank: 50,
+    },
+    redirectTo: parseRedirectTo(env.ELFURA_REDIRECT_TO),
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

@@ -22,7 +22,7 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 
 const SITE = 'https://vidzen.fun';
 const REFERER = `${SITE}/`;
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const SERVERS = ['hyperion', 'mars', 'jupiter', 'venus', 'saturn', 'mercury', 'neptune', 'earth', 'uranus', 'pluto', 'helios'] as const;
 const MAX_PAGE_BYTES = 768_000;
 const MAX_JSON_BYTES = 128_000;

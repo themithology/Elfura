@@ -52,42 +52,68 @@ export interface SubtitleStyle {
   horizontalPct: number; // -40..40 nudge from the aligned position
 }
 
+/**
+ * Bold white text with a thick crisp black stroke and no box.
+ *
+ * This is the broadcast/anime look (and what a well-authored ASS file renders
+ * as): it stays readable over both a white sky and a dark night scene, which a
+ * translucent box cannot do - the box helps on bright frames and muddies dark
+ * ones. The stroke does the work, so the box is off by default and the caption
+ * floats over the picture the way viewers of fansubbed anime expect.
+ */
 export const DEFAULT_SUB_STYLE: SubtitleStyle = {
-  fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  fontSizePct: 100,
-  fontWeight: 600,
+  // Trebuchet MS is the look the official anime services use, and the one the
+  // reference frame is set in. The stack keeps a humanist fallback for systems
+  // without it - Arial/Helvetica last, because the fallback should still read
+  // as a plain sans, never a serif.
+  fontFamily:
+    '"Trebuchet MS", "Trebuchet", Tahoma, "Segoe UI", Arial, Helvetica, system-ui, sans-serif',
+  // The renderer paints (fontSizePct/100 * 26)px at a 720 baseline, scaled by
+  // player height. At 125% that is 48.8px at 1080p - 4.51% of frame height,
+  // the lower end of the 4.5-5% band measured off the reference frame.
+  fontSizePct: 125,
+  fontWeight: 700,
   italic: false,
   uppercase: false,
-  letterSpacingEm: 0.01,
-  lineHeight: 1.35,
+  letterSpacingEm: 0.005,
+  // Tight leading: broadcast subtitles stack lines closely, and the stroke needs
+  // the lines to be near each other to read as one block.
+  lineHeight: 1.2,
 
   color: '#ffffff',
   textOpacity: 1,
   backgroundColor: '#000000',
-  backgroundOpacity: 0.55,
-  outline: false,
+  backgroundOpacity: 0,
+  outline: true,
   outlineColor: '#000000',
-  outlineWidth: 2,
+  outlineWidth: 2.5,
+  // A soft dark shadow sits under the stroke, so the caption still separates
+  // from a white coat or a bright sky. The stroke alone handles the edges; this
+  // handles the body.
   shadow: true,
   shadowColor: '#000000',
-  shadowBlur: 4,
+  shadowBlur: 3,
 
-  paddingPx: 6,
-  radiusPx: 6,
-  maxWidthPct: 86,
+  paddingPx: 0,
+  radiusPx: 0,
+  // Narrow to force the pyramid wrap: two balanced lines instead of one long
+  // line that runs under the characters' faces.
+  maxWidthPct: 62,
 
   edge: 'bottom',
-  verticalPct: 9,
+  // 5.5% up from the bottom edge, inside the TV/player safe margin.
+  verticalPct: 5.5,
   horizontalAlign: 'center',
   horizontalPct: 0,
 };
 
 export const FONT_CHOICES: { label: string; value: string }[] = [
-  { label: 'Inter (default)', value: DEFAULT_SUB_STYLE.fontFamily },
+  { label: 'Trebuchet MS (default)', value: DEFAULT_SUB_STYLE.fontFamily },
+  { label: 'Inter', value: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   { label: 'System UI', value: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
-  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
   { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
-  { label: 'Trebuchet', value: '"Trebuchet MS", Tahoma, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
   { label: 'Courier', value: '"Courier New", monospace' },
   { label: 'Impact', value: 'Impact, Haettenschweiler, sans-serif' },
   { label: 'Comic Sans', value: '"Comic Sans MS", cursive' },
@@ -106,7 +132,7 @@ const NUM_RANGE: Partial<Record<keyof SubtitleStyle, [number, number]>> = {
   lineHeight: [1, 2],
   textOpacity: [0, 1],
   backgroundOpacity: [0, 1],
-  outlineWidth: [0, 4],
+  outlineWidth: [0, 6],
   shadowBlur: [0, 12],
   paddingPx: [0, 24],
   radiusPx: [0, 24],
@@ -219,7 +245,18 @@ export function normalizeHex(raw: string): string | null {
 export const opacityToTransparency = (o: number) => Math.round((1 - o) * 100);
 export const transparencyToOpacity = (t: number) => clamp(1 - t / 100, 0, 1);
 
-const STORE_KEY = 'elfura:subtitle-style:v1';
+/**
+ * Bumped when the shipped defaults change meaningfully.
+ *
+ * A saved style is merged over DEFAULT_SUB_STYLE, so any viewer who ever
+ * touched the subtitle panel pins every value they saw at that moment - the new
+ * defaults would never reach them, and the panel would keep showing the old
+ * numbers. Keying the version means the revised look lands once, and anything
+ * they deliberately set afterwards is stored again under the new key.
+ */
+const STORE_KEY = 'elfura:subtitle-style:v2';
+/** Read-only ancestor, so a v1 style can still be carried over if we ever want it. */
+const LEGACY_STORE_KEY = 'elfura:subtitle-style:v1';
 
 export function loadStoredStyle(): SubtitleStyle | null {
   try {
@@ -243,6 +280,7 @@ export function saveStoredStyle(style: SubtitleStyle): void {
 export function clearStoredStyle(): void {
   try {
     localStorage.removeItem(STORE_KEY);
+    localStorage.removeItem(LEGACY_STORE_KEY);
   } catch {
     /* ignore */
   }

@@ -60,6 +60,44 @@ jobs:
             "${{ github.event.inputs.season }}" \
             "${{ github.event.inputs.episode }}" | tee /tmp/compare.txt
 
+      # The two upstreams whose API shapes cannot be probed from a build sandbox
+      # (both gate on request headers, which a header-less fetch cannot send).
+      # Runs on the runner's real IP, so its answer is evidence.
+      - name: Probe vidbolt and vidsync directly
+        if: always()
+        continue-on-error: true
+        run: |
+          node scripts/probe-vidbolt-vidsync.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgfrost.mjs 2>&1 | tee -a /tmp/compare.txt || true
+
+      # A real browser, because TG FROST resolves server-side: only the wire
+      # shows which backends actually answer. Deps are not saved to the lockfile.
+      - name: Watch the TG FROST player's network
+        if: always()
+        continue-on-error: true
+        run: |
+          npm install --no-save --no-package-lock playwright-core @sparticuz/chromium >/dev/null 2>&1 || true
+          node scripts/probe-tgfrost-browser.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-browser-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgfrost-servers.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgvid.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgvid-rpc.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-tgvid-scrape.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-nuvio-api.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-vidlink-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-zxcstream.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-zxcstream-discovery.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-zxcstream-sources.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-bingr-embed.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-bingr-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-bingr-entry.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-greybox.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-greybox-media.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-greybox-lane.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-pipeline.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-embed-iframe.mjs 2>&1 | tee -a /tmp/compare.txt || true
+          node scripts/probe-embed-browser.mjs 2>&1 | tee -a /tmp/compare.txt || true
+
       - name: Write a summary
         if: always()
         run: |

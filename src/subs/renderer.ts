@@ -159,12 +159,23 @@ export class SubtitleRenderer {
     root.setProperty('--elf-sub-bg', hexToRgba(s.backgroundColor, s.backgroundOpacity));
     root.setProperty('--elf-sub-pad', px(s.paddingPx));
     root.setProperty('--elf-sub-radius', px(s.radiusPx));
-    root.setProperty(
-      '--elf-sub-outline',
-      s.outline && s.outlineWidth > 0
-        ? `0 0 ${px(s.outlineWidth)} ${s.outlineColor}, 0 0 ${px(s.outlineWidth)} ${s.outlineColor}`
-        : 'none',
-    );
+    // A crisp stroke, not a glow. Eight offset copies at exactly the outline
+    // width with zero blur give a stroke with a solid edge; blurring it (the
+    // earlier `0 0 w` form) produced a soft halo that reads as a shadow no
+    // matter how wide it is set. This is what broadcast/anime subtitles use, and
+    // it stays legible over bright scenes where a translucent box washed out.
+    if (s.outline && s.outlineWidth > 0) {
+      const w = px(s.outlineWidth);
+      const ring = [
+        [-1, -1], [0, -1], [1, -1],
+        [-1, 0], [1, 0],
+        [-1, 1], [0, 1], [1, 1],
+      ].map(([dx, dy]) => `${px(dx * s.outlineWidth)} ${px(dy * s.outlineWidth)} 0 ${s.outlineColor}`);
+      root.setProperty('--elf-sub-outline', ring.join(', '));
+      void w;
+    } else {
+      root.setProperty('--elf-sub-outline', 'none');
+    }
     root.setProperty(
       '--elf-sub-shadow',
       s.shadow && s.shadowBlur > 0 ? `0 ${px(1)} ${px(s.shadowBlur)} ${s.shadowColor}` : 'none',

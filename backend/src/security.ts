@@ -41,45 +41,34 @@ export function isLikelyAutomatedScraper(req: IncomingMessage, isProd: boolean):
   return false;
 }
 
-export function resolveAllowedOrigin(req: IncomingMessage, allowedOrigins: string[]): string | null {
+
+/**
+ * Replies with the calling origin, always.
+ *
+ * There is deliberately no origin allowlist. The API is public: the player is
+ * embedded on partner sites, and an allowlist means every new embedding site is
+ * a support ticket and every existing one breaks the moment it changes host. It
+ * also produced a genuinely baffling failure - an embed served by us, framed by
+ * a third-party site, being refused for not being that third party.
+ *
+ * What actually protects this endpoint is elsewhere and stays:
+ *   - `isLikelyAutomatedScraper` rejects downloader/CLI user agents
+ *   - per-IP sliding-window rate limits on playback, catalog and diagnostics
+ *   - playback tokens (signature, nonce, media scope, UA fingerprint)
+ *   - stream tickets for every media URL
+ *
+ * The one thing that matters here is CORS correctness: a browser only accepts a
+ * response whose `Access-Control-Allow-Origin` is either `*` or the exact
+ * calling origin. Echoing the origin keeps credentialed and plain requests
+ * working, so it is echoed whenever it is present; `*` covers callers that send
+ * no Origin at all (curl, server-side fetches, direct navigation).
+ */
+export function resolveAllowedOrigin(req: IncomingMessage, _allowedOrigins?: string[]): string {
   const originHeader = typeof req.headers.origin === 'string' ? req.headers.origin.replace(/\/+$/, '') : '';
-  let refererOrigin = '';
-  if (typeof req.headers.referer === 'string') {
-    try {
-      refererOrigin = new URL(req.headers.referer).origin;
-    } catch {
-      /* ignore malformed referer */
-    }
-  }
-
-  if (allowedOrigins.includes('*')) {
-    return originHeader || refererOrigin || '*';
-  }
-
-  const candidate = originHeader || refererOrigin;
-  if (!candidate) {
-    // Same-origin navigation (e.g. opening /embed directly in browser)
-    const secSite = req.headers['sec-fetch-site'];
-    if (secSite === 'same-origin' || secSite === 'none') return allowedOrigins[0] ?? '*';
-    return null;
-  }
-
-  // Always permit same-host requests originating from Elfura's own /embed/* page
-  const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
-    .split(',')[0]
-    .trim()
-    .toLowerCase();
-  if (rawHost) {
-    try {
-      if (new URL(candidate).host.toLowerCase() === rawHost) {
-        return candidate;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return allowedOrigins.includes(candidate) ? candidate : null;
+  if (originHeader) return originHeader;
+  // No Origin header: a top-level navigation, a same-origin fetch, or a
+  // non-browser client. Nothing to echo, so allow anything.
+  return '*';
 }
 
 /* ------------------------------------------------------------------ */

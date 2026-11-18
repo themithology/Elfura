@@ -17,7 +17,7 @@ import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
 import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
-import { createSource1Adapter, fetchFromVidBolt } from './source1.js';
+import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
@@ -36,6 +36,8 @@ import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
+import { createSource24Adapter } from './source24.js';
+import { createSource25Adapter } from './source25.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -88,22 +90,40 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-19': 'ELFURA_DESIDUB_ENABLED',
   'source-20': 'ELFURA_VIDORA_ENABLED',
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
+  'source-24': 'ELFURA_VIDLINK_ENABLED',
+  'source-25': 'ELFURA_GREYBOX_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 5000);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
 };
-/** Candidates probed in the shared verification batch, spread across sources. */
-const VERIFY_BREADTH_TARGET = 36;
+/**
+ * Candidates probed in the shared verification batch, spread across sources.
+ *
+ * With 21 adapters this divided down to the floor of 2 lanes per source, so a
+ * multi-language source had 2 of its 21 lanes verified and the rest reached the
+ * player unprobed. 84 gives roughly four each at the current board size.
+ *
+ * 160 was tried first and was too greedy: the probe ran long enough to eat the
+ * resolve budget, and slower adapters that had candidates never got sealed at
+ * all - two whole sources were lost to gain thirteen slots. Four per source,
+ * language-aware, is the balance.
+ */
+const VERIFY_BREADTH_TARGET = 84;
 /**
  * How many extra lanes one adapter may add in the coverage pass, beyond the
  * verified set. Verified lanes are not counted, so this only limits how much a
- * single prolific source can pad the tail of the list. Set high enough that a
- * source with many genuinely distinct mirrors contributes all of them: the
- * goal is every working source the viewer can try.
+ * single prolific source can pad the tail of the list.
+ *
+ * This was 12 and it was measurably losing streams. A multi-language source
+ * returns one lane per language (Greybox: 21 for a film, 14 for an episode;
+ * bingr: 10), and a cap of 12 cut that to five, so the language variety a
+ * source was chosen for never reached the player. Set to 200: the intended
+ * ceiling here is "all of them", and the real limits are the liveness probe and
+ * the per-adapter candidate caps upstream of this point.
  */
-const MAX_LANES_PER_SOURCE = 12;
+const MAX_LANES_PER_SOURCE = 200;
 
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
@@ -148,19 +168,30 @@ export class SourceRegistry {
 
     // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
     this.adapters = [
-      // Source 1 contains direct upstreams independently identified in Aethoflix.
-      // VidBolt/Orion is a direct upstream used by Aethoflix. No Aethoflix
-      // or ZXC mirror requests are made by this group.
-      {
-        id: 'source-1', label: 'Source 1', enabled: () => cfg.source1.enabled,
-        resolve: async (query) => {
-          const start = Date.now();
-          const candidates = await fetchFromVidBolt(cfg.source1.vidboltOrigin || 'https://vidbolt.xyz', query);
-          query.diag?.push({ adapter: 'source-1', lane: 'D', ok: candidates.length > 0, ms: Date.now() - start, detail: `candidates=${candidates.length}` });
-          return { candidates: candidates.map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) };
-        },
-      },
-      createSource1Adapter(cfg.source1, 2, { includeVidBolt: false }),
+      // Source 1 is one adapter owning all four direct upstreams it was built
+      // for: vidrift (rift), vidsync (sync), vidrock (rock) and vidbolt.
+      //
+      // It used to be split across two registry entries, and the split was
+      // silently destructive: `createSource1Adapter(cfg, 2, ...)` derives its id
+      // as `source-${group}`, so the entry carrying vidrift and vidrock was
+      // registered as **source-2**. The real source-2 adapter
+      // (createSource2Adapter) is imported nowhere, so nothing collided and
+      // nothing errored — the vidrift/vidrock results simply appeared in the
+      // panel under a source that had nothing to do with them, while the
+      // `source-1` row was the vidbolt-only stub with vidbolt explicitly
+      // disabled below. Four upstreams, and the panel could not attribute one
+      // of them correctly.
+      createSource1Adapter(cfg.source1, 2, { includeVidBolt: true, id: 'source-1' }),
+      // source-2 is deliberately NOT registered. Its adapter exists in
+      // ./source2.ts and is exercised directly by the e2e suite, but
+      // `cfg.source2` is pinned to `{enabled:false, embedOrigin:'', nxshaOrigin:'',
+      // vidstuckOrigin:''}` and legacy SOURCE2_* env vars are stripped (see
+      // config.ts), because its upstreams — nxsha `/api/extract`, `/api/scan`,
+      // `/api/sources` and the vidstuck/vidbolt resolver — are gone. Mounting it
+      // on the default config made it run anyway and re-introduce those dead
+      // endpoints into live traffic; e2e asserts `removedSourceCalls === 0`
+      // ('legacy SOURCE2 settings must not activate removed providers').
+      // Before mounting it, establish which of its upstreams still answers.
       createSource3Adapter(cfg.source3),
       createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
       // source-7 was never independent: it reused source-5's fetcher against the
@@ -185,6 +216,10 @@ export class SourceRegistry {
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
       createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
+      // VidLink: a measured JSON API, not a scrape.
+      createSource24Adapter(cfg.source24),
+      // Greybox: plain JSON with per-stream language labels and no token.
+      createSource25Adapter(cfg.source25),
     ];
   }
 
@@ -737,7 +772,26 @@ export class SourceRegistry {
       // Breadth first: probe each adapter's best lanes before any adapter's
       // leftovers. A single source with 20 candidates must not starve every
       // other source out of the shared verification budget.
-      const perAdapter = ready.map((entry) => entry.result.candidates);
+      //
+      // Ordering within an adapter is language-aware. A multi-language source
+      // emits one lane per language in provider order, so plain index order
+      // probes its first N languages and skips the rest - the exact variety the
+      // source was added for. Taking one lane per distinct language first means
+      // a 21-lane source spends its probe budget across 8 languages instead of
+      // 21 rows of the same one.
+      const perAdapter = ready.map((entry) => {
+        const byLanguage = new Map<string, RawStreamCandidate[]>();
+        for (const cand of entry.result.candidates) {
+          const lang = cand.claimedAudioLang ?? cand.audioLang ?? '';
+          const bucket = byLanguage.get(lang);
+          if (bucket) bucket.push(cand);
+          else byLanguage.set(lang, [cand]);
+        }
+        if (byLanguage.size < 2) return entry.result.candidates;
+        const ordered: RawStreamCandidate[] = [];
+        for (const bucket of byLanguage.values()) ordered.push(...bucket);
+        return ordered;
+      });
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
       const tagged: RawStreamCandidate[] = [];
       for (let i = 0; i < breadth; i += 1) {

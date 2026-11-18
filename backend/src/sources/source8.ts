@@ -8,7 +8,7 @@ import { fetchNoRedirect } from './upstream-fetch.js';
 
 const API = 'https://core.vidzee.wtf';
 const PLAYER = 'https://player.vidzee.wtf';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const SERVERS = ['dcloud', 'tik', 'ipcloud', 'v6:Hindi'] as const;
 
 function safeHeaders(value: unknown): Record<string, string> {

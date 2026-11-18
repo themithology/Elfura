@@ -3,7 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="referrer" content="same-origin" />
+    <!-- A cross-site iframe is this document's reason to exist. Under
+         "same-origin" the browser strips the referer when the parent is
+         third-party, so the player's own API call looks anonymous and is
+         refused - which surfaces as "Couldn't find this title" inside an
+         embed while the main site works. -->
+    <meta name="referrer" content="no-referrer-when-downgrade" />
     <title>Elfura Player</title>
     <style>
       html, body { margin: 0; height: 100%; background: #000; }

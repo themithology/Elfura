@@ -27,7 +27,7 @@ import type { RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from
 
 const API = 'https://scrapper.rivestream.app/api/provider';
 const ORIGIN = 'https://www.rivestream.app';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 // Measured live against scrapper.rivestream.app: citadel answers in ~200 ms but
 // flowcast (which returns three playable MP4 renditions plus a full caption set
 // for tmdb 550) needs well over a second to assemble its payload. At 1100 ms it

@@ -69,28 +69,251 @@ assert.equal(new URL(resolveHlsChildUrl('https://other.example/a.m3u8', 'https:/
 assert.equal(new URL(resolveHlsChildUrl('audio.m3u8?apikey=child', 'https://img.rousav.tech/media/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
 assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/master.m3u8?api_key=fixture')).searchParams.has('api_key'), false);
 
-// The original provider is resolved independently, with untrusted domains rejected.
+// The original provider is resolved independently. The request contract and the
+// accept rule are both taken from scrapers that work against the live API:
+//
+//   - The call sends exactly type/id/season/episode. This test used to require
+//     `only=orion`, a parameter the API does not define; sending invented params
+//     was one of three reasons the lane returned nothing.
+//   - The Referer must be the title page, not the marketing homepage: VidBolt
+//     only serves its player when referred from `/movie/{id}` or
+//     `/tv/{id}/{s}/{e}`.
+//   - Rows are accepted because the returned URL is a real manifest, not because
+//     its hostname is on a list. The old allowlist (rousav/animecurx only)
+//     dropped CDN hosts and `proxy.vidbolt.xyz`, and would go stale whenever a
+//     mirror rotated. Unsafe schemes and non-HLS rows are still rejected.
 {
   const originalFetch = globalThis.fetch;
   try {
-    globalThis.fetch = async (url) => {
+    let seenReferer = '';
+    globalThis.fetch = async (url, init) => {
       const parsed = new URL(url);
       assert.equal(parsed.pathname, '/api/resolve');
-      assert.equal(parsed.searchParams.get('only'), 'orion');
+      assert.equal(parsed.searchParams.get('type'), 'tv');
+      assert.equal(parsed.searchParams.get('id'), '93405');
       assert.equal(parsed.searchParams.get('season'), '2');
       assert.equal(parsed.searchParams.get('episode'), '3');
+      assert.equal(parsed.searchParams.get('only'), null, 'the API defines no `only` parameter');
+      assert.equal(parsed.searchParams.get('hevc'), null, 'the API defines no `hevc` parameter');
+      seenReferer = String(init?.headers?.Referer || '');
       return new Response(JSON.stringify({ stream: { sources: [
         { url: 'https://img.rousav.tech/media/test/index.m3u8', type: 'hls', master: '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="hi"\n#EXT-X-MEDIA:TYPE=AUDIO,LANGUAGE="en"' },
-        { url: 'https://vidstuck.cc/master.m3u8', type: 'hls' },
-        { url: 'https://untrusted.example/master.m3u8', type: 'hls' },
+        // A CDN host that is not on the old allowlist: must still be kept.
+        { url: 'https://cdn.somecdnn.net/abc/master.m3u8', type: 'hls' },
+        // DASH is not this lane's job.
+        { url: 'https://cdn.somecdnn.net/abc/manifest.mpd', type: 'dash' },
+        // Unsafe schemes stay rejected.
+        { url: 'file:///etc/passwd', type: 'hls' },
       ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     };
     const sources = await fetchFromVidBolt('https://vidbolt.xyz', {type:'tv',tmdbId:'93405',season:2,episode:3});
-    assert.equal(sources.length, 1);
+    assert.equal(seenReferer, 'https://vidbolt.xyz/tv/93405/2/3', 'must be referred from the title page, not the homepage');
+    assert.equal(sources.length, 2, 'both HLS manifests are kept regardless of host');
     assert.equal(sources[0].url, 'https://img.rousav.tech/media/test/index.m3u8');
     assert.equal(sources[0].multiAudio, true); // scheduling hint, independently verified before playback
     assert.deepEqual(sources[0].availableAudioLangs, ['hi','en']);
     assert.equal(sources[0].qualityLabelsUnreliable, true); // known incorrect movie CDN ladder
+    assert.equal(sources[1].url, 'https://cdn.somecdnn.net/abc/master.m3u8', 'a non-allowlisted CDN is not dropped');
+  } finally { globalThis.fetch = originalFetch; }
+}
+
+// VidLink (source-24): a real JSON API, and the one trap in it. `/api/b` does
+// NOT take a TMDB id — it takes a token from enc-dec.app, and with a raw id it
+// answers `null` rather than an error. That silent null is what makes a working
+// provider look dead, so the test asserts the request that matters: the id is
+// encrypted first, and only the token reaches the API.
+{
+  const { createSource24Adapter } = await import('../../dist/backend/sources/source24.js');
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  try {
+    globalThis.fetch = async (url, init) => {
+      const parsed = new URL(url);
+      calls.push({ host: parsed.hostname, path: parsed.pathname, search: parsed.search });
+      if (parsed.hostname === 'enc-dec.app') {
+        // The encryptor's real shape.
+        return new Response(JSON.stringify({ status: 200, result: 'TOKEN123' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // The API must be called with the token, never the raw tmdb id.
+      assert.equal(parsed.pathname, '/api/b/movie/TOKEN123', 'the API takes the encrypted token, not the raw id');
+      assert.equal(init?.headers?.Referer, 'https://vidlink.pro/');
+      assert.equal(init?.headers?.Origin, 'https://vidlink.pro');
+      return new Response(
+        JSON.stringify({
+          stream: {
+            // `playlist` is a SIBLING of `qualities`, not a member of it — the
+            // real API shape. Putting it inside is a live mistake I made in this
+            // fixture once, and it made the adapter look broken when it was not.
+            qualities: {
+              '1080p': { url: 'https://bcdn.hakunaymatata.com/a/1080.mp4' },
+              '720p': { url: 'https://bcdn.hakunaymatata.com/a/720.mp4' },
+              // A duplicate of an already-seen URL must collapse.
+              '480p': { url: 'https://bcdn.hakunaymatata.com/a/720.mp4' },
+            },
+            playlist: 'https://bcdn.hakunaymatata.com/a/master.m3u8',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const adapter = createSource24Adapter({ enabled: true, origin: 'https://vidlink.pro/api/b', timeoutMs: 5000, rank: 55 });
+    const out = await adapter.resolve({ type: 'movie', tmdbId: '550', diag: [] });
+    assert.equal(calls.length, 2, 'one encrypt call, one API call');
+    assert.equal(out.candidates.length, 3, 'two qualities plus the playlist, deduped');
+    const urls = out.candidates.map((c) => c.url);
+    assert(urls.includes('https://bcdn.hakunaymatata.com/a/master.m3u8'), 'the adaptive playlist is carried');
+    assert(new Set(urls).size === urls.length, 'duplicate quality URLs collapse');
+    const hls = out.candidates.find((c) => c.url.endsWith('.m3u8'));
+    assert.equal(hls?.type, 'hls', 'a .m3u8 is typed as hls');
+    const mp4 = out.candidates.find((c) => c.url.endsWith('.mp4'));
+    assert.equal(mp4?.type, 'mp4');
+    // A provider that returns nothing must be a clean empty, not a throw.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'enc-dec.app') {
+        return new Response(JSON.stringify({ status: 200, result: 'T' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('null', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const empty = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(empty.candidates.length, 0, 'a null body must yield no candidates and not throw');
+
+    // A bare string inside `qualities` is a URL, not an object to ignore.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'enc-dec.app') {
+        return new Response(JSON.stringify({ status: 200, result: 'T' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(
+        JSON.stringify({ stream: { qualities: { '1080p': 'https://bcdn.hakunaymatata.com/str/1080.mp4', '720p': { url: 'https://bcdn.hakunaymatata.com/str/720.mp4' } } } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const mixed = await adapter.resolve({ type: 'movie', tmdbId: '2', diag: [] });
+    assert.equal(mixed.candidates.length, 2, 'a string-shaped quality entry must not be dropped');
+    assert(mixed.candidates.some((c) => c.url.endsWith('/str/1080.mp4')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Greybox (source-25): the simplest lane, with two traps worth testing.
+//
+// 1. The payload mixes ABSOLUTE CDN manifests with RELATIVE /api/media?u=...
+//    proxy URLs, and the relative ones are the majority. They were measured
+//    live (8/8 returned #EXTM3U), so dropping them as "an indirection" would
+//    silently discard most of the source. The test asserts they are resolved
+//    against the origin and kept.
+// 2. Real payloads carry language qualifiers ('en-2') and junk ('und', 'x7').
+//    A junk code reaches the player as a junk filter, so it is normalised away
+//    while 'en-2' collapses to 'en'.
+{
+  const { createSource25Adapter } = await import('../../dist/backend/sources/source25.js');
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.pathname, '/api/player/sources', 'one call, no token, no second round trip');
+      assert.equal(parsed.searchParams.get('media'), 'movie');
+      assert.equal(parsed.searchParams.get('id'), '1368337');
+      return new Response(
+        JSON.stringify({
+          sources: [
+            // A relative proxy URL: must be resolved and kept.
+            { id: 'orion:orion-hi', provider: 'Orion', label: 'Orion', url: '/api/media?u=m1.abc', type: 'hls', quality: '1080p', height: 1080, language: 'hi', audio: [], subtitles: [] },
+            // An absolute CDN URL.
+            { id: 'carbon:carbon-en', provider: 'Carbon', label: 'Carbon', url: 'https://cdn.example.com/a/en.m3u8', type: 'hls', quality: '720p', height: 720, language: 'en-2',
+              subtitles: [{ id: 's1', label: 'English', language: 'en', url: '/api/sub?u=vtt1', format: 'vtt', default: true }],
+              intro: { start: 5, end: 65 }, credits: { start: 5000, end: 5100 } },
+            // Junk language must not become a filter; an unparseable quality
+            // string falls back to auto. ('1000p' would legitimately bucket to
+            // 720p, so it is not a junk case - worth getting right in the test
+            // rather than asserting a fallback the adapter should not perform.)
+            { id: 'junk', provider: 'Nova', label: 'Nova', url: '/api/media?u=m1.junk', type: 'hls', quality: 'zzz', language: 'x7' },
+            // Exact duplicate collapses.
+            { id: 'dup', provider: 'Orion', label: 'Orion', url: 'https://cdn.example.com/a/en.m3u8', type: 'hls', quality: '720p', language: 'en' },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+    const adapter = createSource25Adapter({ enabled: true, origin: 'https://greyboxtv.duckdns.org', timeoutMs: 5000, rank: 50 });
+    const out = await adapter.resolve({ type: 'movie', tmdbId: '1368337', diag: [] });
+
+    assert.equal(out.candidates.length, 3, 'four rows, one duplicate, so three candidates');
+    const urls = out.candidates.map((c) => c.url);
+    assert(
+      urls.includes('https://greyboxtv.duckdns.org/api/media?u=m1.abc'),
+      'a relative proxy URL is resolved against the origin, not dropped',
+    );
+    assert(urls.includes('https://cdn.example.com/a/en.m3u8'), 'absolute URLs pass through untouched');
+    assert.equal(new Set(urls).size, urls.length, 'duplicates collapse');
+
+    // Language normalisation.
+    const hi = out.candidates.find((c) => c.url.includes('m1.abc'));
+    assert.equal(hi?.claimedAudioLang, 'hi', 'a plain language is carried as claimed, not verified');
+    assert(hi?.audioLang === undefined, 'declared language must never be published as verified audio');
+    const en = out.candidates.find((c) => c.url === 'https://cdn.example.com/a/en.m3u8');
+    assert.equal(en?.claimedAudioLang, 'en', "'en-2' collapses to 'en'");
+    const junk = out.candidates.find((c) => c.url.includes('m1.junk'));
+    assert.equal(junk?.claimedAudioLang, undefined, "'x7' is junk and must not become a language filter");
+    assert.equal(junk?.quality, 'auto', 'an unparseable quality falls back to auto');
+
+    // Subtitles ride along, resolved the same way.
+    assert.equal(en?.subtitles?.length, 1, 'subtitles are carried on the candidate');
+    assert(en?.subtitles?.[0]?.url.startsWith('https://greyboxtv.duckdns.org/api/sub'), 'relative subtitle URLs resolve too');
+
+    // Segments come from the provider's own intro/credits markers.
+    assert.equal(out.segments?.intro?.[0], 5);
+    assert.equal(out.segments?.outro?.[0], 5000);
+
+    // Every row missing its url, or a non-200, must be a clean empty.
+    globalThis.fetch = async () => new Response(JSON.stringify({ sources: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const empty = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(empty.candidates.length, 0, 'an empty payload yields no candidates and no throw');
+
+    globalThis.fetch = async () => new Response('nope', { status: 503 });
+    const failed = await adapter.resolve({ type: 'movie', tmdbId: '1', diag: [] });
+    assert.equal(failed.candidates.length, 0, 'a 503 yields no candidates and no throw');
+
+    // TV must pass season/episode, or every episode resolves to the same thing.
+    globalThis.fetch = async (url) => {
+      const parsed = new URL(url);
+      assert.equal(parsed.searchParams.get('media'), 'tv');
+      assert.equal(parsed.searchParams.get('season'), '2');
+      assert.equal(parsed.searchParams.get('episode'), '7');
+      return new Response(JSON.stringify({ sources: [{ url: 'https://cdn.example.com/b/tv.m3u8', type: 'hls', quality: '1080p', height: 1080, language: 'ar' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const tv = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 2, episode: 7, diag: [] });
+    assert.equal(tv.candidates.length, 1, 'TV resolves with season and episode');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Regression: the movie host and the TV host are DIFFERENT, and only the movie
+// one used to be allowlisted. Measured on a GitHub runner (run 44039400814):
+// vidbolt returns img.rousav.tech for movies and gzip.rousav.tech for TV. The
+// old rule `(?:^|\.)(?:rousav\.tech|animecurx\.tech)$` matched `img.rousav.tech`
+// but NOT `gzip.rousav.tech`, so every TV request returned zero candidates while
+// a movie test looked healthy — a lane that only appears half-dead.
+{
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ stream: { sources: [
+        { url: 'https://gzip.rousav.tech/tv/show/index.m3u8', type: 'hls' },
+      ] } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const tv = await fetchFromVidBolt('https://vidbolt.xyz', { type: 'tv', tmdbId: '1399', season: 1, episode: 1 });
+    assert.equal(tv.length, 1, 'the TV CDN host must be accepted');
+    assert.equal(tv[0].url, 'https://gzip.rousav.tech/tv/show/index.m3u8');
+    // A gated mirror carries vidbolt's own Referer/Origin so the segment fetch
+    // is not refused as a hotlink.
+    assert.equal(tv[0].headers?.Referer, 'https://vidbolt.xyz/');
+    assert.equal(tv[0].headers?.Origin, 'https://vidbolt.xyz');
   } finally { globalThis.fetch = originalFetch; }
 }
 
@@ -1513,7 +1736,11 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  assert.equal(health.sourceCount, 4, 'a bare count is fine (source-22 = Vidly subtitles)');
+  // 4: source-1 (one row owning vidrift+vidsync+vidrock+vidbolt), source-3,
+  // source-22 (Vidly subtitles) and source-24 (VidLink). It was 3 before
+  // VidLink was added, and 4 before that only because source-1 was split across
+  // two entries — the two 4s mean different things, hence the explicit list.
+  assert.equal(health.sourceCount, 5, 'a bare count is fine (sources 1, 3, 22, 24, 25 in this fixture)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1524,7 +1751,7 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 4, 'source-22 joined the lane set');
+  assert.equal(diag.playback.resolution.adapters.length, 5, 'source-22, source-24 and source-25 join the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);
@@ -1577,10 +1804,27 @@ try {
   assert.equal(catalog.movies[0].backdrop, 'https://image.tmdb.org/t/p/w1280/deadpool-wide.jpg');
   assert(!JSON.stringify(catalog).includes('api_key'), 'Catalog must never expose TMDB credentials');
 
-  const badOriginRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
-    headers: { Origin: 'https://evil-scraper.example', 'User-Agent': browserHeaders['User-Agent'] },
+  // There is no origin allowlist: the API is public and the player is embedded
+  // on partner sites, so an unfamiliar Origin is ordinary traffic. What protects
+  // the endpoint is the token, and what follows pins that instead - an unknown
+  // origin WITH a valid boot token must succeed, and the same request WITHOUT
+  // one must still be refused. Asserting a 403 here would just re-encode the
+  // allowlist that was removed.
+  const foreignOriginRes = await fetch(
+    `${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1&nonce=${encodeURIComponent('')}`,
+    { headers: { Origin: 'https://any-embedding-site.example', 'User-Agent': browserHeaders['User-Agent'] } },
+  );
+  assert.equal(
+    foreignOriginRes.status,
+    401,
+    'an unknown origin is not itself a reason to refuse; the missing token is',
+  );
+
+  // A scraper user agent is still blocked, which is the protection that remains.
+  const botRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
+    headers: { Origin: 'https://any-embedding-site.example', 'User-Agent': 'yt-dlp/2026.10.01' },
   });
-  assert.equal(badOriginRes.status, 403);
+  assert.equal(botRes.status, 403, 'downloader user agents are still refused');
 
   const noTokRes = await fetch(`${apiBase}/api/v1/playback?type=tv&tmdb=94605&s=1&e=1`, {
     headers: browserHeaders,
@@ -1648,9 +1892,12 @@ try {
     assert(!rawJsonStr.toLowerCase().includes(forbidden.toLowerCase()), `Leaked internal string: ${forbidden}`);
   }
 
-  // The replacement Source 2 must resolve VidRift directly, not the removed adapter.
-  const riftOption = pb.sources.find((s) => s.sourceId === 'source-2');
-  assert(riftOption, 'Expected the VidRift fixture in Source 2');
+  // VidRift is a Source 1 upstream and must be attributed to Source 1. It used to
+  // be found under 'source-2' because createSource1Adapter derived its id from
+  // the upstream-selection group (2 = vidrift/vidrock/vidbolt), so the adapter
+  // reported itself as source-2 while the real source-2 adapter was unregistered.
+  const riftOption = pb.sources.find((s) => s.sourceId === 'source-1');
+  assert(riftOption, 'Expected the VidRift fixture in Source 1');
   const riftMasterRes = await fetch(`${apiBase}${riftOption.url}`, { headers: browserHeaders });
   assert.equal(riftMasterRes.status, 200);
   assert((await riftMasterRes.text()).includes('#EXT-X-STREAM-INF'));
@@ -2591,9 +2838,141 @@ try {
     assert.equal(isAnonymousSegmentUrl(leakyUrl, true), false, `Must block leaky/unsafe offload URL: ${leakyUrl}`);
   }
 
-  //   (b) Embed response carries `Referrer-Policy: same-origin` + `<meta name="referrer" content="same-origin">`
-  assert.equal(embedRes.headers.get('referrer-policy'), 'same-origin');
-  assert(embedHtml.includes('name="referrer" content="same-origin"'));
+  //   (b0) The failure this file kept reproducing: an embed framed by a
+  //   third-party site gets refused even though it is our own document.
+  //
+  //   Two independent causes, both covered here:
+  //     - the document announced `same-origin`, so the browser stripped the
+  //       referer whenever the parent was cross-site;
+  //     - the origin check compared the request against the PARENT's origin and
+  //       rejected it, instead of noticing the caller was our own page.
+  {
+    const embedUrl = new URL(embedRes.url);
+    const embedBase = embedUrl.origin;
+    const embedPath = embedUrl.pathname;
+    // The boot token is scoped to the title the embed was minted for. Asking for
+    // anything else would test token scope, not origin handling.
+    const embedTv = embedPath.match(/^\/embed\/tv\/(\d+)\/(\d+)\/(\d+)$/);
+    const embedMovie = embedPath.match(/^\/embed\/movie\/(\d+)$/);
+    const scopeParams = embedTv
+      ? { type: 'tv', tmdb: embedTv[1], s: embedTv[2], e: embedTv[3] }
+      : embedMovie
+        ? { type: 'movie', tmdb: embedMovie[1] }
+        : null;
+    assert(scopeParams, `could not derive the embed title from ${embedPath}`);
+    const refusals = [
+      // Our embed document as the referrer, parent site third-party.
+      { Referer: `${embedBase}${embedPath}` },
+      // A proxy in front of us reports the client-facing Host.
+      { Referer: `${embedBase}${embedPath}`, 'X-Forwarded-Host': new URL(embedBase).host, 'X-Forwarded-Proto': 'https' },
+      // The browser's own same-origin signal, no referer at all.
+      { 'Sec-Fetch-Site': 'same-origin' },
+    ];
+    for (const extra of refusals) {
+      const params = new URLSearchParams(scopeParams);
+      const r = await fetch(`${apiBase}/api/v1/playback?${params}`, {
+        // The boot token from the embed document is part of the scenario: an
+        // embedded player always has one, and its absence would make this a
+        // test of token enforcement rather than of origin handling.
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': browserHeaders['User-Agent'],
+          'X-Playback-Token': boot.pltoken,
+          ...extra,
+        },
+      });
+      assert.equal(
+        r.status,
+        200,
+        `an embed served from our own host must resolve even when framed cross-site (got ${r.status} for ${JSON.stringify(extra)})`,
+      );
+    }
+    // A foreign origin is no longer refused by itself - there is no allowlist.
+    // The refusal that matters is the missing token, asserted above.
+  }
+
+  //   (b0-ter) A stale embed token must not be terminal.
+  //
+  //   The embed carries a token minted when the DOCUMENT was served. Cache it at
+  //   an edge, let it age past its TTL, or let the browser rewrite the user agent
+  //   (in-app browsers and privacy modes do), and the first resolution answers
+  //   401 - which the player renders as "couldn't reach sources", while the main
+  //   site keeps working because it mints its token on demand. The request must
+  //   therefore be served with a fresh token instead of refused.
+  {
+    // Fetch the embed as one browser, then call playback as another. Same
+    // document, different fingerprint: the cached/re-served-document case.
+    const staleEmbed = await fetch(`${apiBase}/embed/movie/550`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) InAppBrowser/1.0' },
+    });
+    const staleHtml = await staleEmbed.text();
+    const staleBoot = JSON.parse(
+      (staleHtml.match(/window\.__ELFURA_BOOT__=(\{[^<]+\});/) || [])[1] || '{}',
+    );
+    assert(staleBoot.pltoken, 'embed serves a token to fingerprint');
+    const mismatched = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': browserHeaders['User-Agent'],
+        'X-Playback-Token': staleBoot.pltoken,
+      },
+    });
+    assert.equal(
+      mismatched.status,
+      200,
+      'a token minted for another user agent must be re-minted, not refused with 401',
+    );
+
+    // An outright garbage token is the same class of failure and must recover too.
+    const garbage = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': browserHeaders['User-Agent'],
+        'X-Playback-Token': 'not.a-real-token',
+      },
+    });
+    assert.equal(garbage.status, 200, 'an unparseable token must not be a hard failure either');
+
+    // But a request with NO token at all is a different matter: that is an
+    // anonymous caller, and REQUIRE_PLAYBACK_TOKEN still applies to it.
+    const anonymous = await fetch(`${apiBase}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: { Accept: 'application/json', 'User-Agent': browserHeaders['User-Agent'] },
+    });
+    assert.equal(anonymous.status, 401, 'no token at all is still refused');
+  }
+
+  //   (b0-bis) The owner domains must never be collateral damage.
+  //
+  //   theogpiratebot.online and .to are the sites this deployment exists to
+  //   serve. Two separate mechanisms could have taken them out: the ad tag, and
+  //   the operator ban list. Both are pinned here, including www and subdomains,
+  //   so no future rule can quietly black out the owner's own player.
+  {
+    const { ALWAYS_AD_FREE, siteMatches, decideAds } = await import('../../dist/backend/ads.js');
+    const owners = ['theogpiratebot.online', 'www.theogpiratebot.online', 'theogpiratebot.to', 'www.theogpiratebot.to', 'player.theogpiratebot.online'];
+    for (const host of owners) {
+      assert(siteMatches(host, ALWAYS_AD_FREE), `${host} must match the always-ad-free list`);
+      const decision = decideAds(
+        { parentSite: host, requestHost: 'elfura.example' },
+        { enabled: true, adFreeSites: [] },
+      );
+      assert.equal(decision.serve, false, `${host} must never receive an ad`);
+    }
+    // A look-alike must NOT be treated as an owner domain.
+    assert(!siteMatches('nottheogpiratebot.online', ALWAYS_AD_FREE), 'a look-alike domain must not be exempt');
+  }
+
+  //   (b) The embed document must NOT suppress its referrer.
+  //
+  //   This assertion used to demand `same-origin` in both the header and the
+  //   meta tag, which is exactly what broke embedded playback: in a third-party
+  //   iframe the browser then strips the referer, our own API call arrives
+  //   looking anonymous, the origin check refuses it, and the player shows
+  //   "Couldn't find this title" - while the same player works on our own site.
+  //   The embed exists to be framed, so it has to identify itself.
+  assert.equal(embedRes.headers.get('referrer-policy'), 'no-referrer-when-downgrade');
+  assert(embedHtml.includes('name="referrer" content="no-referrer-when-downgrade"'));
+  assert(!embedHtml.includes('content="same-origin"'), 'the embed must send a referer when framed cross-site');
 
   //   (c) CLI scrapers / downloaders (`yt-dlp`, `ffmpeg`/`Lavf`, `curl`) are blocked with 403 on `/api/v1/playback` & `/api/v1/stream`
   for (const botUa of ['yt-dlp/2026.10.01', 'Lavf/61.1.100', 'curl/8.7.1']) {
@@ -3225,6 +3604,10 @@ try {
     const clusterMock = http.createServer(async (req, res) => {
       const cu = new URL(req.url, `http://${req.headers.host}`);
       const cOrigin = `http://${req.headers.host}`;
+      // Computed, never a literal: the adapter discards signed rows within 15 s
+      // of expiry, so a hardcoded `Expires` silently stops testing anything on
+      // the day it lapses.
+      const cExpiry = Math.floor(Date.now() / 1000) + 3600;
 
       // VidSync: single-language Castle row with IP-signed directUrl (403) + working `/api/core/proxy`
       if (cu.pathname === '/api/stream' || cu.pathname === '/api/core/streams') {
@@ -3237,7 +3620,7 @@ try {
                     {
                       provider: { id: 'castle', name: 'Castle' },
                       url: '/api/core/proxy?data=castle_en_1080&quality=1080p',
-                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=${cExpiry}&KeyName=Signature&Signature=abc`,
                       type: 'hls',
                       quality: '1080p',
                       audioLanguage: 'en',
@@ -3261,7 +3644,7 @@ try {
                     {
                       provider: { id: 'castle', name: 'Castle' },
                       url: '/api/core/proxy?data=castle_en_720&quality=720p',
-                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=1793807012&KeyName=Signature&Signature=abc`,
+                      directUrl: `${cOrigin}/ip-locked/index_287.m3u8?Expires=${cExpiry}&KeyName=Signature&Signature=abc`,
                       type: 'hls',
                       quality: '720p',
                       audioLanguage: 'en',

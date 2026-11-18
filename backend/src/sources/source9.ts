@@ -3,7 +3,7 @@ import { isSafeUpstreamUrl } from '../security.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 const BASE = 'https://vixsrc.to';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 const HEADERS = { 'User-Agent': UA, Referer: BASE + '/', Origin: BASE };
 
 async function boundedText(res: Response, max: number): Promise<string> {

@@ -38,19 +38,19 @@ const MAX_MANIFEST_BYTES = 4 * 1024 * 1024; // 4 MiB safety ceiling for text man
 const MAX_WRAPPED_SEGMENT_BYTES = 8 * 1024 * 1024;
 
 const UPSTREAM_TRACK_WATERMARK_RE =
-  /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|^(?:audio|track\s*\d*|sound|stream)$/i;
+  /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|greybox|greyboxtv|^(?:audio|track\s*\d*|sound|stream)$/i;
 
 const HEVC_HINT_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
 
 const WEBVTT_SPAM_CUE_RE =
-  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|nxstream|tgflix|tgvid|moviehub|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
+  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|nxstream|tgflix|tgvid|moviehub|greybox|greyboxtv|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
 
 /* ------------------------------------------------------------------ */
 /* Hybrid Segment Offload — Anonymity & Browser-CORS Verifier          */
 /* ------------------------------------------------------------------ */
 
 const SOURCE_HOST_DENY_RE =
-  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidsync|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|vidlink|vidrock|vidbox|nxsha|nxstream|itsnitrox|vercetti|enc-dec|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|\bproxy\b|\brelay\b|\bbridge\b)/i;
+  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidsync|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|vidlink|vidrock|vidbox|nxsha|nxstream|itsnitrox|vercetti|enc-dec|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|greybox|greyboxtv|\bproxy\b|\brelay\b|\bbridge\b)/i;
 
 const SOURCE_PATH_DENY_RE =
   /(?:^\/(?:api|backend|_serverFn)\b|\/(?:orion|tgkai|vidbolt|rousav|aetho|vidsync|vidrift|vidlink|vidrock|vidstuck|nxsha|proxy|relay)\b)/i;
@@ -71,6 +71,18 @@ const segmentCorsInFlight = new Map<string, Promise<boolean>>();
 /**
  * Returns true ONLY if `rawUrl` points to a generic, provider-anonymous edge CDN
  * with zero aggregator/source/worker names, zero API keys, and safe protocol.
+ */
+/**
+ * Is this URL only resolvable by the browser that loaded it?
+ *
+ * Used to decide whether a segment can be offloaded as a plain URL. There is no
+ * origin allowlist anywhere in this path, by design: the player is embedded on
+ * partner sites, so an unexpected Origin is normal traffic, not an attack.
+ *
+ * The checks that remain are about the UPSTREAM URL rather than the caller:
+ * non-https, embedded credentials, IP-bound tokens, and the deny patterns that
+ * exist so we never turn this relay into an open proxy. Those are what protect
+ * the deployment, and they are independent of who is asking.
  */
 export function isAnonymousSegmentUrl(rawUrl: string, requireHttps = true): boolean {
   if (!isSafeUpstreamUrl(rawUrl)) return false;

@@ -74,6 +74,11 @@ const MIME_BY_EXT: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+/** Present but no longer valid, as opposed to absent. See the playback route. */
+function isStaleTokenReason(reason: string): boolean {
+  return reason !== 'missing playback token';
+}
+
 function sendJson(
   res: http.ServerResponse,
   status: number,
@@ -118,6 +123,13 @@ interface ParsedEmbedRoute {
 export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
   const clean = pathname.replace(/\/+$/, '') || '/';
   if (clean === '/embed' || clean === '/embed.html') {
+    return {};
+  }
+  // Bare player path. The deployed site is reached as /player?id=<tmdb>, which
+  // 404s on this build - so an embed built on that URL shows nothing at all.
+  // Serving the same document here costs nothing and removes a whole class of
+  // "works on the site, not in the embed" reports.
+  if (clean === '/player' || clean === '/player.html') {
     return {};
   }
   const movieMatch = clean.match(/^(?:\/embed)?\/movie\/([A-Za-z0-9_-]+)$/);
@@ -270,7 +282,37 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
   };
 
-  const server = http.createServer(async (req, res) => {
+  /** The routing body below; assigned before anything can reach it. */
+  let routeRequest: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<void>;
+
+  /**
+   * Every route below is async, and a throw inside an async request handler
+   * becomes an unhandled rejection - which Node treats as fatal, so the whole
+   * process dies and the panel shows the server as simply offline. One bad
+   * request must never be able to take the service down, so the handler is
+   * wrapped: unexpected errors are logged with the route and answered with a
+   * 500 when the response is still writable.
+   */
+  const handleRequest = async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
+    try {
+      await routeRequest(req, res);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      try {
+        console.error(`[elfura-http] ${req.method} ${String(req.url).split('?')[0]} failed: ${detail}`);
+      } catch {
+        /* logging must never throw either */
+      }
+      if (!res.headersSent) {
+        sendJson(res, 500, { ok: false, error: 'internal server error' });
+      } else {
+        try { res.end(); } catch { /* socket already gone */ }
+      }
+    }
+  };
+  const server = http.createServer(handleRequest);
+
+  routeRequest = async (req, res) => {
     const method = (req.method || 'GET').toUpperCase();
     let url: URL;
     try {
@@ -281,6 +323,46 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
+
+    // ---- ELFURA_REDIRECT_TO: move the site to a new domain ----------------
+    // One setting, one job: replace the host, keep everything after it. So
+    // abc.com/embed/movie/550?x=1 arrives as def.com/embed/movie/550?x=1.
+    //
+    // /api and /roxy are exempt. The API because a redirected fetch is a failed
+    // fetch, which breaks playback for anyone still on the old domain; the panel
+    // because a migration that hides the admin UI on the old host is one you
+    // cannot undo from the panel.
+    if (cfg.redirectTo) {
+      // Hostname only, port ignored. A port mismatch must never be the reason
+      // the new domain "redirects" to itself - that is a loop, and a loop takes
+      // the whole site down.
+      const hostnameOf = (raw: string) => {
+        const value = raw.split(',')[0].trim().toLowerCase();
+        const match = /^(\[[^\]]+\]|[^:]+)/.exec(value);
+        return (match ? match[1] : value).replace(/\.$/, '');
+      };
+      const host = hostnameOf(String(req.headers['x-forwarded-host'] || req.headers.host || ''));
+      const targetHost = hostnameOf(new URL(cfg.redirectTo).host);
+      const exempt = pathname === '/api' || pathname.startsWith('/api/') ||
+        pathname === '/roxy' || pathname.startsWith('/roxy/');
+      // A framed navigation is never redirected, and this is the whole reason
+      // embeds keep working: Chrome re-derives a frame's permissions after a
+      // cross-origin redirect and drops `fullscreen`, so every viewer who
+      // arrived through the redirect lost fullscreen while direct visitors kept
+      // it. Measured, not guessed: an iframe navigated through a 301 reports
+      // document.fullscreenEnabled === false and any requestFullscreen is
+      // refused with "Disallowed by permissions policy", while the same iframe
+      // loaded directly reports true. Nothing in the page can repair that, so
+      // the player is served in place instead. The parent page's
+      // allow="fullscreen" still grants it, because no redirect happened.
+      const framed = /^(iframe|frame)$/i.test(String(req.headers['sec-fetch-dest'] || '').trim());
+      if (!exempt && !framed && host && host !== targetHost) {
+        const location = cfg.redirectTo + pathname + (url.search || '');
+        res.writeHead(301, { Location: location, 'Cache-Control': 'no-store', Vary: 'Host' });
+        res.end(method === 'HEAD' ? undefined : `Moved to ${location}`);
+        return;
+      }
+    }
 
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
     if (pathname === '/roxy' || pathname === '/roxy/') {
@@ -489,8 +571,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // returned; upstream credentials and endpoint URLs stay server-side.
     if (method === 'GET' && pathname === '/api/v1/catalog') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       if (!rateLimiter.allow(`catalog:${getClientIp(req)}`)) {
@@ -587,8 +669,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // 3. Session token bootstrap (for standalone SDK & dev embeds)
     if (method === 'POST' && pathname === '/api/v1/session') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'origin not permitted' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -628,10 +710,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // later resolve uses, so it costs nothing and warms it.
     if (method === 'GET' && (pathname === '/api/v1/art' || pathname === '/api/v1/metadata')) {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
-        return;
-      }
       if (artLimiter && !artLimiter.allow(`art:${getClientIp(req)}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
@@ -671,8 +749,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
     if ((method === 'GET' || method === 'POST') && pathname === '/api/v1/playback') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -739,8 +817,34 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           bindIp: cfg.bindTokenIp,
         });
         if (!verified.ok) {
-          sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
-          return;
+          // A stale or mismatched SSR token must not be terminal.
+          //
+          // The embed ships a token minted when the DOCUMENT was served. If that
+          // document was cached by an edge, a proxy or the browser, if the user
+          // agent changed (in-app browsers and privacy modes rewrite it), if the
+          // token aged out, or if BIND_TOKEN_IP is on and the client address
+          // differs, the very first resolution answers 401 and the player shows
+          // "couldn't reach sources" - while the main site works, because it
+          // mints its token on demand instead of carrying one from page load.
+          //
+          // Rather than make the viewer reload until a token happens to match,
+          // mint one for THIS request and carry on. Everything the token proves
+          // (media scope, nonce, fingerprint, configured flags) still applies to
+          // the request being served; only the stale provenance is discarded.
+          // IP binding is exempt on purpose: that mismatch is typically
+          // cross-site leakage, not our own embed.
+          // Only a token that is PRESENT but no longer valid is recoverable.
+          // An absent token is an anonymous caller, and REQUIRE_PLAYBACK_TOKEN
+          // exists to refuse exactly that.
+          const present = typeof pltoken === 'string' && pltoken.length > 0;
+          const recoverable =
+            present &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
+          console.warn(`[elfura-playback] re-minting token: ${verified.reason}`);
         }
       }
 
@@ -788,8 +892,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // 4b. TV Season & Episode Catalog Endpoint (for Episode Wheel & Instant Binge Pre-Warm)
     if (method === 'GET' && pathname === '/api/v1/episodes') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) {
-        sendJson(res, 403, { ok: false, error: 'request forbidden' });
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) {
+        sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
       const clientIp = getClientIp(req);
@@ -819,9 +923,17 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           tmdbId,
           bindIp: cfg.bindTokenIp,
         });
+        // Same staleness tolerance as /api/v1/playback: the episode wheel is an
+        // enrichment, and refusing it over a token minted at page load removes a
+        // feature without protecting anything. Only IP binding stays strict.
         if (!verified.ok) {
-          sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
-          return;
+          const recoverable =
+            isStaleTokenReason(verified.reason) &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
         }
       }
 
@@ -836,7 +948,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // Independent, best-effort TV skip markers. Never runs on the playback critical path.
     if (method === 'GET' && pathname === '/api/v1/segments') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      if (!allowOrigin || isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }); return; }
+      if (isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }, allowOrigin); return; }
       if (!rateLimiter.allow(`segments:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false }, allowOrigin); return; }
       const tmdbId = (url.searchParams.get('tmdb') || '').trim();
       const season = Number(url.searchParams.get('s'));
@@ -848,9 +960,19 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const pltoken = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
       const nonce = (url.searchParams.get('nonce') || '').trim() || undefined;
+      // Skip markers are best-effort decoration with no secrets in them. A stale
+      // document token must not turn them into a 401 the player has to handle.
       if (cfg.requireToken) {
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, { mediaType: 'tv', tmdbId, bindIp: cfg.bindTokenIp });
-        if (!verified.ok) { sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin); return; }
+        if (!verified.ok) {
+          const recoverable =
+            isStaleTokenReason(verified.reason) &&
+            !(cfg.bindTokenIp && /ip mismatch/i.test(verified.reason));
+          if (!recoverable) {
+            sendJson(res, 401, { ok: false, error: verified.reason }, allowOrigin);
+            return;
+          }
+        }
       }
       const segments = await fetchSkipMarkers({ tmdbId, season, episode, duration });
       sendJson(res, 200, { ok: true, segments }, allowOrigin, 'no-store');
@@ -863,14 +985,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'automated scraper blocked' });
         return;
       }
-      const hasExplicitOriginOrRef = !!(req.headers.origin || req.headers.referer);
-      const allowOrigin =
-        resolveAllowedOrigin(req, cfg.allowedOrigins) ??
-        (!hasExplicitOriginOrRef ? (cfg.allowedOrigins[0] ?? '*') : null);
-      if (!allowOrigin) {
-        sendJson(res, 403, { ok: false, error: 'origin not permitted' });
-        return;
-      }
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
       const ticketParam = url.searchParams.get('t') || '';
       const forceProxy = url.searchParams.get('p') === '1';
       await handleStreamRelay(req, res, {
@@ -974,7 +1089,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           'Content-Type': 'text/html; charset=utf-8',
           'Content-Length': String(buf.byteLength),
           'X-Content-Type-Options': 'nosniff',
-          'Referrer-Policy': 'same-origin',
+          // Deliberately frameable: this document exists to be embedded. There
+          // is no X-Frame-Options and the CSP names no frame-ancestors, so both
+          // old and new browsers allow it. Do not copy the /roxy DENY above here.
+          // A cross-site iframe is the whole point of this document. Under
+          // `same-origin` the browser strips the referer exactly when the parent
+          // is third-party, which is when the origin check most needs it - the
+          // embed then looks like an anonymous caller and gets refused with the
+          // player showing "Couldn't find this title". Full referrer, and the
+          // document is frameable so a partner site may actually embed it.
+          'Referrer-Policy': 'no-referrer-when-downgrade',
         });
         res.end(method === 'HEAD' ? undefined : buf);
         return;
@@ -1009,7 +1133,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     sendJson(res, 404, { ok: false, error: 'not found' });
-  });
+  };
 
   server.on('close', () => roxy.close());
   return { server, cfg, registry };
@@ -1034,12 +1158,59 @@ function readMemoryUsage(): {
   };
 }
 
+/** Installed once, whatever the entry point. */
+let processGuardsInstalled = false;
+
+/**
+ * Keep a stray async error from killing the service.
+ *
+ * Node treats an unhandled rejection as fatal by default, so before this a
+ * single unexpected throw anywhere - a timer callback, an adapter's background
+ * work, a socket callback - terminated the process. The panel then shows the
+ * server as offline until a human notices, which is exactly the "it crashed and
+ * never came back" behaviour. Log loudly and stay up: a degraded process still
+ * serves every request it can, and an exited one serves none.
+ *
+ * Opt out with ELFURA_EXIT_ON_UNCAUGHT=1 for a host that would rather restart
+ * (systemd, pm2, Pterodactyl's own restart-on-exit) and wants the hard failure.
+ */
+export function installProcessGuards(): void {
+  if (processGuardsInstalled) return;
+  processGuardsInstalled = true;
+
+  const fatal = process.env.ELFURA_EXIT_ON_UNCAUGHT === '1';
+
+  process.on('unhandledRejection', (reason) => {
+    const detail = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
+    console.error(`[elfura-fatal] unhandled rejection: ${detail}`);
+    if (fatal) process.exit(1);
+  });
+
+  process.on('uncaughtException', (error) => {
+    console.error(`[elfura-fatal] uncaught exception: ${error?.stack || error}`);
+    // An uncaught exception may have left shared state inconsistent, so a host
+    // that can restart us should be allowed to. The default keeps serving.
+    if (fatal) process.exit(1);
+  });
+}
+
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
+  installProcessGuards();
   // Before anything resolves a hostname: if this container's resolver is dead
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
   // own lookups through public DNS so the adapters can work at all.
   void installDnsRescue().then(() => installEgressProfile());
   const { server, cfg, registry } = createBackendServer(overrides);
+  // A port that cannot be bound is not a survivable state: the guards below
+  // deliberately keep the process alive through unexpected throws, which would
+  // turn EADDRINUSE into a container that reports itself healthy while serving
+  // nothing. Exit instead, so the supervisor retries and the log says why.
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(
+      `[elfura-backend] cannot listen on ${cfg.host}:${cfg.port} (${error.code || error.message}); exiting so the supervisor can retry`,
+    );
+    process.exit(1);
+  });
   server.listen(cfg.port, cfg.host, () => {
     console.log(
       `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
@@ -1048,6 +1219,11 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
     console.log(describeMemoryPolicy());
+    if (cfg.redirectTo) {
+      // Named on boot: a redirect mistake looks like "the site is dead", so the
+      // console says exactly where it is sending people.
+      console.log(`[elfura-redirect] every page moves to ${cfg.redirectTo} (path and query preserved; /api and /roxy stay)`);
+    }
     const state = registry.describeSources();
     // Count, not names. This console is visible to anyone with panel access, and
     // the list of providers is the one thing that must not be published — a
@@ -1138,6 +1314,7 @@ if (isDirectMain) {
  * config, they only differ in what they expose over HTTP.
  */
 export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
+  installProcessGuards();
   const { cfg, registry } = createBackendServer(overrides);
   const token = (process.env.ELFURA_RESOLVER_TOKEN ?? process.env.ELFURA_SECRET ?? '').trim();
   if (!token) {
@@ -1162,6 +1339,12 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
   // The egress profile must be installed before the first provider request, and
   // the DNS rescue before the first hostname lookup — exactly as in media mode.
   void installDnsRescue().then(() => installEgressProfile());
+  // Same reasoning as the media server: an unbound port must not masquerade as
+  // a running process.
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(`[elfura-resolver] cannot listen (${error.code || error.message}); exiting so the supervisor can retry`);
+    process.exit(1);
+  });
   server.listen(port, listenHost, () => {
     // Deliberately vague. This fills a Pterodactyl console that anyone with panel
     // access can read, so it does not name the port, the bind address or how many

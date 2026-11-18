@@ -1432,11 +1432,18 @@ export class PlayerUI {
     bus.on('error', (d) => {
       const code = (d as { code?: string })?.code ?? '';
       if (code === 'no-sources' || code === 'all-sources-failed' || code.startsWith('resolve-')) {
+        // Say WHICH failure this is. Three very different faults - the API
+        // refused us, we reached it and the title genuinely has nothing, and we
+        // got sources but none would play - all used to read as "check your
+        // connection", which sends everyone hunting in the wrong place. The
+        // detail is the status or the message the backend already returned; it
+        // contains no provider names and no URLs, so it is safe to display.
+        const detail = String((d as { message?: string })?.message ?? '').slice(0, 120);
         const message = code.startsWith('resolve-')
-          ? 'We couldn’t reach this title’s sources. Check your connection and try again.'
+          ? `We couldn’t reach this title’s sources (${code.replace('resolve-', 'request ')}${detail ? `: ${detail}` : ''}). Check your connection and try again.`
           : code === 'all-sources-failed'
-            ? 'None of the available sources could start playback. Please try again.'
-            : 'We couldn’t find a playable stream for this title. Please try again later.';
+            ? `None of the available sources could start playback${detail ? ` (${detail})` : ''}. Please try again.`
+            : `We couldn’t find a playable stream for this title${detail ? ` (${detail})` : ''}. Please try again later.`;
         this.showUnavailable(message);
       }
     });
@@ -2697,7 +2704,7 @@ export class PlayerUI {
     this.panelBody.appendChild(this.toggle('Outline', style.outline, (v) => live({ outline: v })));
     if (style.outline) {
       this.panelBody.appendChild(this.color('Outline color', style.outlineColor, (c) => live({ outlineColor: c })));
-      this.panelBody.appendChild(this.slider('Outline width', style.outlineWidth, 0, 4, 0.5, 'px', (v) => live({ outlineWidth: v })));
+      this.panelBody.appendChild(this.slider('Outline width', style.outlineWidth, 0, 6, 0.5, 'px', (v) => live({ outlineWidth: v })));
     }
     this.panelBody.appendChild(this.toggle('Drop shadow', style.shadow, (v) => live({ shadow: v })));
     if (style.shadow) {

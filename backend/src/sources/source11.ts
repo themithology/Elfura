@@ -5,7 +5,7 @@ import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 const API = 'https://streamdata.vaplayer.ru/api.php';
 const ORIGIN = 'https://brightpathsignals.com';
-const HEADERS = { 'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36', Referer:ORIGIN+'/', Origin:ORIGIN, Accept:'application/json' };
+const HEADERS = { 'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36', Referer:ORIGIN+'/', Origin:ORIGIN, Accept:'application/json' };
 async function readJson(res: Response): Promise<unknown> {
   const max = 128_000;
   if (!res.ok || !res.body || Number(res.headers.get('content-length') || 0) > max) { await res.body?.cancel(); return null; }

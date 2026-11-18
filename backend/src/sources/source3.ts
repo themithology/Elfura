@@ -5,6 +5,20 @@
  * `/api/stream` and `/api/core/streams` JSON APIs. The adapter maps only
  * direct HLS/DASH/MP4 candidates into Elfura's uniform relay pipeline;
  * embed/player URLs are never advertised as playable streams.
+ *
+ * MEASURED STATUS (GitHub-runner probe, run 44039400814): VidSync's JSON API is
+ * gone. `/api/core/streams?type=&id=`, `/api/stream`, and `/api/core/proxy?data=`
+ * — the exact shapes a working player and a CloudStream extension call — all
+ * return **HTTP 200 with a 3,327-byte HTML error page**, not JSON and not a 404.
+ * Their docs list only /embed/* routes, and state that relay segments are
+ * session-bound and that AEGIS blocks datacenter IPs.
+ *
+ * So this adapter cannot produce a candidate today, and it is kept mounted
+ * deliberately: removing a source is the operator's call, not a code change.
+ * It returns [] cleanly instead of mis-parsing an HTML page as a stream, and it
+ * records why, so the panel says "upstream retired its JSON API" rather than
+ * leaving an unexplained zero. If VidSync restores a JSON route the parsing
+ * below is still wired for it.
  */
 
 import type { BackendConfig } from '../config.js';
@@ -106,8 +120,11 @@ export async function fetchFromVidSyncPro(
       try {
         return JSON.parse(text) as unknown;
       } catch {
-        // Keep a few characters so an HTML challenge page is obvious in the trace.
-        grabReasons.push(`not-json:${text.slice(0, 16).replace(/\s+/g, ' ')}`);
+        // Keep a few characters so an HTML challenge page is obvious in the
+        // trace. An HTML body here is the documented end state of this upstream
+        // (see the header): all three JSON routes answer 200 + HTML today, so
+        // this is the expected outcome, not an anomaly worth alarming on.
+        grabReasons.push(`upstream-serves-html-not-json:${text.slice(0, 16).replace(/\s+/g, ' ')}`);
         return null;
       }
     } catch (err) {

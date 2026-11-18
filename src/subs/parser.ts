@@ -80,13 +80,6 @@ function unescape(s: string): string {
  * SSA {\b1}{\i1}{\an8} override blocks plus \N hard breaks.
  */
 export function parseInline(raw: string): CueSpan[] {
-  const line = raw
-    .replace(/\{\\[^}]*\}/g, '') // SSA override blocks
-    .replace(/\\N/gi, '\n') // SSA hard break
-    .replace(/\\n/g, '\n') // soft break
-    .replace(/<\s*(?:lang|c|v|ruby|rt)[^>]*>/gi, '')
-    .replace(/<\s*\/\s*(?:lang|c|v|ruby|rt)\s*>/gi, '');
-
   const spans: CueSpan[] = [];
   let bold = false;
   let italic = false;
@@ -101,21 +94,54 @@ export function parseInline(raw: string): CueSpan[] {
     buf = '';
   };
 
-  const tagRe = /<(\/?)([biu])\s*>/gi;
+  // One pass over every construct that changes state, in source order:
+  //   {\b1} {\i1} {\u1}   SSA toggles ({\b0} etc. turn them off, {\b700} is on)
+  //   <b> </b> <i> </i> <u> </u>   WebVTT inline tags
+  //   \N \n   hard and soft line breaks
+  // Everything else - positioning, colours, karaoke - is dropped, because the
+  // renderer paints one style per span.
+  const TOKEN =
+    /\{([^}]*)\}|<(\/?)([biu])\s*>|\\([Nn])|<\s*\/?\s*(?:lang|c|v|ruby|rt)[^>]*>/gi;
   let last = 0;
   let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(line)) !== null) {
-    buf += line.slice(last, m.index);
-    flush();
-    const closing = m[1] === '/';
-    const which = m[2].toLowerCase();
-    const val = !closing;
-    if (which === 'b') bold = val;
-    if (which === 'i') italic = val;
-    if (which === 'u') underline = val;
+  while ((m = TOKEN.exec(raw)) !== null) {
+    buf += raw.slice(last, m.index);
     last = m.index + m[0].length;
+
+    if (m[1] !== undefined) {
+      // SSA override block, e.g. {\b1}, {\i0}, {\an8}. Flush FIRST so the text
+      // before the block keeps the old state, then apply the toggles it carries
+      // and drop the rest (positioning, colours, karaoke).
+      flush();
+      for (const tag of m[1].match(/\\[biu][^\\]*/gi) ?? []) {
+        const which = tag[1].toLowerCase();
+        const value = tag.slice(2).trim();
+        const on = value === '' ? true : Number.parseInt(value, 10) !== 0;
+        if (which === 'b') bold = on;
+        if (which === 'i') italic = on;
+        if (which === 'u') underline = on;
+      }
+      continue;
+    }
+    if (m[3] !== undefined) {
+      // WebVTT <b> / </b> etc. Flush with the old state, then switch it.
+      flush();
+      const on = m[2] !== '/';
+      const which = m[3].toLowerCase();
+      if (which === 'b') bold = on;
+      if (which === 'i') italic = on;
+      if (which === 'u') underline = on;
+      continue;
+    }
+    if (m[4] !== undefined) {
+      // \N and \n are both hard breaks for our purposes.
+      buf += '\n';
+      continue;
+    }
+    // Other inline tags (positioning, classes): drop, keeping span order.
+    flush();
   }
-  buf += line.slice(last);
+  buf += raw.slice(last);
   flush();
 
   return spans.filter((s) => s.text.length > 0);
@@ -204,18 +230,36 @@ function parseAss(body: string): Cue[] {
   const cues: Cue[] = [];
   let n = 0;
 
+  // Section-aware: the [Events] block has its OWN Format: line, and so do the
+  // style blocks. The old code took the first Format: it saw anywhere in the
+  // file - style definitions - and then, having a format, ignored the Events one
+  // too. Every dialogue was then parsed against the wrong field list and thrown
+  // away, so a perfectly valid .ass produced zero cues and the track silently
+  // never appeared. That is why ASS subtitles looked unsupported.
+  let section = '';
+
   for (const line of lines) {
     const trimmed = line.trim();
-    if (/^Format:/i.test(trimmed) && !format) {
-      format = trimmed.slice(trimmed.indexOf(':') + 1).split(',').map((f) => f.trim().toLowerCase());
+    if (!trimmed) continue;
+    const header = /^\[([^\]]+)\]$/.exec(trimmed);
+    if (header) {
+      section = header[1].trim().toLowerCase();
+      continue;
+    }
+    if (/^Format:/i.test(trimmed)) {
+      // Only the Events format describes Dialogue lines. Style formats list
+      // font fields and must not be mistaken for it.
+      if (section === 'events' || (!section && !format)) {
+        format = trimmed.slice(trimmed.indexOf(':') + 1).split(',').map((f) => f.trim().toLowerCase());
+      }
       continue;
     }
     if (!/^Dialogue:/i.test(trimmed)) continue;
     const payload = trimmed.slice(trimmed.indexOf(':') + 1);
-    const fields = payload.split(',');
     if (!format) format = ['layer', 'start', 'end', 'style', 'name', 'marginl', 'marginr', 'marginv', 'effect', 'text'];
     const idxText = format.indexOf('text');
     if (idxText < 0) continue;
+    const fields = payload.split(',');
     const text = fields.slice(idxText).join(','); // text may contain commas
     const start = parseAssTime(fields[format.indexOf('start')] ?? '');
     const end = parseAssTime(fields[format.indexOf('end')] ?? '');

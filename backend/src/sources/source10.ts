@@ -8,7 +8,7 @@ import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js'
 
 const API = 'https://new.vidnest.fun';
 const PLAYER = 'https://vidnest.fun';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 // Public player protocol constant; not a server credential. Can rotate.
 const SECRET = 'K3p8vQ2mX9rL5wZ0fN7bG1sH4tJ6dC9_y8S3wM1nQ5pL2';
 const LANES = ['moviebox','allmovies','nextgencloudfabric','vidzee','vidlink','onehd'] as const;

@@ -5,8 +5,8 @@ import { normalizeLang } from './lang.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 import { fetchNoRedirect } from './upstream-fetch.js';
 
-const ORIGIN = 'https://bingr.one';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36';
+const ORIGIN = 'https://bingr.st';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 type Payload = { servers?: { id?: string }[]; streams?: { url?: string; language?: string; quality?: string; type?: string }[] };
 
 export function decodeBingrPayload(blob: string): Payload {
@@ -60,14 +60,18 @@ export async function fetchFromBingr(query: SourceQuery, options: BingrOptions =
   if (!Number.isSafeInteger(season) || !Number.isSafeInteger(episode) || season < 0 || episode < 1) return [];
   const path = query.type === 'movie' ? `/watch/movie/${query.tmdbId}` : `/watch/tv/${query.tmdbId}/${season}/${episode}`;
   const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
+  // Label each fetch with the path it actually requested. Reporting every
+  // failure under the watch path made a single failing side lane look like the
+  // watch page itself was 403 while it was returning candidates.
   const get = async (url: string, limit: number) => {
+    const label = (() => { try { return new URL(url).pathname; } catch { return 'bad-url'; } })();
     const { response: r } = await fetchNoRedirect(
       url,
       { headers: { 'User-Agent': UA, Referer: ORIGIN + path, Accept: '*/*' }, signal },
       { allowSameOriginRedirects: true },
     );
-    if (!r) { trace?.push(`${path}=no-response`); return ''; }
-    if (!r.ok) { trace?.push(`${path}=http=${r.status}`); await r.body?.cancel(); return ''; }
+    if (!r) { trace?.push(`${label}=no-response`); return ''; }
+    if (!r.ok) { trace?.push(`${label}=http=${r.status}`); await r.body?.cancel(); return ''; }
     return readBounded(r, limit);
   };
   try {
@@ -103,7 +107,7 @@ export async function fetchFromBingr(query: SourceQuery, options: BingrOptions =
         if (body.startsWith('v1.')) rows.push(decodeBingrPayload(body.trim()));
       } catch (error) { /* an individual lane must not block the others */
         const code = (error as { cause?: { code?: string } }).cause?.code ?? (error as Error).name;
-        trace?.push(`${id}=${code}`);
+        trace?.push(`lane:${id}=${code}`);
       }
       finally {
         settled++;
