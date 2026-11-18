@@ -1,0 +1,1561 @@
+run 44261176227
+commit 4630d3aea000cd2dcb94b692ff9e307a5dd67c39
+title movie/550
+
+
+[diagnose-compare] movie/550 · 25001ms · ran on the CI runner
+
+source      raw  kept  reach      ms  detail
+---------  ----  ----  -----  ------  ------
+source-5     12    11      7    6352  candidates=12,screenscape=0,verified=0
+source-25     6     6      0   13323  greybox candidates=6 langs=1
+source-1      5     5      5    2544  candidates=0
+source-4      5     5      5    1662  candidates=5 /api/sources=http=403
+source-14     4     4      4    3216  rows=5,manifestReachable=4 backends=4/6 captions=41 flowcast=ok/3 primevids=ok/3 guru=empty cita
+source-10     3     3      3    2823  candidates=5,usable=3
+source-24     3     0      0    2536  vidlink candidates=3
+source-20     1     1      1    2770  candidates=1,reachable=1
+source-11     0     0      0    1040  candidates=0,multi=0
+source-12     0     0      0    2601  candidates=0,reachable=0
+source-13     0     0      0     695  candidates=0,reachable=0 http=403
+source-15     0     0      0     815  hlsCandidates=0,manifestReachable=0 http=403
+source-16     0     0      0       6  
+source-17     0     0      0       5  no installation credentials (run scripts/anivortex-register.mjs, then set ELFURA_ANIVORTEX_INSTA
+source-18     0     0      0    1847  candidates=0,reachable=0 http=200 api(tmdb=550)=undefined base=0 catalog=92,variants=0
+source-19     0     0      0    1581  candidates=0,reachable=0 not-in-catalogue
+source-21     0     0      0    1510  candidates=1,reachable=0
+source-22     0     0      0     948  subtitles-only tracks=12 langs=en/es/cs/da/fi/el/is/no/pt/ru http=200 rows=43
+source-3      0     0      0     203  candidates=0 upstream-serves-html-not-json:<!doctype html> upstream-serves-html-not-json:<!docty
+source-8      0     0      0    1869  candidates=2,usable=0 (all dropped: no multi-audio or labelled dub)
+source-9      0     0      0     956  candidates=0,multi=0
+
+[diagnose-compare] 8/21 sources answered with candidates, 6/21 had a reachable stream
+[diagnose-compare] answered nothing: source-11, source-12, source-13, source-15, source-16, source-17, source-18, source-19, source-21, source-22, source-3, source-8, source-9
+
+[diagnose-compare] hosts that refused this runner:
+  source-13: candidates=0,reachable=0 http=403
+  source-15: hlsCandidates=0,manifestReachable=0 http=403
+  source-4: candidates=5 /api/sources=http=403
+
+[diagnose-compare] hosts that did not answer this runner:
+  source-14: rows=5,manifestReachable=4 backends=4/6 captions=41 flowcast=ok/3 primevids=ok/3 guru=empty citadel=ok/2 quasar=timeout hindicast=timeout ca
+
+[diagnose-compare:json]
+{"kind":"diagnose-compare","runner":"github-actions:44261176227","type":"movie","tmdbId":"550","totalMs":25001,"answered":8,"served":6,"total":21,"rows":[{"id":"source-5","raw":12,"retained":11,"reachable":7,"ms":6352,"error":null},{"id":"source-25","raw":6,"retained":6,"reachable":0,"ms":13323,"error":null},{"id":"source-1","raw":5,"retained":5,"reachable":5,"ms":2544,"error":null},{"id":"source-4","raw":5,"retained":5,"reachable":5,"ms":1662,"error":null},{"id":"source-14","raw":4,"retained":4,"reachable":4,"ms":3216,"error":null},{"id":"source-10","raw":3,"retained":3,"reachable":3,"ms":2823,"error":null},{"id":"source-24","raw":3,"retained":0,"reachable":0,"ms":2536,"error":null},{"id":"source-20","raw":1,"retained":1,"reachable":1,"ms":2770,"error":null},{"id":"source-11","raw":0,"retained":0,"reachable":0,"ms":1040,"error":null},{"id":"source-12","raw":0,"retained":0,"reachable":0,"ms":2601,"error":null},{"id":"source-13","raw":0,"retained":0,"reachable":0,"ms":695,"error":null},{"id":"source-15","raw":0,"retained":0,"reachable":0,"ms":815,"error":null},{"id":"source-16","raw":0,"retained":0,"reachable":0,"ms":6,"error":null},{"id":"source-17","raw":0,"retained":0,"reachable":0,"ms":5,"error":null},{"id":"source-18","raw":0,"retained":0,"reachable":0,"ms":1847,"error":null},{"id":"source-19","raw":0,"retained":0,"reachable":0,"ms":1581,"error":null},{"id":"source-21","raw":0,"retained":0,"reachable":0,"ms":1510,"error":null},{"id":"source-22","raw":0,"retained":0,"reachable":0,"ms":948,"error":null},{"id":"source-3","raw":0,"retained":0,"reachable":0,"ms":203,"error":null},{"id":"source-8","raw":0,"retained":0,"reachable":0,"ms":1869,"error":null},{"id":"source-9","raw":0,"retained":0,"reachable":0,"ms":956,"error":null}],"lanes":[{"adapter":"source-17","lane":"V","ok":false,"detail":"no installation credentials (run scripts/anivortex-register.mjs, then set ELFURA_ANIVORTEX_INSTALL_ID / _KEY_ID / _PRIVATE_KEY in /home/container/.env)"},{"adapter":"source-3","lane":"stream","ok":false,"detail":"candidates=0 upstream-serves-html-not-json:<!doctype html>  upstream-serves-html-not-json:<!doctype html> "},{"adapter":"source-1","lane":"E","ok":false,"detail":"candidates=0"},{"adapter":"source-13","lane":"X","ok":false,"detail":"candidates=0,reachable=0 http=403"},{"adapter":"source-15","lane":"M","ok":false,"detail":"hlsCandidates=0,manifestReachable=0 http=403"},{"adapter":"source-9","lane":"V","ok":false,"detail":"candidates=0,multi=0"},{"adapter":"source-22","lane":"VT","ok":true,"detail":"subtitles-only tracks=12 langs=en/es/cs/da/fi/el/is/no/pt/ru http=200 rows=43"},{"adapter":"source-11","lane":"A","ok":false,"detail":"candidates=0,multi=0"},{"adapter":"source-4","lane":"B","ok":true,"detail":"candidates=5 /api/sources=http=403"},{"adapter":"source-21","lane":"W","ok":false,"detail":"candidates=1,reachable=0"},{"adapter":"source-19","lane":"DD","ok":false,"detail":"candidates=0,reachable=0 not-in-catalogue"},{"adapter":"source-24","lane":"V","ok":true,"detail":"vidlink candidates=3"},{"adapter":"source-18","lane":"S","ok":false,"detail":"candidates=0,reachable=0 http=200 api(tmdb=550)=undefined base=0 catalog=92,variants=0"},{"adapter":"source-8","lane":"Z","ok":false,"detail":"candidates=2,usable=0 (all dropped: no multi-audio or labelled dub)"},{"adapter":"source-10","lane":"V","ok":true,"detail":"candidates=5,usable=3"},{"adapter":"source-12","lane":"VZ","ok":false,"detail":"candidates=0,reachable=0"},{"adapter":"source-20","lane":"V","ok":true,"detail":"candidates=1,reachable=1"},{"adapter":"source-14","lane":"C","ok":true,"detail":"rows=5,manifestReachable=4 backends=4/6 captions=41 flowcast=ok/3 primevids=ok/3 guru=empty citadel=ok/2 quasar=timeout hindicast=timeout captions=41"},{"adapter":"source-5","lane":"N","ok":true,"detail":"candidates=12,screenscape=0,verified=0"},{"adapter":"source-25","lane":"G","ok":true,"detail":"greybox candidates=6 langs=1"}]}
+[probe] vidbolt:title-page(movie) :: HTTP 200 71ms {"bytes":8470,"head":"<!doctype html><html lang=\"en\"><head><me","json":false,"extm3u":false}
+[probe] vidbolt:title-page(tv) :: HTTP 200 29ms {"bytes":8531,"head":"<!doctype html><html lang=\"en\"><head><me","json":false,"extm3u":false}
+[probe] vidbolt:resolve(movie,proof-params) :: HTTP 200 372ms {"bytes":5831,"head":"{\"stream\":{\"server\":\"orion\",\"sources\":[{","json":true,"keys":"stream","streamSources":1,"sourceKeys":"url,kind,quality,master","sourceHasUrl":true,"sourceHost":"img.rousav.tech"}
+[probe] vidbolt:resolve(movie,our-old-params) :: HTTP 200 279ms {"bytes":5831,"head":"{\"stream\":{\"server\":\"orion\",\"sources\":[{","json":true,"keys":"stream","streamSources":1,"sourceKeys":"url,kind,quality,master","sourceHasUrl":true,"sourceHost":"img.rousav.tech"}
+[probe] vidbolt:resolve(tv,proof-params) :: HTTP 200 139ms {"bytes":1273,"head":"{\"stream\":{\"server\":\"orion\",\"sources\":[{","json":true,"keys":"stream","streamSources":1,"sourceKeys":"url,kind,quality,master","sourceHasUrl":true,"sourceHost":"gzip.rousav.tech"}
+[probe] vidbolt:episodes :: HTTP 200 25ms {"bytes":3577,"head":"{\"name\":\"Game of Thrones\",\"seasons\":[{\"s","json":true,"keys":"name,seasons,episodes","seasons":8,"episodes":10}
+[probe] vidsync:embed(movie) :: HTTP 200 53ms {"bytes":3327,"head":"<!doctype html> <html lang=\"en\"> <head","json":false,"extm3u":false}
+[probe] vidsync:core/streams :: HTTP 200 18ms {"bytes":3327,"head":"<!doctype html> <html lang=\"en\"> <head","json":false,"extm3u":false}
+[probe] vidsync:core/streams(tv) :: HTTP 200 32ms {"bytes":3327,"head":"<!doctype html> <html lang=\"en\"> <head","json":false,"extm3u":false}
+[probe] vidsync:stream(legacy) :: HTTP 200 76ms {"bytes":3327,"head":"<!doctype html> <html lang=\"en\"> <head","json":false,"extm3u":false}
+[probe] vidsync:core/proxy(shape) :: HTTP 200 50ms {"bytes":3327,"head":"<!doctype html> <html lang=\"en\"> <head","json":false,"extm3u":false}
+[probe:done]
+[tg] embed/movie/550 :: HTTP 200 bytes=18173
+[tg] script refs :: /__l5e/events.b979ee024b15adfd.js /assets/index-BVJZYIoq.js /assets/rolldown-runtime-hePW80VL.js /assets/useRouter-CZ6aLr_2.js /assets/react-dom-BHrCTEFk.js /assets/createClientRpc-CfPLwRE_.js /assets/createLucideIcon-DrRXIaQL.js /assets/cn-Ce1p1Y-o.js /assets/client-C4lE_IhW.js /assets/tv-C3hXReba.js
+[tg] bundle :: /__l5e/events.b979ee024b15adfd.js HTTP 200 bytes=28786
+[tg] bundle :: /assets/index-BVJZYIoq.js HTTP 200 bytes=339693
+[tg] bundle :: /assets/rolldown-runtime-hePW80VL.js HTTP 200 bytes=716
+[tg] bundle :: /assets/useRouter-CZ6aLr_2.js HTTP 200 bytes=8043
+[tg] bundle :: /assets/react-dom-BHrCTEFk.js HTTP 200 bytes=3588
+[tg] bundle :: /assets/createClientRpc-CfPLwRE_.js HTTP 200 bytes=33663
+[tg] bundle :: /assets/createLucideIcon-DrRXIaQL.js HTTP 200 bytes=8679
+[tg] bundle :: /assets/cn-Ce1p1Y-o.js HTTP 200 bytes=29247
+[tg] bundle :: /assets/client-C4lE_IhW.js HTTP 200 bytes=219202
+[tg] bundle :: /assets/tv-C3hXReba.js HTTP 200 bytes=940
+[tg] bundle :: /assets/bookmark-C49nOV0o.js HTTP 200 bytes=270
+[tg] bundle :: /assets/clapperboard-D1H5yPDD.js HTTP 200 bytes=400
+[tg] docs script refs :: /__l5e/events.b979ee024b15adfd.js /assets/index-BVJZYIoq.js /assets/rolldown-runtime-hePW80VL.js /assets/useRouter-CZ6aLr_2.js /assets/react-dom-BHrCTEFk.js /assets/createClientRpc-CfPLwRE_.js /assets/createLucideIcon-DrRXIaQL.js /assets/cn-Ce1p1Y-o.js
+[tg] docs bundle :: /__l5e/events.b979ee024b15adfd.js HTTP 200 bytes=28786
+[tg] docs bundle :: /assets/index-BVJZYIoq.js HTTP 200 bytes=339693
+[tg] docs bundle :: /assets/rolldown-runtime-hePW80VL.js HTTP 200 bytes=716
+[tg] docs bundle :: /assets/useRouter-CZ6aLr_2.js HTTP 200 bytes=8043
+[tg] docs bundle :: /assets/react-dom-BHrCTEFk.js HTTP 200 bytes=3588
+[tg] docs bundle :: /assets/createClientRpc-CfPLwRE_.js HTTP 200 bytes=33663
+[tg] docs bundle :: /assets/createLucideIcon-DrRXIaQL.js HTTP 200 bytes=8679
+[tg] docs bundle :: /assets/cn-Ce1p1Y-o.js HTTP 200 bytes=29247
+[tg] total js bytes :: 1145292
+[tg] upstream hosts :: 3
+[tg]   host :: react.dev  /errors/
+[tg]   host :: hrbzavbdteawtvopyczd.supabase.co  (root)
+[tg]   host :: pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev  /lovp_40e8as5q698e1byxe2e6bqsmh6/fd3236d16dc0e0eca76542ec6b8
+[tg] provider names :: tgfrost, TG FROST
+[tg] endpoint paths :: 9
+[tg]   path :: /embed
+[tg]   path :: /search
+[tg]   path :: /embed/
+[tg]   path :: /embed/$
+[tg]   path :: /embed/movie/$id
+[tg]   path :: /embed/movie/$server/$id
+[tg]   path :: /embed/tv/$id/$season/$episode
+[tg]   path :: /embed/tv/$server/$id/$season/$episode
+[tg]   path :: /api/broadcast
+[tg] sacdn:master.m3u8 :: ERR TypeError (direct fetch from the runner)
+[tg] sacdn:manifest.mpd :: ERR TypeError (direct fetch from the runner)
+[tg] sacdn:index.mpd :: ERR TypeError (direct fetch from the runner)
+[tg] sacdn:master.mpd :: ERR TypeError (direct fetch from the runner)
+[tg] bcdnt:mp4-range :: ERR TypeError (direct fetch from the runner)
+[tg] sacdn:init-segment :: ERR TypeError (direct fetch from the runner)
+[tg] reelsdownload:subs :: ERR TypeError (direct fetch from the runner)
+[tg] mimic:sacdn-init :: ERR TypeError
+[tg] mimic:bcdnt-mp4 :: ERR TypeError
+[tg] mimic:reelsdownload :: ERR TypeError
+[tg] bare:sacdn-init :: ERR TypeError
+[tg:done]
+[tgb] open :: Mushoku Tensei (anime) tv/94664/1/1
+[tgb] ui :: Mushoku Tensei (anime) :: 
+[tgb] open :: Our Sticky Love (K-drama) tv/291496/1/1
+[tgb] ui :: Our Sticky Love (K-drama) :: 
+[tgb] open :: Arcane tv/94605/1/1
+[tgb] ui :: Arcane :: 
+[tgb] open :: Game of Thrones tv/1399/1/1
+[tgb] ui :: Game of Thrones :: 
+[tgb] open :: Blue Box (anime) tv/207347/1/1
+[tgb] ui :: Blue Box (anime) :: 
+[tgb] open :: Fight Club movie/550
+[tgb] ui :: Fight Club :: 
+[tgb] distinct endpoints :: 102
+[tgb] hosts :: 10
+[tgb] host :: sacdn.hakunaymatata.com n=78 status=200 type=xhr,application/octet-stream /dash/379171015097733864_1_1_1080_h265/init-stream3.m4s /dash/379171015097733864_1_1_1080_h265/chunk-stream3-00001.m4s /dash/379171015097733864_1_1_1080_h265/chunk-stream3-00002.m4s /dash/379171015097733864_1_1_1080_h265/chunk-stream3-00003.m4s /dash/379171015097733864_1_1_1080_h265/chunk-stream3-00004.m4s
+[tgb] host :: bcdnt.hakunaymatata.com n=10 status=429 type=media,text/html /resource/a43e7f34e8358a922c8b181114bd4db6.mp4 /cms/0b22e73ec91f88761f3f5812a0626f4e.mp4 /vegamovies/686559ab134f2c06cf7e6f882e35021a.mp4 /resource/edcc07086a6af03cf275b09f55e2a101.mp4 /resource/1e48fae5212374cde744c15c08386771.mp4
+[tgb] host :: pl31864052.profitableratecpmnetwork.com n=2 status=200 type=script,application/javascript /15/19/21/1519210d91e1d8ea22012e58f4a51b30.js
+[tgb] host :: pl31864055.profitableratecpmnetwork.com n=2 status=200 type=script,application/javascript /87/dd/6c/87dd6c2c92826471e52155428af30ee3.js
+[tgb] host :: cinemaos-relay.3c7zdsk.workers.dev n=2 status=200 type=xhr,application/dash+xml /
+[tgb] host :: embed.reelsdownload.online n=2 status=200 type=fetch,text/vtt /api/subs/vtt
+[tgb] host :: cinemaos-relay.e2he74m.workers.dev n=2 status=200 type=xhr,application/dash+xml /
+[tgb] host :: cinemaos-relay.vxf1m67.workers.dev n=2 status=200 type=xhr,application/dash+xml /
+[tgb] host :: cinemaos-relay.qqpjxex.workers.dev n=1 status=- type=xhr /
+[tgb] host :: cinemaos-relay.hzxdfx7.workers.dev n=1 status=- type=xhr /
+[tgb] per-title :: Mushoku Tensei (anime) -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com cinemaos-relay.3c7zdsk.workers.dev embed.reelsdownload.online bcdnt.hakunaymatata.com sacdn.hakunaymatata.com
+[tgb] per-title :: Our Sticky Love (K-drama) -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com embed.reelsdownload.online cinemaos-relay.qqpjxex.workers.dev bcdnt.hakunaymatata.com
+[tgb] per-title :: Arcane -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com embed.reelsdownload.online cinemaos-relay.e2he74m.workers.dev bcdnt.hakunaymatata.com sacdn.hakunaymatata.com
+[tgb] per-title :: Game of Thrones -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com embed.reelsdownload.online cinemaos-relay.vxf1m67.workers.dev bcdnt.hakunaymatata.com sacdn.hakunaymatata.com
+[tgb] per-title :: Blue Box (anime) -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com
+[tgb] per-title :: Fight Club -> pl31864052.profitableratecpmnetwork.com pl31864055.profitableratecpmnetwork.com embed.reelsdownload.online cinemaos-relay.hzxdfx7.workers.dev bcdnt.hakunaymatata.com
+[tgb] media endpoints :: 88
+[tgb]   media :: bcdnt.hakunaymatata.com/resource/a43e7f34e8358a922c8b181114bd4db6.mp4 status=-
+[tgb]   media :: bcdnt.hakunaymatata.com/resource/a43e7f34e8358a922c8b181114bd4db6.mp4 status=429
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/init-stream3.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/init-stream3.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00001.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00001.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00002.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00002.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00003.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00003.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00004.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00004.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00005.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00005.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00006.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00006.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00007.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00007.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00008.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00008.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00009.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00009.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00010.m4s status=-
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00010.m4s status=200
+[tgb]   media :: sacdn.hakunaymatata.com/dash/379171015097733864_1_1_1080_h265/chunk-stream3-00011.m4s status=-
+[tgb:done]
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module '/home/runner/work/Elfura/Elfura/scripts/probe-browser-lane.mjs'
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Function._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v22.23.4
+[srv] title :: tv/94664/1/1
+[srv]   tv/94664/1/1 main     :: n=1 types=application/dash+xml hosts=cinemaos-relay.3c7zdsk.workers.dev ui=""
+[srv]   tv/94664/1/1 server1  :: n=2 types=application/dash+xml hosts=cinemaos-relay.3c7zdsk.workers.dev ui=""
+[srv]   tv/94664/1/1 server2  :: n=0 types=- hosts=- ui="What Are You Looking For From <tgfrost.lovable.app>?"
+[srv]   tv/94664/1/1 server3  :: n=0 types=- hosts=- ui=""
+[srv]   tv/94664/1/1 server4  :: n=0 types=- hosts=- ui=""
+[srv]   tv/94664/1/1 server5  :: n=0 types=- hosts=- ui=""
+[srv] title :: movie/550
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+browser.newPage: Target page, context or browser has been closed
+    at capture (/home/runner/work/Elfura/Elfura/scripts/probe-tgfrost-servers.mjs:49:30)
+    at /home/runner/work/Elfura/Elfura/scripts/probe-tgfrost-servers.mjs:82:25
+    at /home/runner/work/Elfura/Elfura/scripts/probe-tgfrost-servers.mjs:77:26 {
+  log: []
+}
+
+Node.js v22.23.4
+[tgvid] root :: HTTP 200 bytes=22080
+[tgvid] root head :: <!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="ht
+[tgvid] script refs :: /__l5e/events.b979ee024b15adfd.js /assets/index-BBdFXFVx.js /assets/rolldown-runtime-CbXtAM7H.js /assets/link-Bwne9Cls.js /assets/createServerFn-Ci9Cdpbp.js /assets/routes-DAuqbz4c.js /assets/Ads-C58-_Lo4.js
+[tgvid] bundle :: /__l5e/events.b979ee024b15adfd.js HTTP 200 bytes=28786
+[tgvid] bundle :: /assets/index-BBdFXFVx.js HTTP 200 bytes=515258
+[tgvid] bundle :: /assets/rolldown-runtime-CbXtAM7H.js HTTP 200 bytes=589
+[tgvid] bundle :: /assets/link-Bwne9Cls.js HTTP 200 bytes=19137
+[tgvid] bundle :: /assets/createServerFn-Ci9Cdpbp.js HTTP 200 bytes=38026
+[tgvid] bundle :: /assets/routes-DAuqbz4c.js HTTP 200 bytes=8444
+[tgvid] bundle :: /assets/Ads-C58-_Lo4.js HTTP 200 bytes=1105
+[tgvid] total js bytes :: 611351
+[tgvid] upstream hosts :: 7
+[tgvid]   host :: github.com /supabase/supabase-js/blob/master/packages/core/re /supabase/supabase-js/blob/master/packages/core/au /orgs/supabase/discussions/45715
+[tgvid]   host :: sgbohqomxzdbmcrovohl.supabase.co 
+[tgvid]   host :: example.com 
+[tgvid]   host :: www.profitableratecpmnetwork.com /my1whffz
+[tgvid]   host :: pl31805578.profitableratecpmnetwork.com /5e/d6/e2/5ed6e21d09cff979420ba458565ad25c.js
+[tgvid]   host :: pl31805580.profitableratecpmnetwork.com /60/79/ef/6079ef00bedfd404e5969693c9a9095b.js
+[tgvid]   host :: pl31805581.profitableratecpmnetwork.com /$%7Bc%7D/invoke.js
+[tgvid] endpoint paths :: 5
+[tgvid]   path :: /api/broadcast
+[tgvid]   path :: /embed/movie/$tmdbid
+[tgvid]   path :: /embed/tv/$tmdbid/$season/$ep
+[tgvid]   path :: /embed/movie/${n}
+[tgvid]   path :: /embed/tv/${n}/${f}/${m}
+[tgvid] identifiers seen (sample) :: TextEncoder, Blob, CLS, FCP, INP, LCP, TTFB, Reflect, Esc, Spacebar, Left, Right, Down, Del, Win, Menu, Apps, Scroll, MozPrintableKey, Alt, Control, Meta, Shift, ErrorEvent, AbortController, Consumer, Provider, WeakSet, WeakMap, Link, Any, ApNortheast1, ApNortheast2, ApSouth1, ApSoutheast1, ApSoutheast2, CaCentral1, EuCentral1, EuWest1, EuWest2
+[tgvid] page :: / ui="TGVID Discord Docs EMBEDDABLE PLAYER Movies & series, one iframe away "
+[tgvid] page :: /movie/550 ui="404 Page not found The page you're looking for doesn't exist or has be"
+[tgvid] page :: /tv/1399/1/1 ui="404 Page not found The page you're looking for doesn't exist or has be"
+[tgvid] page :: /embed/movie/550 ui="DRAMA / THRILLER CONNECTING TO SERVER_ Server / Source 01 Press F to e"
+[tgvid] watched endpoints :: 2
+[tgvid]   hit :: vidsync.pro/api/core/streams n=2 status=200 ct=text/html
+[tgvid]   hit :: vidsync.pro/api/stream n=2 status=200 ct=text/html
+[tgvid] json responses :: 0
+[tgvid:done]
+[tgv2] bundle :: /__l5e/events.b979ee024b15adfd.js HTTP 200 bytes=28786
+[tgv2] bundle :: /assets/index-BBdFXFVx.js HTTP 200 bytes=515258
+[tgv2] bundle :: /assets/rolldown-runtime-CbXtAM7H.js HTTP 200 bytes=589
+[tgv2] bundle :: /assets/link-Bwne9Cls.js HTTP 200 bytes=19137
+[tgv2] bundle :: /assets/createServerFn-Ci9Cdpbp.js HTTP 200 bytes=38026
+[tgv2] bundle :: /assets/routes-DAuqbz4c.js HTTP 200 bytes=8444
+[tgv2] bundle :: /assets/Ads-C58-_Lo4.js HTTP 200 bytes=1105
+[tgv2] js bytes :: 611351
+[tgv2] server-fn ids :: none
+[tgv2] source-name tokens :: tmdb, tgvid
+[tgv2] api paths :: 2
+[tgv2]   path :: /api/broadcast
+[tgv2]   path :: /_serverFn/
+[tgv2] candidate hosts :: react.dev www.w3.org example.com
+[tgv2] page :: /embed/movie/550 ui="TGFLIX Back Servers You're Watching Fight Club Movie Drama 1999 0:04 2:19:08 Pause Backward 15s Forward 15s Volume Audio Subtitle Quality (Auto) Settings Fullsc"
+[tgv2] page :: /embed/tv/1399/1/1 ui="TGFLIX Back Episodes Servers You're Watching Game of Thrones S1E1 Series Sci-Fi & Fantasy 2011 0:05 1:01:37 Pause Backward 15s Forward 15s Next Episode Volume A"
+[tgv2] rpc endpoints :: 2
+[tgv2]   rpc :: vidsync.pro/api/core/streams n=2 status=200 ct=text/html
+[tgv2]   rpc :: vidsync.pro/api/stream n=2 status=200 ct=text/html
+[tgv2] POSTs :: 0
+[tgv2] finder:root :: HTTP 404 bytes=1240 ::  <!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="view
+[tgv2] finder:api :: HTTP 404 bytes=1240 ::  <!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="view
+[tgv2:done]
+[tgv3] /embed/movie/550 :: HTTP 200 15842B media=0 hosts=-
+[tgv3] /embed/tv/1399/1/1 :: HTTP 200 15915B media=0 hosts=-
+[tgv3] /embed/movie/1007757 :: HTTP 200 15846B media=0 hosts=-
+[tgv3] /embed/tv/94664/1/1 :: HTTP 200 15916B media=0 hosts=-
+[tgv3] --- CDN reachability from the runner --- :: undefined
+[tgv3] media urls found :: 0
+[tgv3:done]
+[napi] vidlink:api/b :: HTTP 200 vidlink.pro/api/b/movie/550 ct=application/json kind=json unparsed:null
+[napi] vidlink:api/b/tv :: HTTP 200 vidlink.pro/api/b/tv/1399/1/1 ct=application/json kind=json unparsed:null
+[napi] enc-dec:enc-vidlink :: HTTP 200 enc-dec.app/api/enc-vidlink ct=application/json kind=json keys=status,result 
+[napi] speedracelight:find :: HTTP 429 db.speedracelight.com/3/find/550 ct=application/json kind=json keys=type,title,status,detail,instance,error_code,error_name,error_category 
+[napi] meowtv:root :: HTTP 200 meowtv.ru/ ct=text/html kind=html head=<!DOCTYPE html> <html lang="en" class="dark"> <head> <meta chars
+[napi] meowtv:play :: HTTP 200 meowtv.ru/play/550 ct=text/html kind=html head=<!DOCTYPE html> <html lang="en" class="dark"> <head> <meta chars
+[napi] zxcstream:root :: HTTP 200 zxcstream.com/ ct=text/html kind=html head=<!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c
+[napi] netmirror:userver :: HTTP 200 userver.net52.cc/ ct=text/html kind=html head=<h1>User NOT Verify..err: 185</h1>
+[napi] videodownloader:root :: HTTP 200 videodownloader.site/ ct=text/html kind=html head=<!DOCTYPE html><html lang="en" dir="ltr"><head><meta charSet="utf-8"/>
+[napi] animedekho:play :: HTTP 403 animedekho.tv/aaa/get/play.php ct=text/html kind=html head=<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title
+[napi] animedekho:root :: HTTP 403 animedekho.tv/ ct=text/html kind=html head=<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title
+[napi] dooflix:xpass :: HTTP 403 play.xpass.top/play/550 ct=text/html kind=html head=<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title
+[napi] dooflix:2embed :: HTTP 200 streamsrcs.2embed.cc/swish ct=text/html kind=html head=<html lang="en"> <head> <meta charset="utf-8"> <meta name="robots" con
+[napi] goojara:search :: HTTP 403 ww1.goojara.to/xhrr.php ct=text/html kind=html head=<!DOCTYPE html> <!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="
+[napi] vegamovies:root :: ERR TypeError
+[napi] hdhub4u:root :: ERR TypeError
+[napi] uhdmovies:root :: ERR TypeError
+[napi] fourkdhub:root :: ERR TypeError
+[napi] castletv:root :: HTTP 403 castletv.net/ ct=text/html kind=html head=<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN"> <html><head> <title
+[napi] allmovieland:root :: ERR TypeError
+[napi] showbox:root :: HTTP 200 showbox.media/ ct=text/html kind=html head=<!DOCTYPE html> <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="
+[napi] streamflix:root :: HTTP 401 ww547.streamflix.to/ ct=text/html kind=html head=Forbidden
+[napi] xon:root :: ERR TypeError
+[napi:done]
+[vl] adapter :: source-24 (Source 24) enabled=true
+[vl] movie/550 :: candidates=3 types=mp4 quals=360p,480p,720p hosts=bcdn.hakunaymatata.com 314ms
+[vl]   diag movie/550 :: V ok=true vidlink candidates=3 (314ms)
+[vl] tv/1399/1/1 :: candidates=0 types=- quals=- hosts=- 637ms
+[vl]   diag tv/1399/1/1 :: V ok=false vidlink TypeError (637ms)
+[vl] tv/94664/1/1 :: candidates=0 types=- quals=- hosts=- 856ms
+[vl]   diag tv/94664/1/1 :: V ok=false vidlink TypeError (856ms)
+[vl] tv/291496/1/1 :: candidates=3 types=mp4 quals=360p,480p,1080p hosts=bcdnxw.hakunaymatata.com 415ms
+[vl]   diag tv/291496/1/1 :: V ok=true vidlink candidates=3 (415ms)
+[vl:done]
+[zxc] --- case :: movie/550 (Fight Club)
+[zxc]   token /backend/trace :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/getthefuckoutniiguh :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/wtfnigga :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/fucku :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/token :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token :: NONE — cannot continue for this case
+[zxc] --- case :: tv/1399 (Game of Thrones)
+[zxc]   token /backend/trace :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/getthefuckoutniiguh :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/wtfnigga :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/fucku :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/token :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token :: NONE — cannot continue for this case
+[zxc] --- case :: tv/94664 (Mushoku Tensei)
+[zxc]   token /backend/trace :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/getthefuckoutniiguh :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/wtfnigga :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/fucku :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token /backend/token :: HTTP 404 <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__
+[zxc]   token :: NONE — cannot continue for this case
+[zxc] root :: HTTP 200 bytes=12550
+[zxc:done]
+[zxc2] player page :: HTTP 200 bytes=14621
+[zxc2] chunks :: 17 referenced
+[zxc2] field map source chunk :: /_next/static/chunks/0599zxj_fc6.o.js (0 fields)
+[zxc2] field map source chunk :: /_next/static/chunks/0cs9yd68ppim9.js (0 fields)
+[zxc2] field map source chunk :: /_next/static/chunks/09v_g58-1gejs.js (13 fields)
+[zxc2] token endpoint :: /backend/andromeda
+[zxc2] POST calls :: /backend/andromeda /backend/report
+[zxc2] backend paths :: /backend/andromeda /backend/report
+[zxc2] field map :: {"id":"a7f39c821d604e5b91e57b","fToken":"e83c4b719a5210579c1635a","ts":"61d9a5274c8e3b2f38291e6","token":"c492f7a183d01e36c538a716d","title":"5e28c9147a06de29f3674b392a1","year":"b731e6c94f867f8341c306e","season":"d8427b5c382f957c3613e85b","episode":"91c6ea75d1f785c92346b713d","imdbId":"f35a8194265e871c4933a725f","path":"6b491e258392e7561a9384c","mediaType":"c81306d28147a35632e816b","date":"e16493139e5814b3027","latestDate":"e953416ad739e5814b3027"}
+[zxc2] --- case :: movie/550 (Fight Club)
+[zxc2]   token /backend/andromeda :: HTTP 200 {"token":"b197011a9e7d26b5ba17ecd4c44cbf0e4e43feab350de27c9885a83a44915039","ts":1794988107245}
+[zxc2]   token :: len=64
+[zxc2]   details GET imdb :: HTTP 200 json keys=id,cast,title,genres,rating,status,country,imdb_id,runtime,seasons cast[5] genres[2] seasons[0] logo_paths[1] backdrop_paths[3] m3u8=0 mpd=0 hosts=
+[zxc2]   details GET tmdb :: HTTP 404 non-json <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__T19VSG__va
+[zxc2]   details POST :: HTTP 405 non-json 
+[zxc2] --- case :: tv/1399 (Game of Thrones)
+[zxc2]   token /backend/andromeda :: HTTP 200 {"token":"4eb85da710a30081aad41c6cea6d80257fd888fcdcd6917c974381f6b17af0d1","ts":1794988108042}
+[zxc2]   token :: len=64
+[zxc2]   details GET imdb :: HTTP 429 non-json <!doctype html> <!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+[zxc2]   details GET tmdb :: HTTP 429 non-json <!doctype html> <!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+[zxc2]   details POST :: HTTP 429 json keys=type,title,status,detail,instance,error_code,error_name,error_category,ray_id,timestamp  m3u8=0 mpd=0 hosts=developers.cloudflare.com
+[zxc2] --- case :: tv/94664 (Mushoku Tensei)
+[zxc2]   token /backend/andromeda :: HTTP 429 {"type":"https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1015/"
+[zxc2]   token :: absent from response — stopping this case
+[zxc2:done]
+[zxc3] chunks :: 17
+[zxc3] backend paths :: /backend/andromeda /backend_/sources/${l}?${r.toString()} /backend/imdb/season/${e}/season/${t} /backend/report /backend/intro?imdbId=${e}&season=${t}&episode=${r}&tmdbId=${n} /backend/imdb/details/${t}/${n}
+[zxc3] template prefixes :: /backend_/sources/ /backend/imdb/season/ /backend/intro?imdbId= /backend/imdb/details/
+[zxc3] token endpoint :: /backend/andromeda
+[zxc3] field map :: acquired
+[zxc3] === pass 1: 6 serverKeys, movie/550, one shared token :: undefined
+[zxc3] --- :: atlas
+[zxc3]   result :: HTTP 200 raw=1 kept=1 kinds=dash quals=- hosts=shiny-hill-6358.angsarapmopia2.workers.dev
+[zxc3]   sample :: [{"type":"dash","host":"shiny-hill-6358.angsarapmopia2.workers.dev","ext":"none"}]
+[zxc3] --- :: AethoAtlas
+[zxc3]   result :: sources non-json HTTP 404 [next404] <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-mod
+[zxc3] --- :: valstrax
+[zxc3]   result :: HTTP 401 raw=0 kept=0 kinds=- quals=- hosts=-
+[zxc3] --- :: ursa
+[zxc3]   result :: HTTP 401 raw=0 kept=0 kinds=- quals=- hosts=-
+[zxc3] --- :: alatreon
+[zxc3]   result :: HTTP 401 raw=0 kept=0 kinds=- quals=- hosts=-
+[zxc3] === pass 2: TV, fresh token :: undefined
+[zxc3]   result :: sources non-json HTTP 404 [next404] <!DOCTYPE html><html lang="en" class="h-full antialiased geist_a71539c9-module__T19VSG__variable geist_mono_8d43a2aa-mod
+[zxc3:done]
+[bingr] https://vidly.pro/embed/movie/550 :: HTTP 200 blob=779b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=img.rousav.tech
+[bingr] https://vidly.pro/embed/tv/1399/1/1 :: HTTP 200 blob=771b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=gzip.rousav.tech
+[bingr] https://vidly.pro/embed/tv/94664/1/1 :: HTTP 200 blob=119294b provider=Prism streams=7 types=hls quals=1080p,720p langs=English,Original,Arabic sub,Hindi,Indonesian,Indonesian sub subs=119 hosts=dash-hls-bridge.johndoesdmc.workers.dev|hakunamatata.streamrip.fun
+[bingr] https://vidly.pro/embed/movie/693134 :: HTTP 200 blob=779b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=img.rousav.tech
+[bingr] https://embed.filmu.in/embed/movie/550 :: HTTP 200 blob=779b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=img.rousav.tech
+[bingr] https://embed.filmu.in/embed/tv/1399/1/1 :: HTTP 200 blob=771b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=gzip.rousav.tech
+[bingr] https://embed.filmu.in/embed/tv/94664/1/1 :: HTTP 200 blob=119294b provider=Prism streams=7 types=hls quals=1080p,720p langs=English,Original,Arabic sub,Hindi,Indonesian,Indonesian sub subs=119 hosts=dash-hls-bridge.johndoesdmc.workers.dev|hakunamatata.streamrip.fun
+[bingr] https://embed.filmu.in/embed/movie/693134 :: HTTP 200 blob=779b provider=Edge streams=1 types=hls quals=1080p langs=Edge #1 subs=0 hosts=img.rousav.tech
+[bingr] control bingr.st/watch/movie/550 :: HTTP 200 bytes=150397 blob=yes
+[bingr:done]
+[s4] adapter :: source-4 (Source 4)
+[s4] movie/550 :: candidates=5 types=hls quals=720p,1080p,1080p,1080p,720p langs=en,fr,hi,uk hosts=hakunamatata.streamrip.fun|dash-hls-bridge.johndoesdmc.workers.dev 334ms
+[s4]   diag movie/550 :: B ok=true candidates=5 /api/sources=http=403 (333ms)
+[s4] tv/1399/1/1 :: candidates=6 types=hls quals=1080p,1080p,360p,720p,480p,1080p langs=en,es-419,hi,pt-br hosts=hakunamatata.streamrip.fun|dash-hls-bridge.johndoesdmc.workers.dev 755ms
+[s4]   diag tv/1399/1/1 :: B ok=true candidates=6 /api/sources=http=403 (755ms)
+[s4] tv/94664/1/1 :: candidates=7 types=hls quals=1080p,1080p,1080p,1080p,720p,720p,720p langs=en,hi,id,pt-br hosts=dash-hls-bridge.johndoesdmc.workers.dev|hakunamatata.streamrip.fun 787ms
+[s4]   diag tv/94664/1/1 :: B ok=true candidates=7 /api/sources=http=403 (787ms)
+[s4] movie/693134 :: candidates=9 types=hls quals=480p,1080p,1080p,720p,720p,1080p,720p,1080p langs=en,ar,bn,es-419,fr,hi,ta,te hosts=hakunamatata.streamrip.fun|dash-hls-bridge.johndoesdmc.workers.dev 469ms
+[s4]   diag movie/693134 :: B ok=true candidates=9 /api/sources=http=403 (469ms)
+[s4] summary :: totalCandidates=27 over 4 titles
+[s4:done]
+[bent] manual+selfReferer+UA22 :: HTTP 403 blob=no bytes=4543
+[bent] manual+originReferer+UA22 :: HTTP 403 blob=no bytes=4543
+[bent] manual+noReferer+UA22 :: HTTP 403 blob=no bytes=4543
+[bent] follow+selfReferer+UA22 :: HTTP 403 blob=no bytes=4543
+[bent] follow+originReferer+UA22 :: HTTP 403 blob=no bytes=4543
+[bent] manual+selfReferer+UA131 :: HTTP 200 blob=yes bytes=150030
+[bent] follow+noReferer+UA131 :: HTTP 200 blob=yes bytes=150030
+[bent] bingr.st root :: HTTP 308 blob=no bytes=17250 location=/home
+[bent] bingr.st watch :: HTTP 200 blob=yes bytes=150397
+[bent] https://vidly.pro (manual) :: HTTP 200 blob=yes bytes=50413
+[bent] https://embed.filmu.in (manual) :: HTTP 301 blob=no bytes=167
+[bent:done]
+[gb] movie/1368337 :: ERR TimeoutError
+[gb] tv/71446 s1e1 :: ERR TimeoutError
+[gb] movie/550 :: ERR TimeoutError
+[gb] tv/1399 s1e1 :: ERR TimeoutError
+[gb] tv/94664 s1e1 :: ERR TimeoutError
+[gb] movie/693134 :: ERR TimeoutError
+[gb] root :: ERR TimeoutError
+[gb:done]
+node:internal/deps/undici/undici:15456
+      Error.captureStackTrace(err);
+            ^
+
+DOMException [TimeoutError]: The operation was aborted due to timeout
+    at node:internal/deps/undici/undici:15456:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async getJson (file:///home/runner/work/Elfura/Elfura/scripts/probe-greybox-media.mjs:20:15)
+    at async file:///home/runner/work/Elfura/Elfura/scripts/probe-greybox-media.mjs:52:28
+
+Node.js v22.23.4
+[gb25] adapter :: source-25 (Source 25) enabled=true
+[gb25] movie/1368337 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15002ms
+[gb25]   diag movie/1368337 :: G ok=false greybox TimeoutError (15002ms)
+[gb25] tv/71446/1/1 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15001ms
+[gb25]   diag tv/71446/1/1 :: G ok=false greybox TimeoutError (15000ms)
+[gb25] movie/550 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15000ms
+[gb25]   diag movie/550 :: G ok=false greybox TimeoutError (15000ms)
+[gb25] tv/1399/1/1 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15000ms
+[gb25]   diag tv/1399/1/1 :: G ok=false greybox TimeoutError (15000ms)
+[gb25] tv/94664/1/1 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15000ms
+[gb25]   diag tv/94664/1/1 :: G ok=false greybox TimeoutError (15000ms)
+[gb25] movie/693134 :: candidates=0 types= quals= claimed=- availLangs=0 subs=0 seg=none hosts= 15002ms
+[gb25]   diag movie/693134 :: G ok=false greybox TimeoutError (15002ms)
+[gb25] summary :: totalCandidates=0 over 6 titles
+[gb25:done]
+[pipe] server :: listening on 127.0.0.1:45941
+[pipe] health :: HTTP 200 sourceCount=21 build=unknown
+[pipe] roxy sites :: HTTP 401 count=0 
+[elfura-sources] source-17 tv/71446: 0 candidates in 7ms :: 0 req
+[elfura-sources] source-16 tv/71446: 0 candidates in 8ms :: 0 req
+[elfura-sources] source-3 tv/71446: 0 candidates in 180ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-13 tv/71446: 0 candidates in 764ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 tv/71446: 0 candidates in 809ms :: 1 req · mapple.fun 403
+[elfura-sources] source-11 tv/71446: 0 candidates in 897ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 tv/71446: 0 candidates in 912ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-19 tv/71446: 0 candidates in 1110ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-22 tv/71446: 0 candidates in 1257ms :: 1 req · vidly.pro 200
+[elfura-sources] source-21 tv/71446: 0 candidates in 1311ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-sources] source-18 tv/71446: 0 candidates in 1747ms :: 2 req · blakiteapi.xyz 200×2
+[elfura-sources] source-12 tv/71446: 0 candidates in 2602ms :: 12 req · vidzen.fun 23×11 · vidzen.fun 200
+[elfura-sources] source-10 tv/71446: 0 candidates in 3058ms :: 8 req · new.vidnest.fun 502×4 · new.vidnest.fun 200×2 · media.bigbang.observer 403×2
+[elfura-resolve] tv/71446: listed 11 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-resolve] runtime guard dropped 8 stream(s) for tv/71446 (expected 90min ±5min) :: source-1@49min source-4@49min source-4@47min source-4@47min source-4@47min source-4@47min source-4@47min source-5@49min
+[pipe] tv/71446/1/1 :: HTTP 200 ok primary=source-5/1080p/hls options=15 3405ms
+[pipe]   tv/71446/1/1 bySource :: source-5=5 source-4=9 source-1=1
+[pipe]   tv/71446/1/1 pending :: source-8,source-25
+[pipe]   tv/71446/1/1 hosts :: relay-local
+[pipe]   tv/71446/1/1 langs :: -
+[elfura-sources] source-8 tv/71446: 0 candidates in 3699ms :: 5 req · core.vidzee.wtf 400 · core.vidzee.wtf 200 · core.vidzee.wtf 502 · core.vidzee.wtf 23
+[elfura-sources] source-25 tv/71446: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[pipe]   tv/71446/1/1 adapter source-1 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-3 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-4 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-5 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-8 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-9 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-10 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-11 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-12 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-13 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-14 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-15 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-16 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-17 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-18 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-19 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-20 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-21 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-22 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-24 :: ok=undefined candidates=? 
+[pipe]   tv/71446/1/1 adapter source-25 :: ok=undefined candidates=? 
+[elfura-sources] source-17 movie/1368337: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-16 movie/1368337: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-13 movie/1368337: 0 candidates in 74ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/1368337: 0 candidates in 84ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/1368337: 0 candidates in 94ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 movie/1368337: 0 candidates in 123ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/1368337: 0 candidates in 235ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/1368337: 0 candidates in 230ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/1368337: 0 candidates in 402ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/1368337: 0 candidates in 401ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-24 movie/1368337: 0 candidates in 404ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] movie/1368337: listed 29 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[pipe] movie/1368337 :: HTTP 200 ok primary=source-5/1080p/hls options=48 2221ms
+[pipe]   movie/1368337 bySource :: source-5=23 source-21=1 source-1=8 source-4=8 source-10=6 source-20=1 source-8=1
+[pipe]   movie/1368337 pending :: source-12,source-14,source-25
+[pipe]   movie/1368337 hosts :: relay-local
+[pipe]   movie/1368337 langs :: hi,en,ta,te
+[elfura-sources] source-25 movie/1368337: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[pipe]   movie/1368337 adapter source-1 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-3 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-4 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-5 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-8 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-9 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-10 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-11 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-12 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-13 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-14 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-15 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-16 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-17 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-18 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-19 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-20 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-21 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-22 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-24 :: ok=undefined candidates=? 
+[pipe]   movie/1368337 adapter source-25 :: ok=undefined candidates=? 
+[elfura-sources] source-17 movie/550: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 59ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/550: 0 candidates in 68ms :: 1 req · mapple.fun 403
+[elfura-sources] source-3 movie/550: 0 candidates in 151ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-19 movie/550: 0 candidates in 149ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-11 movie/550: 0 candidates in 243ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/550: 0 candidates in 347ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-21 movie/550: 0 candidates in 339ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-18 movie/550: 0 candidates in 409ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-22 movie/550: 0 candidates in 984ms :: 1 req · vidly.pro 200
+[elfura-sources] source-8 movie/550: 0 candidates in 1102ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn2.slowcloud.live 200
+[elfura-resolve] movie/550: listed 14 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[pipe] movie/550 :: HTTP 200 ok primary=source-1/auto/hls options=30 2414ms
+[pipe]   movie/550 bySource :: source-1=9 source-4=5 source-10=3 source-5=12 source-20=1
+[pipe]   movie/550 pending :: source-12,source-14,source-25
+[pipe]   movie/550 hosts :: relay-local
+[pipe]   movie/550 langs :: de,en,es,fr,it,ja,pl,pt,tr
+[elfura-sources] source-25 movie/550: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[pipe]   movie/550 adapter source-1 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-3 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-4 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-5 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-8 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-9 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-10 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-11 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-12 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-13 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-14 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-15 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-16 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-17 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-18 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-19 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-20 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-21 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-22 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-24 :: ok=undefined candidates=? 
+[pipe]   movie/550 adapter source-25 :: ok=undefined candidates=? 
+[elfura-sources] source-17 tv/1399: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-16 tv/1399: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-13 tv/1399: 0 candidates in 53ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 tv/1399: 0 candidates in 65ms :: 1 req · mapple.fun 403
+[elfura-sources] source-3 tv/1399: 0 candidates in 108ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-19 tv/1399: 0 candidates in 123ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-11 tv/1399: 0 candidates in 219ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 tv/1399: 0 candidates in 377ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 tv/1399: 0 candidates in 400ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-22 tv/1399: 0 candidates in 502ms :: 1 req · vidly.pro 200
+[elfura-sources] source-24 tv/1399: 0 candidates in 507ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] tv/1399: listed 31 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[pipe] tv/1399/1/1 :: HTTP 200 ok primary=source-1/auto/hls options=45 2423ms
+[pipe]   tv/1399/1/1 bySource :: source-1=5 source-21=1 source-4=10 source-10=3 source-20=1 source-8=1 source-5=24
+[pipe]   tv/1399/1/1 pending :: source-12,source-14,source-25
+[pipe]   tv/1399/1/1 hosts :: relay-local
+[pipe]   tv/1399/1/1 langs :: hi,te,en,ta,kn
+[elfura-sources] source-12 tv/1399: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-25 tv/1399: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[pipe]   tv/1399/1/1 adapter source-1 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-3 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-4 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-5 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-8 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-9 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-10 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-11 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-12 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-13 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-14 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-15 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-16 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-17 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-18 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-19 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-20 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-21 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-22 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-24 :: ok=undefined candidates=? 
+[pipe]   tv/1399/1/1 adapter source-25 :: ok=undefined candidates=? 
+[elfura-sources] source-17 tv/71446: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-16 tv/71446: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-13 tv/71446: 0 candidates in 80ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 tv/71446: 0 candidates in 87ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 tv/71446: 0 candidates in 101ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 tv/71446: 0 candidates in 124ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 tv/71446: 0 candidates in 160ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 tv/71446: 0 candidates in 223ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-18 tv/71446: 0 candidates in 308ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-9 tv/71446: 0 candidates in 397ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-21 tv/71446: 0 candidates in 471ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-sources] source-12 tv/71446: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-8 tv/71446: 0 candidates in 3151ms :: 5 req · core.vidzee.wtf 502×2 · core.vidzee.wtf 400 · core.vidzee.wtf 200 · cdn2.slowcloud.live 200
+[elfura-resolve] tv/71446: listed 28 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-resolve] runtime guard dropped 10 stream(s) for tv/71446 (expected 90min ±5min) :: source-1@49min source-4@49min source-4@47min source-4@47min source-4@47min source-4@47min source-5@49min source-5@49min source-5@49min source-20@81min
+[pipe] play tv/71446/1/1 source-20 :: HTTP 200 manifest=true variants=1 ct=application/vnd.apple.mpegurl; charset=utf-8 first=1270B quality=auto type=hls
+[pipe] play tv/71446/1/1 source-5 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=4021B quality=1080p type=hls
+[pipe] play tv/71446/1/1 source-4 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=4083B quality=1080p type=hls
+[pipe] play tv/71446/1/1 source-1 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=9159B quality=auto type=hls
+[elfura-sources] source-17 movie/1368337: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/1368337: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/1368337: 0 candidates in 11ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/1368337: 0 candidates in 20ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/1368337: 0 candidates in 26ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 movie/1368337: 0 candidates in 37ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/1368337: 0 candidates in 57ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/1368337: 0 candidates in 171ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-10 tv/71446: 0 candidates in 3889ms :: 8 req · new.vidnest.fun 502×4 · new.vidnest.fun 200×2 · media.bigbang.observer 403×2
+[elfura-sources] source-9 movie/1368337: 0 candidates in 323ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/1368337: 0 candidates in 433ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-24 movie/1368337: 0 candidates in 602ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] movie/1368337: listed 29 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[pipe] play movie/1368337 source-21 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=4203B quality=auto type=hls
+[pipe] play movie/1368337 source-1 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=3566B quality=auto type=hls
+[pipe] play movie/1368337 source-4 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=4084B quality=1080p type=hls
+[pipe] play movie/1368337 source-10 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=1866B quality=auto type=hls
+[pipe] play movie/1368337 source-20 :: HTTP 200 manifest=true variants=1 ct=application/vnd.apple.mpegurl; charset=utf-8 first=1161B quality=auto type=hls
+[pipe] play movie/1368337 source-8 :: HTTP 200 manifest=true variants=0 ct=application/vnd.apple.mpegurl; charset=utf-8 first=64913B quality=auto type=hls
+[elfura-sources] source-12 movie/1368337: 0 candidates in 2599ms :: 1 req · vidzen.fun 23
+[pipe] play movie/1368337 source-5 :: HTTP 403 manifest=false variants=0 ct=application/json; charset=utf-8 first=45B quality=720p type=hls head="{"ok":false,"error":"upstream responded 403"}"
+[pipe:done]
+[elfura-sources] source-25 tv/71446: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/1368337: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[ifr] --- config :: ALLOWED_ORIGINS unset ('*')
+[elfura-sources] source-17 movie/550: 0 candidates in 6ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 6ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 84ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/550: 0 candidates in 98ms :: 1 req · vidly.pro 200
+[elfura-sources] source-13 movie/550: 0 candidates in 107ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-3 movie/550: 0 candidates in 188ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-19 movie/550: 0 candidates in 183ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-11 movie/550: 0 candidates in 242ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 292ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 391ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 685ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-18 movie/550: 0 candidates in 836ms :: 2 req · blakiteapi.xyz 200×2
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] own page (self referer) :: HTTP 200 ok sources=25
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 9ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 30ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 31ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-22 movie/550: 0 candidates in 39ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 63ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-21 movie/550: 0 candidates in 184ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-11 movie/550: 0 candidates in 191ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/550: 0 candidates in 336ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 696ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-8 movie/550: 0 candidates in 701ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn2.slowcloud.live 200
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] cross-site iframe (parent origin) :: HTTP 200 ok sources=30
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 11ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/550: 0 candidates in 22ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 30ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-22 movie/550: 0 candidates in 31ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 91ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 96ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 167ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 259ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 351ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 585ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-sources] source-25 movie/550: 0 candidates in 5972ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 3483ms :: 0 req
+[elfura-sources] source-25 movie/550: 0 candidates in 1441ms :: 0 req
+[elfura-resolve] movie/550: listed 14 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] cross-site iframe (parent referer only) :: HTTP 200 ok sources=30
+[ifr] --- config :: ALLOWED_ORIGINS=https://elfura.example
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 17ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 17ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 23ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 27ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 68ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/550: 0 candidates in 182ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 253ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 326ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 397ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-8 movie/550: 0 candidates in 518ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] own page on allowed origin :: HTTP 200 ok sources=26
+[elfura-sources] source-17 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-22 movie/550: 0 candidates in 12ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 20ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 27ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 27ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 71ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 96ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 164ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 239ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 343ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-12 movie/550: 0 candidates in 2601ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-12 movie/550: 0 candidates in 552ms :: 0 req
+[elfura-sources] source-8 movie/550: 0 candidates in 566ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] cross-site iframe (parent origin) :: HTTP 200 ok sources=30
+[elfura-sources] source-17 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 12ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 16ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 21ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 28ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 86ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 101ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 176ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 246ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 332ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 587ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-25 movie/550: 0 candidates in 5997ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 3949ms :: 0 req
+[elfura-sources] source-25 movie/550: 0 candidates in 2017ms :: 0 req
+[elfura-resolve] movie/550: listed 11 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] cross-site iframe (parent referer only) :: HTTP 200 ok sources=25
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 10ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 14ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 movie/550: 0 candidates in 28ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-15 movie/550: 0 candidates in 33ms :: 1 req · mapple.fun 403
+[elfura-sources] source-3 movie/550: 0 candidates in 97ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 102ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 196ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 228ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 337ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 591ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] our embed page as referer :: HTTP 200 ok sources=30
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 12ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 14ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 17ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 23ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-18 movie/550: 0 candidates in 105ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-3 movie/550: 0 candidates in 146ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/550: 0 candidates in 170ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 217ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 335ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 613ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-12 movie/550: 0 candidates in 5999ms :: 31 req · vidzen.fun 23×19 · vidzen.fun 200×7 · vidzen.fun 403×5
+[elfura-sources] source-12 movie/550: 0 candidates in 3695ms :: 0 req
+[elfura-sources] source-12 movie/550: 0 candidates in 667ms :: 0 req
+[elfura-resolve] movie/550: listed 14 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] parent referer, our Origin :: HTTP 200 ok sources=30
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 20ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 23ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 25ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-22 movie/550: 0 candidates in 31ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 55ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 102ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 208ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 209ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 333ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 584ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-25 movie/550: 0 candidates in 5997ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 2966ms :: 0 req
+[elfura-sources] source-25 movie/550: 0 candidates in 921ms :: 0 req
+[elfura-resolve] movie/550: listed 14 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] parent referer + Sec-Fetch-Site same-origin :: HTTP 200
+[ifr] --- config :: ALLOWED_ORIGINS=https://elfura.example  (allowlist must now be irrelevant)
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-22 movie/550: 0 candidates in 12ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 22ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 26ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 26ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 38ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 96ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 198ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 197ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 315ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 569ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] movie/550: listed 14 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] embed by https://theogpiratebot.online :: HTTP 200 ok sources=30
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 10ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 14ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 23ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 27ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 55ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 99ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 165ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 239ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 317ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 623ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-10 movie/550: 0 candidates in 713ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-resolve] movie/550: listed 15 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] embed by https://www.theogpiratebot.online :: HTTP 200 ok sources=31
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 10ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/550: 0 candidates in 13ms :: 1 req · vidly.pro 200
+[elfura-sources] source-13 movie/550: 0 candidates in 18ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 28ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 97ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 98ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-21 movie/550: 0 candidates in 138ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-11 movie/550: 0 candidates in 168ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/550: 0 candidates in 322ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-10 movie/550: 0 candidates in 776ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-sources] source-8 movie/550: 0 candidates in 799ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-25 movie/550: 0 candidates in 5996ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 3407ms :: 0 req
+[elfura-sources] source-25 movie/550: 0 candidates in 809ms :: 0 req
+[elfura-resolve] movie/550: listed 18 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] embed by https://theogpiratebot.to :: HTTP 200 ok sources=32
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-22 movie/550: 0 candidates in 14ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 17ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 18ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 31ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 52ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/550: 0 candidates in 167ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 202ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 323ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 386ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-8 movie/550: 0 candidates in 564ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-10 movie/550: 0 candidates in 736ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] embed by https://www.theogpiratebot.to :: HTTP 200 ok sources=23
+[elfura-sources] source-17 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 0ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 22ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 28ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-13 movie/550: 0 candidates in 30ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 34ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 55ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 107ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-21 movie/550: 0 candidates in 189ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-11 movie/550: 0 candidates in 193ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/550: 0 candidates in 336ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 606ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn2.slowcloud.live 200
+[elfura-sources] source-12 movie/550: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-12 movie/550: 0 candidates in 666ms :: 0 req
+[elfura-sources] source-10 movie/550: 0 candidates in 711ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr] embed by https://random-embedder.example :: HTTP 200 ok sources=26
+[ifr] --- embed doc :: HTTP 200 bytes=1557 pltoken=injected
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-15 movie/550: 0 candidates in 21ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 movie/550: 0 candidates in 27ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-19 movie/550: 0 candidates in 29ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-22 movie/550: 0 candidates in 35ms :: 1 req · vidly.pro 200
+[elfura-sources] source-3 movie/550: 0 candidates in 91ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 102ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 184ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 188ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 317ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 571ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-10 movie/550: 0 candidates in 760ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-sources] source-25 movie/550: 0 candidates in 5999ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 4065ms :: 0 req
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr]   token + parent referer :: HTTP 200 ok sources=23
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 12ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/550: 0 candidates in 24ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/550: 0 candidates in 34ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 movie/550: 0 candidates in 38ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 65ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-18 movie/550: 0 candidates in 119ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-11 movie/550: 0 candidates in 165ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 246ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-9 movie/550: 0 candidates in 328ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 570ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-10 movie/550: 0 candidates in 1187ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-resolve] movie/550: listed 10 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr]   token + our embed referer :: HTTP 200 ok sources=27
+[elfura-sources] source-17 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-16 movie/550: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-13 movie/550: 0 candidates in 9ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-22 movie/550: 0 candidates in 12ms :: 1 req · vidly.pro 200
+[elfura-sources] source-15 movie/550: 0 candidates in 19ms :: 1 req · mapple.fun 403
+[elfura-sources] source-19 movie/550: 0 candidates in 28ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/550: 0 candidates in 90ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/550: 0 candidates in 163ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 movie/550: 0 candidates in 211ms :: 2 req · cdn.jsdelivr.net 200 · suw.halcyoncreative.site tls-reset
+[elfura-sources] source-18 movie/550: 0 candidates in 313ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-9 movie/550: 0 candidates in 333ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-8 movie/550: 0 candidates in 636ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-sources] source-10 movie/550: 0 candidates in 699ms :: 15 req · embed.vidrift.net 429×8 · new.vidnest.fun 200×4 · new.vidnest.fun 502×2 · i-arch-400.geffe448mik.com 404
+[elfura-sources] source-25 movie/550: 0 candidates in 5996ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/550: 0 candidates in 4056ms :: 0 req
+[elfura-sources] source-25 movie/550: 0 candidates in 1979ms :: 0 req
+[elfura-resolve] movie/550: listed 18 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[ifr]   token + parent origin :: HTTP 200 ok sources=31
+[ifr] ban theogpiratebot.online :: isBanned=false (expected false - owner domain)
+[ifr] ban theogpiratebot.to :: isBanned=false (expected false - owner domain)
+[ifr] ban www.theogpiratebot.online :: isBanned=false (expected false - owner domain)
+[ifr] ban spam.example :: isBanned=true (expected true)
+[ifr] ban spam subdomain :: isBanned=false (expected false - bans are per-origin)
+[ifr:done]
+[emb] backend :: http://127.0.0.1:43607
+[emb] parent site :: http://127.0.0.1:37897
+[emb] === variant path :: /embed/tv/94605/1/1
+[elfura-sources] source-17 tv/94605: 0 candidates in 8ms :: 0 req
+[elfura-sources] source-16 tv/94605: 0 candidates in 8ms :: 0 req
+[elfura-sources] source-15 tv/94605: 0 candidates in 122ms :: 1 req · mapple.fun 403
+[elfura-sources] source-13 tv/94605: 0 candidates in 127ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-3 tv/94605: 0 candidates in 154ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-19 tv/94605: 0 candidates in 172ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-11 tv/94605: 0 candidates in 303ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-20 tv/94605: 0 candidates in 392ms :: 1 req · moviesapi.to 502
+[elfura-sources] source-9 tv/94605: 0 candidates in 436ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-22 tv/94605: 0 candidates in 486ms :: 1 req · vidly.pro 200
+[elfura-sources] source-8 tv/94605: 0 candidates in 727ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-sources] source-18 tv/94605: 0 candidates in 924ms :: 2 req · blakiteapi.xyz 200×2
+[elfura-sources] source-21 tv/94605: 0 candidates in 1878ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] tv/94605: listed 9 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-10 tv/94605: 0 candidates in 3480ms :: 20 req · embed.vidrift.net 429×12 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-sources] source-3 tv/94605: 0 candidates in 156ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=156 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 377ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=377 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 474ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=474 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 48ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=50 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 39ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=41 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 195ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=196 :: source-11: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9 :: source-16: raw=0 verified=0
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=5 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 33ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=33 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 327ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=327 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 487ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=487 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 148ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=148 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 46ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=46 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=363 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 58ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=59 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 332ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=332 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 30ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=30 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 22ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=24 :: source-15: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 200ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=200 :: source-11: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=7 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 27ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=27 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 530ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=530 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 98ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=98 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 14ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=14 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 23ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=24 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 282ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=282 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 2677ms :: 20 req · embed.vidrift.net 429×12 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2679 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-12 tv/94605: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2601 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=252 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=32 :: source-1: no-result (still running at 32ms) | source-3: no-result (still running at 32ms) | source-4: no-result (still running at 32ms) | source-5: no-result (still running at 32ms) | source-8: no-result (still running at 32ms) | source-9: no-result (still running at 32ms) | source-10: no-result (still running at 32ms) | source-11: no-result (still running at 32ms) | source-12: no-result (still running at 32ms) | source-13: no-result (still running at 32ms) | source-14: no-result (still running at 32ms) | source-15: no-result (still running at 32ms) | source-16: no-result (still running at 32ms) | source-17: no-result (still running at 32ms) | source-18: no-result (still running at 32ms) | source-19: no-result (still running at 32ms) | source-20: no-result (still running at 32ms) | source-21: no-result (still running at 32ms) | source-22: no-result (still running at 32ms) | source-24: raw=4 verified=0 | source-25: no-result (still running at 32ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 81ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=81 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 17ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=17 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 30ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=30 :: source-15: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 338ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=338 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 179ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=180 :: source-11: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 31ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=31 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 531ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=531 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 100ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=100 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 14ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=15 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 26ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=26 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 1735ms :: 20 req · embed.vidrift.net 429×12 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=1736 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 276ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=278 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=329 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 5483ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=5483 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-12 tv/94605: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2600 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 2739ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2740 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9000 :: source-25: no-result (still running at 9000ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 597ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=598 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb]   path state :: {"unavailableShown":false,"videoSet":true,"videoTime":0,"readyState":4,"overlays":{"unavailable":false,"buffering":false,"pauseScreen":false,"initialLoading":false}}
+[emb]   path playback :: 61 calls, statuses 200,404
+[emb] === variant query :: /embed?type=tv&id=94605&s=1&e=1
+[elfura-sources] source-17 tv/94605: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-16 tv/94605: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-13 tv/94605: 0 candidates in 75ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 tv/94605: 0 candidates in 74ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 tv/94605: 0 candidates in 76ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 tv/94605: 0 candidates in 83ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-21 tv/94605: 0 candidates in 94ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-sources] source-3 tv/94605: 0 candidates in 214ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 tv/94605: 0 candidates in 206ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-20 tv/94605: 0 candidates in 347ms :: 1 req · moviesapi.to 502
+[elfura-sources] source-9 tv/94605: 0 candidates in 414ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 tv/94605: 0 candidates in 406ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-8 tv/94605: 0 candidates in 587ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-resolve] tv/94605: listed 11 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-12 tv/94605: 0 candidates in 2601ms :: 12 req · vidzen.fun 23×11 · vidzen.fun 200
+[elfura-sources] source-10 tv/94605: 0 candidates in 3013ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-sources] source-3 tv/94605: 0 candidates in 90ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=91 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 378ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=378 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 476ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=477 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 40ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=40 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 38ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=40 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 1ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 196ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=197 :: source-11: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=10 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 47ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=47 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 288ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=288 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 44ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=44 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 45ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=45 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 683ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=683 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=460 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 55ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=56 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 345ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=345 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 18ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=19 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 24ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=24 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 167ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=167 :: source-11: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 22ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=22 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 614ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=614 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 12ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=12 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 16ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=16 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 276ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=276 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 100ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=100 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 2996ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2996 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=236 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=69 :: source-1: no-result (still running at 69ms) | source-3: no-result (still running at 69ms) | source-4: no-result (still running at 69ms) | source-5: no-result (still running at 69ms) | source-8: no-result (still running at 69ms) | source-9: no-result (still running at 69ms) | source-10: no-result (still running at 69ms) | source-11: no-result (still running at 69ms) | source-12: no-result (still running at 69ms) | source-13: no-result (still running at 69ms) | source-14: no-result (still running at 69ms) | source-15: no-result (still running at 69ms) | source-16: no-result (still running at 69ms) | source-17: no-result (still running at 69ms) | source-18: no-result (still running at 69ms) | source-19: no-result (still running at 69ms) | source-20: no-result (still running at 69ms) | source-21: no-result (still running at 69ms) | source-22: no-result (still running at 69ms) | source-24: raw=4 verified=0 | source-25: no-result (still running at 69ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 50ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=50 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 11ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=11 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 20ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=20 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 341ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=341 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 37ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=37 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 173ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=173 :: source-11: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 973ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=973 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 440ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=441 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 133ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=134 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 16ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=17 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 100ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=100 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 261ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=261 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=300 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 6265ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=6265 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 3942ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=3942 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-12 tv/94605: 0 candidates in 2600ms :: 12 req · vidzen.fun 23×11 · vidzen.fun 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2600 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-12 tv/94605: 0 candidates in 2601ms :: 12 req · vidzen.fun 23×11 · vidzen.fun 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2601 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9001 :: source-25: no-result (still running at 9001ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 596ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=597 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb]   query state :: {"unavailableShown":false,"videoSet":true,"videoTime":0,"readyState":4,"overlays":{"unavailable":false,"buffering":false,"pauseScreen":false,"initialLoading":false}}
+[emb]   query playback :: 61 calls, statuses 200,404
+[emb] === variant queryPlayer :: /player?type=tv&id=94605&s=1&e=1
+[elfura-sources] source-17 tv/94605: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-16 tv/94605: 0 candidates in 3ms :: 0 req
+[elfura-sources] source-13 tv/94605: 0 candidates in 49ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 tv/94605: 0 candidates in 53ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 tv/94605: 0 candidates in 68ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 tv/94605: 0 candidates in 75ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 tv/94605: 0 candidates in 100ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 tv/94605: 0 candidates in 214ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-21 tv/94605: 0 candidates in 311ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-sources] source-20 tv/94605: 0 candidates in 325ms :: 1 req · moviesapi.to 502
+[elfura-sources] source-9 tv/94605: 0 candidates in 359ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 tv/94605: 0 candidates in 410ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-8 tv/94605: 0 candidates in 583ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 404 · core.vidzee.wtf 400 · cdn.slowcloud.live 200
+[elfura-sources] source-10 tv/94605: 0 candidates in 1458ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] tv/94605: listed 11 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-3 tv/94605: 0 candidates in 130ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=130 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 311ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=311 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 432ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=432 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 26ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=26 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 41ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=42 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 227ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=227 :: source-11: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 49ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=49 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 278ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=278 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 322ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=323 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 67ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=67 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 331ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=331 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 101ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=102 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 319ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=319 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=1842 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 10ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=10 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 10ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=11 :: source-15: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 192ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=193 :: source-11: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 31ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=31 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 448ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=448 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 98ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=98 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 39ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=39 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 3154ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=3154 :: source-10: raw=0 verified=0
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=missing ms=0 :: source-1: no-result (still running at 0ms) | source-3: no-result (still running at 0ms) | source-4: no-result (still running at 0ms) | source-5: no-result (still running at 0ms) | source-8: no-result (still running at 0ms) | source-9: no-result (still running at 0ms) | source-10: no-result (still running at 0ms) | source-11: no-result (still running at 0ms) | source-12: no-result (still running at 0ms) | source-13: no-result (still running at 0ms) | source-14: no-result (still running at 0ms) | source-15: no-result (still running at 0ms) | source-16: no-result (still running at 0ms) | source-17: no-result (still running at 0ms) | source-18: no-result (still running at 0ms) | source-19: no-result (still running at 0ms) | source-20: no-result (still running at 0ms) | source-21: no-result (still running at 0ms) | source-22: no-result (still running at 0ms) | source-24: no-result (still running at 0ms) | source-25: no-result (still running at 0ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 300ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=300 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 262ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=262 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=245 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 tv/94605: 0 candidates in 82ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=82 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 tv/94605: 0 candidates in 313ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=313 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 tv/94605: 0 candidates in 14ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=14 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 tv/94605: 0 candidates in 21ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=21 :: source-15: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 tv/94605: 0 candidates in 241ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=242 :: source-11: raw=0 verified=0
+[elfura-sources] source-16 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=8 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 tv/94605: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 tv/94605: 0 candidates in 29ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=29 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 1177ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=1177 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 tv/94605: 0 candidates in 108ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=108 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 tv/94605: 0 candidates in 41ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=41 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-20 tv/94605: 0 candidates in 282ms :: 1 req · moviesapi.to 502
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=282 :: source-20: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-21 tv/94605: 0 candidates in 38ms :: 2 req · cdn.jsdelivr.net 404 · raw.githubusercontent.com 404
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=38 :: source-21: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-8 tv/94605: 0 candidates in 620ms :: 6 req · core.vidzee.wtf 200×2 · core.vidzee.wtf 400 · core.vidzee.wtf 404 · cdn.slowcloud.live 200
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=620 :: source-8: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=338 :: source-24: raw=4 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 6584ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=6584 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-10 tv/94605: 0 candidates in 1591ms :: 14 req · embed.vidrift.net 404×6 · new.vidnest.fun 200×3 · new.vidnest.fun 502×3 · i-arch-400.geffe448mik.com 404×2
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=1591 :: source-10: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-12 tv/94605: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=2601 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=9000 :: source-25: no-result (still running at 9000ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 tv/94605: 0 candidates in 12000ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 tv/94605: 0 candidates in 597ms :: 0 req
+[elfura-resolve] NO STREAMS type=tv tmdb=94605 s=1 e=1 meta=ok ms=598 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb]   queryPlayer state :: {"unavailableShown":false,"videoSet":true,"videoTime":0,"readyState":4,"overlays":{"unavailable":false,"buffering":false,"pauseScreen":false,"initialLoading":false}}
+[emb]   queryPlayer playback :: 61 calls, statuses 200,404
+[emb] === variant playerPath :: /player
+[emb]   playerPath state :: {"unavailableShown":false,"videoSet":false,"videoTime":0,"readyState":0,"overlays":{"unavailable":false,"buffering":false,"pauseScreen":false,"initialLoading":false}}
+[emb]   playerPath playback :: 0 calls, statuses none
+[emb] === variant moviePath :: /embed/movie/1368337
+[elfura-sources] source-17 movie/1368337: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-16 movie/1368337: 0 candidates in 2ms :: 0 req
+[elfura-sources] source-13 movie/1368337: 0 candidates in 62ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-sources] source-15 movie/1368337: 0 candidates in 67ms :: 1 req · mapple.fun 403
+[elfura-sources] source-22 movie/1368337: 0 candidates in 67ms :: 1 req · vidly.pro 200
+[elfura-sources] source-19 movie/1368337: 0 candidates in 90ms :: 1 req · www.desidubanime.me 403
+[elfura-sources] source-3 movie/1368337: 0 candidates in 107ms :: 2 req · vidsync.pro 200×2
+[elfura-sources] source-11 movie/1368337: 0 candidates in 219ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-sources] source-9 movie/1368337: 0 candidates in 374ms :: 2 req · vixsrc.to 200×2
+[elfura-sources] source-18 movie/1368337: 0 candidates in 401ms :: 1 req · blakiteapi.xyz 200
+[elfura-sources] source-24 movie/1368337: 0 candidates in 447ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] movie/1368337: listed 29 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-12 movie/1368337: 0 candidates in 2630ms :: 1 req · vidzen.fun 23
+[elfura-sources] source-3 movie/1368337: 0 candidates in 97ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=97 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] movie/1368337: listed 12 extra lane(s) beyond the verified set (per-source cap 200, verified first).
+[elfura-sources] source-11 movie/1368337: 0 candidates in 216ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=216 :: source-11: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 movie/1368337: 0 candidates in 327ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=327 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 movie/1368337: 0 candidates in 40ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=42 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 movie/1368337: 0 candidates in 42ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=43 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 movie/1368337: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=10 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 movie/1368337: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=14 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 movie/1368337: 0 candidates in 48ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=49 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 movie/1368337: 0 candidates in 46ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=46 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 movie/1368337: 0 candidates in 436ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=436 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-24 movie/1368337: 0 candidates in 370ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=370 :: source-24: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 movie/1368337: 0 candidates in 83ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=84 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 movie/1368337: 0 candidates in 174ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=174 :: source-11: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 movie/1368337: 0 candidates in 10ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=10 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-15 movie/1368337: 0 candidates in 21ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=21 :: source-15: raw=0 verified=0
+[elfura-sources] source-16 movie/1368337: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=7 :: source-16: raw=0 verified=0
+[elfura-sources] source-17 movie/1368337: 0 candidates in 0ms :: 0 req
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=9 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 movie/1368337: 0 candidates in 319ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=320 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 movie/1368337: 0 candidates in 20ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=21 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 movie/1368337: 0 candidates in 21ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=21 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 movie/1368337: 0 candidates in 754ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=754 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=missing ms=0 :: source-1: no-result (still running at 0ms) | source-3: no-result (still running at 0ms) | source-4: no-result (still running at 0ms) | source-5: no-result (still running at 0ms) | source-8: no-result (still running at 0ms) | source-9: no-result (still running at 0ms) | source-10: no-result (still running at 0ms) | source-11: no-result (still running at 0ms) | source-12: no-result (still running at 0ms) | source-13: no-result (still running at 0ms) | source-14: no-result (still running at 0ms) | source-15: no-result (still running at 0ms) | source-16: no-result (still running at 0ms) | source-17: no-result (still running at 0ms) | source-18: no-result (still running at 0ms) | source-19: no-result (still running at 0ms) | source-20: no-result (still running at 0ms) | source-21: no-result (still running at 0ms) | source-22: no-result (still running at 0ms) | source-24: no-result (still running at 0ms) | source-25: no-result (still running at 0ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-24 movie/1368337: 0 candidates in 332ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=332 :: source-24: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-3 movie/1368337: 0 candidates in 67ms :: 2 req · vidsync.pro 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=67 :: source-3: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-13 movie/1368337: 0 candidates in 17ms :: 1 req · freakyniki.elaxo.lol 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=17 :: source-13: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-16 movie/1368337: 0 candidates in 1ms :: 0 req
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=8 :: source-16: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-17 movie/1368337: 0 candidates in 1ms :: 0 req
+[elfura-sources] source-15 movie/1368337: 0 candidates in 20ms :: 1 req · mapple.fun 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=20 :: source-15: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=9 :: source-17: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-11 movie/1368337: 0 candidates in 174ms :: 1 req · streamdata.vaplayer.ru 404
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=174 :: source-11: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-19 movie/1368337: 0 candidates in 27ms :: 1 req · www.desidubanime.me 403
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=27 :: source-19: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-22 movie/1368337: 0 candidates in 14ms :: 1 req · vidly.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=14 :: source-22: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-9 movie/1368337: 0 candidates in 330ms :: 2 req · vixsrc.to 200×2
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=331 :: source-9: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-18 movie/1368337: 0 candidates in 424ms :: 1 req · blakiteapi.xyz 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=424 :: source-18: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-24 movie/1368337: 0 candidates in 465ms :: 2 req · enc-dec.app 200 · vidlink.pro 200
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=465 :: source-24: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 movie/1368337: 0 candidates in 11999ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/1368337: 0 candidates in 6985ms :: 0 req
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=6987 :: source-25: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=9000 :: source-25: no-result (still running at 9000ms)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[elfura-sources] source-25 movie/1368337: 0 candidates in 12001ms :: 1 req · greyboxtv.duckdns.org 23
+[elfura-sources] source-25 movie/1368337: 0 candidates in 599ms :: 0 req
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=599 :: source-25: raw=0 verified=0
+[elfura-sources] source-12 movie/1368337: 0 candidates in 2600ms :: 1 req · vidzen.fun 23
+[elfura-resolve] NO STREAMS type=movie tmdb=1368337 s=- e=- meta=ok ms=2601 :: source-12: raw=0 verified=0
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb] console error :: Failed to load resource: the server responded with a status of 404 (Not Found)
+[emb]   moviePath state :: {"unavailableShown":false,"videoSet":true,"videoTime":0,"readyState":4,"overlays":{"unavailable":false,"buffering":false,"pauseScreen":false,"initialLoading":false}}
+[emb]   moviePath playback :: 57 calls, statuses 200,404
+[emb:done]
