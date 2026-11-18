@@ -43,10 +43,10 @@ const withServer = async (redirectTo, run) => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
   // fetch() refuses to set Host, and this feature keys off Host entirely.
-  const call = (path, host, method = 'GET') =>
+  const call = (path, host, method = 'GET', extraHeaders = {}) =>
     new Promise((resolve, reject) => {
       const req = http.request(
-        { host: '127.0.0.1', port, path, method, timeout: 20_000, headers: { host, 'user-agent': 'Mozilla/5.0 Chrome/137.0.0.0' } },
+        { host: '127.0.0.1', port, path, method, timeout: 20_000, headers: { host, 'user-agent': 'Mozilla/5.0 Chrome/137.0.0.0', ...extraHeaders } },
         (res) => {
           res.resume();
           res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location ?? null }));
@@ -95,6 +95,29 @@ await withServer('https://def.com', async (call) => {
 await withServer('http://def.com:8080', async (call) => {
   assert.equal((await call('/', 'abc.com')).location, 'http://def.com:8080/');
   assert.equal((await call('/', 'def.com:8080')).status, 200, 'the target with its port must not loop');
+});
+
+// ---- Framed navigations are never redirected ------------------------------
+// Measured in Chromium: an iframe navigated through a cross-origin 301 reports
+// document.fullscreenEnabled === false and refuses requestFullscreen with
+// "Disallowed by permissions policy". The same iframe loaded directly reports
+// true. So redirecting a framed request silently costs every embed its
+// fullscreen button - which is exactly the bug operators reported. The player
+// has to be served in place when it is framed.
+await withServer('https://def.com', async (call) => {
+  // Same URL, same host - only the fetch destination differs.
+  const framed = await call('/embed/movie/550', 'abc.com', 'GET', { 'sec-fetch-dest': 'iframe' });
+  assert.equal(framed.status, 200, 'a framed navigation must be served, not redirected');
+  assert.equal(framed.location, null);
+
+  const topLevel = await call('/embed/movie/550', 'abc.com', 'GET', { 'sec-fetch-dest': 'document' });
+  assert.equal(topLevel.status, 301, 'a top-level navigation still moves to the new domain');
+  assert.equal(topLevel.location, 'https://def.com/embed/movie/550');
+
+  // A browser too old to send Sec-Fetch-Dest still gets redirected; there is no
+  // honest way to tell it apart from a top-level load.
+  const legacy = await call('/embed/movie/550', 'abc.com');
+  assert.equal(legacy.status, 301);
 });
 
 // Off by default.
