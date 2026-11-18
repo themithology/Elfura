@@ -4,7 +4,7 @@ on:
     branches: [arena/5775da8f-elfura]
     paths: [scripts/probe-fullscreen-redirect.mjs, backend/src/index.ts, .github/workflows/fullscreen-redirect-probe.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
@@ -19,4 +19,14 @@ jobs:
       - name: Probe
         run: |
           node scripts/probe-fullscreen-redirect.mjs > /tmp/fs.txt 2>&1 || true
-          grep -a '^\[fs\]' /tmp/fs.txt | head -80 || tail -c 3000 /tmp/fs.txt | sed 's/^/::notice title=Probe::/'
+          grep -a '^\[fs\]' /tmp/fs.txt | head -120 || tail -c 3000 /tmp/fs.txt | sed 's/^/::notice title=Probe::/'
+      - name: Publish the result
+        if: always()
+        run: |
+          git config user.name "probe"
+          git config user.email "probe@example.invalid"
+          git checkout --orphan fs-diagnose
+          cp /tmp/fs.txt fs-diagnose.txt
+          git add -f fs-diagnose.txt
+          git commit -q -m "fullscreen redirect probe"
+          git push -f origin fs-diagnose
