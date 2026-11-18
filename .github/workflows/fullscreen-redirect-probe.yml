@@ -1,0 +1,22 @@
+name: Fullscreen behind the redirect
+on:
+  push:
+    branches: [arena/5775da8f-elfura]
+    paths: [scripts/probe-fullscreen-redirect.mjs, backend/src/index.ts, .github/workflows/fullscreen-redirect-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - name: Probe
+        run: |
+          node scripts/probe-fullscreen-redirect.mjs > /tmp/fs.txt 2>&1 || true
+          grep -a '^\[fs\]' /tmp/fs.txt | head -80 || tail -c 3000 /tmp/fs.txt | sed 's/^/::notice title=Probe::/'

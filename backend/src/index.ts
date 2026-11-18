@@ -324,6 +324,15 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
     const pathname = url.pathname;
 
+    // Measurable proof that a redirect inside an iframe changes what the browser
+    // grants the player. Remove once the fullscreen fallback is settled.
+    if (pathname === '/go/embed/movie/550' || pathname.startsWith('/go/embed/')) {
+      const dest = cfg.redirectTo || 'http://127.0.0.2';
+      res.writeHead(301, { Location: dest + pathname.replace(/^\/go/, '') });
+      res.end();
+      return;
+    }
+
     // ---- ELFURA_REDIRECT_TO: move the site to a new domain ----------------
     // One setting, one job: replace the host, keep everything after it. So
     // abc.com/embed/movie/550?x=1 arrives as def.com/embed/movie/550?x=1.
