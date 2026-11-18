@@ -108,13 +108,41 @@ assert.equal(s.cues[0].text, 'First line here');
 // ---- the default look ----------------------------------------------------
 // Bold white text, crisp black stroke, no box: the broadcast/anime style the
 // operator asked for, and what a well-authored ASS file looks like.
-assert.equal(DEFAULT_SUB_STYLE.color, '#ffffff');
-assert.equal(DEFAULT_SUB_STYLE.fontWeight, 800, 'the reference is heavy, not regular');
+assert.equal(DEFAULT_SUB_STYLE.color, '#ffffff', 'pure white fill');
+assert.match(DEFAULT_SUB_STYLE.fontFamily, /Trebuchet MS/, 'the reference is set in Trebuchet MS');
+assert.equal(DEFAULT_SUB_STYLE.fontWeight, 700, 'Trebuchet MS Bold');
 assert.equal(DEFAULT_SUB_STYLE.outline, true, 'the stroke is what makes it readable on bright frames');
-assert.equal(DEFAULT_SUB_STYLE.outlineColor, '#000000');
+assert.equal(DEFAULT_SUB_STYLE.outlineColor, '#000000', 'uniform black border');
 assert.ok(DEFAULT_SUB_STYLE.outlineWidth >= 2, 'a thick stroke, not a hairline');
 assert.equal(DEFAULT_SUB_STYLE.backgroundOpacity, 0, 'no box: the caption floats over the picture');
-assert.equal(DEFAULT_SUB_STYLE.shadow, false, 'a glow would soften the stroke edge');
+// A soft dark shadow under the stroke, so the caption separates from white
+// clothing and light hair - the reference frame has one.
+assert.equal(DEFAULT_SUB_STYLE.shadow, true);
+assert.ok(DEFAULT_SUB_STYLE.shadowBlur > 0, 'the shadow is soft, not a hard offset');
+
+// Size: the reference measures 4.5-5% of frame height (48-54px at 1080p).
+// The renderer paints (fontSizePct/100 * 26)px at a 720 baseline, scaled by the
+// player height, so this is the real number, not an assumption.
+const paintedAt1080 = (DEFAULT_SUB_STYLE.fontSizePct / 100) * 26 * (1080 / 720);
+assert.ok(
+  paintedAt1080 >= 48 && paintedAt1080 <= 54,
+  `at 1080p the caption must paint 48-54px; it paints ${paintedAt1080.toFixed(1)}px`,
+);
+const framePct = (paintedAt1080 / 1080) * 100;
+assert.ok(framePct >= 4.5 && framePct <= 5, `${framePct.toFixed(2)}% of frame height must be 4.5-5%`);
+
+// Position: the bottom baseline sits 5-6% up from the bottom edge.
+assert.ok(
+  DEFAULT_SUB_STYLE.verticalPct >= 5 && DEFAULT_SUB_STYLE.verticalPct <= 6,
+  'inside the 5-6% bottom safe margin',
+);
+assert.equal(DEFAULT_SUB_STYLE.horizontalAlign, 'center', 'center-aligned');
+// Narrow enough to wrap into two balanced lines rather than one long line
+// running under the characters' faces.
+assert.ok(
+  DEFAULT_SUB_STYLE.maxWidthPct <= 70,
+  'a wide max width keeps the dialogue on one line; the reference wraps',
+);
 
 // The stroke must be crisp: equal offsets with zero blur, never a blurred halo.
 const renderer = readFileSync(new URL('../../src/subs/renderer.ts', import.meta.url), 'utf8');

@@ -62,13 +62,23 @@ export interface SubtitleStyle {
  * floats over the picture the way viewers of fansubbed anime expect.
  */
 export const DEFAULT_SUB_STYLE: SubtitleStyle = {
-  fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  fontSizePct: 100,
-  fontWeight: 800,
+  // Trebuchet MS is the look the official anime services use, and the one the
+  // reference frame is set in. The stack keeps a humanist fallback for systems
+  // without it - Arial/Helvetica last, because the fallback should still read
+  // as a plain sans, never a serif.
+  fontFamily:
+    '"Trebuchet MS", "Trebuchet", Tahoma, "Segoe UI", Arial, Helvetica, system-ui, sans-serif',
+  // Calibrated from the renderer's own maths: at 1080p this paints 50.7px,
+  // which is 4.69% of frame height - the middle of the 4.5-5% band measured off
+  // the reference frame. (720p baseline 26px x 130% then scaled by height.)
+  fontSizePct: 130,
+  fontWeight: 700,
   italic: false,
   uppercase: false,
   letterSpacingEm: 0.005,
-  lineHeight: 1.28,
+  // Tight leading: broadcast subtitles stack lines closely, and the stroke needs
+  // the lines to be near each other to read as one block.
+  lineHeight: 1.2,
 
   color: '#ffffff',
   textOpacity: 1,
@@ -77,26 +87,33 @@ export const DEFAULT_SUB_STYLE: SubtitleStyle = {
   outline: true,
   outlineColor: '#000000',
   outlineWidth: 2.5,
-  shadow: false,
+  // A soft dark shadow sits under the stroke, so the caption still separates
+  // from a white coat or a bright sky. The stroke alone handles the edges; this
+  // handles the body.
+  shadow: true,
   shadowColor: '#000000',
-  shadowBlur: 4,
+  shadowBlur: 3,
 
   paddingPx: 0,
   radiusPx: 0,
-  maxWidthPct: 86,
+  // Narrow to force the pyramid wrap: two balanced lines instead of one long
+  // line that runs under the characters' faces.
+  maxWidthPct: 62,
 
   edge: 'bottom',
-  verticalPct: 8,
+  // 5.5% up from the bottom edge, inside the TV/player safe margin.
+  verticalPct: 5.5,
   horizontalAlign: 'center',
   horizontalPct: 0,
 };
 
 export const FONT_CHOICES: { label: string; value: string }[] = [
-  { label: 'Inter (default)', value: DEFAULT_SUB_STYLE.fontFamily },
+  { label: 'Trebuchet MS (default)', value: DEFAULT_SUB_STYLE.fontFamily },
+  { label: 'Inter', value: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
   { label: 'System UI', value: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
-  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
   { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
-  { label: 'Trebuchet', value: '"Trebuchet MS", Tahoma, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
   { label: 'Courier', value: '"Courier New", monospace' },
   { label: 'Impact', value: 'Impact, Haettenschweiler, sans-serif' },
   { label: 'Comic Sans', value: '"Comic Sans MS", cursive' },
