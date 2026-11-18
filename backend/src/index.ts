@@ -345,7 +345,18 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const targetHost = hostnameOf(new URL(cfg.redirectTo).host);
       const exempt = pathname === '/api' || pathname.startsWith('/api/') ||
         pathname === '/roxy' || pathname.startsWith('/roxy/');
-      if (!exempt && host && host !== targetHost) {
+      // A framed navigation is never redirected, and this is the whole reason
+      // embeds keep working: Chrome re-derives a frame's permissions after a
+      // cross-origin redirect and drops `fullscreen`, so every viewer who
+      // arrived through the redirect lost fullscreen while direct visitors kept
+      // it. Measured, not guessed: an iframe navigated through a 301 reports
+      // document.fullscreenEnabled === false and any requestFullscreen is
+      // refused with "Disallowed by permissions policy", while the same iframe
+      // loaded directly reports true. Nothing in the page can repair that, so
+      // the player is served in place instead. The parent page's
+      // allow="fullscreen" still grants it, because no redirect happened.
+      const framed = /^(iframe|frame)$/i.test(String(req.headers['sec-fetch-dest'] || '').trim());
+      if (!exempt && !framed && host && host !== targetHost) {
         const location = cfg.redirectTo + pathname + (url.search || '');
         res.writeHead(301, { Location: location, 'Cache-Control': 'no-store', Vary: 'Host' });
         res.end(method === 'HEAD' ? undefined : `Moved to ${location}`);
