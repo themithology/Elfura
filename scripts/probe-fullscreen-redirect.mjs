@@ -2,20 +2,20 @@
 /**
  * Why can't viewers who arrive through the domain redirect go fullscreen?
  *
- * The redirect answers 301 to a different host. Inside an iframe that is a
- * cross-origin navigation the parent page did not initiate, so the frame's
- * permissions can be different from a direct load - and requestFullscreen is
- * gated on exactly those permissions.
+ * Shape of the real situation, reproduced with two genuinely different origins:
+ *   parent page on 127.0.0.1:portA  (stands in for the partner site)
+ *     variant "direct"   -> iframe src = 127.0.0.2:portB/embed/movie/550
+ *     variant "redirect" -> iframe src = 127.0.0.2:portB/go/embed/movie/550
+ *                           which answers 301 to 127.0.0.2:portB/embed/movie/550
  *
- * This builds the real situation instead of reasoning about it:
- *   parent page on 127.0.0.1:portA
- *     - iframe src points at 127.0.0.2:portB/embed/movie/550  (direct)
- *     - iframe src points at 127.0.0.2:portB/go/embed/movie/550 (redirects)
- * 127.0.0.1 and 127.0.0.2 are genuinely different origins, so this is the same
- * cross-origin shape as a real partner site.
+ * The difference between the two is only that one is a cross-origin redirect
+ * inside the frame. Fullscreen needs a real user gesture, so this clicks the
+ * player's own fullscreen button with a trusted mouse event - evaluating
+ * requestFullscreen() from script would be refused for the wrong reason and
+ * would prove nothing.
  *
- * For each variant it records what the browser says when the player's own
- * fullscreen path runs, plus what it does when the same element asks directly.
+ * Also records what the server actually sees on those two requests, because the
+ * fix may well be "do not redirect a framed navigation".
  */
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -39,7 +39,24 @@ const { server } = createBackendServer({
 await new Promise((resolve) => server.listen(0, '0.0.0.0', resolve));
 const backendPort = server.address().port;
 
-// Parent page. The iframe markup is what a partner site writes.
+// What the embed request looks like to the server, per variant.
+const seen = { direct: null, redirect: null };
+server.on('request', (req) => {
+  const url = req.url || '';
+  if (!url.includes('/embed/movie/550')) return;
+  const entry = {
+    path: url,
+    dest: req.headers['sec-fetch-dest'] ?? null,
+    mode: req.headers['sec-fetch-mode'] ?? null,
+    site: req.headers['sec-fetch-site'] ?? null,
+    host: req.headers.host ?? null,
+    referer: req.headers.referer ?? null,
+  };
+  if (url.includes('/go/')) seen.redirect ??= entry;
+  else seen.direct ??= entry;
+});
+
+// The stand-in partner page: exactly what a site writes to embed us.
 const parent = http.createServer((req, res) => {
   const variant = new URL(req.url || '/', 'http://x').searchParams.get('v') || 'direct';
   const src =
@@ -47,76 +64,103 @@ const parent = http.createServer((req, res) => {
       ? `http://127.0.0.2:${backendPort}/go/embed/movie/550`
       : `http://127.0.0.2:${backendPort}/embed/movie/550`;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><html><body style="margin:0">
-<iframe id="f" src="${src}" width="800" height="450" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen
+  res.end(`<!doctype html><html><body style="margin:0;background:#111">
+<iframe id="f" src="${src}" width="800" height="450"
+        allow="autoplay; fullscreen; picture-in-picture" allowfullscreen
         style="border:0"></iframe>
 </body></html>`);
 });
 await new Promise((resolve) => parent.listen(0, '127.0.0.1', resolve));
 const parentPort = parent.address().port;
 
-const browser = await chromium.launch({
-  args: chromiumBinary.args,
-  executablePath: await chromiumBinary.executablePath(),
-});
+// @sparticuz/chromium ships --single-process, which does not survive two page
+// contexts in one browser. Drop it and launch per variant.
+const args = chromiumBinary.args.filter((a) => a !== '--single-process' && a !== '--no-zygote');
+const executablePath = await chromiumBinary.executablePath();
 
 const runVariant = async (variant) => {
-  const page = await browser.newPage();
-  const notes = [];
-  page.on('console', (m) => notes.push(`${m.type()}: ${m.text()}`.slice(0, 200)));
-  await page.goto(`http://127.0.0.1:${parentPort}/?v=${variant}`, { waitUntil: 'load' });
+  const browser = await chromium.launch({ args, executablePath });
+  try {
+    const page = await browser.newPage();
+    const notes = [];
+    page.on('console', (m) => {
+      const t = m.text();
+      if (/fullscreen|postMessage|Permissions|denied/i.test(t)) notes.push(t.slice(0, 220));
+    });
+    await page.goto(`http://127.0.0.1:${parentPort}/?v=${variant}`, { waitUntil: 'load' });
 
-  const frame = page.frames().find((f) => f !== page.mainFrame());
-  if (!frame) return { variant, error: 'no iframe' };
-  await frame.waitForLoadState('load').catch(() => {});
+    const frame = page.frames().find((f) => f !== page.mainFrame());
+    if (!frame) return { variant, error: 'no iframe' };
+    await frame.waitForLoadState('load').catch(() => {});
+    // Give the bundle a moment to build the shell.
+    await frame.waitForSelector('.elf-shell', { timeout: 20_000 }).catch(() => {});
 
-  // What the frame document actually is, after any redirect.
-  const landed = frame.url();
-
-  const result = await frame.evaluate(async () => {
-    const shell = document.querySelector('.elf-shell');
-    const video = document.querySelector('video');
-    const out = {
-      landedFromFrame: location.href,
-      hasShell: !!shell,
-      fullscreenElementBefore: String(document.fullscreenElement),
-      // The player's own gate for showing the button at all.
-      shellHasRequest: typeof (shell || {}).requestFullscreen === 'function',
-      // Does the browser think it may go fullscreen at all?
+    const before = await frame.evaluate(() => ({
+      url: location.href,
+      hasShell: !!document.querySelector('.elf-shell'),
       fullscreenEnabled: document.fullscreenEnabled,
-      // The element the player would actually fullscreen.
-      target: shell ? 'elf-shell' : 'none',
-    };
-    const attempt = async (el, label) => {
-      if (!el || typeof el.requestFullscreen !== 'function') return { label, skipped: true };
-      try {
-        await el.requestFullscreen();
-        const ok = document.fullscreenElement === el;
-        if (ok) await document.exitFullscreen().catch(() => {});
-        return { label, ok, error: null };
-      } catch (err) {
-        return { label, ok: false, error: `${err.name}: ${err.message}` };
-      }
-    };
-    out.attemptShell = await attempt(shell, 'elf-shell');
-    out.attemptVideo = await attempt(video, 'video');
-    // Does the app's own fullscreen() do anything different?
-    const btn = document.querySelector('.elf-fs-btn');
-    out.fsButtonPresent = !!btn;
-    out.fsButtonHidden = btn ? btn.hidden : null;
-    return out;
-  });
+      fsButton: !!document.querySelector('.elf-fs-btn'),
+      fsButtonHidden: document.querySelector('.elf-fs-btn')?.hidden ?? null,
+    }));
 
-  await page.close();
-  return { variant, landed, ...result, notes: notes.slice(-6) };
+    // 1. A control: a button of our own, clicked with a trusted event, calling
+    //    requestFullscreen on the player's shell. This isolates "the browser
+    //    forbids this frame from going fullscreen" from "the app's handler
+    //    never got there".
+    await frame.evaluate(() => {
+      const b = document.createElement('button');
+      b.id = 'probe-fs';
+      b.textContent = 'probe';
+      b.style.cssText = 'position:fixed;left:0;top:0;z-index:999999;width:40px;height:40px';
+      b.onclick = async () => {
+        const shell = document.querySelector('.elf-shell') || document.body;
+        try {
+          await shell.requestFullscreen();
+          window.__probe = { ok: document.fullscreenElement === shell, error: null };
+          if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+        } catch (err) {
+          window.__probe = { ok: false, error: `${err.name}: ${err.message}` };
+        }
+      };
+      document.body.appendChild(b);
+    });
+    await frame.click('#probe-fs', { force: true });
+    const control = (await frame.evaluate(() => window.__probe)) ?? { ok: false, error: 'no result' };
+
+    // 2. The player's own button, clicked for real.
+    let appResult = { skipped: true };
+    const fsButton = await frame.$('.elf-fs-btn');
+    if (fsButton) {
+      await frame.click('.elf-fs-btn', { force: true }).catch(() => {});
+      await page.waitForTimeout(800);
+      appResult = await frame.evaluate(() => {
+        const shell = document.querySelector('.elf-shell');
+        return {
+          fullscreenElementIsShell: document.fullscreenElement === shell,
+          fullscreenElement: document.fullscreenElement ? document.fullscreenElement.className : null,
+          datasetFullscreen: shell?.dataset.fullscreen ?? null,
+        };
+      });
+      await frame.evaluate(() => document.exitFullscreen?.().catch(() => {})).catch(() => {});
+    }
+
+    return { variant, before, control, appResult, notes: notes.slice(-5) };
+  } finally {
+    await browser.close().catch(() => {});
+  }
 };
 
-const direct = await runVariant('direct');
-const redirect = await runVariant('redirect');
+const results = [];
+for (const variant of ['direct', 'redirect']) {
+  try {
+    results.push(await runVariant(variant));
+  } catch (err) {
+    results.push({ variant, error: String(err).slice(0, 300) });
+  }
+}
 
-console.log('[fs] direct  :', JSON.stringify(direct, null, 2));
-console.log('[fs] redirect:', JSON.stringify(redirect, null, 2));
+for (const r of results) console.log('[fs]', JSON.stringify(r));
+console.log('[fs] requests', JSON.stringify(seen));
 
-await browser.close();
 server.close();
 parent.close();
