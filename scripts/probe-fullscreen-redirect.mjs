@@ -25,7 +25,7 @@ import chromiumBinary from '@sparticuz/chromium';
 const { createBackendServer } = await import('../dist/backend/index.js');
 
 const secret = crypto.createHash('sha256').update('fullscreen-probe').digest();
-const { server } = createBackendServer({
+const base = {
   host: '0.0.0.0',
   port: 0,
   isProd: false,
@@ -35,27 +35,21 @@ const { server } = createBackendServer({
   bindTokenIp: false,
   resolveTimeoutMs: 2500,
   rateLimitPerMin: 2000,
-});
-await new Promise((resolve) => server.listen(0, '0.0.0.0', resolve));
-const backendPort = server.address().port;
+};
+// Listen once to learn a port, then create the real server on that port with the
+// redirect switched on, so the redirect is the middleware's doing.
+const probe = createBackendServer(base);
+await new Promise((resolve) => probe.server.listen(0, '0.0.0.0', resolve));
+const backendPort = probe.server.address().port;
+await new Promise((resolve) => probe.server.close(resolve));
 
-// A redirect host of its own. It is the thing under test, so it must not be
-// mixed up with the backend: an absolute Location is built from the request's
-// own Host header, which is what a real reverse proxy does.
-const redirectSeen = [];
-const redirectHost = http.createServer((req, res) => {
-  const url = new URL(req.url || '/', 'http://placeholder');
-  const target = url.pathname.replace(/^\/go/, '') + (url.search || '');
-  redirectSeen.push({
-    path: req.url,
-    host: req.headers.host ?? null,
-    dest: req.headers['sec-fetch-dest'] ?? null,
-    site: req.headers['sec-fetch-site'] ?? null,
-    referer: req.headers.referer ?? null,
-  });
-  res.writeHead(301, { Location: `http://127.0.0.2:${url.searchParams.get('p')}${target}` });
-  res.end();
+const { server } = createBackendServer({
+  ...base,
+  port: backendPort,
+  // The "old domain" is 127.0.0.3 - anything arriving there moves to 127.0.0.2.
+  redirectTo: `http://127.0.0.2:${backendPort}`,
 });
+await new Promise((resolve) => server.listen(backendPort, '0.0.0.0', resolve));
 
 // What the embed request looks like to the server, per variant.
 const seen = { direct: null, redirect: null };
@@ -70,7 +64,7 @@ server.on('request', (req) => {
     host: req.headers.host ?? null,
     referer: req.headers.referer ?? null,
   };
-  if (url.includes('/go/')) seen.redirect ??= entry;
+  if (entry.host?.startsWith('127.0.0.3')) seen.redirect ??= entry;
   else seen.direct ??= entry;
 });
 
@@ -79,7 +73,7 @@ const parent = http.createServer((req, res) => {
   const variant = new URL(req.url || '/', 'http://x').searchParams.get('v') || 'direct';
   const src =
     variant === 'redirect'
-      ? `http://127.0.0.3:${redirectPort}/go/embed/movie/550?p=${backendPort}`
+      ? `http://127.0.0.3:${backendPort}/embed/movie/550`
       : `http://127.0.0.2:${backendPort}/embed/movie/550`;
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(`<!doctype html><html><body style="margin:0;background:#111">
@@ -88,9 +82,6 @@ const parent = http.createServer((req, res) => {
         style="border:0"></iframe>
 </body></html>`);
 });
-await new Promise((resolve) => redirectHost.listen(0, '0.0.0.0', resolve));
-const redirectPort = redirectHost.address().port;
-
 await new Promise((resolve) => parent.listen(0, '127.0.0.1', resolve));
 const parentPort = parent.address().port;
 
@@ -184,8 +175,7 @@ for (const variant of ['direct', 'redirect']) {
 
 for (const r of results) console.log('[fs]', JSON.stringify(r));
 console.log('[fs] requests', JSON.stringify(seen));
-console.log('[fs] redirectHop', JSON.stringify(redirectSeen));
+
 
 server.close();
 parent.close();
-redirectHost.close();
