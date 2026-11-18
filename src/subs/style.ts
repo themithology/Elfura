@@ -68,10 +68,10 @@ export const DEFAULT_SUB_STYLE: SubtitleStyle = {
   // as a plain sans, never a serif.
   fontFamily:
     '"Trebuchet MS", "Trebuchet", Tahoma, "Segoe UI", Arial, Helvetica, system-ui, sans-serif',
-  // Calibrated from the renderer's own maths: at 1080p this paints 50.7px,
-  // which is 4.69% of frame height - the middle of the 4.5-5% band measured off
-  // the reference frame. (720p baseline 26px x 130% then scaled by height.)
-  fontSizePct: 130,
+  // The renderer paints (fontSizePct/100 * 26)px at a 720 baseline, scaled by
+  // player height. At 125% that is 48.8px at 1080p - 4.51% of frame height,
+  // the lower end of the 4.5-5% band measured off the reference frame.
+  fontSizePct: 125,
   fontWeight: 700,
   italic: false,
   uppercase: false,
@@ -245,7 +245,18 @@ export function normalizeHex(raw: string): string | null {
 export const opacityToTransparency = (o: number) => Math.round((1 - o) * 100);
 export const transparencyToOpacity = (t: number) => clamp(1 - t / 100, 0, 1);
 
-const STORE_KEY = 'elfura:subtitle-style:v1';
+/**
+ * Bumped when the shipped defaults change meaningfully.
+ *
+ * A saved style is merged over DEFAULT_SUB_STYLE, so any viewer who ever
+ * touched the subtitle panel pins every value they saw at that moment - the new
+ * defaults would never reach them, and the panel would keep showing the old
+ * numbers. Keying the version means the revised look lands once, and anything
+ * they deliberately set afterwards is stored again under the new key.
+ */
+const STORE_KEY = 'elfura:subtitle-style:v2';
+/** Read-only ancestor, so a v1 style can still be carried over if we ever want it. */
+const LEGACY_STORE_KEY = 'elfura:subtitle-style:v1';
 
 export function loadStoredStyle(): SubtitleStyle | null {
   try {
@@ -269,6 +280,7 @@ export function saveStoredStyle(style: SubtitleStyle): void {
 export function clearStoredStyle(): void {
   try {
     localStorage.removeItem(STORE_KEY);
+    localStorage.removeItem(LEGACY_STORE_KEY);
   } catch {
     /* ignore */
   }

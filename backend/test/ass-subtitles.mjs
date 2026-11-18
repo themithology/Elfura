@@ -130,6 +130,8 @@ assert.ok(
 );
 const framePct = (paintedAt1080 / 1080) * 100;
 assert.ok(framePct >= 4.5 && framePct <= 5, `${framePct.toFixed(2)}% of frame height must be 4.5-5%`);
+// The operator asked for 125% specifically.
+assert.equal(DEFAULT_SUB_STYLE.fontSizePct, 125, 'the default size is 125%, as requested');
 
 // Position: the bottom baseline sits 5-6% up from the bottom edge.
 assert.ok(
@@ -159,5 +161,12 @@ assert.doesNotMatch(
 const merged = mergeStyle(DEFAULT_SUB_STYLE, { outlineWidth: 6 });
 assert.equal(merged.style.outlineWidth, 6, 'the stroke may be set thick');
 assert.deepEqual(merged.issues, [], 'a stroke of 6 is in range, not clamped');
+
+// A saved style is merged OVER the defaults, so a style stored under an old key
+// would pin every value and the new defaults would never reach the viewer. The
+// store version is what makes a revised look land once.
+const source = readFileSync(new URL('../../src/subs/style.ts', import.meta.url), 'utf8');
+assert.match(source, /elfura:subtitle-style:v2/, 'a revised default needs a new store key');
+assert.match(source, /LEGACY_STORE_KEY/, 'the previous key is still cleared with it');
 
 console.log('ass subtitles: ok');
