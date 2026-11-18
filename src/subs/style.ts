@@ -52,32 +52,41 @@ export interface SubtitleStyle {
   horizontalPct: number; // -40..40 nudge from the aligned position
 }
 
+/**
+ * Bold white text with a thick crisp black stroke and no box.
+ *
+ * This is the broadcast/anime look (and what a well-authored ASS file renders
+ * as): it stays readable over both a white sky and a dark night scene, which a
+ * translucent box cannot do - the box helps on bright frames and muddies dark
+ * ones. The stroke does the work, so the box is off by default and the caption
+ * floats over the picture the way viewers of fansubbed anime expect.
+ */
 export const DEFAULT_SUB_STYLE: SubtitleStyle = {
   fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
   fontSizePct: 100,
-  fontWeight: 600,
+  fontWeight: 800,
   italic: false,
   uppercase: false,
-  letterSpacingEm: 0.01,
-  lineHeight: 1.35,
+  letterSpacingEm: 0.005,
+  lineHeight: 1.28,
 
   color: '#ffffff',
   textOpacity: 1,
   backgroundColor: '#000000',
-  backgroundOpacity: 0.55,
-  outline: false,
+  backgroundOpacity: 0,
+  outline: true,
   outlineColor: '#000000',
-  outlineWidth: 2,
-  shadow: true,
+  outlineWidth: 2.5,
+  shadow: false,
   shadowColor: '#000000',
   shadowBlur: 4,
 
-  paddingPx: 6,
-  radiusPx: 6,
+  paddingPx: 0,
+  radiusPx: 0,
   maxWidthPct: 86,
 
   edge: 'bottom',
-  verticalPct: 9,
+  verticalPct: 8,
   horizontalAlign: 'center',
   horizontalPct: 0,
 };
@@ -106,7 +115,7 @@ const NUM_RANGE: Partial<Record<keyof SubtitleStyle, [number, number]>> = {
   lineHeight: [1, 2],
   textOpacity: [0, 1],
   backgroundOpacity: [0, 1],
-  outlineWidth: [0, 4],
+  outlineWidth: [0, 6],
   shadowBlur: [0, 12],
   paddingPx: [0, 24],
   radiusPx: [0, 24],

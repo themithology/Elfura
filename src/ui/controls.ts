@@ -2704,7 +2704,7 @@ export class PlayerUI {
     this.panelBody.appendChild(this.toggle('Outline', style.outline, (v) => live({ outline: v })));
     if (style.outline) {
       this.panelBody.appendChild(this.color('Outline color', style.outlineColor, (c) => live({ outlineColor: c })));
-      this.panelBody.appendChild(this.slider('Outline width', style.outlineWidth, 0, 4, 0.5, 'px', (v) => live({ outlineWidth: v })));
+      this.panelBody.appendChild(this.slider('Outline width', style.outlineWidth, 0, 6, 0.5, 'px', (v) => live({ outlineWidth: v })));
     }
     this.panelBody.appendChild(this.toggle('Drop shadow', style.shadow, (v) => live({ shadow: v })));
     if (style.shadow) {

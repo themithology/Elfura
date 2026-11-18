@@ -1,0 +1,135 @@
+// ASS / SSA subtitle support, and the default look.
+//
+// ASS was advertised but broken in two independent ways, both found by parsing a
+// real file rather than by reading the code:
+//
+//   1. a valid .ass produced ZERO cues. The parser took the first `Format:` line
+//      it saw anywhere - which is in the style block - and then, having one,
+//      ignored the Events block's own `Format:` too. Every Dialogue line was
+//      parsed against the wrong field list and discarded, so the track silently
+//      never appeared.
+//   2. even once parsed, {\b1} {\i1} were stripped without being applied, so
+//      emphasis was lost. The comment above parseInline claimed support.
+//
+// Also pins the default style to the broadcast/anime look: bold white text with
+// a crisp black stroke and no box.
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { parseCues, detectFormat, parseInline } from '../../src/subs/parser.ts';
+import { DEFAULT_SUB_STYLE, mergeStyle } from '../../src/subs/style.ts';
+
+// ---- detection ------------------------------------------------------------
+const assFile = `[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, Bold
+Style: Default,Arial,48,&H00FFFFFF,-1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.00,0:00:03.50,Default,,0,0,0,,{\\b1}When the four of you{\\b0}
+Dialogue: 0,0:00:03.50,0:00:06.00,Default,,0,0,0,,completed the task, I entrusted,
+Dialogue: 0,0:00:06.00,0:00:08.00,Default,,0,0,0,,{\\i1}to you{\\i0}\\Nwith a comma, inside
+Dialogue: 0,0:00:08.00,0:00:10.00,Default,,0,0,0,,{\\an8}Top of the screen
+Dialogue: 0,0:00:10.00,0:00:12.00,Default,,0,0,0,,
+`;
+assert.equal(detectFormat(assFile, undefined), 'ass');
+assert.equal(detectFormat('x', 'https://cdn/x.ass'), 'ass');
+assert.equal(detectFormat('x', 'https://cdn/x.ssa'), 'ass');
+
+// ---- the file actually parses --------------------------------------------
+const parsed = parseCues(assFile, 'x.ass');
+assert.equal(parsed.format, 'ass');
+assert.equal(parsed.cues.length, 4, 'a valid .ass must yield its dialogue lines, not zero');
+
+assert.equal(parsed.cues[0].text, 'When the four of you', 'the style Format: line must not win over the Events one');
+assert.equal(parsed.cues[0].start, 1);
+assert.equal(parsed.cues[0].end, 3.5);
+assert.equal(parsed.cues[0].spans[0].bold, true, '{\\b1} must be applied');
+
+// Commas inside the dialogue text survive: only the first N-1 fields are split.
+assert.equal(parsed.cues[1].text, 'completed the task, I entrusted,');
+
+// {\i1} ... {\i0} then a hard break: two spans, italic only on the first.
+assert.equal(parsed.cues[2].spans[0].italic, true);
+assert.equal(parsed.cues[2].text, 'to you\nwith a comma, inside');
+
+// \an8 is a top placement hint.
+assert.equal(parsed.cues[3].align, 'center');
+
+// A dialogue with no text is dropped.
+assert.equal(parsed.cues.length, 4, 'an empty dialogue line is not a cue');
+
+// ---- inline emphasis, all three syntaxes --------------------------------
+const inline = (s) => parseInline(s);
+assert.equal(inline('{\\b1}bold{\\b0}')[0].bold, true);
+assert.equal(inline('{\\i1}ital{\\i0}')[0].italic, true);
+assert.equal(inline('{\\u1}und{\\u0}')[0].underline, true);
+assert.equal(inline('<b>vtt</b>')[0].bold, true);
+assert.equal(inline('<i>vtt</i>')[0].italic, true);
+assert.equal(inline('{\\an8}plain')[0].bold, false, 'positioning tags alone change no styling');
+assert.equal(inline('a{\\b1}b{\\b0}c').map((s) => s.bold).join(','), 'false,true,false', 'the toggle applies to what follows it');
+assert.equal(inline('no markup at all')[0].text, 'no markup at all');
+
+// ---- VTT and SRT must not regress ---------------------------------------
+const vtt = `WEBVTT
+
+1
+00:00:01.000 --> 00:00:03.000
+Hello <b>world</b>
+
+2
+00:00:04.000 --> 00:00:06.000 align:start
+Second &amp; last
+`;
+const v = parseCues(vtt, 'a.vtt');
+assert.equal(v.format, 'vtt');
+assert.equal(v.cues.length, 2);
+assert.equal(v.cues[0].spans.some((s) => s.bold), true);
+assert.equal(v.cues[1].text, 'Second & last');
+assert.equal(v.cues[1].align, 'left');
+
+const srt = `1
+00:00:01,000 --> 00:00:02,500
+First line here
+
+2
+00:00:03,000 --> 00:00:04,000
+Second
+`;
+const s = parseCues(srt, 'a.srt');
+assert.equal(s.format, 'srt');
+assert.equal(s.cues.length, 2);
+assert.equal(s.cues[0].text, 'First line here');
+
+// ---- the default look ----------------------------------------------------
+// Bold white text, crisp black stroke, no box: the broadcast/anime style the
+// operator asked for, and what a well-authored ASS file looks like.
+assert.equal(DEFAULT_SUB_STYLE.color, '#ffffff');
+assert.equal(DEFAULT_SUB_STYLE.fontWeight, 800, 'the reference is heavy, not regular');
+assert.equal(DEFAULT_SUB_STYLE.outline, true, 'the stroke is what makes it readable on bright frames');
+assert.equal(DEFAULT_SUB_STYLE.outlineColor, '#000000');
+assert.ok(DEFAULT_SUB_STYLE.outlineWidth >= 2, 'a thick stroke, not a hairline');
+assert.equal(DEFAULT_SUB_STYLE.backgroundOpacity, 0, 'no box: the caption floats over the picture');
+assert.equal(DEFAULT_SUB_STYLE.shadow, false, 'a glow would soften the stroke edge');
+
+// The stroke must be crisp: equal offsets with zero blur, never a blurred halo.
+const renderer = readFileSync(new URL('../../src/subs/renderer.ts', import.meta.url), 'utf8');
+assert.match(renderer, /--elf-sub-outline/, 'the renderer paints an outline');
+const outlineBlock = renderer.slice(renderer.indexOf("if (s.outline && s.outlineWidth > 0)"));
+assert.match(outlineBlock.slice(0, 900), /0 \$\{s\.outlineColor\}/, 'each stroke copy has zero blur radius');
+assert.doesNotMatch(
+  outlineBlock.slice(0, 300),
+  /0 0 \$\{px\(s\.outlineWidth\)\}/,
+  'the old blurred-glow form must not come back',
+);
+
+// A user's saved style still round-trips and a wide stroke is allowed.
+const merged = mergeStyle(DEFAULT_SUB_STYLE, { outlineWidth: 6 });
+assert.equal(merged.style.outlineWidth, 6, 'the stroke may be set thick');
+assert.deepEqual(merged.issues, [], 'a stroke of 6 is in range, not clamped');
+
+console.log('ass subtitles: ok');
