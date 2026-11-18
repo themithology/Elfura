@@ -125,6 +125,11 @@ export interface BackendConfig {
     openSubtitlesBase: string;
     timeoutMs: number;
   };
+  /**
+   * Whole-site redirect to a new domain (ELFURA_REDIRECT_TO), or '' for off.
+   * Only the host is replaced; path and query are kept as they are.
+   */
+  redirectTo: string;
 }
 
 function parseOrigins(raw?: string): string[] {
@@ -133,6 +138,27 @@ function parseOrigins(raw?: string): string[] {
     .split(',')
     .map((s) => s.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+}
+
+/**
+ * Turn ELFURA_REDIRECT_TO into an origin, or '' when unset.
+ *
+ * Accepts `def.com`, `def.com/`, `https://def.com` and returns `https://def.com`.
+ * Only the host is used: the request's own path is what gets appended, so a
+ * base path in the setting would be a second, conflicting source of truth.
+ */
+export function parseRedirectTo(raw?: string): string {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (!parsed.hostname) return '';
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
 }
 
 const PLACEHOLDER_SECRET_RE = /^(?:replace-with-|changeme|your-secret|example|<)/i;
@@ -282,6 +308,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       timeoutMs: Math.max(3000, Number(env.ELFURA_GREYBOX_TIMEOUT_MS || 12_000)),
       rank: 50,
     },
+    redirectTo: parseRedirectTo(env.ELFURA_REDIRECT_TO),
     subtitles: {
       enabled: env.OPENSUBTITLES_ENABLED !== '0',
       openSubtitlesBase: (env.OPENSUBTITLES_BASE || 'https://opensubtitles-v3.strem.io')

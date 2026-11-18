@@ -324,6 +324,35 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
 
     const pathname = url.pathname;
 
+    // ---- ELFURA_REDIRECT_TO: move the site to a new domain ----------------
+    // One setting, one job: replace the host, keep everything after it. So
+    // abc.com/embed/movie/550?x=1 arrives as def.com/embed/movie/550?x=1.
+    //
+    // /api and /roxy are exempt. The API because a redirected fetch is a failed
+    // fetch, which breaks playback for anyone still on the old domain; the panel
+    // because a migration that hides the admin UI on the old host is one you
+    // cannot undo from the panel.
+    if (cfg.redirectTo) {
+      // Hostname only, port ignored. A port mismatch must never be the reason
+      // the new domain "redirects" to itself - that is a loop, and a loop takes
+      // the whole site down.
+      const hostnameOf = (raw: string) => {
+        const value = raw.split(',')[0].trim().toLowerCase();
+        const match = /^(\[[^\]]+\]|[^:]+)/.exec(value);
+        return (match ? match[1] : value).replace(/\.$/, '');
+      };
+      const host = hostnameOf(String(req.headers['x-forwarded-host'] || req.headers.host || ''));
+      const targetHost = hostnameOf(new URL(cfg.redirectTo).host);
+      const exempt = pathname === '/api' || pathname.startsWith('/api/') ||
+        pathname === '/roxy' || pathname.startsWith('/roxy/');
+      if (!exempt && host && host !== targetHost) {
+        const location = cfg.redirectTo + pathname + (url.search || '');
+        res.writeHead(301, { Location: location, 'Cache-Control': 'no-store', Vary: 'Host' });
+        res.end(method === 'HEAD' ? undefined : `Moved to ${location}`);
+        return;
+      }
+    }
+
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
     if (pathname === '/roxy' || pathname === '/roxy/') {
       if (method !== 'GET' && method !== 'HEAD') { res.writeHead(405); res.end(); return; }
@@ -1179,6 +1208,11 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
     console.log(describeMemoryPolicy());
+    if (cfg.redirectTo) {
+      // Named on boot: a redirect mistake looks like "the site is dead", so the
+      // console says exactly where it is sending people.
+      console.log(`[elfura-redirect] every page moves to ${cfg.redirectTo} (path and query preserved; /api and /roxy stay)`);
+    }
     const state = registry.describeSources();
     // Count, not names. This console is visible to anyone with panel access, and
     // the list of providers is the one thing that must not be published — a
