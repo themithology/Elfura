@@ -231,48 +231,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       },
     };
   };
-  /**
-   * Where this request should be redirected to, or null.
-   *
-   * Returning the URL rather than a boolean keeps the decision and the Location
-   * header in one place, so they cannot disagree.
-   */
-  const redirectFor = (req: http.IncomingMessage, pathname: string, search: string): string | null => {
-    if (!cfg.redirect.to) return null;
-    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
-      .split(',')[0]
-      .trim()
-      .toLowerCase()
-      .replace(/:\d+$/, '');
-    if (!host) return null;
-    let target: URL;
-    try {
-      target = new URL(cfg.redirect.to);
-    } catch {
-      return null;
-    }
-    // Never redirect the host we are sending people to.
-    if (host === target.host.replace(/:\d+$/, '')) return null;
-    // With a list, only those hosts redirect. Without one, everything that is
-    // not the target does - a plain "this domain has moved" switch.
-    if (cfg.redirect.from.length && !cfg.redirect.from.includes(host)) return null;
-    if (pathname === '/roxy' || pathname.startsWith('/roxy/')) return null;
-    if (pathname === '/api' || pathname.startsWith('/api/')) return null;
-    if (cfg.redirect.keep.some((entry) => (entry.endsWith('/') ? pathname.startsWith(entry) : pathname === entry))) {
-      return null;
-    }
-    // Scoped redirects: only these path prefixes move, everything else on the
-    // host keeps serving. A trailing slash means "this prefix", so /embed/
-    // covers /embed/movie/550 but not /embedding-whatever.
-    if (
-      cfg.redirect.paths.length &&
-      !cfg.redirect.paths.some((entry) => (entry.endsWith('/') ? pathname.startsWith(entry) : pathname === entry))
-    ) {
-      return null;
-    }
-    return cfg.redirect.to + pathname + search;
-  };
-
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -365,33 +323,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     const pathname = url.pathname;
-
-    // ---- Whole-site redirect (ELFURA_REDIRECT_TO) -----------------------
-    // Sits ahead of every route so a new domain covers the entire site, not
-    // just the home page: /embed/movie/550 arrives as /embed/movie/550,
-    // query string and all.
-    //
-    // Deliberately excluded:
-    //   * the API - a redirected fetch is a failed fetch, and the player's
-    //     requests must keep working against the host it was loaded from;
-    //   * /roxy - the panel has to stay reachable on the old host even after
-    //     the public site has moved, or fixing a mistake means editing files
-    //     on the server;
-    //   * anything matching ELFURA_REDIRECT_KEEP.
-    const location = redirectFor(req, pathname, url.search || '');
-    if (location) {
-      // 301 is cached by browsers forever; 302 stays reversible. Either way the
-      // redirect is only ever applied to the hosts in ELFURA_REDIRECT_FROM, so
-      // the new domain cannot end up redirecting to itself.
-      res.writeHead(cfg.redirect.status, {
-        Location: location,
-        'Cache-Control': 'no-store',
-        'X-Robots-Tag': 'noindex',
-        Vary: 'Host',
-      });
-      res.end(method === 'HEAD' ? undefined : `Moved to ${location}`);
-      return;
-    }
 
     // Roxy is always same-origin and is deliberately outside the permissive public API CORS policy.
     if (pathname === '/roxy' || pathname === '/roxy/') {
@@ -1248,16 +1179,6 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
     console.log(describeMemoryPolicy());
-    if (cfg.redirect.to) {
-      // Named explicitly: a redirect is the one setting whose mistake looks like
-      // "the site is dead", so the console says exactly what it is doing.
-      console.log(
-        `[elfura-redirect] ${cfg.redirect.status} to ${cfg.redirect.to}` +
-          (cfg.redirect.from.length ? ` from ${cfg.redirect.from.join(', ')}` : ' from every other host') +
-          (cfg.redirect.paths.length ? ` (only ${cfg.redirect.paths.join(', ')})` : '') +
-          ` · API and /roxy are exempt`,
-      );
-    }
     const state = registry.describeSources();
     // Count, not names. This console is visible to anyone with panel access, and
     // the list of providers is the one thing that must not be published — a
