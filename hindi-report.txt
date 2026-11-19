@@ -1,0 +1,10 @@
+[hindi] title        mikaza                                    orion
+[hindi] Naruto       resolvedLanguage=hin src=yes              embed http=403
+[hindi] One Piece    resolvedLanguage=hin src=yes              embed http=403
+[hindi] JJK          resolvedLanguage=hin src=yes              embed http=403
+[hindi] AoT          resolvedLanguage=hin src=yes              embed http=403
+[hindi] DBZ          resolvedLanguage=hin src=yes              embed http=403
+
+[hindi] mikaza languages: hin×5
+[hindi] mikaza HINDI rows: 5
+[hindi] orion: no language reported at all

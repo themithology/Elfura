@@ -1,0 +1,29 @@
+name: Source 16 probe
+on:
+  push:
+    branches: [arena/d642a0e9-elfura]
+    paths: [scripts/probe-source16.mjs, .github/workflows/source16-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node scripts/probe-source16.mjs > /tmp/s16.txt 2>&1 || true
+      - name: Publish
+        if: always()
+        run: |
+          git config user.name probe
+          git config user.email probe@example.invalid
+          git checkout --orphan s16-report
+          cp /tmp/s16.txt s16-report.txt
+          git add -f s16-report.txt
+          git commit -q -m "source16 probe"
+          git push -f origin s16-report

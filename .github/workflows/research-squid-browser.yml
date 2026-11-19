@@ -1,0 +1,19 @@
+name: Squid Game live browser language test
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-squid-browser.mjs, .github/workflows/research-squid-browser.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/research-squid-browser.mjs
