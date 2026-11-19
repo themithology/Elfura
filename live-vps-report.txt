@@ -1,0 +1,5 @@
+http://91.92.35.88:3002/api/v1/health -> 200 (291ms) {"ok":true,"service":"elfura-backend","version":"0.1.0","build":"238aa96","features":{"roxy":true},"memory":{"rssMb":127.8,"heapUsedMb":24.1,"heapTotalMb":26.3,"externalMb":4.2,"payloadCaches":"on"},"
+http://91.92.35.88:3002/resolver/api/health -> 404 (203ms) {"ok":false,"error":"not found"}
+http://91.92.35.88:3003/resolver/api/health -> FAIL TypeError ECONNREFUSED (93ms)
+http://91.92.35.88:3003/api/v1/health -> FAIL TypeError ECONNREFUSED (92ms)
+http://91.92.35.88:3002/ -> 200 (198ms) <!doctype html> <html lang="en"> <head> <meta charset="UTF-8" /> <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <meta name="theme-color" content="#050505" /> 

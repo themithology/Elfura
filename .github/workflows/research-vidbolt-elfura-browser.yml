@@ -1,0 +1,27 @@
+name: Real direct source in Elfura browser
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-vidbolt-elfura-browser.mjs, .github/workflows/research-vidbolt-elfura-browser.yml, backend/src/sources/source1.ts, backend/src/relay.ts, backend/src/sources/liveness.ts, src/core/player.ts]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        tmdb: ['872585', '93405', '289517']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/research-vidbolt-elfura-browser.mjs
+        env:
+          VIDBOLT_TEST_ID: ${{ matrix.tmdb }}

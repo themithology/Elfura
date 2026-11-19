@@ -1,0 +1,24 @@
+name: Live VPS probe
+on:
+  push:
+    branches: [arena/d642a0e9-elfura]
+    paths: [scripts/probe-live-vps.mjs, .github/workflows/live-vps-probe.yml]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/probe-live-vps.mjs > /tmp/live.txt 2>&1 || true
+      - name: Publish
+        if: always()
+        run: |
+          git config user.name probe
+          git config user.email probe@example.invalid
+          git checkout --orphan live-vps-report
+          cp /tmp/live.txt live-vps-report.txt
+          git add -f live-vps-report.txt
+          git commit -q -m "live vps probe"
+          git push -f origin live-vps-report
