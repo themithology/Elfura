@@ -1,0 +1,17 @@
+name: Investigate production startup
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/production-startup-investigate.mjs, .github/workflows/production-startup-investigate.yml]
+permissions:
+  contents: read
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/production-startup-investigate.mjs

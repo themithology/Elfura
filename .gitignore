@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.vite/
+.env
+.env.*
+!.env.example
+*.zip
+!elfura-pterodactyl.zip
+
+# Private, persistent Roxy analytics and site bans
+data/

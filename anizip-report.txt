@@ -1,0 +1,11 @@
+=== https://api.ani.zip/mappings?themoviedb_id=46260 -> 200
+{"animeplanet_id":"naruto","kitsu_id":11,"mal_id":20,"type":"TV","anilist_id":20,"anisearch_id":2788,"anidb_id":239,"notifymoe_id":null,"livechart_id":3585,"thetvdb_id":78857,"imdb_id":null,"themoviedb_id":"46260"}
+  titles.en = Naruto
+
+=== https://api.ani.zip/mappings?themoviedb_id=85937 -> 200
+{"animeplanet_id":"demon-slayer-kimetsu-no-yaiba","kitsu_id":41370,"mal_id":38000,"type":"TV","anilist_id":101922,"anisearch_id":13658,"anidb_id":14107,"notifymoe_id":null,"livechart_id":3311,"thetvdb_id":348545,"imdb_id":"tt9335498","themoviedb_id":"85937"}
+  titles.en = Demon Slayer
+
+=== https://api.ani.zip/mappings?themoviedb_id=1399 -> 404
+  titles.en = undefined
+
