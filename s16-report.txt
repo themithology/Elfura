@@ -1,0 +1,7 @@
+[s16] Naruto S1E1              raw= 1 2058ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[s16] Demon Slayer S1E1        raw= 1 2767ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[s16] JJK S1E1                 raw= 1 1465ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[s16] One Piece S1E1           raw= 1 2225ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[s16] AoT S1E1                 raw= 1 1281ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[s16] Fight Club (not anime)   raw= 0 274ms :: 1 req · api.ani.zip 404
+[s16] source-16 returned results for 5/6 (Fight Club must be 0)

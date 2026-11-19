@@ -1,0 +1,69 @@
+// Full local Elfura backend/player against the original provider. Never log upstream URLs or keys.
+import { createBackendServer } from '../../dist/backend/index.js';
+import { loadBackendConfig } from '../../dist/backend/config.js';
+import { openStreamTicket } from '../../dist/backend/security.js';
+import { chromium } from 'playwright-core';
+import chromiumBinary from '@sparticuz/chromium';
+const base=loadBackendConfig();
+const dead='http://127.0.0.1:1';
+const {server,cfg}=createBackendServer({
+  ...base, isProd:false, resolveTimeoutMs:10000,
+  source1:{...base.source1,riftOrigin:dead,vidrockOrigin:dead,vidlinkOrigin:dead,vidboltOrigin:'https://vidbolt.xyz'},
+  source3:{...base.source3,enabled:false},
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const port=server.address().port;
+function notice(data){console.log(`::notice title=VidboltElfura::${JSON.stringify(data).replace(/%/g,'%25').replace(/\n/g,'%0A')}`);}
+let browser;
+try {
+ browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
+ const page=await browser.newPage();
+ const cases=[{type:'movie',id:'872585',path:'movie/872585'}, {type:'tv',id:'93405',path:'tv/93405/1/1'}, {type:'tv',id:'289517',path:'tv/289517/1/1'}];
+ for(const c of cases.filter(x=>!process.env.VIDBOLT_TEST_ID || x.id===process.env.VIDBOLT_TEST_ID)) {
+  let step='open';
+  try {
+   await page.goto(`http://127.0.0.1:${port}/embed/${c.path}?source=source-1`,{waitUntil:'domcontentloaded',timeout:30000});
+   step='source';
+   await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-1' && s.multiAudio),null,{timeout:45000});
+   const options=await page.evaluate(()=>window.__elfura.player.getSources().filter(x=>x.sourceId==='source-1'&&x.multiAudio).map(s=>({id:s.id,url:s.url,langs:s.availableAudioLangs,qualities:s.qualityLadder})));
+   const info=options.find(s=>{try{const ticket=new URL(s.url,`http://127.0.0.1:${port}`).searchParams.get('t');const raw=openStreamTicket(cfg.secret,ticket);return /(?:^|\.)rousav\.tech$/i.test(new URL(raw.u).hostname);}catch{return false;}});
+   if(!info)throw new Error('direct provider candidate missing');
+   step='select';
+   await page.evaluate(async id=>{const p=window.__elfura.player;p.video.muted=true;await p.setSource(id);await p.play();},info.id);
+   step='tracks';
+   await page.waitForFunction(()=>window.__elfura.player.hls?.audioTracks?.some(t=>/^(hi|hin)(-|$)/i.test(t.lang||'')),null,{timeout:20000});
+   step='hindi';
+   const selected=await page.evaluate(async()=>{const p=window.__elfura.player;const h=p.hls;window.__audioSegments=0;window.__hlsErrors=[];h.on('hlsFragBuffered',(_e,d)=>{if(d.frag?.type==='audio'){window.__audioSegments++;(window.__audioLevels ||= []).push(d.frag.level);}else if(d.frag?.type==='main'){(window.__videoLevels ||= []).push(d.frag.level);}});h.on('hlsError',(_e,d)=>{if(window.__hlsErrors.length<12)window.__hlsErrors.push({details:d.details,fatal:d.fatal,status:d.response?.code||null});});const ok=await p.setAudio('hi');return {ok,lang:h.audioTracks[h.audioTrack]?.lang||null};});
+   await page.waitForFunction(()=>window.__audioSegments>0 && window.__elfura.player.video.currentTime>0.1,null,{timeout:35000});
+   const state=await page.evaluate(()=>({audioSegments:window.__audioSegments,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId,errors:window.__hlsErrors}));
+   if(!selected.ok||!state.audioSegments||state.source!=='source-1')throw new Error('playback assertion failed');
+   const switches=[];
+   for(const lang of ['en','hi']) {
+    step=`switch-${lang}`;
+    const selection=await page.evaluate(async lang=>{const p=window.__elfura.player;window.__audioSegments=0;window.__audioLevels=[];const ok=await p.setAudio(lang);return {ok,lang:p.hls?.audioTracks[p.hls.audioTrack]?.lang||null};},lang);
+    if(!selection.ok || selection.lang !== lang) throw new Error('audio selection failed');
+    await page.waitForFunction(()=>window.__audioLevels?.includes(window.__elfura.player.hls?.audioTrack),null,{timeout:35000});
+    const switched=await page.evaluate(()=>({audioSegments:window.__audioSegments,audioLevels:window.__audioLevels,nativeIndex:window.__elfura.player.hls?.audioTrack,time:window.__elfura.player.video.currentTime,source:window.__elfura.player.currentSource?.sourceId}));
+    if(switched.source!=='source-1')throw new Error('unexpected source fallback');
+    switches.push({requested:lang,...selection,...switched});
+   }
+   step='quality';
+   const quality=[];
+   if(c.type==='movie') {
+    const levels=await page.evaluate(()=>window.__elfura.player.getQualityLevels());
+    if(levels.length || info.qualities?.length)throw new Error('unreliable movie quality labels exposed');
+   }
+   for (const target of c.type==='movie'?[]:[1080,720]) {
+    const qualitySet=await page.evaluate(target=>{const p=window.__elfura.player;const exists=p.getQualityLevels().some(q=>q.height===target);p.setQuality(target);return exists;},target);
+    if(!qualitySet)throw new Error('quality missing');
+    await page.waitForFunction(target=>{const p=window.__elfura.player;return p.video.videoHeight===target && p.currentSource?.sourceId==='source-1';},target,{timeout:35000});
+    const rendered=await page.evaluate(()=>window.__elfura.player.video.videoHeight);
+    quality.push({target,rendered});
+   }
+   notice({id:c.id,success:true,languages:info.langs,qualities:info.qualities,selected,...state,switches,quality});
+  } catch(e){
+   const snapshot=await page.evaluate(()=>({source:window.__elfura?.player?.currentSource?.sourceId||null,time:window.__elfura?.player?.video?.currentTime||0,audioSegments:window.__audioSegments||0,errors:window.__hlsErrors||[],videoHeight:window.__elfura?.player?.video?.videoHeight||0,videoWidth:window.__elfura?.player?.video?.videoWidth||0,currentLevel:window.__elfura?.player?.hls?.currentLevel,loadLevel:window.__elfura?.player?.hls?.loadLevel,videoLevels:window.__videoLevels||[],qualityLevels:window.__elfura?.player?.getQualityLevels()||[]})).catch(()=>null);
+   notice({id:c.id,success:false,step,error:e.name,snapshot});process.exitCode=1;
+  }
+ }
+} finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}

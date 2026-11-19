@@ -1,0 +1,26 @@
+name: Bingr HLS adapter verification
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/src/sources/source4.ts, backend/test/bingr-adapter.mjs, backend/test/bingr-live-adapter.mjs, backend/test/bingr-elfura-browser.mjs, .github/workflows/bingr-adapter.yml]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/bingr-adapter.mjs
+      - run: node backend/test/bingr-live-adapter.mjs
+      - run: npm run build:embed
+      - run: npm run build:backend
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - name: Player check
+        run: |
+          node backend/test/bingr-elfura-browser.mjs > /tmp/browser-result 2>&1 || { head -c 3000 /tmp/browser-result | sed 's/^/::notice title=BrowserError::/'; exit 1; }
+          cat /tmp/browser-result
