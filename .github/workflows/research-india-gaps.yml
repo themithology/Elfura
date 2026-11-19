@@ -1,0 +1,20 @@
+name: Research India catalog gaps
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-india-gaps.mjs, .github/workflows/research-india-gaps.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/research-india-gaps.mjs

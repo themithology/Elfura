@@ -1,0 +1,5 @@
+// Public provider research. Log no credentials, stream URLs, or bodies.
+const origin='https://vidcore.org';
+for (const path of ['/','/embed/movie/872585','/embed/movie/299534','/embed/tv/93405/1/1','/embed/tv/85937/1/1']) {
+ try { const r=await fetch(origin+path,{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0 Safari/537.36'},signal:AbortSignal.timeout(12000)}); const text=(await r.text()).slice(0,1000000);const hosts=[...new Set([...text.matchAll(/https?:\\?\/\\?\/([a-z0-9.-]+)/gi)].map(m=>m[1].toLowerCase()))].slice(0,30);const paths=[...new Set([...text.matchAll(/["'`](\/(?:api|embed|player|stream)\/[a-z0-9_./-]+)/gi)].map(m=>m[1]))].slice(0,15);console.log(`::notice title=VidcoreResearch::${JSON.stringify({path,status:r.status,host:new URL(r.url).hostname,bytes:text.length,title:text.match(/<title>([^<]*)<\/title>/i)?.[1]||'',oppenheimer:/oppenheimer/i.test(text),hosts,paths,blocked:/just a moment|sorry, you have been blocked/i.test(text)}).replace(/%/g,'%25')}`); }catch(e){console.log(`::notice title=VidcoreResearch::${JSON.stringify({path,error:e.name,cause:e.cause?.code})}`)}
+}

@@ -1,0 +1,15 @@
+[anime] Naruto S1E1    source-16  raw= 1 1111ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] Naruto S1E1    source-18  raw= 1 1600ms :: 10 req · hugh.cdn.rumble.cloud 403×6 · blakiteapi.xyz 200×3 · hugh.cdn.rumble.cloud 200
+[anime] Naruto S1E5    source-16  raw= 1 2361ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] Naruto S1E5    source-18  raw= 1 630ms :: 9 req · hugh.cdn.rumble.cloud 403×6 · blakiteapi.xyz 200×2 · hugh.cdn.rumble.cloud 200
+[anime] JJK S1E1       source-16  raw= 1 792ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] JJK S1E1       source-18  raw= 4 398ms :: 6 req · hugh.cdn.rumble.cloud 206×4 · blakiteapi.xyz 200×2
+[anime] DBZ S1E1       source-16  raw= 1 1010ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] DBZ S1E1       source-18  raw= 0 103ms :: 1 req · blakiteapi.xyz 200
+[anime] One Piece S1E1 source-16  raw= 1 1606ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] One Piece S1E1 source-18  raw= 4 395ms :: 6 req · hugh.cdn.rumble.cloud 206×4 · blakiteapi.xyz 200×2
+[anime] AoT S1E1       source-16  raw= 1 790ms :: 4 req · mikaza.buzz 200×2 · api.ani.zip 200 · mikaza.buzz 206
+[anime] AoT S1E1       source-18  raw= 5 217ms :: 7 req · hugh.cdn.rumble.cloud 206×5 · blakiteapi.xyz 200×2
+
+[anime] source-16: 6/6 titles with results
+[anime] source-18: 5/6 titles with results

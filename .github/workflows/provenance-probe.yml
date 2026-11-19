@@ -1,0 +1,83 @@
+name: Provenance + source 14/12 expansion probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/399224d8-elfura]
+    paths:
+      - '.github/workflows/provenance-probe.yml'
+      - 'scripts/provenance-probe.mjs'
+      - 'backend/src/sources/source12.ts'
+      - 'backend/src/sources/source14.ts'
+      - 'backend/src/sources/source21.ts'
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - name: Probe
+        run: |
+          node scripts/provenance-probe.mjs 2>&1 | tee /tmp/provenance.log
+          {
+            echo '### Provenance probe'
+            echo '```'
+            tail -n 200 /tmp/provenance.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Source health (movie 550)
+        if: always()
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ELFURA_SECRET: ci-probe-secret
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/source-selftest.mjs movie 550 2>&1 | tee /tmp/selftest-550.log || true
+          { echo '### Source health — movie 550 (Fight Club)'; echo '```'; cat /tmp/selftest-550.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Source health (tv 1396 S1E1)
+        if: always()
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ELFURA_SECRET: ci-probe-secret
+          ELFURA_SELF_TEST: '0'
+        run: |
+          node scripts/source-selftest.mjs tv 1396 1 1 2>&1 | tee /tmp/selftest-1396.log || true
+          { echo '### Source health — tv 1396 S1E1 (Breaking Bad)'; echo '```'; cat /tmp/selftest-1396.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish report
+        if: always()
+        run: |
+          mkdir -p research
+          {
+            echo '# Provenance + Sources 14/12 expansion report'
+            echo
+            echo "Run: $GITHUB_RUN_ID on $GITHUB_REF_NAME at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo '```'
+            cat /tmp/provenance.log 2>/dev/null || echo 'no output'
+            echo '```'
+            echo
+            echo '## Source health — movie 550 (Fight Club)'
+            echo '```'
+            cat /tmp/selftest-550.log 2>/dev/null || echo 'no output'
+            echo '```'
+            echo
+            echo '## Source health — tv 1396 S1E1 (Breaking Bad)'
+            echo '```'
+            cat /tmp/selftest-1396.log 2>/dev/null || echo 'no output'
+            echo '```'
+          } > research/provenance-report.md
+          git config user.name 'elfura-probe'
+          git config user.email 'probe@users.noreply.github.com'
+          git add research/provenance-report.md
+          git commit -m 'research: provenance + sources 14/12 probe [skip ci]' || exit 0
+          # The other probe workflow may land a report commit during this run.
+          for attempt in 1 2 3; do
+            git pull --rebase origin "$GITHUB_REF_NAME" >/dev/null 2>&1 || true
+            git push origin "HEAD:$GITHUB_REF_NAME" && break
+            sleep 5
+          done
