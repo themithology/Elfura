@@ -1,0 +1,23 @@
+name: Research Aethoflix deployment
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-aethoflix-live.mjs, .github/workflows/research-aethoflix-live.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/test/research-aethoflix-live.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-client-research
+          path: /tmp/aethoflix-public-client.txt
+          retention-days: 1

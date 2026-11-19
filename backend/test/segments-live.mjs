@@ -1,0 +1,6 @@
+import {fetchSkipMarkers} from '../../dist/backend/segments.js';
+try {const r=await fetch('https://api.theintrodb.org/v4/media?tmdb_id=1399&season=1&episode=1&duration_ms=3720000',{signal:AbortSignal.timeout(10000),headers:{Accept:'application/json'}}); console.log('::notice title=LiveHTTP::'+JSON.stringify({status:r.status,body:(await r.text()).slice(0,500)}));} catch(e) {console.log('::notice title=LiveHTTP::'+JSON.stringify({error:String(e),cause:String(e.cause)}));}
+try {const r=await fetch('https://api.theintrodb.org/v4/media?tmdb_id=1399&season=1&episode=1&duration_ms=3720000',{signal:AbortSignal.timeout(10000),headers:{Accept:'application/json','User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'}});console.log('::notice title=LiveBrowserUA::'+JSON.stringify({status:r.status,body:(await r.text()).slice(0,120)}));} catch(e) {console.log('::notice title=LiveBrowserUA::'+String(e));}
+const segments=await fetchSkipMarkers({tmdbId:'1399',season:1,episode:1,duration:3720});
+console.log('::notice title=LiveMarkers::'+JSON.stringify({intro:segments.intro||null,outro:segments.outro||null}));
+if (!segments.intro || !segments.outro) throw Error('Live timestamp lookup did not return known markers');
