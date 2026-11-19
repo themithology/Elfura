@@ -21,6 +21,8 @@ import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
+import { createSource16Adapter } from './source16.js';
+import { createSource6Adapter } from './source6.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
 import { createSource10Adapter } from './source10.js';
@@ -29,10 +31,7 @@ import { createSource12Adapter } from './source12.js';
 import { createSource13Adapter } from './source13.js';
 import { createSource14Adapter } from './source14.js';
 import { createSource15Adapter } from './source15.js';
-import { createSource16Adapter } from './source16.js';
-import { createSource17Adapter } from './source17.js';
 import { createSource18Adapter } from './source18.js';
-import { createSource19Adapter } from './source19.js';
 import { createSource20Adapter } from './source20.js';
 import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
@@ -51,7 +50,10 @@ import type {
   UniformStreamOption,
 } from './types.js';
 
-const MAX_ADAPTER_CACHE_ENTRIES = 256;
+// Raised for a 4 GB container (was 256). One row is a resolved title's
+// candidates; 1024 of those is the difference between every viewer in a
+// spike re-resolving the same episode and the first one paying for it.
+const MAX_ADAPTER_CACHE_ENTRIES = 1024;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
 
 /** Extra time given to still-running adapters once the first source has candidates. */
@@ -75,7 +77,9 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-3': 'SOURCE3_ENABLED',
   'source-4': 'ELFURA_BINGR_ENABLED',
   'source-5': 'ELFURA_NXSHA_ENABLED',
+  'source-6': 'ELFURA_TELUGU_ENABLED',
   'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
+  'source-16': 'ELFURA_HINDI_DUB_ENABLED',
   'source-8': 'ELFURA_VIDZEE_ENABLED',
   'source-9': 'ELFURA_VIXSRC_ENABLED',
   'source-10': 'ELFURA_VIDNEST_ENABLED',
@@ -84,10 +88,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-13': 'ELFURA_XPASS_ENABLED',
   'source-14': 'ELFURA_RIVE_CITADEL_ENABLED',
   'source-15': 'ELFURA_MAPPLE_ENABLED',
-  'source-16': 'ELFURA_ANIVEXA_ENABLED',
-  'source-17': 'ELFURA_ANIVORTEX_ENABLED',
   'source-18': 'ELFURA_SUBDUB_ENABLED',
-  'source-19': 'ELFURA_DESIDUB_ENABLED',
   'source-20': 'ELFURA_VIDORA_ENABLED',
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
   'source-24': 'ELFURA_VIDLINK_ENABLED',
@@ -201,6 +202,13 @@ export class SourceRegistry {
         () => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0',
         () => cfg.source7?.enabled ?? process.env.ELFURA_SCREENSCAPE_ENABLED === '1',
       ),
+      // Telugu-only lane, derived from source-5's scraper list but kept as its
+      // own id so its yield is attributable in the panel. Default off.
+      createSource6Adapter(() => cfg.source6?.enabled ?? false),
+      // Hindi-dub anime lane. AniList-keyed, but the TMDB id is converted on the
+      // server (./anime-db.ts) so the embed URL stays `/embed/tv/<tmdbId>`. On by
+      // default: it needs no credentials and answered 5/5 titles in testing.
+      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_HINDI_DUB_ENABLED !== '0'),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),
@@ -209,10 +217,7 @@ export class SourceRegistry {
       createSource13Adapter(() => cfg.source13?.enabled ?? false),
       createSource14Adapter(() => cfg.source14?.enabled ?? false),
       createSource15Adapter(() => cfg.source15?.enabled ?? false),
-      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_ANIVEXA_ENABLED !== '0'),
-      createSource17Adapter(() => cfg.source17?.enabled !== false),
       createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
-      createSource19Adapter(() => cfg.source19?.enabled ?? process.env.ELFURA_DESIDUB_ENABLED !== '0'),
       createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
       createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
       createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
@@ -1040,7 +1045,20 @@ export class SourceRegistry {
 
     const counts = new Map<string, Map<string, number>>();
     const sequences = new Map<string, number>();
-    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang)) {
+    // A lane whose runtime this request measured and matched is tier 0; one that
+    // could not be measured at all is tier 1. Without this the sort falls through
+    // to latency, and a fast unmeasured clip outranks the verified episode.
+    const verifiedRuntimeUrls = new Set(
+      candidateEntries
+        .filter((entry) => {
+          const cand = entry.candidate;
+          const measured = cand.measuredThisRequest?.durationSec ?? cachedCandidateEvidence(cand)?.durationSec ?? null;
+          return measured !== null && durationFits(measured, expectedRuntimeSec, runtimeToleranceSec);
+        })
+        .map((entry) => entry.candidate.url),
+    );
+    const rankHint = (url: string) => (verifiedRuntimeUrls.has(url) ? 0 : 1);
+    for (const {adapter,candidate} of selectPlaybackCandidates(candidateEntries, params.preferredLang, rankHint)) {
       if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
       const seq = (sequences.get(adapter.id) ?? 0) + 1;
       sequences.set(adapter.id,seq);
@@ -1151,7 +1169,6 @@ export class SourceRegistry {
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
-          Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
           qualityTierOf(a) - qualityTierOf(b) ||
           animeVariantTier(a) - animeVariantTier(b),
@@ -1181,7 +1198,6 @@ export class SourceRegistry {
         };
         uniformOptions.sort(
           (a, b) =>
-            Number(!!params.anilistId && b.sourceId === 'source-16') - Number(!!params.anilistId && a.sourceId === 'source-16') ||
             scoreOpt(a) - scoreOpt(b) ||
             animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||

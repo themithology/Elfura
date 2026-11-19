@@ -4,7 +4,6 @@ import { loadBackendConfig } from '../../dist/backend/config.js';
 import { SourceRegistry } from '../../dist/backend/sources/registry.js';
 import { pngCarriesTransportStream, sniffMediaBytes, unwrapPngTransportStream } from '../../dist/backend/sources/media-sniff.js';
 import { catalogVariants, fetchFromSubDub, renditionsFromPayload } from '../../dist/backend/sources/source18.js';
-import { parseEmbedServers, parseEpisodeLinks, searchDesiDub } from '../../dist/backend/sources/source19.js';
 import { fetchFromVidora, vidoraCandidates } from '../../dist/backend/sources/source20.js';
 
 /* ── media sniffing (Source 8 PNG-wrapped transport streams) ─────────────── */
@@ -109,55 +108,6 @@ try {
   globalThis.fetch = originalFetch;
 }
 
-/* ── Source 19: DesiDubAnime parsing + AES Streamp2p ─────────────────────── */
-
-const embedHtml =
-  `<span data-embed-id="${Buffer.from('Streamp2p').toString('base64')}:` +
-  `${Buffer.from('https://desidubanime.p2pplay.pro/#vid42').toString('base64')}"></span>` +
-  `<span data-embed-id="${Buffer.from('VidMoly').toString('base64')}:` +
-  `${Buffer.from('https://vidmoly.to/embed-xyz.html').toString('base64')}"></span>`;
-const servers = parseEmbedServers(embedHtml);
-assert.equal(servers.length, 2);
-assert.equal(servers[0].name, 'Streamp2p');
-assert.equal(servers[0].url, 'https://desidubanime.p2pplay.pro/#vid42');
-
-const episodeHtml =
-  `<a class="episode-list-item" href="/watch/one-piece-episode-5/" data-episode-search-query="5">` +
-  `<span class="episode-list-item-number">5</span></a>` +
-  `<a class="episode-list-item" href="/watch/one-piece-episode-6/" data-episode-search-query="6"></a>`;
-const episodes = parseEpisodeLinks(episodeHtml, 'https://www.desidubanime.me/');
-assert.deepEqual(episodes.map((e) => e.number), [5, 6]);
-assert.equal(episodes[0].url, 'https://www.desidubanime.me/watch/one-piece-episode-5/');
-
-// Streamp2p payload: AES-128-CBC hex with the provider key/iv.
-const p2pJson = JSON.stringify({
-  title: 'One Piece (Hindi) 1080p',
-  cfNative: 'https://cdn.example/one-piece/master.m3u8',
-  source: 'https://cdn2.example/one-piece/master.m3u8',
-  subtitle: { en: 'https://cdn.example/sub/en.vtt' },
-});
-const cipher = crypto.createCipheriv('aes-128-cbc', Buffer.from('kiemtienmua911ca'), Buffer.from('1234567890oiuytr'));
-const hex = Buffer.concat([cipher.update(p2pJson, 'utf8'), cipher.final()]).toString('hex');
-globalThis.fetch = async (input) => {
-  const url = new URL(String(input));
-  if (url.hostname === 'api.themoviedb.org' || url.hostname === 'www.desidubanime.me') {
-    if (url.pathname === '/wp-json/wp/v2/anime') {
-      return Response.json([
-        { link: 'https://www.desidubanime.me/anime/one-piece/', title: { rendered: 'One Piece (Hindi Dub)' } },
-      ]);
-    }
-    return new Response('not html', { status: 200 });
-  }
-  if (url.pathname === '/api/v1/video') return new Response(hex);
-  throw new Error(`unexpected host ${url.hostname}`);
-};
-try {
-  const match = await searchDesiDub('One Piece', AbortSignal.timeout(2000));
-  assert.equal(match?.link, 'https://www.desidubanime.me/anime/one-piece/');
-} finally {
-  globalThis.fetch = originalFetch;
-}
-
 /* ── Source 20: Vidora payload ───────────────────────────────────────────── */
 
 const vidoraBody = {
@@ -200,7 +150,7 @@ try {
 
 const on = new SourceRegistry(loadBackendConfig({ ELFURA_SECRET: 'test' }));
 const ids = on.listPublicSources().map((source) => source.id);
-for (const id of ['source-18', 'source-19', 'source-20', 'source-21']) {
+for (const id of ['source-18', 'source-20', 'source-21']) {
   assert(ids.includes(id), `${id} should be enabled by default`);
 }
 // 21 used to be reserved for the retired KMMovies lane; the number is now the
@@ -215,10 +165,10 @@ const off = new SourceRegistry(
   }),
 );
 const offIds = off.listPublicSources().map((source) => source.id);
-for (const id of ['source-18', 'source-19', 'source-20']) {
+for (const id of ['source-18', 'source-20']) {
   assert(!offIds.includes(id), `${id} should honour its opt-out flag`);
 }
-for (const id of ['source-18', 'source-19', 'source-20']) {
+for (const id of ['source-18', 'source-20']) {
   const entry = on.listPublicSources().find((source) => source.id === id);
   assert(entry && /^Source \d+$/.test(entry.label), `${id} keeps a generic label`);
 }

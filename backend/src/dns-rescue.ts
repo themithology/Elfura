@@ -31,7 +31,8 @@ const QUERY_TIMEOUT_MS = 2_500;
 type CacheRow = { v4: string[]; v6: string[]; expiresAt: number };
 const cache = new Map<string, CacheRow>();
 /** Hostnames are few, but never let a hostile resolver path grow this forever. */
-const MAX_DNS_CACHE_ENTRIES = 512;
+// Raised for a 4 GB container (was 512). A hostname->address row is tiny.
+const MAX_DNS_CACHE_ENTRIES = 2048;
 
 const servers = (): string[] =>
   (process.env.ELFURA_DNS_SERVERS ?? '1.1.1.1,8.8.8.8')

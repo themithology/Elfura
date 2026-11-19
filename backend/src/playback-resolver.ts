@@ -27,6 +27,7 @@
  */
 
 import type { UniformPlaybackResponse } from './sources/types.js';
+import { InvalidRequestError } from './playback-resolver-remote.js';
 
 /** What a caller must supply to resolve streams for one title. */
 export interface PlaybackRequest {
@@ -52,7 +53,7 @@ export type PlaybackResolution = UniformPlaybackResponse;
 
 export interface PlaybackResolver {
   /** 'local' when this process scrapes, 'remote' when another one does. */
-  readonly kind: 'local' | 'remote';
+  readonly kind: 'local' | 'remote' | 'refusing';
   /** Human-readable identity for logs, e.g. 'local' or 'http://127.0.0.1:8790'. */
   readonly label: string;
   resolve(request: PlaybackRequest): Promise<PlaybackResolution | null>;
@@ -91,10 +92,54 @@ export const RESOLVER_AUTH_HEADER = 'x-elfura-resolver-token';
  * Returns null when this process should resolve locally, which is the default and
  * the only supported mode for a single-container install.
  */
+/**
+ * Why the last resolverConfig() call fell back to local, or '' when it did not.
+ *
+ * The split between media and resolver used to fail silently: an unset variable,
+ * a malformed URL and a refused public URL all produced the same inscrutable
+ * `{kind:"local"}` in the panel, and the only symptom was "the split does not
+ * help". This records the reason so the panel and the boot log can say which.
+ */
+let lastFallbackReason = '';
+
+/**
+ * Whether the operator MEANT to split: a URL was supplied, whatever we made of it.
+ *
+ * This is the difference between "one container, no resolver configured" (fine,
+ * resolve locally) and "I configured a resolver and it was rejected" (NOT fine:
+ * silently scraping in the media process burns the CPU the split was meant to
+ * free, and looks identical to a healthy install).
+ */
+export function resolverIntended(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.ELFURA_RESOLVER_URL ?? '').trim().length > 0;
+}
+
+export function resolverFallbackReason(): string {
+  return lastFallbackReason;
+}
+
 export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
+  lastFallbackReason = '';
   const url = (env.ELFURA_RESOLVER_URL ?? '').trim();
-  if (!url) return null;
-  if (!/^https?:\/\//i.test(url)) return null;
+  if (!url) {
+    // Not an error: this is the documented single-container default. But when the
+    // operator has clearly meant to split (a token or an autostart is set) it is
+    // almost certainly a mistake, so say so loudly.
+    lastFallbackReason = 'ELFURA_RESOLVER_URL is not set';
+    if ((env.ELFURA_RESOLVER_TOKEN ?? '').trim() || env.ELFURA_RESOLVER_AUTOSTART === '1') {
+      console.error(
+        '[elfura-resolver] ELFURA_RESOLVER_URL is NOT set, but ELFURA_RESOLVER_TOKEN/autostart is. ' +
+          'This process will resolve sources locally and the resolver node will sit idle. ' +
+          'Set ELFURA_RESOLVER_URL=http://<resolver-ip>:<port>.',
+      );
+    }
+    return null;
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    lastFallbackReason = `ELFURA_RESOLVER_URL is not an http(s) URL: ${url}`;
+    console.error(`[elfura-resolver] ${lastFallbackReason} - resolving locally instead.`);
+    return null;
+  }
   const token = (env.ELFURA_RESOLVER_TOKEN ?? env.ELFURA_SECRET ?? '').trim();
   const clean = url.replace(/\/+$/, '');
   // A resolver is an internal component. Over the open internet, the token is
@@ -110,6 +155,7 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
         '(127.0.0.1, 10.x, 172.16-31.x, 192.168.x, 100.64-127.x, *.internal), or set ' +
         'ELFURA_RESOLVER_ALLOW_PUBLIC=1 if you have a TLS-protected private link you trust.',
     );
+    lastFallbackReason = `refused public resolver URL: ${clean}`;
     return null;
   }
   return { url: clean, token };
@@ -152,7 +198,7 @@ export function createLocalPlaybackResolver(registry: {
   return {
     kind: 'local',
     label: 'in-process',
-    async resolve(request) {
+    async resolve(request: PlaybackRequest) {
       return registry.resolvePlayback(request);
     },
     async probe() {
@@ -166,4 +212,155 @@ export function createLocalPlaybackResolver(registry: {
       return true;
     },
   };
+}
+
+/**
+ * Refuses every resolution instead of scraping locally.
+ *
+ * Used when a resolver was configured but could not be used. The alternative -
+ * quietly resolving in the media process - is how a broken split degrades into
+ * "the split just doesn't help": the operator pays the CPU cost in the wrong
+ * process and nothing anywhere says so. Refusing surfaces it as a 503 on
+ * /playback, with the reason in the boot log and in /roxy/api/sources.
+ */
+export function createRefusingPlaybackResolver(reason: string): PlaybackResolver {
+  const fail = async (): Promise<never> => {
+    throw new ResolverRefusedError(
+      reason || 'a resolver was configured but could not be used, and local resolving is disabled',
+    );
+  };
+  return {
+    kind: 'refusing',
+    label: 'configured resolver unusable (local resolving disabled)',
+    resolve: fail,
+    sources: fail,
+    probe: async () => ({ reachable: false, detail: reason }),
+  } as unknown as PlaybackResolver;
+}
+
+/** Raised by the refusing resolver; carries why, for the panel and the log. */
+export class ResolverRefusedError extends Error {
+  constructor(public readonly detail: string) {
+    super(`refusing to resolve locally: ${detail}`);
+    this.name = 'ResolverRefusedError';
+  }
+}
+
+/**
+ * Remote first, local only when the remote is genuinely unreachable.
+ *
+ * The split exists to keep provider scraping off the process that serves video.
+ * That is the right default, but it must never be the reason a viewer cannot
+ * play: a resolver box that is down, restarting, or firewalled away would
+ * otherwise turn into "Couldn't find this title" for every episode on the site.
+ *
+ * So on an OUTAGE (transport failure: refused, timeout, DNS) this falls back to
+ * resolving here and records that it did. It does not fall back when the
+ * resolver simply has no sources - that is an answer, not a failure, and
+ * answering it locally would double the scraping for nothing.
+ *
+ * A SLOW answer is also not an outage, and that distinction is what makes the
+ * fallback safe. The resolver scrapes with its own adapter timeout; if it takes
+ * longer than this client's patience, the call aborts and used to look exactly
+ * like a dead resolver - so the media node started scraping the same providers
+ * in parallel, every few moments, on the box whose whole job was serving video.
+ * A timeout now means "wait for the resolver", never "scrape it yourself".
+ */
+/**
+ * Raised when the resolver is genuinely down, after a retry and a health check.
+ *
+ * Distinct from ResolverUnavailableError on purpose: this one reaches a viewer,
+ * and the viewer needs an instruction ("switch server"), not a diagnosis.
+ */
+export class ResolverBackendDownError extends Error {
+  constructor(public readonly detail: string) {
+    super(`source backend is down (${detail})`);
+    this.name = 'ResolverBackendDownError';
+  }
+}
+
+/**
+ * Remote-only resolver proxy. NEVER scrapes locally.
+ *
+ * The split exists so that provider scraping cannot touch the process serving
+ * video. A fallback to local scraping defeated that: every resolver hiccup put
+ * the media node into fetching providers mid-stream, competing with the resolver
+ * and starving the relay, which is exactly what the operator saw as "the
+ * streaming node keeps doing the fetching work".
+ *
+ * So when a resolver is configured:
+ *   1. call it
+ *   2. on failure, retry once (absorbs a transport blip or a resolver restart)
+ *   3. if it still fails, ask /resolver/api/health what is actually wrong
+ *        - health answers  -> that one lookup failed, not the backend
+ *        - health silent   -> the backend is down; say so plainly
+ *
+ * The viewer-facing outcome is a 503 with "switch server", because that is the
+ * only thing a viewer can act on.
+ */
+export function createResilientPlaybackResolver(options: {
+  remote: PlaybackResolver;
+  /** Optional local resolver, used ONLY when `remote` is absent. */
+  local?: PlaybackResolver;
+  onFallback?: (detail: string) => void;
+  onRecovered?: () => void;
+}): PlaybackResolver & { usingLocalFallback(): boolean } {
+  let fellBack = false;
+  let lastReason = '';
+
+  const noteFailure = (detail: string) => {
+    fellBack = true;
+    lastReason = detail;
+    options.onFallback?.(detail);
+  };
+
+  return {
+    kind: 'remote',
+    label: `remote (${options.remote.label})`,
+    async resolve(request: PlaybackRequest) {
+      try {
+        const result = await options.remote.resolve(request);
+        if (fellBack) {
+          fellBack = false;
+          options.onRecovered?.();
+        }
+        return result;
+      } catch (error) {
+        if ((error as { name?: string })?.name !== 'ResolverUnavailableError') throw error;
+
+        // 1. One retry: a transport blip or an in-flight restart usually clears.
+        try {
+          const retried = await options.remote.resolve(request);
+          fellBack = false;
+          options.onRecovered?.();
+          return retried;
+        } catch (second) {
+          const detail = second instanceof Error ? second.message : String(second);
+          noteFailure(detail);
+
+          // 2. Is the backend actually down, or did just this lookup fail?
+          //    Without this, a single adapter error and a dead box look
+          //    identical to a viewer, and they need different messages.
+          let healthy = false;
+          try {
+            const probe = await options.remote.probe();
+            healthy = probe.reachable === true;
+          } catch {
+            healthy = false;
+          }
+
+          if (healthy) {
+            // The backend is up: this title/lookup failed. Not an outage.
+            throw new InvalidRequestError('the source backend could not resolve this title', 502);
+          }
+          throw new ResolverBackendDownError(detail);
+        }
+      }
+    },
+    probe: () => options.remote.probe(),
+    sourceStatus: () => options.remote.sourceStatus(),
+    setSourceEnabled: (id: string, enabled: boolean) => options.remote.setSourceEnabled(id, enabled),
+    usingLocalFallback: () => fellBack,
+    lastFallbackReason: () => lastReason,
+  } as unknown as PlaybackResolver & { usingLocalFallback(): boolean };
 }

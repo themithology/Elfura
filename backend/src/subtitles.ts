@@ -35,7 +35,8 @@ interface CacheEntry {
   tracks: RawTrackRef[];
 }
 
-const SUB_CACHE_MAX = 256;
+// Raised for a 4 GB container (was 256).
+const SUB_CACHE_MAX = 1024;
 const SUB_CACHE_TTL_MS = 30 * 60_000;
 const subRamCache = new PolicyCache<CacheEntry>(SUB_CACHE_MAX);
 

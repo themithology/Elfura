@@ -17,7 +17,14 @@
  *   - small bookkeeping (rate-limit counters, ban lists, seek markers) stays
  *     bounded by count, not by payload size.
  *
- * Set ELFURA_RAM_CACHE=on to restore caching (e.g. on a large host). Default off.
+ * Set ELFURA_RAM_CACHE=off to disable caching. Default ON.
+ *
+ * Retuned for a 4 GB container. This module used to default OFF, which meant
+ * every page load re-fetched catalogues, manifests, metadata and subtitles that
+ * had just been fetched for the previous viewer. On a small box that trade was
+ * right; on 4 GB it is the reason a traffic spike turns into a CPU and upstream
+ * pile-up that starves the requests already in flight. The caches are all
+ * bounded by entry count (see MAX_*_ENTRIES), so "on" cannot grow without limit.
  */
 
 const OFF_VALUES = new Set(['0', 'off', 'false', 'no', 'none']);
@@ -30,7 +37,7 @@ const OFF_VALUES = new Set(['0', 'off', 'false', 'no', 'none']);
  */
 export const RAM_CACHE_ENABLED: boolean = (() => {
   const raw = (process.env.ELFURA_RAM_CACHE ?? '').trim().toLowerCase();
-  if (!raw) return false;
+  if (!raw) return true;
   return !OFF_VALUES.has(raw);
 })();
 
@@ -102,6 +109,6 @@ export class PolicyCache<V> {
 /** Logged once at boot so the operator can see which mode the server chose. */
 export function describeMemoryPolicy(): string {
   return RAM_CACHE_ENABLED
-    ? '[elfura-memory] payload caches are ON (ELFURA_RAM_CACHE is set); RAM use will grow to cache size'
+    ? '[elfura-memory] payload caches are ON (default); RAM use is bounded by the per-cache entry caps'
     : '[elfura-memory] payload caches are OFF; every request is recomputed to keep RAM flat';
 }

@@ -1704,9 +1704,7 @@ const { server: elfuraServer } = createBackendServer({
     origin: upBase,
   },
   source4: { enabled: false },
-  source17: { enabled: false },
   source18: { enabled: false },
-  source19: { enabled: false },
   source20: { enabled: false },
   source21: { enabled: false },
   subtitles: {
@@ -1736,11 +1734,12 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  // 4: source-1 (one row owning vidrift+vidsync+vidrock+vidbolt), source-3,
-  // source-22 (Vidly subtitles) and source-24 (VidLink). It was 3 before
-  // VidLink was added, and 4 before that only because source-1 was split across
-  // two entries — the two 4s mean different things, hence the explicit list.
-  assert.equal(health.sourceCount, 5, 'a bare count is fine (sources 1, 3, 22, 24, 25 in this fixture)');
+  // 6: source-1 (one row owning vidrift+vidsync+vidrock+vidbolt), source-3,
+  // source-16 (Mikaza Hindi dub, on by default), source-22 (Vidly subtitles),
+  // source-24 (VidLink) and source-25 (Greybox). An explicit count is still the
+  // right assertion: it is the only thing that notices a source silently
+  // appearing or vanishing from the fixture.
+  assert.equal(health.sourceCount, 6, 'a bare count is fine (sources 1, 3, 16, 22, 24, 25 in this fixture)');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1751,7 +1750,9 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  assert.equal(diag.playback.resolution.adapters.length, 5, 'source-22, source-24 and source-25 join the lane set');
+  // 6: the fixture's sources are 1, 3, 16, 22, 24 and 25 — source-16 (Mikaza
+  // Hindi dub) is on by default and appears in the diagnostic lane set.
+  assert.equal(diag.playback.resolution.adapters.length, 6, 'source-16, source-22, source-24 and source-25 join the lane set');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);

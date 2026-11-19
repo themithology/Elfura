@@ -1,0 +1,29 @@
+name: Anime source probe
+on:
+  push:
+    branches: [arena/d642a0e9-elfura]
+    paths: [scripts/probe-anime-sources.mjs, .github/workflows/anime-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node scripts/probe-anime-sources.mjs > /tmp/anime.txt 2>&1 || true
+      - name: Publish
+        if: always()
+        run: |
+          git config user.name probe
+          git config user.email probe@example.invalid
+          git checkout --orphan anime-report
+          cp /tmp/anime.txt anime-report.txt
+          git add -f anime-report.txt
+          git commit -q -m "anime probe"
+          git push -f origin anime-report

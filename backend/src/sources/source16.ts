@@ -1,158 +1,218 @@
-import anivexaWorker from '../vendor/anivexa/index.js';
+/**
+ * Source 16 — the Hindi-dub anime lane (Mikaza).
+ *
+ * Replaces the retired Anivexa source, which needed installation credentials and
+ * made zero requests without them. This one needs nothing configured.
+ *
+ * Measured 2026-11-16 from a GitHub runner against five AniList-keyed anime
+ * (Naruto 20, One Piece 21, JJK 113415, AoT 16498, DBZ 223): **5/5** returned
+ * `source.resolvedLanguage = "hin"` with a playable `src`. That field is the
+ * provider's own statement of the language of the file, not our label and not
+ * inferred from the title — which is why this lane can legitimately call itself
+ * Hindi.
+ *
+ * Protocol (from AniHype's plugin, reimplemented here):
+ *   GET  https://mikaza.buzz/embed/haiku/ani/<anilistId>/<ep>/hin
+ *        -> the page carries `resolve:"<url>"`
+ *   GET  <resolve>            (JSON)
+ *        -> { src, source: { resolvedLanguage }, tracks[] }
+ *
+ * The lane is AniList-keyed, but the embed URL must stay simple, so the TMDB id
+ * is converted server-side by ./anime-db.js. A viewer uses `/embed/tv/46260`
+ * and never learns that an AniList id was involved.
+ *
+ * Not carried over from the reference: Orion (embed.vidrift.net). Its embed
+ * returned 403 from a datacenter address on all five titles, and AniHype's own
+ * comment says Cloudflare refuses that call from datacentre networks. Shipping a
+ * lane we know is blocked would just add latency to every resolve.
+ */
 import { isSafeUpstreamUrl } from '../security.js';
-import type { RawSourceResult, RawStreamCandidate, RawTrackRef, SourceAdapter, SourceQuery } from './types.js';
+import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { normalizeLang } from './lang.js';
+import { anilistIdForTmdb } from './anime-db.js';
+import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
-const INTERNAL_ORIGIN = 'https://anivexa.internal';
-const MAX_PROVIDERS = 12;
-const MAX_CANDIDATES = 24;
+const MIKAZA = 'https://mikaza.buzz';
+const UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
-type AnivexaStream = {
-  url?: unknown;
-  file?: unknown;
-  type?: unknown;
-  format?: unknown;
-  server?: unknown;
-  quality?: unknown;
-  priority?: unknown;
-  referer?: unknown;
-  headers?: unknown;
-  subtitles?: unknown;
-  embed?: unknown;
-};
+/** Raised from 8s in the reference: the resolve hop is a second provider call. */
+const TIMEOUT_MS = 9_000;
 
-type AnivexaEpisode = { id?: unknown; number?: unknown };
-type AnivexaProvider = { episodes?: { sub?: AnivexaEpisode[]; dub?: AnivexaEpisode[] } };
-
-async function requestApi(path: string, signal: AbortSignal): Promise<unknown | null> {
-  try {
-    const request = new Request(new URL(path, INTERNAL_ORIGIN), {
-      headers: { Accept: 'application/json' },
-      signal,
-    });
-    const response = await anivexaWorker.fetch(request, { API_VERSION: '2.3' });
-    if (!response.ok) return null;
-    return await response.json();
-  } catch {
-    return null;
-  }
+interface MikazaRaw {
+  src?: unknown;
+  source?: { resolvedLanguage?: unknown };
+  tracks?: Array<{ src?: unknown; url?: unknown; file?: unknown; label?: unknown; lang?: unknown; srclang?: unknown }>;
 }
 
-function streamType(stream: AnivexaStream, url: string): RawStreamCandidate['type'] | null {
-  const declared = `${String(stream.type ?? '')} ${String(stream.format ?? '')}`.toLowerCase();
-  if (/\.m3u8(?:[?#]|$)/i.test(url) || /\bhls\b|m3u8/.test(declared)) return 'hls';
-  if (/\.mpd(?:[?#]|$)/i.test(url) || /\bdash\b|mpd/.test(declared)) return 'dash';
-  if (/\.(?:mp4|m4v|webm)(?:[?#]|$)/i.test(url) || /\bmp4\b|progressive/.test(declared)) return 'mp4';
+const asUrl = (value: unknown, base: string): string => {
+  try {
+    return new URL(String(value).replace(/\\\//g, '/').replace(/\\u0026/g, '&'), base).href;
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * The provider states the language of the file it is about to hand over. Treat
+ * that as the only acceptable proof: anything that is not Hindi is dropped, and
+ * so is anything unstated.
+ */
+function declaredLang(payload: MikazaRaw): string | null {
+  const raw = payload?.source?.resolvedLanguage;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const { code, label } = normalizeLang(raw.trim(), raw.trim());
+  if (code === 'hi' || /hindi/i.test(label)) return 'hi';
+  // `hin` is ISO 639-2 for Hindi and appears as-is in the payload.
+  if (/^hin$/i.test(raw.trim())) return 'hi';
   return null;
 }
 
-function safeHeaders(stream: AnivexaStream, mediaUrl: URL): Record<string, string> {
-  const raw = stream.headers && typeof stream.headers === 'object'
-    ? stream.headers as Record<string, unknown>
-    : {};
-  const out: Record<string, string> = {};
-  for (const name of ['Accept', 'Origin', 'Referer', 'User-Agent']) {
-    const entry = Object.entries(raw).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
-    if (typeof entry === 'string' && entry.length <= 2048) out[name] = entry;
-  }
-  const referer = typeof stream.referer === 'string' ? stream.referer : '';
-  if (referer && isSafeUpstreamUrl(referer)) out.Referer = referer;
-  if (!out.Origin && out.Referer) {
-    try { out.Origin = new URL(out.Referer).origin; } catch { /* use media origin */ }
-  }
-  if (!Object.keys(out).some((key) => key.toLowerCase() === 'user-agent')) {
-    out['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
-  }
-  if (!out.Origin && !out.Referer) out.Origin = mediaUrl.origin;
-  return out;
-}
-
-function subtitleTracks(value: unknown): RawTrackRef[] {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 16).flatMap((item: any) => {
-    const rawUrl = typeof item?.url === 'string' ? item.url : typeof item?.file === 'string' ? item.file : '';
-    const label = String(item?.label ?? item?.title ?? '').trim().slice(0, 100);
-    if (!rawUrl || !isSafeUpstreamUrl(rawUrl)) return [];
-    const formatRaw = String(item?.format ?? new URL(rawUrl).pathname.split('.').pop() ?? '').toLowerCase();
-    const format = formatRaw.includes('ass') ? 'ass' : formatRaw.includes('srt') ? 'srt' : 'vtt';
-    const lang = String(item?.lang ?? item?.srclang ?? 'und').trim().slice(0, 24) || 'und';
-    return [{ lang, label: label || lang, url: rawUrl, format, ...(item?.default ? { default: true } : {}) }];
+async function getText(url: string, accept: string, referer: string, signal: AbortSignal): Promise<string | null> {
+  if (!isSafeUpstreamUrl(url)) return null;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': UA, Accept: accept, Referer: referer, 'Accept-Language': 'en-US,en;q=0.9' },
+    redirect: 'follow',
+    signal,
   });
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  return res.text();
 }
 
-function collectStreams(payload: any): AnivexaStream[] {
-  if (Array.isArray(payload?.streams)) return payload.streams.slice(0, 8);
-  if (Array.isArray(payload?.sources)) return payload.sources.slice(0, 8);
-  if (typeof payload?.url === 'string' || typeof payload?.file === 'string') return [payload];
-  return [];
-}
-
-async function resolveAnivexa(query: SourceQuery): Promise<RawSourceResult> {
-  const empty: RawSourceResult = { candidates: [] };
-  const anilistId = String(query.anilistId ?? '').trim();
-  const episodeNumber = Number(query.anilistEpisode ?? query.episode);
-  if (!/^\d{1,10}$/.test(anilistId) || Number(anilistId) < 1 || query.type !== 'tv' || !Number.isSafeInteger(episodeNumber) || episodeNumber < 1) {
-    return empty;
+export async function fetchFromMikaza(
+  query: SourceQuery,
+  options: { trace?: string[] } = {},
+): Promise<RawStreamCandidate[]> {
+  const trace = options.trace;
+  const episode = query.anilistEpisode ?? query.episode ?? 1;
+  if (!Number.isSafeInteger(episode) || episode < 1) {
+    trace?.push('bad-episode');
+    return [];
   }
 
-  const parent = query.signal ?? new AbortController().signal;
-  const signal = AbortSignal.any([parent, AbortSignal.timeout(14_000)]);
-  const episodeData = await requestApi(`/episodes/${anilistId}`, signal) as Record<string, AnivexaProvider> | null;
-  if (!episodeData) return empty;
-
-  const providerEntries = Object.entries(episodeData)
-    .filter(([key, value]) => key !== 'mappings' && key !== 'page' && key !== 'type' && value && typeof value === 'object')
-    .slice(0, MAX_PROVIDERS);
-  const jobs = providerEntries.flatMap(([provider, result]) =>
-    (['sub', 'dub'] as const).flatMap((audio) => {
-      const episode = result.episodes?.[audio]?.find((item) => Number(item.number) === episodeNumber);
-      const episodePath = typeof episode?.id === 'string' ? episode.id.replace(/^\/+/, '') : '';
-      return episodePath && /^watch\/[a-z0-9-]+\/\d+\/(?:sub|dub)\/[a-z0-9-]+-\d+$/i.test(episodePath)
-        ? [{ provider, audio, episodePath }]
-        : [];
-    }),
-  );
-  const watchResults = await Promise.all(jobs.map(async (job) => ({
-    ...job,
-    payload: await requestApi(`/${job.episodePath}`, signal) as Record<string, unknown> | null,
-  })));
-  const candidates: RawStreamCandidate[] = [];
-  const seen = new Set<string>();
-
-  for (const { provider, audio, payload } of watchResults) {
-    if (!payload) continue;
-    for (const stream of collectStreams(payload)) {
-      const rawUrl = typeof stream.url === 'string' ? stream.url : typeof stream.file === 'string' ? stream.file : '';
-      if (!rawUrl || stream.embed === true || /\b(?:embed|iframe)\b/i.test(rawUrl) || !isSafeUpstreamUrl(rawUrl)) continue;
-      const url = new URL(rawUrl);
-      const type = streamType(stream, url.href);
-      if (!type || seen.has(url.href)) continue;
-      seen.add(url.href);
-      const quality = String(stream.quality ?? 'auto').trim().slice(0, 24) || 'auto';
-      const rankRaw = Number(stream.priority);
-      candidates.push({
-        key: `${provider}:${episodeNumber}:${audio}:${url.href}`,
-        type,
-        url: url.href,
-        headers: safeHeaders(stream, url),
-        quality,
-        audioVariant: audio,
-        audioLabel: audio === 'sub' ? 'Japanese SUB' : 'English DUB',
-        subtitles: subtitleTracks(stream.subtitles),
-        rank: Number.isFinite(rankRaw) ? Math.max(1, Math.min(999, Math.round(rankRaw))) : candidates.length + 1,
-      });
-      if (candidates.length >= MAX_CANDIDATES) return { candidates };
+  // Prefer an explicit AniList id, otherwise convert from TMDB. Conversion is a
+  // RAM lookup, not a request, so this costs nothing on the hot path.
+  let anilistId = query.anilistId && /^\d{1,10}$/.test(query.anilistId) ? query.anilistId : '';
+  if (!anilistId) {
+    const mapped = await anilistIdForTmdb(query.tmdbId).catch(() => null);
+    if (!mapped) {
+      trace?.push('no-anilist-mapping');
+      return [];
     }
+    anilistId = mapped.anilistId;
+    trace?.push(`mapped=${anilistId}`);
   }
-  return { candidates };
+
+  const signal = query.signal
+    ? AbortSignal.any([query.signal, AbortSignal.timeout(TIMEOUT_MS)])
+    : AbortSignal.timeout(TIMEOUT_MS);
+
+  const embed = `${MIKAZA}/embed/haiku/ani/${anilistId}/${episode}/hin`;
+  let page: string | null;
+  try {
+    page = await getText(embed, 'text/html,application/xhtml+xml,*/*', MIKAZA + '/', signal);
+  } catch {
+    trace?.push('embed-unreachable');
+    return [];
+  }
+  if (!page) {
+    trace?.push('embed-refused');
+    return [];
+  }
+
+  const resolve = (page.match(/resolve\s*:\s*"([^"]+)"/) || [])[1];
+  if (!resolve) {
+    trace?.push('no-resolve-in-page');
+    return [];
+  }
+  const resolveUrl = asUrl(resolve, MIKAZA);
+  if (!resolveUrl) {
+    trace?.push('bad-resolve-url');
+    return [];
+  }
+
+  let payload: MikazaRaw;
+  try {
+    const raw = await getText(resolveUrl, 'application/json', embed, signal);
+    if (!raw) {
+      trace?.push('resolve-refused');
+      return [];
+    }
+    payload = JSON.parse(raw) as MikazaRaw;
+  } catch {
+    trace?.push('resolve-not-json');
+    return [];
+  }
+
+  const lang = declaredLang(payload);
+  if (!lang) {
+    trace?.push(`lang=${String(payload?.source?.resolvedLanguage ?? 'unstated')}`);
+    return [];
+  }
+
+  const src = typeof payload.src === 'string' ? asUrl(payload.src, MIKAZA) : '';
+  if (!src || !isSafeUpstreamUrl(src)) {
+    trace?.push('no-src');
+    return [];
+  }
+
+  const subtitles = (payload.tracks ?? [])
+    .map((track) => {
+      const url = asUrl(track?.src ?? track?.url ?? track?.file, MIKAZA);
+      if (!url || !isSafeUpstreamUrl(url)) return null;
+      const label = String(track?.label ?? track?.lang ?? 'Subtitle').slice(0, 60);
+      return { url, label, lang: String(track?.srclang ?? track?.lang ?? '').slice(0, 12) };
+    })
+    .filter((t): t is { url: string; label: string; lang: string } => !!t)
+    .slice(0, 12);
+
+  trace?.push('ok=1');
+  return [
+    {
+      key: `mikaza:${anilistId}:${episode}`,
+      // One file per episode, so the request itself identifies it.
+      fingerprint: `mikaza:${anilistId}:${episode}`,
+      latencyMs: 0,
+      type: 'mp4',
+      url: src,
+      headers: {},
+      quality: 'auto',
+      audioLang: 'hi',
+      audioLabel: 'Hindi',
+      multiAudio: false,
+      ...(subtitles.length ? { subtitles } : {}),
+      rank: 24,
+    } as RawStreamCandidate,
+  ];
 }
 
 export function createSource16Adapter(enabled: () => boolean): SourceAdapter {
   return {
     id: 'source-16',
-    label: 'Anivexa',
+    label: 'Source 16',
     enabled,
-    async resolve(query) {
-      return resolveAnivexa(query);
+    async resolve(query: SourceQuery): Promise<RawSourceResult> {
+      const started = Date.now();
+      const trace: string[] = [];
+      const raw = await fetchFromMikaza(query, { trace }).catch(() => []);
+      const checked = await verifyAndFilterCandidatesDetailed(raw, query.signal);
+      const usable = checked.candidates.filter((candidate) => !!candidateEvidence(candidate)?.alive);
+      query.diag?.push({
+        adapter: 'source-16',
+        lane: 'MKZ',
+        ok: usable.length > 0,
+        ms: Date.now() - started,
+        detail: `candidates=${raw.length},alive=${usable.length}` +
+          (trace.length ? ` ${[...new Set(trace)].slice(0, 4).join(' ')}` : ''),
+      });
+      return {
+        candidates: usable.map((candidate) =>
+          query.diag ? { ...candidate, diagnosticLane: 'MKZ' } : candidate,
+        ),
+      };
     },
   };
 }

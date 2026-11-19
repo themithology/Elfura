@@ -22,9 +22,10 @@
 
 import crypto from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 
 import type { BackendConfig } from './config.js';
-import { RESOLVER_AUTH_HEADER, type PlaybackRequest } from './playback-resolver.js';
+import { RESOLVER_AUTH_HEADER, isPrivateResolverUrl, type PlaybackRequest } from './playback-resolver.js';
 import { SourceRegistry } from './sources/registry.js';
 
 /** Body cap: a playback request is a small JSON object, never a file. */
@@ -64,7 +65,29 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
 }
 
 /** Constant-time token check; also rejects an empty configured token outright. */
+/**
+ * Is tokenless mode permitted for this request?
+ *
+ * The operator asked for no token because the resolver "is not on the public
+ * internet". It was: a panel-assigned domain resolves to it from anywhere, and
+ * an open resolver answers "give me the stream URLs for this episode" for anyone
+ * who finds it, plus a POST that can switch the operator's sources off.
+ *
+ * So this is not a yes/no switch. ELFURA_RESOLVER_OPEN=1 drops the requirement
+ * ONLY for a caller that arrived over a loopback or private address. A request
+ * that came in through a public domain, a reverse proxy, or a port forward is
+ * still refused. That keeps the convenience the operator wants without handing
+ * the endpoint to the internet.
+ */
+function tokenlessRequestIsInternal(req: http.IncomingMessage): boolean {
+  const remote = req.socket.remoteAddress ?? '';
+  // ::ffff:10.1.2.3 is how Node reports an IPv4 peer on a dual-stack socket.
+  const normalised = remote.replace(/^::ffff:/, '');
+  return isPrivateResolverUrl(`http://${normalised}:1`);
+}
+
 function authorised(req: http.IncomingMessage, token: string): boolean {
+  if (process.env.ELFURA_RESOLVER_OPEN === '1' && tokenlessRequestIsInternal(req)) return true;
   if (!token) return false;
   const provided = String(req.headers[RESOLVER_AUTH_HEADER] ?? '');
   if (!provided) return false;
@@ -125,6 +148,33 @@ export function createResolverServer(options: ResolverServerOptions): {
         // would tell a scanner how much this box scrapes, and source ids would
         // hand over the very list the whole design exists to hide.
         sendJson(res, 200, { ok: true, service: 'elfura-resolver' });
+        return;
+      }
+
+
+      // The operator needs THIS box's address to configure the other node, and a
+      // panel shows the public one. Reading it from the kernel is the difference
+      // between a working split and a guessed URL that silently does nothing.
+      //
+      // Deliberately readable WITHOUT the token, because it is meant to be opened
+      // in a browser: telling an operator to curl a header-protected endpoint is
+      // how they end up staring at {"error":"resolver token missing or wrong"}
+      // and concluding the node is broken. It reveals nothing new: the Host
+      // header is the address they already typed. Internal addresses are added
+      // only for a caller that presents the token.
+      if (method(req) === 'GET' && pathname === '/resolver/api/network') {
+        const addresses = Object.values(os.networkInterfaces())
+          .flatMap((list) => list ?? [])
+          .filter((entry) => entry.family === 'IPv4' && !entry.internal)
+          .map((entry) => entry.address);
+        const unique = [...new Set(addresses)].sort();
+        const usable = unique.filter((address) => isPrivateResolverUrl(`http://${address}:1`));
+        sendJson(res, 200, {
+          ok: true,
+          port: resolverPort(options.cfg),
+          addresses: unique,
+          usableAsResolverUrl: usable.map((address) => `http://${address}:${resolverPort(options.cfg)}`),
+        });
         return;
       }
 

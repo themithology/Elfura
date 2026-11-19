@@ -17,8 +17,59 @@
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const REENTRY_FLAG = 'ELFURA_MEMORY_FLAGS_APPLIED';
+
+/**
+ * Read `.env` into process.env before any decision is made here.
+ *
+ * The launcher decides two things BEFORE the backend loads: the memory flags and
+ * whether this process is a media server or a resolver. Both read process.env
+ * directly, so a value that only lived in `.env` was invisible here - the same
+ * class of bug that made ELFURA_RESOLVER_URL silently do nothing. A resolver
+ * node whose role came from `.env` would boot as a media server instead, look
+ * alive, and serve nothing the streaming node wanted.
+ *
+ * Real environment variables always win: this only fills gaps.
+ */
+function loadDotEnvIntoProcess() {
+  const candidates = [
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.env'),
+    path.resolve(process.cwd(), '.env'),
+  ];
+  const seen = new Set();
+  for (const file of candidates) {
+    if (seen.has(file)) continue;
+    seen.add(file);
+    let raw;
+    try {
+      raw = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const cleaned = trimmed.startsWith('export ') ? trimmed.slice(7).trim() : trimmed;
+      const eq = cleaned.indexOf('=');
+      if (eq < 1) continue;
+      const key = cleaned.slice(0, eq).trim();
+      let value = cleaned.slice(eq + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (!key || process.env[key] !== undefined) continue;
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDotEnvIntoProcess();
 
 /** Flags a TypeScript runner injects into `process.execArgv`. */
 const RUNNER_ARG_PREFIXES = ['--require', '--loader', '--import', '--experimental-loader'];
@@ -62,6 +113,13 @@ function inheritableExecArgv() {
  * ceiling makes it collect instead of grow, and capping the young generation
  * stops short-lived request buffers from ballooning it.
  *
+ * Retuned for a 4 GB container (was 384 MB / 16 MB). The old ceiling was tuned
+ * so a 512 MB box could not be OOM-killed; on 4 GB it is the cause of one — a
+ * container killed by the kernel mid-stream drops every viewer's playback, which
+ * is exactly the "existing connections die under load" symptom. 2560 MB leaves
+ * headroom for non-heap RSS (sockets, buffers, native) inside 4 GB, and a 64 MB
+ * semi-space keeps the young generation from churning under request bursts.
+ *
  * Returns true when this process handed over to a child and must do nothing else.
  */
 function reexecForMemory() {
@@ -69,20 +127,34 @@ function reexecForMemory() {
   // the flag and goes straight to the server.
   if (process.env[REENTRY_FLAG] === '1') return false;
 
+  // No V8 memory cap by default. The operator asked for the ceiling to come off
+  // to see whether the server holds up without it, and that is the honest way to
+  // find out: a cap low enough to bind makes V8 throw "heap out of memory" and
+  // exit mid-stream, dropping every viewer's playback. Let the kernel be the
+  // only limit, and set REMOVE_THIS if you ever want the old behaviour back.
+  //
+  // ELFURA_MAX_OLD_SPACE_MB is still honoured when set: a positive number caps
+  // the heap, and any other value (0, "off", "") means uncapped.
   const flags = [];
   if (!process.execArgv.some((arg) => arg.startsWith('--max-old-space-size'))) {
-    const mb = Number(process.env.ELFURA_MAX_OLD_SPACE_MB || 384);
-    if (Number.isFinite(mb) && mb >= 128) flags.push(`--max-old-space-size=${Math.round(mb)}`);
+    const raw = (process.env.ELFURA_MAX_OLD_SPACE_MB ?? '').trim();
+    if (raw !== '') {
+      const mb = Number(raw);
+      if (Number.isFinite(mb) && mb >= 128) flags.push(`--max-old-space-size=${Math.round(mb)}`);
+    }
   }
   if (!process.execArgv.some((arg) => arg.startsWith('--max-semi-space-size'))) {
-    flags.push('--max-semi-space-size=16');
+    // A 64 MB young generation is a collector setting, not a ceiling: it decides
+    // how much short-lived request data sits before a minor GC. It does not
+    // bound the heap, so it stays.
+    flags.push('--max-semi-space-size=64');
   }
   // No memory flags needed is not a reason to skip supervision: a crash still
   // has to come back on its own.
   if (!flags.length && process.env.ELFURA_SUPERVISE === '0') return false;
 
   if (flags.length) {
-    console.log(`[elfura-memory] starting with ${flags.join(' ')} to keep RAM flat in a small container`);
+    console.log(`[elfura-memory] starting with ${flags.join(' ')} (no heap ceiling unless ELFURA_MAX_OLD_SPACE_MB is set)`);
   }
   return supervise(flags);
 }

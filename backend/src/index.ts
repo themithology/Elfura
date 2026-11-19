@@ -22,7 +22,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
-import { hasConfiguredSecret, loadBackendConfig, readDotEnvOverlay, type BackendConfig } from './config.js';
+import {
+  hasConfiguredSecret,
+  hydrateProcessEnvFromDotEnv,
+  loadBackendConfig,
+  readDotEnvOverlay,
+  type BackendConfig,
+} from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
@@ -47,12 +53,23 @@ import {
 import { SourceRegistry } from './sources/registry.js';
 import {
   createLocalPlaybackResolver,
+  createRefusingPlaybackResolver,
+  createResilientPlaybackResolver,
+  ResolverBackendDownError,
   resolverConfig,
+  resolverFallbackReason,
+  resolverIntended,
+  ResolverRefusedError,
   type PlaybackResolution,
   type PlaybackResolver,
 } from './playback-resolver.js';
-import { RemotePlaybackResolver, ResolverUnavailableError } from './playback-resolver-remote.js';
+import {
+  InvalidRequestError,
+  RemotePlaybackResolver,
+  ResolverUnavailableError,
+} from './playback-resolver-remote.js';
 import { createResolverServer, resolverPort } from './resolver-server.js';
+import { buildDiagnoseBundle } from './diagnose-bundle.js';
 import { handleStreamRelay } from './relay.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
@@ -172,6 +189,15 @@ if ((process.env.ELFURA_DNS_ORDER ?? 'ipv4first') === 'ipv4first') {
 }
 
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
+  // Publish .env into process.env BEFORE anything reads it directly. Modules
+  // below (resolver split, DNS, runtime toggles) read process.env themselves and
+  // used to be blind to the .env file entirely - which is how ELFURA_RESOLVER_URL
+  // in .env produced a silent local fallback. Real env vars still win.
+  const dotEnv = hydrateProcessEnvFromDotEnv();
+  if (dotEnv.applied.length > 0 && process.env.ELFURA_QUIET_ENV !== '1') {
+    console.log(`[elfura-backend] .env published to the process: ${dotEnv.applied.join(', ')}`);
+  }
+
   // May set ELFURA_RESOLVER_URL, so it runs before the resolver is chosen below.
   startAutostartResolver(overrides);
   const cfg: BackendConfig = { ...loadBackendConfig(), ...overrides };
@@ -182,10 +208,72 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
    * the relay and the ticket format are identical in both cases.
    */
   const remote = resolverConfig();
-  const resolver: PlaybackResolver = remote
-    ? new RemotePlaybackResolver(remote.url, remote.token)
-    : createLocalPlaybackResolver(registry);
-  const rateLimiter = new SlidingWindowLimiter(cfg.rateLimitPerMin);
+  // A misconfigured resolver must NOT translate into "nothing plays".
+  //
+  // There was a version of this that refused to resolve locally when a resolver
+  // URL was present but unusable. It was wrong, and it was wrong in the worst
+  // direction: an operator typo turned into a 503 for every viewer on the site.
+  // A visitor does not care where discovery runs; they care that the episode
+  // plays. So: resolve remotely when the resolver is genuinely reachable, and
+  // otherwise fall back to local, loudly.
+  //
+  // "Loudly" means three things, none of which cost a viewer a stream:
+  //   - a console.error naming the exact reason, on every boot
+  //   - resolver.mode = 'degraded' in /roxy/api/sources and the diagnose bundle
+  //   - lastResolverFallbackReason() in both, so the panel says why
+  const splitIntended = resolverIntended();
+  const allowLocalFallback = process.env.ELFURA_RESOLVER_ALLOW_LOCAL !== '0';
+  let resolver: PlaybackResolver;
+  let resolverFallback: string;
+  if (remote) {
+    // Remote first; local only if the resolver is genuinely down. A dead
+    // resolver must degrade the split, never the site.
+    // NOTE: no `local` resolver is passed. With a resolver configured, this node
+    // NEVER scrapes - that is the whole point of the split, and a fallback here
+    // was what made it start fetching providers mid-stream.
+    resolver = createResilientPlaybackResolver({
+      remote: new RemotePlaybackResolver(remote.url, remote.token),
+      onFallback: (detail) =>
+        console.warn(
+          `[elfura-resolver] resolver call failed (${detail}). Retrying once; NOT scraping locally - ` +
+            'this node only serves video. If this repeats, check /api/v1/resolver-test.',
+        ),
+      onRecovered: () => console.log('[elfura-resolver] resolver is answering again.'),
+    });
+    resolverFallback = '';
+  } else if (splitIntended && !allowLocalFallback) {
+    // Deliberate strict mode, only when explicitly asked for.
+    resolver = createRefusingPlaybackResolver(resolverFallbackReason());
+    resolverFallback = resolverFallbackReason();
+    console.error(
+      `[elfura-resolver] resolver URL unusable (${resolverFallback}), and ELFURA_RESOLVER_ALLOW_LOCAL=0 ` +
+        'forbids local resolving. Playback will fail until this is fixed.',
+    );
+  } else {
+    resolver = createLocalPlaybackResolver(registry);
+    resolverFallback = remote ? '' : resolverFallbackReason();
+    if (splitIntended) {
+      console.error(
+        `[elfura-resolver] DEGRADED: resolver URL unusable (${resolverFallback}). ` +
+          'Falling back to local resolving so playback keeps working. The split is NOT active - ' +
+          'fix ELFURA_RESOLVER_URL to move discovery off this process.',
+      );
+    }
+  }
+  // Viewer-facing rate limiting is OFF by default.
+  //
+  // It was 120/min per client IP, shared by session, episodes, segments,
+  // catalog and analytics. One embed load spends about four of those, so a
+  // modest audience — or anyone behind a carrier NAT, where thousands of viewers
+  // share one address — exhausted the bucket and saw 429s. The player reports a
+  // 429 on /session as "nothing plays", so the limit was quietly costing
+  // viewers on the busiest minutes: exactly the wrong moment to refuse traffic.
+  //
+  // Set RATE_LIMIT_PER_MIN to a positive number to turn it back on. The login
+  // limiter below is deliberately NOT part of this switch: it guards the
+  // operator panel against brute force, where a cap protects you rather than
+  // costing you viewers.
+  const rateLimiter = cfg.rateLimitPerMin > 0 ? new SlidingWindowLimiter(cfg.rateLimitPerMin) : null;
   // Artwork and playback are what one page load spends its requests on, and the
   // player reads any non-200 as "this title has no sources". Sharing the 120/min
   // abuse bucket with them meant a viewer who browsed a catalogue — every card
@@ -253,6 +341,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
   // Diagnostics perform real upstream requests; keep public research bounded.
   const diagnosticLimiter = new SlidingWindowLimiter(6);
+  /** 4/min: each call samples for two seconds, so it is a real cost. */
+  const diagnoseBundleLimiter = new SlidingWindowLimiter(4);
   // The light egress report is cheap and is exactly what an operator reaches for
   // when sources look dead, so it gets its own per-IP window instead of the
   // process-wide six-a-minute budget the heavy report uses.
@@ -428,7 +518,25 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         const probe = await resolver.probe();
         const status = probe.reachable ? await resolver.sourceStatus() : null;
         reply(200, {
-          resolver: { kind: resolver.kind, label: resolver.label, ...probe },
+          resolver: {
+            kind: resolver.kind,
+            label: resolver.label,
+            ...probe,
+            // Why the split did not engage. '' when it did. Without this, an
+            // unset variable and a refused public URL both read as the same
+            // featureless {kind:"local"} and the only clue is that the split
+            // "does not help".
+            ...(resolver.kind === 'local' || resolver.kind === 'refusing'
+              ? {
+                  localBecause: resolverFallbackReason(),
+                  // 'degraded' = a split was intended but discovery is running
+                  // here. Playback still works; the split is not active. Without
+                  // this distinction an operator cannot tell a healthy
+                  // single-process install from a broken split.
+                  degraded: resolverIntended() && !!process.env.ELFURA_RESOLVER_URL,
+                }
+              : {}),
+          },
           unavailable: !probe.reachable,
           sources: status,
         });
@@ -531,7 +639,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       reply(404,{error:'Not found'}); return;
     }
     if (pathname === '/api/v1/analytics' && method === 'POST') {
-      if (!rateLimiter.allow(`analytics:${getClientIp(req)}`)) {sendJson(res,429,{ok:false});return;}
+      if (rateLimiter && !rateLimiter.allow(`analytics:${getClientIp(req)}`)) {sendJson(res,429,{ok:false});return;}
       try {const body=await readJsonBody(req,4096);const ok=roxy.record(body.ticket,body.event,body.title);sendJson(res,ok?200:400,{ok});}catch{sendJson(res,400,{ok:false});}return;
     }
 
@@ -575,7 +683,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         sendJson(res, 403, { ok: false, error: 'request forbidden' }, allowOrigin);
         return;
       }
-      if (!rateLimiter.allow(`catalog:${getClientIp(req)}`)) {
+      if (rateLimiter && !rateLimiter.allow(`catalog:${getClientIp(req)}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -611,6 +719,77 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     }
 
     // 2c. Operator diagnostics (sanitized JSON: no secrets, URLs, or provider names)
+    // One request that answers "why is this box struggling". Unauthenticated on
+    // purpose: the operator may be locked out of /roxy when the box is unwell,
+    // and this carries no title ids, stream URLs or tokens - only counts and
+    // timings. Rate-limited by its own small window so it cannot be used as a
+    // load generator (it samples the event loop for two seconds).
+    // Test the resolver link FROM HERE, which is the only place the answer
+    // matters. The operator can open the resolver's port in a browser and it
+    // works, while this process still cannot reach it - a different network
+    // path, a different DNS view, a firewall rule that only allows the public
+    // address. Opening it on the box you are typing in proves nothing.
+    if (method === 'GET' && pathname === '/api/v1/resolver-test') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      const target = resolverConfig();
+      if (!target) {
+        sendJson(
+          res,
+          200,
+          {
+            ok: false,
+            configured: false,
+            reason: resolverFallbackReason(),
+            detail:
+              'This node has no usable resolver URL, so it is resolving locally (or refusing to). ' +
+              'Fix ELFURA_RESOLVER_URL first - a link test would prove nothing.',
+          },
+          allowOrigin,
+        );
+        return;
+      }
+      const started = Date.now();
+      const probe = await resolver.kind === 'remote'
+        ? await (resolver as unknown as { probe(): Promise<{ reachable: boolean; detail: string }> }).probe()
+        : { reachable: false, detail: 'resolver is not in remote mode' };
+      sendJson(
+        res,
+        200,
+        {
+          ok: probe.reachable,
+          configured: true,
+          url: target.url,
+          tokenSent: target.token ? `yes (${target.token.length} chars, ends "...${target.token.slice(-4)}")` : 'NO TOKEN - the resolver will answer 401',
+          reachable: probe.reachable,
+          ms: Date.now() - started,
+          detail: probe.detail,
+        },
+        allowOrigin,
+      );
+      return;
+    }
+
+    if (method === 'GET' && pathname === '/api/v1/diagnose-bundle') {
+      const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
+      if (!diagnoseBundleLimiter.allow(`db:${getClientIp(req)}`)) {
+        sendJson(res, 429, { ok: false, error: 'diagnose-bundle is rate limited; try again in a minute' }, allowOrigin);
+        return;
+      }
+      try {
+        const bundle = await buildDiagnoseBundle({
+          reachedVia: String(req.headers.host ?? ''),
+          commit: readBuildInfo().commit,
+          limits: { rateLimitPerMin: cfg.rateLimitPerMin, relayMode: cfg.relayMode, host: cfg.host, port: cfg.port },
+          ramCacheEnabled: RAM_CACHE_ENABLED,
+          probeResolver: resolver.kind === 'remote' ? () => resolver.probe() : undefined,
+        });
+        sendJson(res, 200, bundle, allowOrigin);
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: String((error as Error)?.message ?? error) }, allowOrigin);
+      }
+      return;
+    }
+
     if (method === 'GET' && ['/api/v1/diagnostics', '/diagnostic', '/diagnose', '/diagnose/'].includes(pathname)) {
       // Global limit avoids title/query variations bypassing the report cache.
       if (!diagnosticLimiter.allow('global')) {
@@ -674,7 +853,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!rateLimiter.allow(`sess:${clientIp}`)) {
+      if (rateLimiter && !rateLimiter.allow(`sess:${clientIp}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -865,8 +1044,43 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         // A resolver that cannot be reached is an outage, not an answer. Saying
         // "no sources for this title" would send the viewer hunting for a
         // different title when the problem is behind us.
+        // The source backend is genuinely down: retried, and health did not
+        // answer. The viewer gets something they can act on, and the player uses
+        // this flag to point at another server instead of a dead end.
+        if (error instanceof ResolverBackendDownError) {
+          sendJson(
+            res,
+            503,
+            {
+              ok: false,
+              error: 'the source backend is down. Please change the streaming server and try again.',
+              reason: 'resolver-down',
+              suggestSwitchServer: true,
+              detail: error.detail,
+            },
+            allowOrigin,
+          );
+          return;
+        }
+        if (error instanceof InvalidRequestError) {
+          // The backend is up but could not resolve this title. A different
+          // server would not help, so do not send the viewer chasing one.
+          sendJson(
+            res,
+            502,
+            { ok: false, error: 'this title could not be resolved right now. Try again in a moment.', reason: 'lookup-failed' },
+            allowOrigin,
+          );
+          return;
+        }
         if (error instanceof ResolverUnavailableError) {
           sendJson(res, 503, { ok: false, error: 'source resolver is unreachable; try again shortly' }, allowOrigin);
+          return;
+        }
+        // A configured resolver that we refused to use. Same 503 shape as an
+        // outage, but the message says what to fix instead of blaming the network.
+        if (error instanceof ResolverRefusedError) {
+          sendJson(res, 503, { ok: false, error: `resolver is misconfigured: ${error.detail}` }, allowOrigin);
           return;
         }
         throw error;
@@ -897,7 +1111,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
       const clientIp = getClientIp(req);
-      if (!rateLimiter.allow(`ep:${clientIp}`)) {
+      if (rateLimiter && !rateLimiter.allow(`ep:${clientIp}`)) {
         sendJson(res, 429, { ok: false, error: 'rate limit exceeded' }, allowOrigin);
         return;
       }
@@ -949,7 +1163,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     if (method === 'GET' && pathname === '/api/v1/segments') {
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
       if (isLikelyAutomatedScraper(req, cfg.isProd)) { sendJson(res, 403, { ok: false }, allowOrigin); return; }
-      if (!rateLimiter.allow(`segments:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false }, allowOrigin); return; }
+      if (rateLimiter && !rateLimiter.allow(`segments:${getClientIp(req)}`)) { sendJson(res, 429, { ok: false }, allowOrigin); return; }
       const tmdbId = (url.searchParams.get('tmdb') || '').trim();
       const season = Number(url.searchParams.get('s'));
       const episode = Number(url.searchParams.get('e'));
@@ -1317,12 +1531,26 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
   installProcessGuards();
   const { cfg, registry } = createBackendServer(overrides);
   const token = (process.env.ELFURA_RESOLVER_TOKEN ?? process.env.ELFURA_SECRET ?? '').trim();
-  if (!token) {
+  const openMode = process.env.ELFURA_RESOLVER_OPEN === '1';
+  if (!token && !openMode) {
     console.error(
       '[elfura-resolver] refusing to start without a token: set ELFURA_RESOLVER_TOKEN ' +
-        '(or ELFURA_SECRET). An unauthenticated resolver is an open scraping proxy.',
+        '(or ELFURA_SECRET), or ELFURA_RESOLVER_OPEN=1 to accept only internal callers. ' +
+        'An unauthenticated resolver on a public address is an open scraping proxy.',
     );
     process.exit(1);
+  }
+  if (!token && openMode) {
+    // Tokenless is not the same as open-to-the-world: the auth check still
+    // refuses any caller that did not arrive over a loopback or private address.
+    // The warning says so, because "I turned the token off" should feel like a
+    // decision with a stated limit, not a switch that quietly opened a port.
+    console.warn(
+      '[elfura-resolver] ELFURA_RESOLVER_OPEN=1: no token required, but ONLY for callers from ' +
+        'a loopback or private address. Requests arriving through a public domain, reverse proxy ' +
+        'or port forward are still refused with 401. Put this port on the private network and ' +
+        'talk to it by VPS IP, as intended.',
+    );
   }
   const port = resolverPort(cfg);
   // The resolver is an internal component. On a two-machine setup it must listen

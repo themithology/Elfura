@@ -74,6 +74,10 @@ export interface BackendConfig {
   source5?: { enabled: boolean };
   /** Experimental additional source controls. */
   source7?: { enabled: boolean };
+  /** Telugu lane (nxsha `bkl-blast`). Off unless explicitly enabled. */
+  source6?: { enabled: boolean };
+  /** Hindi-dub anime lane (Mikaza). AniList-keyed; TMDB ids are converted server-side. */
+  source16?: { enabled: boolean };
   source8?: { enabled: boolean };
   source9?: { enabled: boolean };
   source10?: { enabled: boolean };
@@ -82,12 +86,9 @@ export interface BackendConfig {
   source13?: { enabled: boolean };
   source14?: { enabled: boolean };
   source15?: { enabled: boolean };
-  source16?: { enabled: boolean };
   /** AniVortex (signed installation) — off unless explicitly enabled AND credentials exist. */
-  source17?: { enabled: boolean };
   /** Experimental additional source controls (sources 18-21). */
   source18?: { enabled: boolean };
-  source19?: { enabled: boolean };
   source20?: { enabled: boolean };
   source21?: { enabled: boolean };
   /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
@@ -214,6 +215,36 @@ export function readDotEnvOverlay(): Record<string, string> {
   return out;
 }
 
+/**
+ * Publish .env entries into process.env, so code that reads process.env directly
+ * can see them.
+ *
+ * This exists because of a bug that hid for a long time: loadBackendConfig merged
+ * the .env overlay into a LOCAL object and returned it, while a dozen modules
+ * (the resolver split, DNS, caching, the runtime toggles) read process.env
+ * straight. The effect was that every one of those variables worked when set as a
+ * real environment variable and was silently ignored when set in .env - with no
+ * error anywhere, just a feature that quietly did not engage.
+ *
+ * Precedence is deliberate and the same as loadBackendConfig's: a real
+ * environment variable always wins over the file. The file only fills gaps.
+ */
+export function hydrateProcessEnvFromDotEnv(): { applied: string[]; skipped: string[] } {
+  const applied: string[] = [];
+  const skipped: string[] = [];
+  const overlay = readDotEnvOverlay();
+  for (const [key, value] of Object.entries(overlay)) {
+    if (process.env[key] !== undefined && process.env[key] !== '') {
+      // A real environment variable outranks the file; this is not an error.
+      if (process.env[key] !== value) skipped.push(key);
+      continue;
+    }
+    process.env[key] = value;
+    applied.push(key);
+  }
+  return { applied, skipped };
+}
+
 export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
   const env: NodeJS.ProcessEnv = envInput ?? {
     ...readDotEnvOverlay(),
@@ -235,7 +266,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     allowedOrigins: parseOrigins(env.ALLOWED_ORIGINS),
     requireToken: env.REQUIRE_PLAYBACK_TOKEN !== '0',
     bindTokenIp: env.BIND_TOKEN_IP === '1',
-    rateLimitPerMin: Math.max(10, Number(env.RATE_LIMIT_PER_MIN || 120)),
+    // 0 disables viewer-facing rate limiting entirely (the default). A positive
+    // number caps requests per minute per client IP. See the note at the call
+    // site in index.ts for why the cap is off.
+    rateLimitPerMin: Math.max(0, Number(env.RATE_LIMIT_PER_MIN || 0)),
     resolveTimeoutMs: Math.max(2000, Number(env.RESOLVE_TIMEOUT_MS || 9000)),
     relayMode: (env.RELAY_MODE || 'hybrid').trim().toLowerCase() === 'full' ? 'full' : 'hybrid',
     tmdb: {
@@ -278,6 +312,9 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // Merged into source-5 as a second lane set. Default off, matching the
     // `?? false` gate the standalone adapter used to carry.
     source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
+    // Default off: a new source is opt-in until it has run in production.
+    source6: { enabled: env.ELFURA_TELUGU_ENABLED === '1' },
+    source16: { enabled: env.ELFURA_HINDI_DUB_ENABLED !== '0' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
@@ -286,13 +323,10 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source13: { enabled: env.ELFURA_XPASS_ENABLED !== '0' },
     source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
     source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
-    source16: { enabled: env.ELFURA_ANIVEXA_ENABLED !== '0' },
     // AniVortex signs every request with installation credentials. Without them
     // the adapter returns in microseconds, so it simply stays on: no toggles to
     // maintain, no cost when the credentials are absent.
-    source17: { enabled: env.ELFURA_ANIVORTEX_ENABLED !== '0' },
     source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
-    source19: { enabled: env.ELFURA_DESIDUB_ENABLED !== '0' },
     source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
     source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
     source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
