@@ -1,0 +1,17 @@
+name: Research VidCore source surface
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/research-vidcore-surface.mjs, .github/workflows/research-vidcore-surface.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/test/research-vidcore-surface.mjs

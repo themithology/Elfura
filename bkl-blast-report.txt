@@ -1,0 +1,36 @@
+
+[probe] === https://nxsha.space
+[probe] movie 550 (Fight Club)       0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] movie 693134 (Dune 2)        0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] movie 155 (Dark Knight)      0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] movie 872585 (Oppenheimer)   0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] movie 980489 (Gran Turismo)   0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] tv 1399 (GoT s1e1)           0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] tv 1399 (GoT s2e5)           0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] tv 94605 (Arcane s1e1)       0 streams  -                            403 <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6
+[probe] lane=bkl-blast titles-with-results=0/8 (0%)
+[probe] languages: none — the lane returned no playable stream
+[probe] CONTROL lane=nitro titles-with-results=0/8
+[probe] CAUTION: the control lane returned nothing, so the query shape is wrong and the bkl-blast figure is not evidence.
+
+[probe] === https://web.nxsha.app
+[probe] movie 550 (Fight Club)       0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] movie 693134 (Dune 2)        0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] movie 155 (Dark Knight)      0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] movie 872585 (Oppenheimer)   0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] movie 980489 (Gran Turismo)   0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] tv 1399 (GoT s1e1)           0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] tv 1399 (GoT s2e5)           0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] tv 94605 (Arcane s1e1)       0 streams  -                            403 <!DOCTYPE html><html lang="en-US"><head><title>Just a mo
+[probe] lane=bkl-blast titles-with-results=0/8 (0%)
+[probe] languages: none — the lane returned no playable stream
+[probe] CONTROL lane=nitro titles-with-results=0/8
+[probe] CAUTION: the control lane returned nothing, so the query shape is wrong and the bkl-blast figure is not evidence.

@@ -1,0 +1,27 @@
+name: Aethoflix actual browser playback
+on:
+  push:
+    branches: [arena/dcf86284-elfura]
+    paths: [backend/test/aethoflix-real-browser.mjs, .github/workflows/aethoflix-real-browser.yml]
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {type: movie, tmdb: '693134'}
+          - {type: movie, tmdb: '872585'}
+          - {type: tv, tmdb: '95479'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/aethoflix-real-browser.mjs
+        env:
+          TEST_TYPE: ${{ matrix.type }}
+          TEST_TMDB: ${{ matrix.tmdb }}
