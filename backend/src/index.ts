@@ -235,8 +235,9 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       remote: new RemotePlaybackResolver(remote.url, remote.token),
       onFallback: (detail) =>
         console.warn(
-          `[elfura-resolver] resolver call failed (${detail}). Retrying once; NOT scraping locally - ` +
-            'this node only serves video. If this repeats, check /api/v1/resolver-test.',
+          `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
+            'NOT retrying and NOT scraping locally - this node only serves video. ' +
+            'Check /api/v1/resolver-test if this repeats.',
         ),
       onRecovered: () => console.log('[elfura-resolver] resolver is answering again.'),
     });

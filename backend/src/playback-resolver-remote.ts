@@ -22,7 +22,15 @@ import {
 } from './playback-resolver.js';
 
 /** A resolver call that is slow is worse than one that fails: give up early. */
-const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 30_000);
+/**
+ * How long one resolver call may take.
+ *
+ * This was 30 s, which was worse than useless: the player aborts its own
+ * /playback request at 15 s, so the media node kept waiting for an answer
+ * nobody would read. The client must be strictly faster than the viewer's
+ * patience. 10 s leaves room for a 5-9 s scan plus the rescue extension.
+ */
+const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 10_000);
 /** Control-plane calls (status, toggles) should be instant. */
 const CONTROL_TIMEOUT_MS = 5_000;
 

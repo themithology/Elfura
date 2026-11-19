@@ -27,7 +27,7 @@
  */
 
 import type { UniformPlaybackResponse } from './sources/types.js';
-import { InvalidRequestError } from './playback-resolver-remote.js';
+
 
 /** What a caller must supply to resolve streams for one title. */
 export interface PlaybackRequest {
@@ -280,23 +280,22 @@ export class ResolverBackendDownError extends Error {
 }
 
 /**
- * Remote-only resolver proxy. NEVER scrapes locally.
+ * Remote-only resolver proxy. ONE call. No retry, no health check, no scraping.
  *
- * The split exists so that provider scraping cannot touch the process serving
- * video. A fallback to local scraping defeated that: every resolver hiccup put
- * the media node into fetching providers mid-stream, competing with the resolver
- * and starving the relay, which is exactly what the operator saw as "the
- * streaming node keeps doing the fetching work".
+ * The operator's rule, in their words: "for streaming node just blindly trust
+ * that backend is online and show backend offline only when can't reach backend".
+ * So this trusts the resolver and fails only when the call actually fails.
  *
- * So when a resolver is configured:
- *   1. call it
- *   2. on failure, retry once (absorbs a transport blip or a resolver restart)
- *   3. if it still fails, ask /resolver/api/health what is actually wrong
- *        - health answers  -> that one lookup failed, not the backend
- *        - health silent   -> the backend is down; say so plainly
+ * What was removed, and why each one was wrong here:
+ *   - The retry: it doubled the wait, and the player aborts at 15 s, so a retry
+ *     guaranteed the viewer saw a timeout instead of an answer.
+ *   - The health check: a second round-trip per failure, on the box whose whole
+ *     job is serving video - extra CPU on the node that cannot spare it.
+ *   - The local fallback: it made this node scrape the same providers the
+ *     resolver was scraping, competing with itself mid-stream.
  *
- * The viewer-facing outcome is a 503 with "switch server", because that is the
- * only thing a viewer can act on.
+ * Keep the split honest, not clever. One request; if it fails for any reason,
+ * the answer is the same: the source backend is offline.
  */
 export function createResilientPlaybackResolver(options: {
   remote: PlaybackResolver;
@@ -305,14 +304,8 @@ export function createResilientPlaybackResolver(options: {
   onFallback?: (detail: string) => void;
   onRecovered?: () => void;
 }): PlaybackResolver & { usingLocalFallback(): boolean } {
-  let fellBack = false;
   let lastReason = '';
-
-  const noteFailure = (detail: string) => {
-    fellBack = true;
-    lastReason = detail;
-    options.onFallback?.(detail);
-  };
+  let failing = false;
 
   return {
     kind: 'remote',
@@ -320,47 +313,25 @@ export function createResilientPlaybackResolver(options: {
     async resolve(request: PlaybackRequest) {
       try {
         const result = await options.remote.resolve(request);
-        if (fellBack) {
-          fellBack = false;
+        if (failing) {
+          failing = false;
           options.onRecovered?.();
         }
         return result;
       } catch (error) {
-        if ((error as { name?: string })?.name !== 'ResolverUnavailableError') throw error;
-
-        // 1. One retry: a transport blip or an in-flight restart usually clears.
-        try {
-          const retried = await options.remote.resolve(request);
-          fellBack = false;
-          options.onRecovered?.();
-          return retried;
-        } catch (second) {
-          const detail = second instanceof Error ? second.message : String(second);
-          noteFailure(detail);
-
-          // 2. Is the backend actually down, or did just this lookup fail?
-          //    Without this, a single adapter error and a dead box look
-          //    identical to a viewer, and they need different messages.
-          let healthy = false;
-          try {
-            const probe = await options.remote.probe();
-            healthy = probe.reachable === true;
-          } catch {
-            healthy = false;
-          }
-
-          if (healthy) {
-            // The backend is up: this title/lookup failed. Not an outage.
-            throw new InvalidRequestError('the source backend could not resolve this title', 502);
-          }
-          throw new ResolverBackendDownError(detail);
-        }
+        // A 4xx the resolver itself raised is an ANSWER, not an outage: it is
+        // alive and judging the request. Everything else is "cannot reach it".
+        if ((error as { name?: string })?.name === 'InvalidRequestError') throw error;
+        failing = true;
+        lastReason = error instanceof Error ? error.message : String(error);
+        options.onFallback?.(lastReason);
+        throw new ResolverBackendDownError(lastReason);
       }
     },
     probe: () => options.remote.probe(),
     sourceStatus: () => options.remote.sourceStatus(),
     setSourceEnabled: (id: string, enabled: boolean) => options.remote.setSourceEnabled(id, enabled),
-    usingLocalFallback: () => fellBack,
+    usingLocalFallback: () => false,
     lastFallbackReason: () => lastReason,
   } as unknown as PlaybackResolver & { usingLocalFallback(): boolean };
 }
