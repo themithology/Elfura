@@ -19,6 +19,7 @@ import {
 } from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
+import { extractMp4SingleAudioLanguage } from './mp4-audio.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
 import { PolicyCache } from '../memory-policy.js';
@@ -186,6 +187,21 @@ function isTransientHttpStatus(status: number): boolean {
 /** Wait before re-asking a provider that just refused. Short: this is a blip check, not a backoff. */
 const PROBE_RETRY_DELAY_MS = 250;
 
+async function readBoundedBytes(res: Response, maxBytes: number): Promise<Buffer> {
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = []; let total = 0;
+  try {
+    while (total < maxBytes) {
+      const {done, value} = await reader.read(); if (done) break;
+      const part = value.subarray(0, maxBytes - total);
+      chunks.push(part); total += part.length;
+      if (part.length < value.length) break;
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  return Buffer.concat(chunks);
+}
+
 async function readBoundedManifest(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return '';
   const reader = res.body.getReader();
@@ -322,7 +338,7 @@ function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): 
 }
 
 async function runSingleProbe(
-  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers'>,
+  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers' | 'probeMp4Audio'>,
   outerSignal?: AbortSignal,
 ): Promise<LivenessProbeOutcome> {
   if (!isSafeUpstreamUrl(cand.url)) {
@@ -349,7 +365,7 @@ async function runSingleProbe(
         const mp4Headers: Record<string, string> = {
           'User-Agent': DEFAULT_PROBE_UA,
           Accept: '*/*',
-          Range: 'bytes=0-1023',
+          Range: cand.probeMp4Audio ? 'bytes=0-524287' : 'bytes=0-1023',
           ...(cand.headers ?? {}),
         };
         const res = await fetch(cand.url, {
@@ -360,10 +376,20 @@ async function runSingleProbe(
         });
         const finalUrl = res.url || cand.url;
         const ct = (res.headers.get('content-type') || '').toLowerCase();
-        try {
-          await res.body?.cancel();
-        } catch {
-          /* ignore */
+        let language: string | null = null;
+        if (cand.probeMp4Audio && res.status === 206 && isSafeUpstreamUrl(finalUrl) && !ct.includes('text/html') && !ct.includes('application/json')) {
+          const bytes = await readBoundedBytes(res, 512 * 1024);
+          language = extractMp4SingleAudioLanguage(bytes);
+          const total = Number(res.headers.get('content-range')?.match(/\/(\d+)$/)?.[1] ?? 0);
+          if (!language && total > 512 * 1024 && Number.isSafeInteger(total)) {
+            try {
+              const tail = await fetch(cand.url, { method:'GET', headers:{...mp4Headers, Range:`bytes=${Math.max(0, total - 512 * 1024)}-${total - 1}`}, redirect:'follow', signal:sig });
+              if (tail.status === 206 && isSafeUpstreamUrl(tail.url || cand.url)) language = extractMp4SingleAudioLanguage(await readBoundedBytes(tail, 512 * 1024), true);
+              else await tail.body?.cancel();
+            } catch { /* liveness remains valid when metadata is unavailable */ }
+          }
+        } else {
+          try { await res.body?.cancel(); } catch { /* ignore */ }
         }
         if (!isSafeUpstreamUrl(finalUrl)) {
           const dead = { alive: false, confirmedDead: true };
@@ -384,6 +410,7 @@ async function runSingleProbe(
           confirmedDead: false,
           rttMs: elapsed(),
           qualityOptions: 1,
+          ...(language ? { discoveredAudioLangs: [language] } : {}),
         };
         setCachedLiveness(key, ok);
         return ok;
@@ -606,14 +633,14 @@ export async function verifyAndFilterCandidatesDetailed(
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
   const uniqueTargets = new Map<
     string,
-    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; priority: number }
+    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; probeMp4Audio?: boolean; priority: number }
   >();
   for (const c of candidates) {
     const pKey = cacheKeyFor(c.url, c.headers);
     const candPrio = (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
     const prev = uniqueTargets.get(pKey);
     if (!prev || candPrio < prev.priority) {
-      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, priority: candPrio });
+      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, probeMp4Audio: c.probeMp4Audio, priority: candPrio });
     }
     if (c.standbyUrl && c.standbyUrl !== c.url) {
       const sHeaders = c.standbyHeaders ?? c.headers;

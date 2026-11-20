@@ -165,7 +165,7 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
         const add = (url: string, cookie: string, quality: string, referer: boolean, claimedLang?: string) => {
           if (notice(url) || !mediaType(url) || seen.has(url) || /[\r\n]/.test(cookie) || cookie.length > 16000) return;
           seen.add(url);
-          candidates.push({ key: url, url, type: mediaType(url)!, quality, rank: 10, ...(claimedLang ? { claimedAudioLang: claimedLang } : {}), headers: { 'User-Agent': UA, ...(referer ? { Referer: REFERER } : {}), ...(cookie ? { Cookie: cookie } : {}) } });
+          candidates.push({ key: url, url, type: mediaType(url)!, quality, rank: 10, ...(mediaType(url) === 'mp4' ? { probeMp4Audio: true } : {}), ...(claimedLang ? { claimedAudioLang: claimedLang } : {}), headers: { 'User-Agent': UA, ...(referer ? { Referer: REFERER } : {}), ...(cookie ? { Cookie: cookie } : {}) } });
         };
         for (const raw of Array.isArray(play?.streams) ? play.streams : []) {
           const stream = obj(raw); const cookie = typeof stream.signCookie === 'string' ? stream.signCookie.trim().replace(/;\s*$/, '') : '';
@@ -193,8 +193,9 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
         // verifier establish audioLang. API labels alone are only claims.
         const dubs = (Array.isArray(detailSubject.dubs) ? detailSubject.dubs : [])
           .map(obj).filter((dub: Record<string, any>) => dub.original !== true && typeof dub.subjectId === 'string' && /^\d+$/.test(dub.subjectId) && dub.subjectId !== subject)
-          .slice(0, 5);
-        const dubTasks = dubs.map(async (dub: Record<string, any>) => {
+          .slice(0, 24);
+        let released = false;
+        const resolveDub = async (dub: Record<string, any>) => {
           const dubParams = new URLSearchParams(params); dubParams.set('subjectId', dub.subjectId);
           const payload = await request(`/subject-api/play-info/v2?${dubParams}`, 'GET', undefined, token, signal).catch(() => null);
           const lang = normalizeLang(typeof dub.lanCode === 'string' ? dub.lanCode : '').code;
@@ -204,8 +205,13 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
             const url = movieBoxDashFromCookie(cookie) ?? (typeof stream.url === 'string' ? stream.url : '');
             add(url, cookie, 'auto', true, lang === 'und' ? undefined : lang);
           }
-        });
-        const allDubs = Promise.all(dubTasks);
+          if (released && query.onLateResult) query.onLateResult({ candidates: [...candidates] });
+        };
+        // Limit upstream pressure while checking all linked variants in batches.
+        let dubCursor = 0;
+        const allDubs = Promise.all(Array.from({ length: Math.min(4, dubs.length) }, async () => {
+          while (dubCursor < dubs.length && !signal.aborted) await resolveDub(dubs[dubCursor++]);
+        }));
         for (const raw of Array.isArray(resources?.list) ? [...resources.list].slice(0, 20).sort((a, b) => Number(obj(b).resolution ?? 0) - Number(obj(a).resolution ?? 0)) : []) {
           const row = obj(raw);
           if (Number(row.se ?? 0) !== season || Number(row.ep ?? 0) !== episode) continue;
@@ -230,6 +236,7 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
         let timer: ReturnType<typeof setTimeout> | undefined;
         const finished = await Promise.race([allDubs.then(() => true), new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), 2200); })]);
         if (timer) clearTimeout(timer);
+        released = true;
         if (!finished && query.onLateResult) void allDubs.then(() => query.onLateResult?.({ candidates: [...candidates] }));
         diag(candidates.length > 0, candidates.length ? `candidates=${candidates.length}` : 'no-supported-media');
         return { candidates: [...candidates] };

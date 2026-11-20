@@ -90,6 +90,8 @@ export interface RawStreamCandidate {
   audioLang?: string;
   /** Provider-declared language only; never use as verified audio or for language selection. */
   claimedAudioLang?: string;
+  /** Probe bounded MP4 metadata for actual single-track audio language. */
+  probeMp4Audio?: boolean;
   /** Provider-declared source mode, not a verified language/manifest track. */
   audioVariant?: 'sub' | 'dub';
   audioLabel?: string;

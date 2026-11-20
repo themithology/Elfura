@@ -1371,6 +1371,13 @@ export class ElfuraPlayer {
                   existing.audioLang = undefined;
                   existing.label = candidate.label;
                   added = true;
+                } else if (existing && !existing.multiAudio && !existing.audioLang && candidate.audioLang && candidate.audioLang !== 'und') {
+                  // The first bounded probe may have returned this same stream
+                  // unlabelled. Merge later verified single-language evidence too.
+                  existing.audioLang = candidate.audioLang;
+                  existing.availableAudioLangs = candidate.availableAudioLangs;
+                  existing.label = candidate.label;
+                  added = true;
                 }
                 continue;
               }
@@ -1403,7 +1410,8 @@ export class ElfuraPlayer {
                   matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
               if (wanted && wanted !== 'und' && !currentLanguageMatches &&
                   this.sources.some((s) => s.sourceId === recoveryId &&
-                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
+                    ((s.audioLang && matchScore(wanted, s.audioLang) >= 0) ||
+                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0)))) {
                 void this.setAudio(wanted);
               }
             }

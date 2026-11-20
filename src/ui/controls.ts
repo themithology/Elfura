@@ -2583,17 +2583,19 @@ export class PlayerUI {
   private renderSources(): void {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
-      const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
+      const qualityBadge = s.quality && s.quality !== 'auto' && !s.label.toUpperCase().includes(s.quality.toUpperCase()) ? s.quality.toUpperCase() : '';
+      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und' ? languageLabel(s.audioLang) : '';
+      const languageSuffix = audioBadge && !s.label.toLowerCase().includes(audioBadge.toLowerCase()) ? audioBadge : '';
       // Only the active engine knows which manifest representations the
       // current browser can actually select. Do not promise a ladder for an
       // unloaded source based solely on backend manifest metadata.
       const optionCount = s.id === st.source
         ? new Set(this.player.getQualityLevels().map((level) => level.height).filter((height) => height > 0)).size
         : 0;
-      const badge =
-        optionCount > 1
-          ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
-          : qualityBadge;
+      const quality = optionCount > 1
+        ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
+        : qualityBadge;
+      const badge = [languageSuffix, quality].filter(Boolean).join(' · ');
       this.panelBody.appendChild(
         this.row(s.label, badge, s.id === st.source, () => {
           void this.player.setSource(s.id);
