@@ -19,6 +19,6 @@ const original=globalThis.fetch;let ranges=[];
 globalThis.fetch=async (_url, opts)=>{const range=opts.headers.Range;ranges.push(range);const match=range.match(/^bytes=(\d+)-(\d+)$/);const start=Number(match[1]),end=Math.min(Number(match[2]),large.length-1);return new Response(large.subarray(start,end+1),{status:206,headers:{'content-range':`bytes ${start}-${end}/${large.length}`,'content-type':'video/mp4'}});};
 try {
  const [result]=await verifyAndFilterCandidates([{key:'mp4',url:'https://cdn.example.org/one.mp4',type:'mp4',quality:'720p',rank:0,probeMp4Audio:true}],AbortSignal.timeout(4000));
- assert.equal(result.audioLang,'en');assert.equal(result.audioLabel,'English');assert(ranges.length>=2 && ranges.length<=9);assert.equal(ranges[0],'bytes=0-524287');
+ assert.equal(result.audioLang,'en');assert.equal(result.audioLabel,'English');assert(ranges.length>=2 && ranges.length<=9);assert.equal(ranges[0],'bytes=0-65535');
 } finally {globalThis.fetch=original;}
 console.log('MovieBox MP4: bounded head/tail, genuine language and ambiguous tracks OK');

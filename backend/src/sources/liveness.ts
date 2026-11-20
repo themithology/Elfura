@@ -365,7 +365,7 @@ async function runSingleProbe(
         const mp4Headers: Record<string, string> = {
           'User-Agent': DEFAULT_PROBE_UA,
           Accept: '*/*',
-          Range: cand.probeMp4Audio ? 'bytes=0-524287' : 'bytes=0-1023',
+          Range: cand.probeMp4Audio ? 'bytes=0-65535' : 'bytes=0-1023',
           ...(cand.headers ?? {}),
         };
         const res = await fetch(cand.url, {
@@ -377,8 +377,8 @@ async function runSingleProbe(
         const finalUrl = res.url || cand.url;
         const ct = (res.headers.get('content-type') || '').toLowerCase();
         let language: string | null = null;
-        if (cand.probeMp4Audio && res.status === 206 && isSafeUpstreamUrl(finalUrl) && !ct.includes('text/html') && !ct.includes('application/json')) {
-          const bytes = await readBoundedBytes(res, 512 * 1024);
+        if (cand.probeMp4Audio && res.status === 206 && /^bytes 0-/i.test(res.headers.get('content-range') ?? '') && isSafeUpstreamUrl(finalUrl) && !ct.includes('text/html') && !ct.includes('application/json')) {
+          const bytes = await readBoundedBytes(res, 64 * 1024);
           language = extractMp4SingleAudioLanguage(bytes);
           const total = Number(res.headers.get('content-range')?.match(/\/(\d+)$/)?.[1] ?? 0);
           if (!language && total >= bytes.length && Number.isSafeInteger(total) && /^bytes 0-/i.test(res.headers.get('content-range') ?? '')) {
