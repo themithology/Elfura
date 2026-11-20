@@ -36,6 +36,8 @@ jobs:
       - run: npm ci
       - run: npm run build:backend
       - name: Install media probe
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+        run: |
+          npm install --no-save --no-package-lock ffprobe-static
+          echo "FFPROBE_PATH=$(node -p "require('ffprobe-static').path")" >> "$GITHUB_ENV"
       - name: Check direct streams and media codecs
         run: node backend/test/moviebox-live.mjs '${{ matrix.title }}'
