@@ -1,0 +1,17 @@
+name: MovieBox audio and quality audit
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/moviebox-research-live.mjs', '.github/workflows/moviebox-research.yml']
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/moviebox-research-live.mjs
