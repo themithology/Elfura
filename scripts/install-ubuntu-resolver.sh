@@ -44,7 +44,7 @@ fi
 if [[ ! -x /usr/bin/node ]] || ! /usr/bin/node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
   apt-get update -qq
   apt-get install -y -qq ca-certificates curl gnupg
-  install -d -m 0755 /usr/share/keyrings
+  install -d -m 0755 /usr/share/keyrings /etc/apt/sources.list.d
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg
   printf 'deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main\n' > /etc/apt/sources.list.d/nodesource.list
   apt-get update -qq
