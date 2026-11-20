@@ -86,7 +86,8 @@ try {
   assert.ok(Date.now()-start < 450,'pooled call exceeded its overall deadline');
   assert.ok(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1',ELFURA_SECRET:'shared'}));
   assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_SECRET:'shared'}),null);
-  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'http://two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'}),null);
+  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'http://203.0.113.9:3002',ELFURA_RESOLVER_ALLOW_PUBLIC:'1',ELFURA_SECRET:'shared'})?.url,'http://203.0.113.9:3002');
+  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'http://203.0.113.9:3002',ELFURA_SECRET:'shared'}),null,'public HTTP still requires explicit opt-in');
   assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://user:pass@two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'}),null);
   resolverConfig({ELFURA_RESOLVER_URL:'wrong'}); const reason=resolverFallbackReason();
   resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'});

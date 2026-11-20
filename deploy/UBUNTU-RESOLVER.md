@@ -59,6 +59,13 @@ ELFURA_RESOLVER_ALLOW_PUBLIC=1
 ELFURA_RESOLVER_ALLOW_LOCAL=0
 ```
 
+A public HTTP backup (for example `http://203.0.113.9:3002`) is also accepted
+when `ELFURA_RESOLVER_ALLOW_PUBLIC=1`. **HTTP is unencrypted:** the resolver
+API token, requests and responses can be read or altered in transit. Prefer
+HTTPS or a private VPN, and restrict resolver access to the streaming node's
+outbound IP where possible. A Pterodactyl-hosted resolver must listen on its
+allocated accessible port; a localhost-only listener will not work remotely.
+
 Restart the streaming node. Each playback search alternates between healthy
 resolvers (50/50 by request, not bandwidth or exact concurrent load). On a
 network, timeout or server failure, the other healthy resolver is tried within

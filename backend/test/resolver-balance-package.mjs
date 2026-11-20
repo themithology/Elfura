@@ -1,5 +1,5 @@
-// End-to-end deployment test: the actual ZIP, a real .env, two HTTPS tunnel-like
-// proxies, and the real resolver HTTP server/auth implementation. Provider work
+// End-to-end deployment test: the actual ZIP, a real .env, one HTTPS proxy
+// and one public HTTP proxy, and the real resolver HTTP/auth implementation. Provider work
 // is replaced with deterministic registry fixtures (no external media sites).
 import assert from 'node:assert/strict';
 import {spawn,execFileSync} from 'node:child_process';
@@ -20,7 +20,7 @@ const keyPath=path.join(tmp,'test-key.pem'), certPath=path.join(tmp,'test-ca.pem
 execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',keyPath,'-out',certPath,'-days','1','-subj','/CN=127.0.0.1','-addext','subjectAltName=IP:127.0.0.1'],{stdio:'ignore'});
 const tls={key:readFileSync(keyPath),cert:readFileSync(certPath)};
 async function listen(server) { servers.push(server); await new Promise(r=>server.listen(0,'127.0.0.1',r)); return server.address().port; }
-async function node(id) {
+async function node(id, useHttps) {
   const registry={
     listPublicSources:()=>[{id:'source-1',label:'Source 1'}],
     health:{snapshot:()=>[{id:'source-1',label:'Source 1'}],setEnabled:()=>{}},
@@ -29,7 +29,7 @@ async function node(id) {
   const real=createResolverServer({cfg:{},registry,token:secret,log:()=>{}}).server;
   const resolverPort=await listen(real);
   const state={blocked:false};
-  const proxy=https.createServer(tls,(req,res)=>{
+  const handler=(req,res)=>{
     if(state.blocked && req.url !== '/resolver/api/health') {res.writeHead(403,{'content-type':'text/html'});return res.end('Access denied');}
     if(req.url==='/resolver/api/playback') requestCounts[id-1]++;
     const upstream=http.request({host:'127.0.0.1',port:resolverPort,path:req.url,method:req.method,headers:req.headers},origin=>{
@@ -37,12 +37,15 @@ async function node(id) {
     });
     upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});
     req.pipe(upstream);
-  });
+  };
+  const proxy=useHttps ? https.createServer(tls,handler) : http.createServer(handler);
   const proxyPort=await listen(proxy);
-  return {state,url:`https://127.0.0.1:${proxyPort}`};
+  // The test-only DNS hook below maps this public-classified hostname to our
+  // local HTTP fixture, exercising public URL validation without external hosts.
+  return {state,url:useHttps ? `https://127.0.0.1:${proxyPort}` : `http://resolver-public.test:${proxyPort}`};
 }
 try {
-  const a=await node(1),b=await node(2);
+  const a=await node(1,true),b=await node(2,false);
   execFileSync('unzip',['-oq',path.resolve('elfura-pterodactyl.zip'),'-d',tmp]);
   const portSocket=net.createServer();await new Promise(r=>portSocket.listen(0,'127.0.0.1',r));
   const port=portSocket.address().port;await new Promise(r=>portSocket.close(r));
@@ -52,7 +55,9 @@ try {
     'ELFURA_RESOLVER_ALLOW_PUBLIC=1','ELFURA_RESOLVER_ALLOW_LOCAL=0',
     'REQUIRE_PLAYBACK_TOKEN=0','ALLOWED_ORIGINS=*','ELFURA_SELF_TEST=0',
   ].join('\n')+'\n');
-  const env={...process.env,HOST:'127.0.0.1',PORT:String(port),SERVER_PORT:String(port),NODE_ENV:'test',ELFURA_SUPERVISE:'0',NODE_EXTRA_CA_CERTS:certPath};
+  const dnsHook=path.join(tmp,'test-dns.cjs');
+  writeFileSync(dnsHook, `const dns=require('node:dns'); const lookup=dns.lookup; dns.lookup=function(host,...rest){return lookup.call(this,host==='resolver-public.test'?'127.0.0.1':host,...rest)};`);
+  const env={...process.env,HOST:'127.0.0.1',PORT:String(port),SERVER_PORT:String(port),NODE_ENV:'test',ELFURA_SUPERVISE:'0',NODE_EXTRA_CA_CERTS:certPath,NODE_OPTIONS:`--require=${dnsHook}`};
   // The test must actually load these values from the installed .env, not a
   // convenient parent environment that hides a launcher or Pterodactyl bug.
   for(const key of ['ELFURA_SECRET','ELFURA_RESOLVER_TOKEN','ELFURA_RESOLVER_URL','ELFURA_RESOLVER_BACKUP_URL','ELFURA_RESOLVER_ALLOW_PUBLIC','ELFURA_RESOLVER_ALLOW_LOCAL','REQUIRE_PLAYBACK_TOKEN','ALLOWED_ORIGINS','ELFURA_SELF_TEST']) delete env[key];
@@ -62,6 +67,7 @@ try {
   let ready=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/api/v1/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(ready,`packaged media failed to start: ${logs}`);
   assert.match(logs,/2 resolver URLs configured/,'startup must confirm balancing');
+  assert.match(logs,/public HTTP backup is unencrypted/,'insecure transport must be clearly reported');
   async function playback(id){
     const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
     assert.equal(response.status,200,`playback failed: ${await response.clone().text()}\n${logs}`);return response.json();
@@ -99,7 +105,7 @@ try {
   assert.match(overrideLogs,/ELFURA_RESOLVER_BACKUP_URL.*overrides \.env/);
   assert.match(overrideLogs,/using 1 remote resolver/);
   assert(!overrideLogs.includes(secret),'override warning must not reveal secrets');
-  console.log('packaged .env + two real resolver APIs behind HTTPS reverse proxies: 50/50, Cloudflare-like 403 failover, per-node diagnostics and env override warning OK');
+  console.log('packaged .env + HTTPS primary and public HTTP backup: 50/50, failover, per-node diagnostics and env override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
