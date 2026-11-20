@@ -49,6 +49,7 @@ if (!playable) throw Error('No supported video and audio detected by ffprobe');
 // actual height and audio tags. This optional audit does not assume availability.
 if (kind === 'movie') {
   const mp4 = verified.find(c => c.type === 'mp4' && c.quality === '720p');
+  if (mp4) { const fresh = await verifyAndFilterCandidates([{...mp4,measuredThisRequest:undefined}], AbortSignal.timeout(8000)); console.log('::notice title=MP4 language resolver::'+JSON.stringify({audio:fresh[0]?.audioLang??null})); }
   if (mp4) {
     try {
       const headers={...(mp4.headers||{}),Range:'bytes=0-524287'};

@@ -19,7 +19,7 @@ import {
 } from '../relay.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { extractMp4SingleAudioLanguage } from './mp4-audio.js';
+import { extractMp4SingleAudioLanguage, extractMp4AudioByRanges } from './mp4-audio.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
 import { PolicyCache } from '../memory-policy.js';
@@ -381,11 +381,16 @@ async function runSingleProbe(
           const bytes = await readBoundedBytes(res, 512 * 1024);
           language = extractMp4SingleAudioLanguage(bytes);
           const total = Number(res.headers.get('content-range')?.match(/\/(\d+)$/)?.[1] ?? 0);
-          if (!language && total > 512 * 1024 && Number.isSafeInteger(total)) {
+          if (!language && total >= bytes.length && Number.isSafeInteger(total) && /^bytes 0-/i.test(res.headers.get('content-range') ?? '')) {
             try {
-              const tail = await fetch(cand.url, { method:'GET', headers:{...mp4Headers, Range:`bytes=${Math.max(0, total - 512 * 1024)}-${total - 1}`}, redirect:'follow', signal:sig });
-              if (tail.status === 206 && isSafeUpstreamUrl(tail.url || cand.url)) language = extractMp4SingleAudioLanguage(await readBoundedBytes(tail, 512 * 1024), true);
-              else await tail.body?.cancel();
+              language = await extractMp4AudioByRanges(bytes, total, async (offset, length) => {
+                const part = await fetch(cand.url, {method:'GET', headers:{...mp4Headers, Range:`bytes=${offset}-${offset + length - 1}`}, redirect:'follow', signal:sig});
+                const expected = `bytes ${offset}-${offset + length - 1}/${total}`;
+                if (part.status !== 206 || !isSafeUpstreamUrl(part.url || cand.url) || part.headers.get('content-range') !== expected) {
+                  await part.body?.cancel().catch(() => {}); return null;
+                }
+                return readBoundedBytes(part, length);
+              });
             } catch { /* liveness remains valid when metadata is unavailable */ }
           }
         } else {

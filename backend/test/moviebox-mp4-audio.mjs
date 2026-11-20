@@ -11,11 +11,14 @@ assert.equal(extractMp4SingleAudioLanguage(box('moov',audio('eng'),audio('hin'))
 assert.equal(extractMp4SingleAudioLanguage(box('moov',audio('und'))),null);
 assert.equal(extractMp4SingleAudioLanguage(eng.subarray(0,eng.length-2)),null);
 assert.equal(extractMp4SingleAudioLanguage(Buffer.concat([Buffer.alloc(31),hin,Buffer.alloc(1)]),true),null);
+// A large video sample table before the audio trak must be skipped with a
+// small range request, not downloaded in full.
+const video=box('trak',box('mdia',box('hdlr',Buffer.alloc(12)),box('minf',box('stbl',box('free',Buffer.alloc(700000))))));
+const large=Buffer.concat([ftyp,box('moov',video,audio('eng')),box('mdat',Buffer.alloc(100))]);
 const original=globalThis.fetch;let ranges=[];
-const size=1024*1024;
-globalThis.fetch=async (_url, opts)=>{const range=opts.headers.Range;ranges.push(range);if(range==='bytes=0-524287')return new Response(Buffer.concat([ftyp,Buffer.from([0,16,0,0,109,100,97,116])]),{status:206,headers:{'content-range':`bytes 0-524287/${size}`,'content-type':'video/mp4'}});return new Response(Buffer.concat([Buffer.alloc(100),eng]),{status:206,headers:{'content-range':`bytes 524288-1048575/${size}`,'content-type':'video/mp4'}});};
+globalThis.fetch=async (_url, opts)=>{const range=opts.headers.Range;ranges.push(range);const match=range.match(/^bytes=(\d+)-(\d+)$/);const start=Number(match[1]),end=Math.min(Number(match[2]),large.length-1);return new Response(large.subarray(start,end+1),{status:206,headers:{'content-range':`bytes ${start}-${end}/${large.length}`,'content-type':'video/mp4'}});};
 try {
  const [result]=await verifyAndFilterCandidates([{key:'mp4',url:'https://cdn.example.org/one.mp4',type:'mp4',quality:'720p',rank:0,probeMp4Audio:true}],AbortSignal.timeout(4000));
- assert.equal(result.audioLang,'en');assert.equal(result.audioLabel,'English');assert.deepEqual(ranges,['bytes=0-524287','bytes=524288-1048575']);
+ assert.equal(result.audioLang,'en');assert.equal(result.audioLabel,'English');assert(ranges.length>=2 && ranges.length<=9);assert.equal(ranges[0],'bytes=0-524287');
 } finally {globalThis.fetch=original;}
 console.log('MovieBox MP4: bounded head/tail, genuine language and ambiguous tracks OK');

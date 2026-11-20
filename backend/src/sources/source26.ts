@@ -223,7 +223,7 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
           const id = typeof row.resourceId === 'string' ? row.resourceId : typeof row.id === 'string' ? row.id : '';
           if (!/^\d+$/.test(id) || signal.aborted) continue;
           const position = new URLSearchParams({ subjectId: subject, resourceId: id, failUrl: url, failCode: '404', resourceNum: '0', isVip: 'true' });
-          const recovered = await request(`/subject-api/resource-position/v2?${position}`, 'GET', undefined, token, signal).catch(() => null);
+          const recovered = await request(`/subject-api/resource-position/v2?${position}`, 'GET', undefined, token, AbortSignal.any([signal, AbortSignal.timeout(1500)])).catch(() => null);
           for (const item of Array.isArray(recovered?.list) ? recovered.list.slice(0, 20) : []) {
             const r = obj(item);
             if (String(r.resourceId ?? r.id ?? '') !== id || Number(r.se ?? 0) !== season || Number(r.ep ?? 0) !== episode) continue;
