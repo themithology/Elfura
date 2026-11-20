@@ -245,6 +245,8 @@ export class ElfuraPlayer {
   } | null = null;
   private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private resolveGeneration = 0;
+  /** Invalidates stale seek restores, probes and prewarms across episodes. */
+  private episodeGeneration = 0;
   private resolveAbort: AbortController | null = null;
   private exhaustedRecoveryAttempted = false;
   private exhaustedRecoveryInFlight = false;
@@ -1456,6 +1458,7 @@ export class ElfuraPlayer {
     manual = false,
   ): Promise<void> {
     const cfg = this.input.config;
+    const episodeGeneration = this.episodeGeneration;
     const prevTime = preservePosition && Number.isFinite(this.video.currentTime) ? this.video.currentTime : 0;
     const wasPlaying = preservePosition && !this.video.paused;
 
@@ -1466,10 +1469,13 @@ export class ElfuraPlayer {
     cfg.subsrc = opt.subtitles?.map((s) => ({ lang: s.lang, label: s.label, url: s.url })) ?? [];
 
     const engineHint = opt.type === 'mp4' ? 'native' : opt.type;
+    const loadSeq = this.engineLoadSeq + 1;
     await this.load(opt.url, engineHint);
+    if (this.destroyed || episodeGeneration !== this.episodeGeneration || loadSeq !== this.engineLoadSeq) return;
 
     if (prevTime > 0.5) {
       const restore = () => {
+        if (this.destroyed || episodeGeneration !== this.episodeGeneration || loadSeq !== this.engineLoadSeq) return;
         this.seek(prevTime);
         if (wasPlaying) void this.play();
       };
@@ -1723,7 +1729,9 @@ export class ElfuraPlayer {
       this.reorderSourcesHierarchy(targetLang);
 
       if (savedTime > 0.5) {
+        const loadSeq = this.engineLoadSeq;
         const restore = () => {
+          if (this.destroyed || this.audioSearchSeq !== seq || this.engineLoadSeq !== loadSeq) return;
           this.seek(savedTime);
           if (wasPlaying) void this.play();
         };
@@ -2254,6 +2262,7 @@ export class ElfuraPlayer {
     const target = this.nextEpisodeTarget;
     if (!target) return;
 
+    const generation = this.episodeGeneration;
     const key = `${cfg.tmdb}:${target.season}:${target.episode}`;
     if (this.prewarmedKeyTriggered === key) return;
     this.prewarmedKeyTriggered = key;
@@ -2309,9 +2318,15 @@ export class ElfuraPlayer {
             )
           : rawJson;
 
-      if (!data?.ok || !data.sources?.length || this.destroyed) return;
+      if (!data?.ok || !data.sources?.length || this.destroyed || generation !== this.episodeGeneration) return;
 
-      const topCandidate = data.primary ?? data.sources[0];
+      const resolveSource = (opt: SourceOption): SourceOption => ({
+        ...opt,
+        url: this.resolveBackendMediaUrl(opt.url),
+        audioTracks: opt.audioTracks?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+        subtitles: opt.subtitles?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+      });
+      const topCandidate = resolveSource(data.primary ?? data.sources[0]);
       // Warm manifest ticket in RAM so hls.js starts playback in ~0.2s when clicked
       if (this.canPreProbeViaFetch(topCandidate)) {
         const ctrl = new AbortController();
@@ -2326,7 +2341,7 @@ export class ElfuraPlayer {
         season: target.season,
         episode: target.episode,
         media: data.media,
-        sources: data.sources,
+        sources: data.sources.map(resolveSource),
         fastest: topCandidate,
         segments: data.segments,
       };
@@ -2336,10 +2351,42 @@ export class ElfuraPlayer {
   }
 
   async loadEpisode(seasonInput: number, episodeInput: number): Promise<void> {
+    if (this.destroyed) return;
     const cfg = this.input.config;
     const season = Math.max(1, Math.floor(Number(seasonInput) || 1));
     const episode = Math.max(1, Math.floor(Number(episodeInput) || 1));
+    const previous = { season: Number(cfg.season ?? 1), episode: Number(cfg.episode ?? 1) };
     const anilistEpisodeOffset = cfg.anilistEpisode === undefined ? null : cfg.anilistEpisode - Number(cfg.episode ?? 1);
+    const pre = this.prewarmedNext;
+    const generation = ++this.episodeGeneration;
+
+    // An episode is a new timeline. Stop the old source and invalidate every
+    // outstanding resolver, audio race, queued seek restore and prewarm before
+    // using the new title. Same-episode source/audio switches still preserve time.
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
+    this.lateHydrationToken++;
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: true });
+    this.activeProbe = null;
+    this.engineLoadSeq++;
+    this.teardownEngine();
+    this.video.pause();
+    this.video.onerror = null;
+    this.video.removeAttribute('src');
+    this.video.load();
+    this.currentSource = null;
+    this.sources = [];
+    this.pendingSourceGroups = [];
+    this.prewarmedNext = null;
+    this.skipLookupKey = '';
+    this.exhaustedRecoveryInFlight = false;
+    cfg.src = undefined;
+    cfg.server = undefined;
+    cfg.audioTracks = [];
+    cfg.subsrc = [];
+    cfg.t = undefined;
     cfg.mediaType = 'tv';
     cfg.season = season;
     cfg.episode = episode;
@@ -2347,13 +2394,24 @@ export class ElfuraPlayer {
     cfg.title = undefined;
     cfg.intro = undefined;
     cfg.outro = undefined;
+    if (this.mediaInfo) this.mediaInfo = { ...this.mediaInfo, type: 'tv', season, episode, episodeName: undefined };
     this.prewarmedKeyTriggered = '';
+    this.recomputeNextEpisodeTarget();
 
     // Update browser path seamlessly without dropping fullscreen if running on /embed/tv/:id/:s/:e
     try {
       const m = window.location.pathname.match(/^(\/embed\/tv\/[^/]+)\/\d+\/\d+(\/?)$/);
-      if (m) {
-        const nextUrl = new URL(`${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`, window.location.href);
+      const isQueryEmbed = /^\/embed(?:\.html)?\/?$/.test(window.location.pathname);
+      if (m || isQueryEmbed) {
+        const nextUrl = m
+          ? new URL(`${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`, window.location.href)
+          : new URL(window.location.href);
+        // Query aliases override path parameters at boot, so update any present
+        // aliases as well. Query-style embeds need explicit episode parameters.
+        for (const key of ['season', 's']) if ((isQueryEmbed && key === 's') || nextUrl.searchParams.has(key)) nextUrl.searchParams.set(key, String(season));
+        for (const key of ['episode', 'e', 'ep']) if ((isQueryEmbed && key === 'e') || nextUrl.searchParams.has(key)) nextUrl.searchParams.set(key, String(episode));
+        // A start offset belongs only to the episode for which it was supplied.
+        for (const key of ['t', 'start', 'starttime', 'seek']) nextUrl.searchParams.delete(key);
         if (cfg.anilistEpisode !== undefined) nextUrl.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
         window.history.replaceState(null, '', nextUrl);
       }
@@ -2361,10 +2419,13 @@ export class ElfuraPlayer {
       /* ignore sandboxed history restrictions */
     }
 
-    this.emit('episodeChange', { season, episode });
-
-    const pre = this.prewarmedNext;
-    this.prewarmedNext = null;
+    this.emit('episodeChange', {
+      mediaType: 'tv',
+      tmdbId: String(cfg.tmdb ?? this.mediaInfo?.tmdbId ?? ''),
+      season,
+      episode,
+      previous,
+    });
 
     if (pre && pre.season === season && pre.episode === episode && pre.sources.length > 0) {
       if (pre.media) {
@@ -2394,18 +2455,38 @@ export class ElfuraPlayer {
         this.desiredAudioLang ?? (cfg.lang ? canonLang(String(cfg.lang)) : null) ?? loadPreferredAudio();
       this.reorderSourcesHierarchy(keepLang);
 
+      // Activate an actual source for the new episode first. Calling setAudio
+      // while the old episode is active can short-circuit on its tracks or
+      // carry its ending timestamp into the new episode's language search.
+      const matches = (s: SourceOption) => Boolean(keepLang && (
+        (s.audioLang && matchScore(keepLang, s.audioLang) >= 0) ||
+        (s.availableAudioLangs ?? []).some(lang => matchScore(keepLang, lang) >= 0) ||
+        (s.audioTracks ?? []).some(track => matchScore(keepLang, track.lang) >= 0)
+      ));
+      const initial = (keepLang && keepLang !== 'und' ? this.sources.find(matches) : null) ?? pre.fastest;
       if (keepLang && keepLang !== 'und') {
         this.initialAudioApplied = true;
-        await this.setAudio(keepLang);
-      } else {
-        await this.activateSourceOption(pre.fastest, false);
+        this.desiredAudioLang = canonLang(keepLang);
       }
-      void this.play();
+      await this.activateSourceOption(initial, false);
+      if (this.destroyed || generation !== this.episodeGeneration) return;
+      this.playSelectedEpisode(generation);
       return;
     }
 
     await this.resolveFromBackend();
-    void this.play();
+    if (this.destroyed || generation !== this.episodeGeneration) return;
+    this.playSelectedEpisode(generation);
+  }
+
+  private playSelectedEpisode(generation: number): void {
+    const play = () => {
+      if (!this.destroyed && generation === this.episodeGeneration && this.video.paused) void this.play();
+    };
+    // HLS/DASH are lazy-loaded; an immediate play can run before the new
+    // engine attaches. Retry at metadata without letting an old episode retry.
+    if (this.video.readyState < 1) this.video.addEventListener('loadedmetadata', play, { once: true });
+    play();
   }
 
   async nextEpisode(): Promise<boolean> {

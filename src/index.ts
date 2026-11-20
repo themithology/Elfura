@@ -51,7 +51,7 @@ export { canonLang, languageLabel, matchScore, buildTrackList } from './core/aud
 export type { AudioTrack } from './core/audio';
 export type { SubtitleStyle } from './subs/style';
 export type { ElfuraConfig } from './core/config';
-export type { EventName, CommandName, Envelope } from './core/events';
+export type { EventName, CommandName, Envelope, EpisodeChangeData } from './core/events';
 export { PARAM_SCHEMA, parseTime, parseColor, parsePairList } from './core/params';
 export { createHostClient } from './core/events';
 export { PlayerUI } from './ui/controls';

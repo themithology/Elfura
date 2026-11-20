@@ -188,6 +188,43 @@ Versioned envelope, origin-locked in both directions:
 Commands are acked, so a host can `await` them: `createHostClient(iframe).send('seek', { value: 90 })`.
 `pltoken` / `nonce` are redacted from every outbound message and log.
 
+### Detect an episode change on the host site
+
+The player sends an `episodeChange` event whenever an episode is selected,
+including the Next Episode button, automatic advance, episode selector, and the
+`loadEpisode` or `next` command. It fires when the switch **starts**; it does
+not guarantee that a source loaded or playback succeeded. The iframe stays in
+place. A host can update its episode highlight or URL without reloading it:
+
+```html
+<iframe id="elfura" src="https://play.example.com/embed/tv/1399/1/1?origin=https%3A%2F%2Fwatch.example.com"
+        allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+<script>
+  const iframe = document.getElementById('elfura');
+  const playerOrigin = 'https://play.example.com'; // exact player origin
+
+  window.addEventListener('message', (event) => {
+    // Ignore messages from other origins and other iframes.
+    if (event.origin !== playerOrigin || event.source !== iframe.contentWindow) return;
+    const msg = event.data;
+    if (!msg || msg.__elfura !== 1 || msg.v !== 1 ||
+        msg.kind !== 'event' || msg.name !== 'episodeChange') return;
+    const { tmdbId, season, episode, previous } = msg.data;
+    console.log('Now selected:', tmdbId, season, episode, 'previous:', previous);
+    // Update your episode selector or use history.replaceState here.
+  });
+</script>
+```
+
+The payload is `{ mediaType: 'tv', tmdbId: '1399', season: 1, episode: 2,
+previous: { season: 1, episode: 1 } }`. It contains no playback tokens or
+stream URLs. `origin` in the iframe URL must be the **host page's** exact
+origin; omit it only when the host's origin is reliably available in the
+referrer. Keep `postMessage` enabled. The SDK alternative is
+`createHostClient(iframe, playerOrigin).on('episodeChange', callback)`.
+A new episode starts at zero even if the previous embed had a `t` start offset;
+switching sources or audio within the same episode still preserves position.
+
 ## 6. Uniform Backend & Pterodactyl Deployment (`backend/`)
 
 Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`backend/`)** (see [`RULES.md`](./RULES.md)):

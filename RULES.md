@@ -20,6 +20,7 @@ Elfura is split into two isolated parts in this repository so upstream scraper c
   - Capability-driven UI only — never hardcode quality ladders, audio tabs, or subtitle tabs that the stream doesn't offer.
   - Maintain the single `requestAnimationFrame` loop with change-detected DOM writes and zero `innerHTML` in hot paths.
   - Security params (`pltoken`, `nonce`, `token`, `sig`) must always be redacted from logs and outbound `postMessage` events.
+  - Episode changes start a fresh timeline (never reuse the preceding episode's position or initial `t` offset), while same-episode source/audio switches preserve position. Forward the sanitized `episodeChange` event to the embedding host when a selection starts; the host must verify the player origin and iframe sender.
 
 ### Part 2 — Backend (`backend/`)
 - **Isolated runtime & directory (`backend/`)** housing the HTTP server, anti-scraper security layer, TMDB client, source adapters, and stream ingress/egress relay.
