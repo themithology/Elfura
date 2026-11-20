@@ -37,7 +37,7 @@ jobs:
       - run: npm run build:backend
       - name: Install media probe
         run: |
-          sudo timeout 90s apt-get update -qq
-          sudo timeout 90s apt-get install -y -qq ffmpeg
+          npm install --no-save --no-package-lock @ffprobe-installer/linux-x64@5.2.0
+          echo "FFPROBE_PATH=$PWD/node_modules/@ffprobe-installer/linux-x64/ffprobe" >> "$GITHUB_ENV"
       - name: Check direct streams and media codecs
         run: node backend/test/moviebox-live.mjs '${{ matrix.title }}'
