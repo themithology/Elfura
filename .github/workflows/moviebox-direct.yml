@@ -1,0 +1,38 @@
+name: MovieBox direct source verification
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths:
+      - 'backend/src/sources/source26.ts'
+      - 'backend/src/sources/registry.ts'
+      - 'backend/test/moviebox-*.mjs'
+      - '.github/workflows/moviebox-direct.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/moviebox-adapter.mjs
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        title: [movie, tv]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - name: Check direct streams and media codecs
+        run: node backend/test/moviebox-live.mjs '${{ matrix.title }}'
