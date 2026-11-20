@@ -443,6 +443,13 @@ export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
   return child.toString();
 }
 
+/** Do not forward signed CDN credentials to a different manifest origin. */
+function headersForManifestChild(headers: Record<string, string> | undefined, manifestUrl: string, childUrl: string): Record<string, string> | undefined {
+  if (!headers || new URL(manifestUrl).origin === new URL(childUrl).origin) return headers;
+  const safe = Object.fromEntries(Object.entries(headers).filter(([name]) => !['cookie', 'authorization', 'proxy-authorization', 'x-api-key'].includes(name.toLowerCase())));
+  return Object.keys(safe).length ? safe : undefined;
+}
+
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
@@ -483,9 +490,10 @@ export function rewriteHlsManifest(
     if (kind === 'a' && !options?.forceProxy && options?.canOffloadSegment?.(abs)) {
       return abs;
     }
+    const childHeaders = headersForManifestChild(headers, baseUrl, abs);
     const ticket = sealStreamTicket(secret, {
       u: abs,
-      ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+      ...(childHeaders ? { h: childHeaders } : {}),
       k: kind,
       ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
     });
@@ -597,12 +605,14 @@ function sealDashTemplateUrl(
   headers: Record<string, string> | undefined,
   secret: Buffer,
   streamPath: string,
+  manifestUrl: string,
 ): string {
   const abs = new URL(xmlUnescape(rawTemplate), baseUrl).toString();
   if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH template');
+  const childHeaders = headersForManifestChild(headers, manifestUrl, abs);
   const ticket = sealStreamTicket(secret, {
     u: abs,
-    ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+    ...(childHeaders ? { h: childHeaders } : {}),
     k: 'a',
   });
   const params = [`t=${encodeURIComponent(ticket)}`];
@@ -654,9 +664,10 @@ export function rewriteDashManifest(
     const abs = new URL(xmlUnescape(raw), base).toString();
     if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH URL');
     if (!options?.forceProxy && options?.canOffloadSegment?.(abs)) return abs;
+    const childHeaders = headersForManifestChild(headers, baseUrl, abs);
     const ticket = sealStreamTicket(secret, {
       u: abs,
-      ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+      ...(childHeaders ? { h: childHeaders } : {}),
       k: 'a',
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
@@ -700,7 +711,7 @@ export function rewriteDashManifest(
         rewritten = rewritten.replace(attrPattern, (whole, prefix: string, quote: string, raw: string) => {
           try {
             const value = dynamic
-              ? sealDashTemplateUrl(raw, frame.base, headers, secret, streamPath)
+              ? sealDashTemplateUrl(raw, frame.base, headers, secret, streamPath, baseUrl)
               : staticUrl(raw, frame.base);
             return `${prefix}${quote}${xmlAttributeEscape(value)}${quote}`;
           } catch {

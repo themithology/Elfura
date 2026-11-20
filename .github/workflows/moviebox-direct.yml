@@ -5,6 +5,7 @@ on:
     paths:
       - 'backend/src/sources/source26.ts'
       - 'backend/src/sources/registry.ts'
+      - 'backend/src/relay.ts'
       - 'backend/test/moviebox-*.mjs'
       - '.github/workflows/moviebox-direct.yml'
   workflow_dispatch:
@@ -34,5 +35,7 @@ jobs:
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: npm run build:backend
+      - name: Install media probe
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Check direct streams and media codecs
         run: node backend/test/moviebox-live.mjs '${{ matrix.title }}'
