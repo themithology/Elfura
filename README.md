@@ -192,8 +192,9 @@ Commands are acked, so a host can `await` them: `createHostClient(iframe).send('
 
 The player sends an `episodeChange` event whenever an episode is selected,
 including the Next Episode button, automatic advance, episode selector, and the
-`loadEpisode` or `next` command. It fires when the switch **starts**; it does
-not guarantee that a source loaded or playback succeeded. The iframe stays in
+`loadEpisode` or `next` command. Re-selecting the current episode does not fire
+an event. It fires when the switch **starts**; it does not guarantee that a source
+loaded or playback succeeded. The iframe stays in
 place. A host can update its episode highlight or URL without reloading it:
 
 ```html

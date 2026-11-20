@@ -1156,8 +1156,11 @@ export class ElfuraPlayer {
       }
 
       if (!isCurrent()) return;
-      const storedLang = !cfg.lang ? loadPreferredAudio() : null;
-      const bootLang = cfg.lang ? String(cfg.lang) : storedLang;
+      // Once playback has started, a viewer's latest audio selection takes
+      // precedence over the original embed language for subsequent episodes.
+      const episodeLang = this.episodeGeneration > 0 ? this.desiredAudioLang : null;
+      const storedLang = !cfg.lang && !episodeLang ? loadPreferredAudio() : null;
+      const bootLang = episodeLang ?? (cfg.lang ? String(cfg.lang) : storedLang);
 
       apiUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
       apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
@@ -1320,11 +1323,11 @@ export class ElfuraPlayer {
             (s.audioTracks ?? []).some((a) => matchScore(storedLang, a.lang) >= 0),
         );
 
-      const effectiveBootLang = cfg.lang
+      const effectiveBootLang = episodeLang ?? (cfg.lang
         ? String(cfg.lang)
         : storedMatchesAny
           ? storedLang
-          : null;
+          : null);
       this.reorderSourcesHierarchy(effectiveBootLang);
 
       // A slow provider can miss the initial bounded backend race. Fetch its
@@ -2356,6 +2359,9 @@ export class ElfuraPlayer {
     const season = Math.max(1, Math.floor(Number(seasonInput) || 1));
     const episode = Math.max(1, Math.floor(Number(episodeInput) || 1));
     const previous = { season: Number(cfg.season ?? 1), episode: Number(cfg.episode ?? 1) };
+    // Re-selecting the current episode is not an episode change and must not
+    // erase a deliberate resume point or emit a misleading host notification.
+    if (cfg.mediaType === 'tv' && previous.season === season && previous.episode === episode) return;
     const anilistEpisodeOffset = cfg.anilistEpisode === undefined ? null : cfg.anilistEpisode - Number(cfg.episode ?? 1);
     const pre = this.prewarmedNext;
     const generation = ++this.episodeGeneration;

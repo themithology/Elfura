@@ -35,8 +35,8 @@ try {
     const season=Number(url.searchParams.get('s')||1), episode=Number(url.searchParams.get('e')||1);
     playbackRequests.push({season,episode,source:url.searchParams.get('source')});
     if(season===1 && episode===3) await sleep(900); // late prewarm, for race regression
-    const source=(i)=>({id:`source-${i}:${season}:${episode}`,sourceId:`source-${i}`,label:`Source ${i}`,type:'hls',url:`/fixture/s${season}e${episode}/source${i}/movie.m3u8`,quality:'auto',fingerprint:`s${season}e${episode}-${i}`,audioLang:'hi',availableAudioLangs:['hi'],audioTracks:[],subtitles:[]});
-    const sources=[source(1),source(2)];
+    const source=(i)=>({id:`source-${i}:${season}:${episode}`,sourceId:`source-${i}`,label:`Source ${i}`,type:'hls',url:`/fixture/s${season}e${episode}/source${i}/movie.m3u8`,quality:'auto',fingerprint:`s${season}e${episode}-${i}`,audioLang:i===3?'en':'hi',availableAudioLangs:[i===3?'en':'hi'],audioTracks:[],subtitles:[]});
+    const sources=[source(1),source(2),source(3)];
     return route.fulfill({json:{ok:true,primary:sources[0],sources,sourceGroups:['source-1','source-2'],pendingSources:[],media:{type:'tv',tmdbId:'1399',season,episode,title:'Test Show'}}});
   });
   await page.route('**/api/v1/episodes**',route=>{
@@ -72,6 +72,11 @@ try {
   await frame.evaluate(()=>{window.__elfura.player.video.currentTime=14;});
   await frame.evaluate(()=>window.__elfura.player.setSource('source-2'));
   await frame.waitForFunction(()=>{const p=window.__elfura.player;return p.currentSource?.sourceId==='source-2'&&p.video.readyState>=2&&p.video.currentTime>=13},null,{timeout:20000});
+  await frame.evaluate(()=>window.__elfura.player.loadEpisode(1,2));
+  assert((await frame.evaluate(()=>window.__elfura.player.video.currentTime))>=13,'same episode must keep resume position');
+  assert.equal(await page.evaluate(()=>window.playerMessages.filter(m=>m.name==='episodeChange').length),1,'same episode must not report a change');
+  await frame.evaluate(()=>window.__elfura.player.setAudio('en'));
+  await frame.waitForFunction(()=>{const p=window.__elfura.player;return p.currentSource?.audioLang==='en'&&p.video.readyState>=2&&p.video.currentTime>=13},null,{timeout:20000});
   // Start a slow prewarm for episode 3, then immediately choose episode 4.
   // A late response from episode 2 must not re-populate old prewarmed state.
   step='episode selector and stale prewarm';
@@ -84,8 +89,9 @@ try {
   await frame.locator('.elf-ep-wheel-item[data-ep="4"]').click({force:true});
   await frame.waitForFunction(()=>{const p=window.__elfura.player;return p.config.episode===4&&p.currentSource?.url.includes('/s1e4/')&&p.video.readyState>=2},null,{timeout:20000});
   await frame.waitForTimeout(1100);
-  const fourth=await frame.evaluate(()=>({time:window.__elfura.player.video.currentTime,pre:window.__elfura.player.prewarmedNext?.episode,search:location.search}));
+  const fourth=await frame.evaluate(()=>({time:window.__elfura.player.video.currentTime,pre:window.__elfura.player.prewarmedNext?.episode,search:location.search,lang:window.__elfura.player.currentSource?.audioLang}));
   assert(fourth.time<5,`selected episode inherited time: ${JSON.stringify(fourth)}`);
+  assert.equal(fourth.lang,'en','last selected language must beat the original embed language');
   assert.notEqual(fourth.pre,3,'stale prewarm must not win after navigation');
   await page.waitForFunction(()=>window.playerMessages.filter(m=>m.name==='episodeChange').length===2);
   changes=await page.evaluate(()=>window.playerMessages.filter(m=>m.name==='episodeChange'));
