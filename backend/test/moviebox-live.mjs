@@ -2,6 +2,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createSource26Adapter } from '../../dist/backend/sources/source26.js';
+import { extractMp4SingleAudioLanguage } from '../../dist/backend/sources/mp4-audio.js';
 import { diagnoseCandidatePlayback, verifyAndFilterCandidates } from '../../dist/backend/sources/liveness.js';
 
 const kind = process.argv[2];
@@ -49,6 +50,16 @@ if (!playable) throw Error('No supported video and audio detected by ffprobe');
 if (kind === 'movie') {
   const mp4 = verified.find(c => c.type === 'mp4' && c.quality === '720p');
   if (mp4) {
+    try {
+      const headers={...(mp4.headers||{}),Range:'bytes=0-524287'};
+      const head=await fetch(mp4.url,{headers,signal:AbortSignal.timeout(5000)});
+      const buf=Buffer.from(await head.arrayBuffer());
+      const total=Number(head.headers.get('content-range')?.match(/\/(\d+)$/)?.[1]||0);
+      const headResult=extractMp4SingleAudioLanguage(buf);
+      let tailResult=null, tailStatus=null, tailSize=0, moovAt=-1, moovSize=0;
+      if(total>524288){const tail=await fetch(mp4.url,{headers:{...headers,Range:`bytes=${total-524288}-${total-1}`},signal:AbortSignal.timeout(5000)});tailStatus=tail.status;const data=Buffer.from(await tail.arrayBuffer());tailSize=data.length;moovAt=data.lastIndexOf('moov');if(moovAt>=4)moovSize=data.readUInt32BE(moovAt-4);tailResult=extractMp4SingleAudioLanguage(data,true);}
+      console.log('::notice title=MP4 metadata inspection::'+JSON.stringify({status:head.status,bytes:buf.length,total,headResult,tailStatus,tailSize,moovAt,moovSize,tailResult}));
+    } catch(error) {console.log('::notice title=MP4 metadata inspection::'+JSON.stringify({error:error.name}));}
     try {
       const headers = Object.entries(mp4.headers || {}).map(([k,v]) => `${k}: ${v}\r\n`).join('');
       const {stdout} = await run(process.env.FFPROBE_PATH || 'ffprobe', ['-v','error','-rw_timeout','10000000','-headers',headers,'-show_entries','stream=codec_type,codec_name,height:stream_tags=language','-of','json',mp4.url], {timeout:30000,maxBuffer:1024*1024});

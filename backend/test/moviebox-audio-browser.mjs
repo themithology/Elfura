@@ -31,7 +31,7 @@ try {
  step='late labels';
  await page.waitForFunction(()=>{const p=window.__elfura?.player;return p?.getSources().some(s=>s.fingerprint==='eng'&&s.audioLang==='en')&&p?.getAudioTracks().some(t=>t.lang==='hi')&&p?.getAudioTracks().some(t=>t.lang==='en');},null,{timeout:25000});
  step='menu';
- await page.getByRole('button',{name:'Change audio and subtitles'}).click();
+ await page.getByRole('button',{name:'Change audio and subtitles'}).evaluate(button=>button.click());
  await page.locator('.elf-audio-option').filter({hasText:'Hindi'}).click();
  step='switch';
  await page.waitForFunction(()=>window.__elfura.player.currentSource?.audioLang==='hi'&&window.__elfura.player.video.readyState>=2,null,{timeout:25000});
