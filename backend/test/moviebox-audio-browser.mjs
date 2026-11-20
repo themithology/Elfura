@@ -32,7 +32,7 @@ try {
  await page.waitForFunction(()=>{const p=window.__elfura?.player;return p?.getSources().some(s=>s.fingerprint==='eng'&&s.audioLang==='en')&&p?.getAudioTracks().some(t=>t.lang==='hi')&&p?.getAudioTracks().some(t=>t.lang==='en');},null,{timeout:25000});
  step='menu';
  await page.getByRole('button',{name:'Change audio and subtitles'}).evaluate(button=>button.click());
- await page.getByRole('button',{name:'Servers',exact:true}).click();
+ await page.locator('.elf-btn[aria-label="Servers"]').click();
  const rows=await page.locator('.elf-menu-item').allTextContents();
  assert(rows.some(row=>row.includes('English')&&row.includes('720P')), 'server must show language and quality');
  assert(rows.some(row=>row.includes('Hindi')), 'server must show the dub language');

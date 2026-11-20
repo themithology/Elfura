@@ -40,12 +40,12 @@ jobs:
       - name: Install media probe
         id: install
         run: |
-          sudo timeout 90s apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-"
-          sudo timeout 90s apt-get install -y -qq ffmpeg
+          if ! command -v ffprobe >/dev/null; then
+            sudo timeout 90s apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-"
+            sudo timeout 90s apt-get install -y -qq ffmpeg
+          fi
       - name: Probe movie streams
         run: node backend/test/moviebox-live.mjs movie
-      - name: Verify live registry language labels
-        run: node backend/test/moviebox-registry-live.mjs
       - name: Probe TV episode streams
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node backend/test/moviebox-live.mjs tv
@@ -60,3 +60,13 @@ jobs:
       - run: npm run build
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: node backend/test/moviebox-audio-browser.mjs
+  registry-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/moviebox-registry-live.mjs
