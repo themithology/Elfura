@@ -1,3 +1,4 @@
+process.env.ELFURA_MOVIEBOX_ENABLED = '0'; // isolate fixture tests from the live provider
 process.env.ELFURA_MAPPLE_ENABLED = '0';
 process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
 process.env.ELFURA_ANIVEXA_ENABLED = '0';
