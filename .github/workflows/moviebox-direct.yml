@@ -25,10 +25,6 @@ jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        title: [movie, tv]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,8 +32,12 @@ jobs:
       - run: npm ci
       - run: npm run build:backend
       - name: Install media probe
+        id: install
         run: |
-          npm install --no-save --no-package-lock @ffprobe-installer/linux-x64@5.2.0
-          echo "FFPROBE_PATH=$PWD/node_modules/@ffprobe-installer/linux-x64/ffprobe" >> "$GITHUB_ENV"
-      - name: Check direct streams and media codecs
-        run: node backend/test/moviebox-live.mjs '${{ matrix.title }}'
+          sudo timeout 90s apt-get update -qq -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-"
+          sudo timeout 90s apt-get install -y -qq ffmpeg
+      - name: Probe movie streams
+        run: node backend/test/moviebox-live.mjs movie
+      - name: Probe TV episode streams
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node backend/test/moviebox-live.mjs tv
