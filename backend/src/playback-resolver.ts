@@ -161,6 +161,27 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
   return { url: clean, token };
 }
 
+/** Optional second resolver. Apply the same public-network policy as the primary.
+ * Never let validation of an optional backup overwrite primary diagnostics. */
+export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
+  const raw = (env.ELFURA_RESOLVER_BACKUP_URL ?? '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
+    if (!isPrivateResolverUrl(raw) && parsed.protocol !== 'https:') throw new Error('public backup requires HTTPS');
+  } catch {
+    console.error('[elfura-resolver] invalid backup URL; use an HTTP(S) URL without credentials, query or fragment (public URLs require HTTPS).');
+    return null;
+  }
+  const oldReason = lastFallbackReason;
+  try {
+    return resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
+  } finally {
+    lastFallbackReason = oldReason;
+  }
+}
+
 /** True for addresses that only make sense on a private network. */
 export function isPrivateResolverUrl(url: string): boolean {
   let host: string;

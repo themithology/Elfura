@@ -85,11 +85,11 @@ export class RemotePlaybackResolver implements PlaybackResolver {
     }
   }
 
-  async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
+  async resolve(request: PlaybackRequest, timeoutMs = RESOLVE_TIMEOUT_MS): Promise<PlaybackResolution | null> {
     try {
       const body = await this.call<PlaybackResolution | { ok: false; error?: string }>(
         '/resolver/api/playback',
-        { method: 'POST', body: request, timeoutMs: RESOLVE_TIMEOUT_MS },
+        { method: 'POST', body: request, timeoutMs: Math.max(1, Math.min(RESOLVE_TIMEOUT_MS, timeoutMs)) },
       );
       if (!body || (body as { ok?: boolean }).ok !== true) return null;
       return body as PlaybackResolution;

@@ -45,6 +45,37 @@ at least 24 characters; do not use credentials published in this repository.
    the separate resolver. A reachable health endpoint alone does not prove
    matching tokens or successful playback.
 
+## Optional: balance two resolver VPSes
+
+Install a resolver and configure a separate tunnel hostname on each VPS. Both
+resolvers and the streaming node must have the **same** `ELFURA_SECRET` and
+`ELFURA_RESOLVER_TOKEN`, the same enabled source configuration, and compatible
+software versions. On the Pterodactyl streaming node set:
+
+```ini
+ELFURA_RESOLVER_URL=https://resolver-one.example.com
+ELFURA_RESOLVER_BACKUP_URL=https://resolver-two.example.com
+ELFURA_RESOLVER_ALLOW_PUBLIC=1
+ELFURA_RESOLVER_ALLOW_LOCAL=0
+```
+
+Restart the streaming node. Each playback search alternates between healthy
+resolvers (50/50 by request, not bandwidth or exact concurrent load). On a
+network, timeout or server failure, the other healthy resolver is tried within
+one 12-second overall request budget. A failed node is skipped for 30 seconds,
+then tried again; no background health checks are performed. A slow failed
+first attempt may leave too little time for the second to finish. An empty
+search, a rejected request or a token mismatch does not trigger failover.
+Without `ELFURA_RESOLVER_BACKUP_URL`, single-resolver behavior is unchanged.
+The Pterodactyl node does not scrape locally during remote failures.
+
+The source health panel shows counters from one resolver, not aggregated
+cluster counters. Source enable/disable changes are sent to both; an error
+means one or both did not accept the change, so retry after both are online.
+Source settings and cached data are independent on the two resolver nodes.
+The health probe reports how many nodes are reachable; health alone does not
+verify the shared token. Protect both tunnel hostnames as described below.
+
 **Security:** A Tunnel hostname is publicly reachable unless you separately
 restrict it; `.env` itself is not a network access control. The resolver has
 unauthenticated health and network-info endpoints, even though sensitive API
