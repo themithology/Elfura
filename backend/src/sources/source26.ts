@@ -6,6 +6,7 @@
  */
 import crypto from 'node:crypto';
 import { isSafeUpstreamUrl } from '../security.js';
+import { normalizeLang } from './lang.js';
 import { readBoundedText } from './upstream-fetch.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 
@@ -154,23 +155,58 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
           params.set('se', String(season)); params.set('ep', String(episode));
         }
         const resourceParams = new URLSearchParams({ subjectId: subject, page: '1', perPage: '20', all: '0', startPosition: '1', endPosition: '1', pagerMode: '2', resolution: '0', se: String(season), epFrom: String(episode), epTo: String(episode), isVip: 'true' });
-        const [play, resources] = await Promise.all([
+        const [play, resources, details] = await Promise.all([
           request(`/subject-api/play-info/v2?${params}`, 'GET', undefined, token, signal).catch(() => null),
           request(`/subject-api/resource/v2?${resourceParams}`, 'GET', undefined, token, signal).catch(() => null),
+          request(`/subject-api/get?${new URLSearchParams({ subjectId: subject })}`, 'GET', undefined, token, signal).catch(() => null),
         ]);
         const candidates: RawStreamCandidate[] = [];
         const seen = new Set<string>();
-        const add = (url: string, cookie: string, quality: string, referer: boolean) => {
+        const add = (url: string, cookie: string, quality: string, referer: boolean, claimedLang?: string) => {
           if (notice(url) || !mediaType(url) || seen.has(url) || /[\r\n]/.test(cookie) || cookie.length > 16000) return;
           seen.add(url);
-          candidates.push({ key: url, url, type: mediaType(url)!, quality, rank: 10, headers: { 'User-Agent': UA, ...(referer ? { Referer: REFERER } : {}), ...(cookie ? { Cookie: cookie } : {}) } });
+          candidates.push({ key: url, url, type: mediaType(url)!, quality, rank: 10, ...(claimedLang ? { claimedAudioLang: claimedLang } : {}), headers: { 'User-Agent': UA, ...(referer ? { Referer: REFERER } : {}), ...(cookie ? { Cookie: cookie } : {}) } });
         };
         for (const raw of Array.isArray(play?.streams) ? play.streams : []) {
           const stream = obj(raw); const cookie = typeof stream.signCookie === 'string' ? stream.signCookie.trim().replace(/;\s*$/, '') : '';
           const url = movieBoxDashFromCookie(cookie) ?? (typeof stream.url === 'string' ? stream.url : '');
           add(url, cookie, 'auto', true);
         }
-        for (const raw of Array.isArray(resources?.list) ? resources.list.slice(0, 20) : []) {
+        // Resource detectors can contain additional direct renditions that are
+        // absent from play-info. Never fabricate resolutions from API metadata.
+        const detailSubject = obj(details?.subject ?? details);
+        for (const detector of (Array.isArray(detailSubject.resourceDetectors) ? detailSubject.resourceDetectors : []).slice(0, 8)) {
+          const d = obj(detector);
+          const rows = Array.isArray(d.resolutionList) && d.resolutionList.length
+            ? d.resolutionList : query.type === 'movie' && typeof d.downloadUrl === 'string'
+              ? [{ resourceLink: d.downloadUrl, se: 0, ep: 0 }] : [];
+          for (const entry of rows.slice(0, 20)) {
+            const r = obj(entry);
+            if (Number(r.se ?? 0) !== season || Number(r.ep ?? 0) !== episode) continue;
+            const url = typeof r.resourceLink === 'string' ? r.resourceLink : typeof r.url === 'string' ? r.url : '';
+            const quality = /^\d{3,4}$/.test(String(r.resolution ?? '')) ? `${r.resolution}p` : 'auto';
+            add(url, '', quality, false);
+          }
+        }
+        // MovieBox represents dubs as linked subjects, not tracks in one MPD.
+        // Resolve a bounded number concurrently, then let the existing manifest
+        // verifier establish audioLang. API labels alone are only claims.
+        const dubs = (Array.isArray(detailSubject.dubs) ? detailSubject.dubs : [])
+          .map(obj).filter((dub: Record<string, any>) => dub.original !== true && typeof dub.subjectId === 'string' && /^\d+$/.test(dub.subjectId) && dub.subjectId !== subject)
+          .slice(0, 5);
+        const dubTasks = dubs.map(async (dub: Record<string, any>) => {
+          const dubParams = new URLSearchParams(params); dubParams.set('subjectId', dub.subjectId);
+          const payload = await request(`/subject-api/play-info/v2?${dubParams}`, 'GET', undefined, token, signal).catch(() => null);
+          const lang = normalizeLang(typeof dub.lanCode === 'string' ? dub.lanCode : '').code;
+          for (const raw of Array.isArray(payload?.streams) ? payload.streams.slice(0, 8) : []) {
+            const stream = obj(raw);
+            const cookie = typeof stream.signCookie === 'string' ? stream.signCookie.trim().replace(/;\s*$/, '') : '';
+            const url = movieBoxDashFromCookie(cookie) ?? (typeof stream.url === 'string' ? stream.url : '');
+            add(url, cookie, 'auto', true, lang === 'und' ? undefined : lang);
+          }
+        });
+        const allDubs = Promise.all(dubTasks);
+        for (const raw of Array.isArray(resources?.list) ? [...resources.list].slice(0, 20).sort((a, b) => Number(obj(b).resolution ?? 0) - Number(obj(a).resolution ?? 0)) : []) {
           const row = obj(raw);
           if (Number(row.se ?? 0) !== season || Number(row.ep ?? 0) !== episode) continue;
           const url = typeof row.resourceLink === 'string' ? row.resourceLink : typeof row.url === 'string' ? row.url : '';
@@ -179,7 +215,7 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
           // The API sometimes replaces downloads with a notice clip. Recover only
           // the exact resource and episode, never the notice itself.
           const id = typeof row.resourceId === 'string' ? row.resourceId : typeof row.id === 'string' ? row.id : '';
-          if (!/^\d+$/.test(id) || candidates.length || signal.aborted) continue;
+          if (!/^\d+$/.test(id) || signal.aborted) continue;
           const position = new URLSearchParams({ subjectId: subject, resourceId: id, failUrl: url, failCode: '404', resourceNum: '0', isVip: 'true' });
           const recovered = await request(`/subject-api/resource-position/v2?${position}`, 'GET', undefined, token, signal).catch(() => null);
           for (const item of Array.isArray(recovered?.list) ? recovered.list.slice(0, 20) : []) {
@@ -189,8 +225,14 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
           }
           break; // At most one recovery attempt per resolution.
         }
+        // Don't let one slow language stall startup; late results warm the
+        // adapter cache for subsequent requests. A snapshot avoids mutation.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const finished = await Promise.race([allDubs.then(() => true), new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), 2200); })]);
+        if (timer) clearTimeout(timer);
+        if (!finished && query.onLateResult) void allDubs.then(() => query.onLateResult?.({ candidates: [...candidates] }));
         diag(candidates.length > 0, candidates.length ? `candidates=${candidates.length}` : 'no-supported-media');
-        return { candidates };
+        return { candidates: [...candidates] };
       } catch (error) { diag(false, `request-failed:${(error as Error).name}`); return empty(); }
     },
   };

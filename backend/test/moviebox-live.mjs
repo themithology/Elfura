@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createSource26Adapter } from '../../dist/backend/sources/source26.js';
-import { diagnoseCandidatePlayback } from '../../dist/backend/sources/liveness.js';
+import { diagnoseCandidatePlayback, verifyAndFilterCandidates } from '../../dist/backend/sources/liveness.js';
 
 const kind = process.argv[2];
 const input = kind === 'movie'
@@ -15,6 +15,11 @@ const diag = [];
 const result = await createSource26Adapter(() => true).resolve({ ...input, diag });
 console.log('::notice title=Direct source resolution::' + JSON.stringify({kind, candidates:result.candidates.length, diag}));
 if (!result.candidates.length) throw Error('No supported candidates');
+// Real manifest evidence, not the provider's declared dub label, must reach
+// the same verified candidates consumed by the source selector.
+const verified = await verifyAndFilterCandidates(result.candidates, AbortSignal.timeout(8000));
+console.log('::notice title=Verified source audio::' + JSON.stringify({kind, candidates:verified.map(c=>({type:c.type, language:c.audioLang??null, claimed:c.claimedAudioLang??null, ladder:c.qualityLadder??[], quality:c.quality}))}));
+if (kind === 'movie' && !verified.some(c=>c.audioLang === 'hi' && c.type === 'dash')) throw Error('Hindi DASH dub was not verified');
 const run = promisify(execFile);
 let playable = false;
 for (const candidate of result.candidates.slice(0, 3)) {
