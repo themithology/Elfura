@@ -18,7 +18,7 @@ globalThis.fetch = async (url, opts) => {
   const u = new URL(url);
   if (u.pathname.endsWith('/visitor-login')) return Response.json({ data: { token: 'test-session' } });
   if (u.pathname.endsWith('/search/v2')) return Response.json({ data: { results: [{ subjects: [
-    { subjectId: '123', title: mode === 'movie' ? 'Example' : 'Example Show', subjectType: mode === 'movie' ? 1 : 2, releaseDate: '2020-01-01' },
+    { subjectId: '123', title: mode === 'movie' ? 'Example' : 'Example Show S1', subjectType: mode === 'movie' ? 1 : 2, releaseDate: '2020-01-01' },
   ] }] } });
   if (u.pathname.endsWith('/play-info/v2')) return Response.json({ data: { streams: mode === 'movie' ? [
     { url: 'https://macdn.aoneroom.com/other/notice.mp4', signCookie: cookie },

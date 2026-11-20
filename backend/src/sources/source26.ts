@@ -74,7 +74,10 @@ function chooseSubject(data: Record<string, any>, query: SourceQuery, title: str
     const type = Number(row.subjectType ?? row.stype);
     if (type !== (query.type === 'movie' ? 1 : 2)) return false;
     const rowTitle = String(row.title ?? row.name ?? '');
-    if (normalTitle(rowTitle) !== wanted) return false;
+    const normalized = normalTitle(rowTitle);
+    // Some catalogs split season one into a separate subject (e.g. 'Show S1').
+    // Do not guess later seasons or language-labelled variants.
+    if (normalized !== wanted && !(query.type === 'tv' && query.season === 1 && normalized === `${wanted} s1`)) return false;
     const rowYear = String(row.releaseDate ?? row.year ?? row.releaseInfo ?? '').match(/\b(?:19|20)\d{2}\b/)?.[0];
     return !year || !rowYear || rowYear === year;
   });
@@ -140,8 +143,7 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
         const search = await request('/subject-api/search/v2', 'POST', JSON.stringify({ keyword: title, page: 1, perPage: 15, subjectType: 0 }), token, signal);
         const subject = search && chooseSubject(search, query, title, meta?.year);
         if (!subject) {
-          const rows = search ? searchRows(search).slice(0, 8) : [];
-          diag(false, `no-unambiguous-title-match rows=${rows.length} sample=${JSON.stringify(rows.map(r => ({ title: String(r.title ?? r.name ?? '').slice(0, 60), type: r.subjectType ?? r.stype ?? null, year: String(r.releaseDate ?? r.year ?? r.releaseInfo ?? '').slice(0, 12), idType: typeof (r.subjectId ?? r.id) })))}`);
+          diag(false, `no-unambiguous-title-match rows=${search ? searchRows(search).length : 0}`);
           return empty();
         }
         const params = new URLSearchParams({ subjectId: subject });
