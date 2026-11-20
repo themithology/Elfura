@@ -61,7 +61,10 @@ const SOURCE_QUERY_DENY_RE =
 const IP_BOUND_TOKEN_RE = /:\d{1,3}(?:\.\d{1,3}){3}:/;
 
 const CORS_PROBE_ORIGIN = 'https://player.elfura.invalid';
-const MAX_CORS_CACHE_ENTRIES = 512;
+// Raised for a 4 GB container (was 512). Each row is a boolean + timestamp,
+// so 2048 costs a few tens of KB and removes a needless CORS re-probe for
+// every segment CDN after a busy hour.
+const MAX_CORS_CACHE_ENTRIES = 2048;
 const CORS_PASS_TTL_MS = 30 * 60_000;
 const CORS_FAIL_TTL_MS = 10 * 60_000;
 
@@ -820,7 +823,11 @@ async function readBoundedBinary(res: Response, maxBytes: number): Promise<Buffe
   }
 }
 
-const MAX_MANIFEST_RAM_ENTRIES = 256;
+// Raised for a 4 GB container (was 256). Entries are capped at 256 KB each by
+// MAX_CACHEABLE_MANIFEST_BYTES, so this ceiling is a 256 MB worst case, not an
+// unbounded one - and 1024 manifests covers far more than 256 concurrent
+// viewers, because each viewer re-reads the same title's manifest.
+const MAX_MANIFEST_RAM_ENTRIES = 1024;
 const MAX_CACHEABLE_MANIFEST_BYTES = 262_144;
 const MANIFEST_RAM_TTL_MS = 180_000;
 

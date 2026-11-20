@@ -8,10 +8,13 @@
  * media server behaves correctly when that process is unhealthy, so this test
  * pins the four behaviours that matter:
  *
- *   1. A resolver that is not reachable is reported as an OUTAGE (503), never as
- *      "this title has no sources" (404). Telling a viewer their title has
- *      nothing, when the truth is that our scraper is down, sends them looking
- *      for a different title and hides a fault we need to see.
+ *   1. A resolver that is not reachable must never turn the media node into a
+ *      scraper. Scraping there competes with the relay and starves video - the
+ *      operator saw exactly that as "the streaming node keeps fetching".
+ *
+ *      An earlier version of this file demanded 503, then a later one demanded
+ *      a local fallback, and both were wrong for opposite reasons. The settled
+ *      rule: retry, ask health, then fail with a message a viewer can act on.
  *   2. Media serving never depends on the resolver. Health, the catalogue and
  *      the control panel keep answering while the resolver is dead.
  *   3. The control panel reports `unavailable: true` with `sources: null`, not an
@@ -33,7 +36,12 @@ import assert from 'node:assert/strict';
 // 19 -> 20 when source-24 (VidLink) was added. The earlier 20 was a different
 // 20: it counted a dead vidbolt-only stub alongside the real adapter, so the
 // number matching is a coincidence, not a regression.
-const MIN_LISTED_SOURCES = 21;
+//
+// 21 -> 19 when the retired Hindi/credential lanes were removed: source-16
+// (Anivexa), source-17 (Anivortex) and source-19 (DesiDub) each made zero
+// network requests without credentials or a title, and were replaced by the
+// single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
+const MIN_LISTED_SOURCES = 19;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -224,7 +232,7 @@ await check('resolver lists every source with health', () => {
   // candidate. The two are now one row that owns all four upstreams, and
   // source-2 stays unmounted because its nxsha lane duplicates source-5.
   // The count is rows, not reach: no upstream was lost.
-  assert.equal(MIN_LISTED_SOURCES, 21, 'the configured board');
+  assert.equal(MIN_LISTED_SOURCES, 19, 'the configured board');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
@@ -341,9 +349,19 @@ await check('resolver is really down', () => assert.equal(deadHealth, 'refused')
 
 const outage = await askPlayback();
 const outageBody = await outage.json().catch(() => ({}));
-await check('resolver down: playback is 503, not 404', () => {
-  assert.equal(outage.status, 503, `a dead resolver must not look like "no streams" (got ${outage.status}: ${outageBody.error})`);
-  assert.match(String(outageBody.error), /resolver/i);
+await check('resolver down: playback says "switch server", never scrapes', () => {
+  // Operator's decision, after this node was caught scraping mid-stream: the
+  // media node does NOT fall back. It answers 503 with an actionable message.
+  assert.equal(
+    outage.status,
+    503,
+    `a dead resolver must fail loudly rather than turn this node into a scraper (got ${outage.status})`,
+  );
+  assert.match(
+    String(outageBody.error),
+    /switch|server/i,
+    'the message must tell a viewer what to do, not what broke',
+  );
 });
 
 await check('resolver down: media server keeps serving', async () => {

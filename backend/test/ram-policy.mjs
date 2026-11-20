@@ -31,8 +31,11 @@ try {
   /* ------------------------------------------------------------------ */
   /* 1. The switch itself                                               */
   /* ------------------------------------------------------------------ */
-  assert.equal(RAM_CACHE_ENABLED, false, 'payload caching must default to off on a small host');
-  assert.match(describeMemoryPolicy(), /payload caches are OFF/);
+  // Retuned for a 4 GB container: caching used to default off, which made every
+  // viewer re-fetch what the previous one had just fetched. The caches are all
+  // entry-bounded, so "on" cannot grow without limit.
+  assert.equal(RAM_CACHE_ENABLED, true, 'payload caching must default to on a 4 GB host');
+  assert.match(describeMemoryPolicy(), /payload caches are ON/);
 
   // A disabled cache must behave like no cache at all, and never grow.
   const off = new PolicyCache(4, false);

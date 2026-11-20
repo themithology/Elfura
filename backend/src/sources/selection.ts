@@ -26,10 +26,25 @@ export const MAX_SEPARATE_DUBS = 24;
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
  * separately labelled language streams (not claimed as multi-audio).
  * A manifest/child check is evidence of reachability, not proof of full playback. */
-export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLang?: string): CandidateEntry[] {
+export function selectPlaybackCandidates(
+  entries: CandidateEntry[],
+  preferredLang?: string,
+  /**
+   * Optional correctness tier per URL, lower is better.
+   *
+   * Exists because "alive" only says the bytes arrived, not that they are the
+   * right video. A lane whose runtime this request measured and matched must
+   * outrank one whose runtime could not be measured at all — otherwise a
+   * 2-minute trailer that answered fast beats the episode, and the winner is
+   * decided by network jitter. Before this, a probe that timed out under load
+   * put an unmeasured clip in the same tier as a verified episode, and the
+   * latency tiebreak then picked whichever had the shorter RTT that second.
+   */
+  rankHint?: (url: string) => number,
+): CandidateEntry[] {
   const unique = new Set<string>();
   const multi: CandidateEntry[] = [];
-  const single: (CandidateEntry & { alive: boolean; latency: number; host: string; order: number })[] = [];
+  const single: (CandidateEntry & { alive: boolean; latency: number; host: string; order: number; tier: number })[] = [];
   for (const entry of entries) {
     const c = entry.candidate;
     if (unique.has(c.url)) continue;
@@ -60,13 +75,16 @@ export function selectPlaybackCandidates(entries: CandidateEntry[], preferredLan
     // the response: an unproven claim is what makes a language switch look
     // available while the audio never changes.
     single.push({adapter:entry.adapter,candidate:{...c,multiAudio:false,availableAudioLangs:langs.length===1?langs:undefined},
-      alive:!!evidence?.alive,latency:evidence?.rttMs ?? c.latencyMs ?? Number.POSITIVE_INFINITY,host,order:single.length});
+      alive:!!evidence?.alive,latency:evidence?.rttMs ?? c.latencyMs ?? Number.POSITIVE_INFINITY,host,order:single.length,
+      tier:rankHint ? rankHint(c.url) : 0});
   }
   const preferred = preferredLang ? normalizeLang(preferredLang).code : 'und';
   const matches = (item: typeof single[number]) => preferred !== 'und' &&
     !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
   const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
-  single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.latency-b.latency||a.order-b.order);
+  // Correctness before speed: a duration-verified lane outranks an unmeasured
+  // one, and latency only decides between lanes of equal standing.
+  single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.tier-b.tier||a.latency-b.latency||a.order-b.order);
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const ordered: typeof single = [];
   const hosts = new Set<string>();

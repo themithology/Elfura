@@ -22,7 +22,15 @@ import {
 } from './playback-resolver.js';
 
 /** A resolver call that is slow is worse than one that fails: give up early. */
-const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 30_000);
+/**
+ * How long one resolver call may take.
+ *
+ * This was 30 s, which was worse than useless: the player aborts its own
+ * /playback request at 15 s, so the media node kept waiting for an answer
+ * nobody would read. The client must be strictly faster than the viewer's
+ * patience. 10 s leaves room for a 5-9 s scan plus the rescue extension.
+ */
+const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 10_000);
 /** Control-plane calls (status, toggles) should be instant. */
 const CONTROL_TIMEOUT_MS = 5_000;
 
@@ -103,10 +111,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       const body = await this.call<{ ok: boolean; sources?: string[] }>('/resolver/api/health');
       return { reachable: body.ok === true, detail: 'resolver answered', sources: body.sources };
     } catch (error) {
-      return {
-        reachable: false,
-        detail: error instanceof Error ? error.message : 'resolver unreachable',
-      };
+      return { reachable: false, detail: describeFetchFailure(error, this.baseUrl) };
     }
   }
 
@@ -143,4 +148,44 @@ export class ResolverUnavailableError extends Error {
     super(detail);
     this.name = 'ResolverUnavailableError';
   }
+}
+
+/**
+ * Turn a fetch failure into something an operator can act on.
+ *
+ * "fetch failed" is what Node throws for every transport problem, so the panel
+ * used to report an unreachable resolver as exactly that, with no hint whether
+ * the port was closed, the host was wrong, DNS failed, or a proxy interfered.
+ * Those have completely different fixes.
+ */
+export function describeFetchFailure(error: unknown, baseUrl: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof InvalidRequestError) {
+    // The resolver answered and refused. Almost always the shared token.
+    return `resolver refused the request (HTTP ${error.status}: ${error.message}). Check that ELFURA_RESOLVER_TOKEN matches on both nodes`;
+  }
+  const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+  const code = cause?.code ?? '';
+  if (code === 'ECONNREFUSED') {
+    return `${baseUrl} refused the connection: nothing is listening on that port. Check ELFURA_RESOLVER_PORT and that the resolver node is running`;
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return `${baseUrl} does not resolve: check the hostname, and that this node has working DNS`;
+  }
+  if (
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    /abort/i.test(message) ||
+    /abort/i.test(cause?.message ?? '')
+  ) {
+    return `${baseUrl} timed out after the control timeout: no answer at all. That is a firewall dropping packets or a wrong address, not a wrong token`;
+  }
+  if (code === 'ECONNRESET' || code === 'EPIPE') {
+    return `${baseUrl} closed the connection mid-request: something between the nodes is terminating it (a reverse proxy or TLS terminator is the usual cause)`;
+  }
+  if (/certificate|self.signed|SSL|TLS/i.test(message + ' ' + (cause?.message ?? ''))) {
+    return `${baseUrl} failed TLS: the certificate does not match. Use http:// between private nodes, or a valid certificate`;
+  }
+  const detail = cause?.message || message;
+  return `${baseUrl} unreachable: ${detail}${code ? ` (${code})` : ''}`;
 }

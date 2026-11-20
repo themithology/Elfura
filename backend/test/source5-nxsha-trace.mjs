@@ -453,11 +453,10 @@ await check('a payload for the wrong title kind is reported as such', async () =
 });
 
 // ---------------------------------------------------------------------------
-// Sources 15 and 19 — multi-stage discovery, where "which gate failed" is the
+// Source 15 — multi-stage discovery, where "which gate failed" is the
 // only useful piece of information.
 // ---------------------------------------------------------------------------
 const { fetchFromMapple } = await import('../../dist/backend/sources/source15.js');
-const { fetchFromDesiDub } = await import('../../dist/backend/sources/source19.js');
 
 console.log('\nSource 15 — multi-stage discovery');
 
@@ -553,30 +552,6 @@ await check('a proof-of-work the budget cannot cover is reported with its diffic
   try { await fetchFromMapple({ type: 'movie', tmdbId: '550' }, { trace }); }
   finally { globalThis.fetch = realFetch; }
   assert.match(trace.join(' '), /pow-unsolved difficulty=30/, `expected the difficulty in the report, got "${trace.join(' ')}"`);
-});
-
-console.log('\nSource 19 — multi-stage discovery');
-
-await check('a title that is not in the catalogue says so', async () => {
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response('<html><body>no results</body></html>', { status: 200 });
-  const trace = [];
-  try {
-    await fetchFromDesiDub({ type: 'movie', tmdbId: '550', title: 'A Title That Does Not Exist' }, { trace });
-  } finally { globalThis.fetch = realFetch; }
-  const joined = trace.join(' ');
-  assert.ok(/not-in-catalogue|series-page-unreachable|no-episode-page/.test(joined),
-    `expected a named discovery gate, got "${joined}"`);
-});
-
-await check('a missing title is reported before any request is made', async () => {
-  const realFetch = globalThis.fetch;
-  let called = false;
-  globalThis.fetch = async () => { called = true; return new Response('', { status: 200 }); };
-  const trace = [];
-  try { await fetchFromDesiDub({ type: 'movie', tmdbId: '550' }, { trace }); } finally { globalThis.fetch = realFetch; }
-  assert.match(trace.join(' '), /no-title/, `expected no-title, got "${trace.join(' ')}"`);
-  assert.equal(called, false, 'no request should be made without a title');
 });
 
 console.log(`\n${failures.length ? `${failures.length} FAILED` : 'all checks passed'}\n`);

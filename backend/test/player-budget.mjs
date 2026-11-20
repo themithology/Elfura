@@ -17,6 +17,7 @@ import http from 'node:http';
 
 process.env.NODE_ENV = 'test';
 const { createBackendServer } = await import('../../dist/backend/index.js');
+const { loadBackendConfig } = await import('../../dist/backend/config.js');
 
 const ORIGIN = 'https://watch.elfura.example';
 const IP = '203.0.113.77';
@@ -60,6 +61,7 @@ const { server } = createBackendServer({
   tmdb: { apiKey: '', apiBase: 'https://api.themoviedb.org', language: 'en-US' },
   relayMode: 'hybrid',
 });
+const rateLimiterDefault = loadBackendConfig({ ELFURA_SECRET: 'budget-test-secret' }).rateLimitPerMin;
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 
@@ -77,8 +79,13 @@ try {
   assert.notEqual(playback.status, 429, 'a viewer is never 429ed out of playback after browsing');
   assert.notEqual(playback.status, 403, 'and the player origin is not forbidden');
 
-  // The abuse-sensitive routes keep their own limit, so this protection is not a
-  // blanket removal of rate limiting.
+  // Viewer-facing limits are OFF by default (RATE_LIMIT_PER_MIN unset), so this
+  // run also proves the default really is unlimited: 200 artwork requests plus
+  // playback all succeed without a single 429.
+  assert.equal(rateLimiterDefault, 0, 'the viewer-facing limit must default to off');
+
+  // The operator panel keeps its own limiter, so this is not a blanket removal
+  // of rate limiting — a brute-force guard is protection, not a tax on viewers.
   let loginRefusals = 0;
   for (let i = 0; i < 12; i += 1) {
     const res = await call(port, '/roxy/api/login', {
