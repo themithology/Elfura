@@ -44,6 +44,8 @@ jobs:
           sudo timeout 90s apt-get install -y -qq ffmpeg
       - name: Probe movie streams
         run: node backend/test/moviebox-live.mjs movie
+      - name: Verify live registry language labels
+        run: node backend/test/moviebox-registry-live.mjs
       - name: Probe TV episode streams
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node backend/test/moviebox-live.mjs tv
