@@ -227,7 +227,7 @@ export class SourceRegistry {
       createSource24Adapter(cfg.source24),
       // Greybox: plain JSON with per-stream language labels and no token.
       createSource25Adapter(cfg.source25),
-      // Direct API, opt-in until live playback has been verified.
+      // Direct API; enabled by default, with an explicit operator off switch.
       createSource26Adapter(),
     ];
   }

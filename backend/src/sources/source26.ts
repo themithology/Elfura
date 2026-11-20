@@ -85,7 +85,7 @@ function chooseSubject(data: Record<string, any>, query: SourceQuery, title: str
   return ids.length === 1 ? ids[0] : null;
 }
 
-export function createSource26Adapter(enabled: () => boolean = () => process.env.ELFURA_MOVIEBOX_ENABLED === '1'): SourceAdapter {
+export function createSource26Adapter(enabled: () => boolean = () => process.env.ELFURA_MOVIEBOX_ENABLED !== '0'): SourceAdapter {
   let session: { token: string; expires: number } | null = null;
   let loginPromise: Promise<string | null> | null = null;
   let cooldownUntil = 0;

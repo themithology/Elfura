@@ -2,6 +2,20 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createSource26Adapter, movieBoxDashFromCookie, movieBoxHeaders } from '../../dist/backend/sources/source26.js';
 
+// Default-on, but an explicit deployment setting always wins.
+const previousFlag = process.env.ELFURA_MOVIEBOX_ENABLED;
+try {
+ delete process.env.ELFURA_MOVIEBOX_ENABLED;
+ assert.equal(createSource26Adapter().enabled(), true);
+ process.env.ELFURA_MOVIEBOX_ENABLED = '0';
+ assert.equal(createSource26Adapter().enabled(), false);
+ process.env.ELFURA_MOVIEBOX_ENABLED = '1';
+ assert.equal(createSource26Adapter().enabled(), true);
+} finally {
+ if (previousFlag === undefined) delete process.env.ELFURA_MOVIEBOX_ENABLED;
+ else process.env.ELFURA_MOVIEBOX_ENABLED = previousFlag;
+}
+
 const original = globalThis.fetch;
 const calls = [];
 const prefix = Buffer.from('https://cdn.example.com/dash/movie/').toString('base64url');

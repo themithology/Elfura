@@ -412,13 +412,13 @@ Website attribution and banning use the browser's `Referer` origin on embed requ
 
 ### Experimental direct source (Source 26)
 
-`ELFURA_MOVIEBOX_ENABLED=1` opts into an experimental direct-API adapter for
+The experimental direct-API adapter is enabled by default for
 movies and series. It searches using TMDB metadata and accepts only an
 unambiguous title/type/year match. Only HTTPS MP4, HLS, and DASH URLs are
 eligible; MKV and notice clips are not. CDN cookies stay in encrypted stream
 relay tickets, and sessions are kept in memory. Audio capabilities must come
-from the media, not provider labels. The source remains **off by default**
-until it is validated on the deployment network. It may be unavailable or
+from the media, not provider labels. Set `ELFURA_MOVIEBOX_ENABLED=0` on the resolver node to disable it.
+The source may be unavailable or
 rate-limited; a GitHub runner's result does not establish VPS availability.
 
 Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree/b901738b56170c278b35468c32ade32b9de1890d/src/providers/moviebox)
