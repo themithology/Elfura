@@ -26,7 +26,24 @@ for(const sample of [
   const id=String(exact.subjectId??exact.id);
   const details=await call('/subject-api/get?'+new URLSearchParams({subjectId:id}),null,login.token);
   const subject=details.subject??details;
-  summary('Details sample',{title:sample.title,keys:Object.keys(subject),audios:subject.audios??null,dubs:(Array.isArray(subject.dubs)?subject.dubs:[]).slice(0,12).map(d=>({language:d.lanName??d.language??d.lang??null,title:d.title??d.name??null,keys:Object.keys(d)}))});
+  summary('Details sample',{title:sample.title,keys:Object.keys(subject),audios:subject.audios??null,dubs:(Array.isArray(subject.dubs)?subject.dubs:[]).slice(0,12).map(d=>({language:d.lanName??d.language??d.lang??null,code:d.lanCode??null,original:d.original??null,type:d.type??null}))});
+  const detectors=Array.isArray(subject.resourceDetectors)?subject.resourceDetectors:[];
+  summary('Detector sample',{title:sample.title,detectors:detectors.slice(0,4).map(d=>({keys:Object.keys(d),resolutionList:(Array.isArray(d.resolutionList)?d.resolutionList:[]).slice(0,8).map(r=>({resolution:r.resolution,se:r.se,ep:r.ep,hasUrl:!!(r.resourceLink??r.url),keys:Object.keys(r)})),hasDownload:!!d.downloadUrl}))});
+  for(const dub of (Array.isArray(subject.dubs)?subject.dubs:[]).filter(d=>!d.original && d.subjectId).slice(0,2)) {
+    const dp=new URLSearchParams({subjectId:String(dub.subjectId)}); if(sample.type==='tv'){dp.set('se',String(sample.season));dp.set('ep',String(sample.episode));}
+    try {
+      const data=await call('/subject-api/play-info/v2?'+dp,null,login.token);
+      const streams=Array.isArray(data.streams)?data.streams:[];
+      for(const stream of streams.slice(0,1)) {
+        const u=movieBoxDashFromCookie(stream.signCookie??'');
+        const r=u?await fetch(u,{headers:{Cookie:stream.signCookie,Referer:'https://sportslive.wine','User-Agent':movieBoxHeaders('GET',base)['User-Agent']},signal:AbortSignal.timeout(6000)}):null;
+        const text=r?.ok?await r.text():'';
+        const audio=[...text.matchAll(/<AdaptationSet\b([^>]*)>/gi)].filter(m=>/(?:contentType|mimeType)=["'][^"']*audio/i.test(m[1])).map(m=>m[1].match(/\blang=["']([^"']+)/i)?.[1]??'und');
+        summary('Dub sample',{title:sample.title,lanName:dub.lanName,lanCode:dub.lanCode,original:dub.original,streams:streams.length,displayResolutions:data.displayResolutions,format:stream.format,manifestStatus:r?.status??null,audio,ladder:extractQualityLadder(text,true)});
+      }
+      if(!streams.length) summary('Dub sample',{title:sample.title,lanName:dub.lanName,lanCode:dub.lanCode,streams:0});
+    } catch(e) {summary('Dub error',{title:sample.title,lanName:dub.lanName,error:e.name});}
+  }
   const params=new URLSearchParams({subjectId:id}); if(sample.type==='tv'){params.set('se',String(sample.season));params.set('ep',String(sample.episode));}
   const play=await call('/subject-api/play-info/v2?'+params,null,login.token);
   const rows2=play.streams??[];
