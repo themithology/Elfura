@@ -19,7 +19,12 @@ if (!result.candidates.length) throw Error('No supported candidates');
 // the same verified candidates consumed by the source selector.
 const verified = await verifyAndFilterCandidates(result.candidates, AbortSignal.timeout(8000));
 console.log('::notice title=Verified source audio::' + JSON.stringify({kind, candidates:verified.map(c=>({type:c.type, language:c.audioLang??null, claimed:c.claimedAudioLang??null, ladder:c.qualityLadder??[], quality:c.quality}))}));
-if (kind === 'movie' && !verified.some(c=>c.audioLang === 'hi' && c.type === 'dash')) throw Error('Hindi DASH dub was not verified');
+if (kind === 'movie' && !verified.some(c=>c.audioLang === 'hi' && c.type === 'dash')) {
+  // A batch probe can run out of its shared time budget; retry the dub itself.
+  const dub = result.candidates.find(c=>c.claimedAudioLang === 'hi' && c.type === 'dash');
+  const retried = dub ? await verifyAndFilterCandidates([dub], AbortSignal.timeout(8000)) : [];
+  if (!retried.some(c=>c.audioLang === 'hi')) throw Error('Hindi DASH dub was not verified');
+}
 const run = promisify(execFile);
 let playable = false;
 for (const candidate of result.candidates.slice(0, 3)) {
