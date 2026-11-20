@@ -5,6 +5,9 @@ on:
     paths:
       - 'backend/src/playback-resolver*.ts'
       - 'backend/src/index.ts'
+      - 'backend/src/roxy-page.ts'
+      - 'index.js'
+      - 'elfura-pterodactyl.zip'
       - 'backend/test/resolver-balance*.mjs'
       - '.github/workflows/resolver-balance.yml'
   workflow_dispatch:
@@ -19,8 +22,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22, cache: npm}
       - run: npm ci
-      - run: npm run build
+      - run: npm run test:zip
       - run: node backend/test/resolver-balance.mjs
       - run: node backend/test/resolver-balance-integration.mjs
+      - run: node backend/test/resolver-balance-package.mjs
       - run: node backend/test/timeout-ladder.mjs
       - run: node backend/test/standing-rules.mjs

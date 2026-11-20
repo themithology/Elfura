@@ -20,16 +20,19 @@ async function loadHealth(){
   try{ d=await api('sources'); }catch(e){ if(state)state.textContent='UNAVAILABLE';
     if(note)note.textContent='Could not read source health: '+e.message; return; }
   const r=d.resolver||{};
+  const nodeSummary=Array.isArray(r.nodes)?r.nodes.map(n=>String(n.name)+': '+String(n.detail)
+    +' · '+Number(n.attempts||0)+' search attempts, '+Number(n.failures||0)+' failures'
+    +(n.cooldownMs>0?' · retrying in '+Math.ceil(n.cooldownMs/1000)+'s':'')).join(' | '):'';
   if(state)state.textContent= r.reachable ? 'RESOLVER · '+String(r.label||'').toUpperCase() : 'RESOLVER OFFLINE';
   if(d.unavailable){
-    if(note)note.textContent='The source resolver is not reachable right now ('+(r.detail||'no answer')+'). '
-      +'Video that is already playing keeps playing; only new lookups wait until it is back.';
+    if(note)note.textContent='The source resolver is not reachable or authenticated ('+(r.detail||'no answer')+'). '
+      +'Video that is already playing keeps playing; only new lookups wait until it is back.'+(nodeSummary?' '+nodeSummary:'');
     box.replaceChildren();
     return;
   }
   if(note)note.textContent='Resolving '+(r.kind==='local'?'in this process':'in a separate resolver process ('
     +String(r.sources?r.sources.length:0)+' sources)')+'. Resting sources are retried automatically; '
-    +'switched-off sources are not called at all.';
+    +'switched-off sources are not called at all.'+(nodeSummary?' '+nodeSummary:'');
   const list=Array.isArray(d.sources)?d.sources:[];
   if(!list.length){ box.replaceChildren(); return; }
   box.replaceChildren(...list.map(src=>{

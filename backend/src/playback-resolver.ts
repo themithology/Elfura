@@ -58,11 +58,23 @@ export interface PlaybackResolver {
   readonly label: string;
   resolve(request: PlaybackRequest): Promise<PlaybackResolution | null>;
   /** Whether the resolver is reachable, for the panel and the health endpoint. */
-  probe(): Promise<{ reachable: boolean; detail: string; sources?: string[] }>;
+  probe(): Promise<{ reachable: boolean; detail: string; sources?: string[]; nodes?: ResolverNodeStatus[] }>;
+
   /** Per-source status, when the resolver can report it. */
   sourceStatus(): Promise<ResolverSourceStatus[] | null>;
   /** Turn a source on or off without a redeploy. */
   setSourceEnabled(id: string, enabled: boolean): Promise<boolean>;
+}
+
+/** Operator-only pool diagnostics; contains no URLs, credentials or titles. */
+export interface ResolverNodeStatus {
+  name: string;
+  reachable: boolean;
+  authenticated: boolean;
+  detail: string;
+  attempts: number;
+  failures: number;
+  cooldownMs: number;
 }
 
 export interface ResolverSourceStatus {

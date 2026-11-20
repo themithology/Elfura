@@ -65,16 +65,25 @@ network, timeout or server failure, the other healthy resolver is tried within
 one 12-second overall request budget. A failed node is skipped for 30 seconds,
 then tried again; no background health checks are performed. A slow failed
 first attempt may leave too little time for the second to finish. An empty
-search, a rejected request or a token mismatch does not trigger failover.
-Without `ELFURA_RESOLVER_BACKUP_URL`, single-resolver behavior is unchanged.
+search or invalid playback request does not trigger failover. Authentication or
+access failures (401/403), missing routes (404/405), and rate limits (429) do
+trigger failover in a two-node pool; fix the underlying token or Cloudflare rule
+instead of relying on the other node. Without `ELFURA_RESOLVER_BACKUP_URL`,
+single-resolver behavior is unchanged.
 The Pterodactyl node does not scrape locally during remote failures.
 
-The source health panel shows counters from one resolver, not aggregated
-cluster counters. Source enable/disable changes are sent to both; an error
+The Pterodactyl startup console reports whether one or two resolver URLs were
+loaded. Non-empty hosting environment variables take precedence over `.env`;
+the console warns by key name if a resolver setting was overridden. After login,
+`/roxy` → Source health shows each resolver's authenticated status, playback
+attempts, failures and cooldown. Its per-source health counters come from one
+resolver, not aggregated cluster counters; request counters reset on restart.
+Source enable/disable changes are sent to both; an error
 means one or both did not accept the change, so retry after both are online.
 Source settings and cached data are independent on the two resolver nodes.
-The health probe reports how many nodes are reachable; health alone does not
-verify the shared token. Protect both tunnel hostnames as described below.
+The pool probe checks both the public health endpoint and the authenticated
+source API, but it does not verify playback tickets or shared encryption secrets.
+Protect both tunnel hostnames as described below.
 
 **Security:** A Tunnel hostname is publicly reachable unless you separately
 restrict it; `.env` itself is not a network access control. The resolver has

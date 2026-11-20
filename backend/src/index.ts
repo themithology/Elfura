@@ -199,6 +199,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   if (dotEnv.applied.length > 0 && process.env.ELFURA_QUIET_ENV !== '1') {
     console.log(`[elfura-backend] .env published to the process: ${dotEnv.applied.join(', ')}`);
   }
+  const overriddenResolverSettings = dotEnv.skipped.filter(key => key.startsWith('ELFURA_RESOLVER_') || key === 'ELFURA_SECRET');
+  if (overriddenResolverSettings.length) {
+    console.warn(`[elfura-env] hosting environment overrides .env for: ${overriddenResolverSettings.join(', ')}. Check Pterodactyl startup variables.`);
+  }
 
   // May set ELFURA_RESOLVER_URL, so it runs before the resolver is chosen below.
   startAutostartResolver(overrides);
@@ -239,6 +243,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       ? createBalancedPlaybackResolver(primaryClient, new RemotePlaybackResolver(backup.url, backup.token))
       : primaryClient;
     if (backup && backup.url === remote.url) console.warn('[elfura-resolver] backup URL matches primary; using one resolver.');
+    if (pool !== primaryClient) {
+      console.log('[elfura-resolver] 2 resolver URLs configured: round-robin balancing and failover enabled. Check Source health in /roxy for per-node authentication and request counts.');
+    } else {
+      console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
+    }
     resolver = createResilientPlaybackResolver({
       remote: pool,
       onFallback: (detail) =>

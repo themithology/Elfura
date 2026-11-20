@@ -9,7 +9,7 @@ const COOLDOWN_MS = 30_000;
 // for the second attempt; a slow first attempt may leave too little to succeed.
 const TOTAL_BUDGET_MS = 12_000;
 
-type Node = { client: RemotePlaybackResolver; retryAt: number };
+type Node = { client: RemotePlaybackResolver; retryAt: number; attempts: number; failures: number };
 
 export function createBalancedPlaybackResolver(
   first: RemotePlaybackResolver,
@@ -20,7 +20,7 @@ export function createBalancedPlaybackResolver(
   const cooldown = options.cooldownMs ?? COOLDOWN_MS;
   const budget = options.budgetMs ?? TOTAL_BUDGET_MS;
   const log = options.log ?? console.warn;
-  const nodes: Node[] = [{ client: first, retryAt: 0 }, { client: second, retryAt: 0 }];
+  const nodes: Node[] = [first, second].map(client => ({ client, retryAt: 0, attempts: 0, failures: 0 }));
   let turn = 0;
 
   return {
@@ -38,27 +38,41 @@ export function createBalancedPlaybackResolver(
         const remaining = deadline - now();
         if (remaining <= 0) break;
         try {
-          const result = await node.client.resolve(request, remaining);
+          node.attempts++;
+          const result = await node.client.resolve(request, remaining, true);
           if (node.retryAt) log(`[elfura-resolver] ${node.client.label} recovered`);
           node.retryAt = 0;
           // An empty result or a rejected request is an answer, not an outage.
           return result;
         } catch (error) {
           if (!(error instanceof ResolverUnavailableError)) throw error;
+          node.failures++;
           node.retryAt = now() + cooldown;
           lastError = error;
-          log(`[elfura-resolver] ${node.client.label} unavailable; skipping for ${cooldown}ms`);
+          log(`[elfura-resolver] ${node.client.label} unavailable (${error.message}); skipping for ${cooldown}ms`);
         }
       }
       throw lastError ?? new ResolverUnavailableError('resolver request budget exhausted');
     },
     async probe() {
-      const results = await Promise.all(nodes.map(async n => ({ node: n, result: await n.client.probe() })));
-      const live = results.filter(x => x.result.reachable);
+      const results = await Promise.all(nodes.map(async (node, i) => {
+        const [health, auth] = await Promise.all([node.client.probe(), node.client.authProbe()]);
+        return { node, health, auth, name: `Resolver ${i + 1}` };
+      }));
+      const usable = results.filter(x => x.health.reachable && x.auth.authenticated);
       return {
-        reachable: live.length > 0,
-        detail: `resolver pool: ${live.length}/${nodes.length} reachable`,
-        ...(live[0]?.result.sources ? { sources: live[0].result.sources } : {}),
+        reachable: usable.length > 0,
+        detail: `resolver pool: ${usable.length}/${nodes.length} reachable and authenticated`,
+        ...(usable[0]?.health.sources ? { sources: usable[0].health.sources } : {}),
+        nodes: results.map(({ node, health, auth, name }) => ({
+          name,
+          reachable: health.reachable,
+          authenticated: auth.authenticated,
+          detail: !health.reachable ? 'health endpoint unreachable' : auth.detail,
+          attempts: node.attempts,
+          failures: node.failures,
+          cooldownMs: Math.max(0, node.retryAt - now()),
+        })),
       };
     },
     async sourceStatus() {

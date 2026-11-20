@@ -85,7 +85,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
     }
   }
 
-  async resolve(request: PlaybackRequest, timeoutMs = RESOLVE_TIMEOUT_MS): Promise<PlaybackResolution | null> {
+  async resolve(request: PlaybackRequest, timeoutMs = RESOLVE_TIMEOUT_MS, failoverOnAccessError = false): Promise<PlaybackResolution | null> {
     try {
       const body = await this.call<PlaybackResolution | { ok: false; error?: string }>(
         '/resolver/api/playback',
@@ -95,6 +95,16 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       return body as PlaybackResolution;
     } catch (error) {
       if (error instanceof InvalidRequestError) {
+        // A bad caller request (400/422) is an answer. Auth failures, a missing
+        // route, or upstream rate limiting make this node unusable for this
+        // request: a configured second resolver can still serve it. The single
+        // resolver's established behavior is unchanged.
+        if (failoverOnAccessError && [401, 403, 404, 405, 429].includes(error.status)) {
+          const hint = error.status === 401 || error.status === 403
+            ? 'check the shared resolver token and Cloudflare access rules'
+            : 'check the resolver URL and Cloudflare rate limits';
+          throw new ResolverUnavailableError(`HTTP ${error.status}: ${hint}`);
+        }
         this.log(`[elfura-resolver-client] ${request.type}/${request.tmdbId} rejected: ${error.message}`);
         return null;
       }
@@ -112,6 +122,21 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       return { reachable: body.ok === true, detail: 'resolver answered', sources: body.sources };
     } catch (error) {
       return { reachable: false, detail: describeFetchFailure(error, this.baseUrl) };
+    }
+  }
+
+  /** Check authenticated API access without resolving a title or revealing tokens. */
+  async authProbe(): Promise<{ authenticated: boolean; detail: string }> {
+    try {
+      const body = await this.call<{ sources?: ResolverSourceStatus[] }>('/resolver/api/sources');
+      if (!Array.isArray(body.sources)) return { authenticated: false, detail: 'invalid resolver response' };
+      return { authenticated: true, detail: 'authenticated' };
+    } catch (error) {
+      if (error instanceof InvalidRequestError) {
+        if (error.status === 401 || error.status === 403) return { authenticated: false, detail: `HTTP ${error.status}: check token and Cloudflare access` };
+        return { authenticated: false, detail: `HTTP ${error.status}: check resolver route` };
+      }
+      return { authenticated: false, detail: 'authenticated API unreachable or invalid response' };
     }
   }
 
