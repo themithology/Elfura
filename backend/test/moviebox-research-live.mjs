@@ -5,7 +5,7 @@ const base='https://api6.aoneroom.com/wefeed-mobile-bff';
 const summary=(label, data)=>console.log(`::notice title=${label}::${JSON.stringify(data)}`);
 async function call(path, body, token) {
   const method=body ? 'POST' : 'GET'; const url=base+path;
-  const res=await fetch(url,{ method,headers:movieBoxHeaders(method,url,body,token),...(body?{body}:{}),signal:AbortSignal.timeout(8000),redirect:'error'});
+  const res=await fetch(url,{ method,headers:movieBoxHeaders(method,url,body ?? undefined,token),...(body?{body}:{}),signal:AbortSignal.timeout(8000),redirect:'error'});
   if (!res.ok) throw new Error(`API HTTP ${res.status}`);
   const data=await res.json(); return data.data??data;
 }
@@ -26,7 +26,7 @@ for(const sample of [
   const id=String(exact.subjectId??exact.id);
   const details=await call('/subject-api/get?'+new URLSearchParams({subjectId:id}),null,login.token);
   const subject=details.subject??details;
-  summary('Details sample',{title:sample.title,keys:Object.keys(subject),audios:subject.audios??null,dubs:(subject.dubs??[]).slice(0,12).map(d=>({language:d.lanName??d.language??d.lang??null,title:d.title??d.name??null,keys:Object.keys(d)}))});
+  summary('Details sample',{title:sample.title,keys:Object.keys(subject),audios:subject.audios??null,dubs:(Array.isArray(subject.dubs)?subject.dubs:[]).slice(0,12).map(d=>({language:d.lanName??d.language??d.lang??null,title:d.title??d.name??null,keys:Object.keys(d)}))});
   const params=new URLSearchParams({subjectId:id}); if(sample.type==='tv'){params.set('se',String(sample.season));params.set('ep',String(sample.episode));}
   const play=await call('/subject-api/play-info/v2?'+params,null,login.token);
   const rows2=play.streams??[];
