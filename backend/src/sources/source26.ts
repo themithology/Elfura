@@ -139,7 +139,11 @@ export function createSource26Adapter(enabled: () => boolean = () => process.env
         if (!title || !token || signal.aborted) { diag(false, 'metadata-or-session-unavailable'); return empty(); }
         const search = await request('/subject-api/search/v2', 'POST', JSON.stringify({ keyword: title, page: 1, perPage: 15, subjectType: 0 }), token, signal);
         const subject = search && chooseSubject(search, query, title, meta?.year);
-        if (!subject) { diag(false, 'no-unambiguous-title-match'); return empty(); }
+        if (!subject) {
+          const rows = search ? searchRows(search).slice(0, 8) : [];
+          diag(false, `no-unambiguous-title-match rows=${rows.length} sample=${JSON.stringify(rows.map(r => ({ title: String(r.title ?? r.name ?? '').slice(0, 60), type: r.subjectType ?? r.stype ?? null, year: String(r.releaseDate ?? r.year ?? r.releaseInfo ?? '').slice(0, 12), idType: typeof (r.subjectId ?? r.id) })))}`);
+          return empty();
+        }
         const params = new URLSearchParams({ subjectId: subject });
         const season = query.type === 'tv' ? query.season : 0;
         const episode = query.type === 'tv' ? query.episode : 0;
