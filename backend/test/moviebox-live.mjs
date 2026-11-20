@@ -39,3 +39,16 @@ for (const candidate of result.candidates.slice(0, 3)) {
   } catch (error) { console.log('::warning title=Direct source probe::' + JSON.stringify({kind, type:candidate.type, probe:'failed', errorName:error.name, signal:error.signal || null, code:typeof error.code === 'number' ? error.code : String(error.code || 'unknown'), error:error.killed ? 'timeout' : ((String(error.stderr || '').match(/(?:HTTP error|Server returned|Invalid data|Connection refused|Connection timed out)[^\r\n]*/i)?.[0] || 'probe-error').replace(/https?:\/\/\S+/g, '[redacted]').slice(0, 120))})); }
 }
 if (!playable) throw Error('No supported video and audio detected by ffprobe');
+// Metadata advertises MP4 qualities, but only ffprobe can confirm the file's
+// actual height and audio tags. This optional audit does not assume availability.
+if (kind === 'movie') {
+  const mp4 = verified.find(c => c.type === 'mp4' && c.quality === '720p');
+  if (mp4) {
+    try {
+      const headers = Object.entries(mp4.headers || {}).map(([k,v]) => `${k}: ${v}\r\n`).join('');
+      const {stdout} = await run(process.env.FFPROBE_PATH || 'ffprobe', ['-v','error','-rw_timeout','10000000','-headers',headers,'-show_entries','stream=codec_type,codec_name,height:stream_tags=language','-of','json',mp4.url], {timeout:30000,maxBuffer:1024*1024});
+      const streams=JSON.parse(stdout).streams ?? [];
+      console.log('::notice title=MP4 media audit::'+JSON.stringify({qualityClaim:mp4.quality,video:streams.filter(s=>s.codec_type==='video').map(s=>({codec:s.codec_name,height:s.height})),audio:streams.filter(s=>s.codec_type==='audio').map(s=>({codec:s.codec_name,language:s.tags?.language??null}))}));
+    } catch(error) {console.log('::notice title=MP4 media audit::'+JSON.stringify({qualityClaim:mp4.quality,probe:'failed',errorName:error.name}));}
+  }
+}

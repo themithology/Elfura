@@ -798,7 +798,11 @@ export class SourceRegistry {
         }
         if (byLanguage.size < 2) return entry.result.candidates;
         const ordered: RawStreamCandidate[] = [];
-        for (const bucket of byLanguage.values()) ordered.push(...bucket);
+        const buckets = [...byLanguage.values()];
+        const maxBucket = Math.max(...buckets.map((bucket) => bucket.length));
+        for (let i = 0; i < maxBucket; i += 1) {
+          for (const bucket of buckets) if (bucket[i]) ordered.push(bucket[i]);
+        }
         return ordered;
       });
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
