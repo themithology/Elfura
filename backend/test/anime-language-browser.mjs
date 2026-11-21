@@ -40,6 +40,16 @@ try {
  assert(state.sources.every(s=>!s.lang),'provider hints must not become verified source audio');
  assert(state.tracks.some(t=>t.lang==='ja'&&t.providerHint));assert(state.tracks.some(t=>t.lang==='en'&&t.providerHint));
  assert(state.subtitleCount>0,'subtitle choices remain available');
- console.log('::notice title=Anime language menu::'+JSON.stringify({ok:true,state,labels}));
+ // Late-joining source languages must appear without a reload or a separate menu.
+ step='late language';await page.unroute('**/api/v1/playback**');
+ const lateDub={...dub,id:'source-29:2',sourceId:'source-29',fingerprint:'dub29'};
+ await page.route('**/api/v1/playback**',route=>{const late=new URL(route.request().url()).searchParams.get('late')==='1';const sources=late?[lateDub]:[sub];return route.fulfill({json:{ok:true,primary:sources[0],sources,sourceGroups:[],pendingSources:late?[]:['source-29'],media:{type:'tv',tmdbId:'46260',season:1,episode:2}}})});
+ await page.goto(`${base}/embed/tv/46260/1/2?autoplay=1&muted=1`,{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.__elfura?.player?.getAudioTracks().some(t=>t.lang==='en'),null,{timeout:15000});
+ await page.getByRole('button',{name:'Change audio and subtitles'}).evaluate(button=>button.click());
+ assert.equal(await page.locator('.elf-audio-option').filter({hasText:'English'}).count(),1,'late language must join the ordinary list');
+ await page.locator('.elf-audio-option').filter({hasText:'English'}).click();
+ await page.waitForFunction(()=>{const p=window.__elfura.player;return p.currentSource?.id==='source-29:2'&&p.video.readyState>=2&&p.getState().audioLang==='en'},null,{timeout:20000});
+ console.log('::notice title=Anime language menu::'+JSON.stringify({ok:true,state,labels,lateLanguage:true}));
 }catch(e){const state=await page?.evaluate(()=>({source:window.__elfura?.player?.currentSource?.id,tracks:window.__elfura?.player?.getAudioTracks(),audio:window.__elfura?.player?.getState().audioLang,ready:window.__elfura?.player?.video?.readyState})).catch(()=>null);console.log('::error title=Anime language menu::'+JSON.stringify({step,error:String(e).slice(0,240),state,requests}));process.exitCode=1;}
 finally{await browser?.close();await new Promise(r=>server.close(r));rmSync(tmp,{recursive:true,force:true});}

@@ -2404,7 +2404,7 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        const row = this.row(t.label, selected ? 'Selected' : t.providerHint ? 'Provider label' : '', selected, () => {
+        const row = this.row(t.label, selected ? (t.providerHint ? 'Selected · Provider label' : 'Selected') : t.providerHint ? 'Provider label' : '', selected, () => {
           this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
           this.renderPanelBody();

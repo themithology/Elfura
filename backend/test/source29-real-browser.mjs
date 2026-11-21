@@ -45,7 +45,7 @@ try{
    row.lanes.push(entry);
   }
   row.ok=true;
- }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;}rows.push(row);}
+ }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.playerState=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?.audioVariant,audio:p?.getState().audioLang,tracks:p?.getAudioTracks().map(t=>({lang:t.lang,kind:t.kind,providerHint:t.providerHint})),ready:v?.readyState,paused:v?.paused,seeking:v?.seeking,time:v?.currentTime}}).catch(()=>null);}rows.push(row);}
  console.log('::notice title=Novus actual adapter player test::'+JSON.stringify(rows));
  if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
