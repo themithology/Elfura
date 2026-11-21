@@ -9,8 +9,13 @@ import {isSafeUpstreamUrl} from '../../dist/backend/security.js';
 const origin='https://megaplay.buzz',ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 async function restricted(input,init={}){
  const url=new URL(input instanceof URL?input.href:typeof input==='string'?input:input.url);
- if(url.origin!==origin||url.username||url.password||!isSafeUpstreamUrl(url.href))throw Error('blocked-origin');
- const r=await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(8000)});
+ // Missing optional scripts must be empty strings, not null: the bundled
+ // extractor's script scan does not tolerate failed optional script fetches.
+ if(url.origin!==origin||url.username||url.password||!isSafeUpstreamUrl(url.href))return new Response('');
+ let r;
+ try { r=await fetch(url,{...init,redirect:'error',signal:AbortSignal.timeout(8000)}); }
+ catch(e) { if(/\.js$/i.test(url.pathname)) return new Response(''); throw e; }
+ if(!r.ok&&/\.js$/i.test(url.pathname))return new Response('');
  const text=await readBoundedText(r,2_000_000);
  if(text===null)throw Error('oversize');
  // The upstream extractor checks for this literal before running downloaded JS.
