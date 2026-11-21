@@ -1708,6 +1708,9 @@ const { server: elfuraServer } = createBackendServer({
   source18: { enabled: false },
   source20: { enabled: false },
   source21: { enabled: false },
+  // Keep this existing fixture isolated from additional live anime lanes.
+  source29: { enabled: false },
+  source30: { enabled: false },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,

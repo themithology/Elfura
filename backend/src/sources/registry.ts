@@ -236,8 +236,8 @@ export class SourceRegistry {
       // Direct multi-audio anime. Only mapped season-one episodes with matching
       // TMDB episode titles are accepted; no title or language is guessed.
       createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
-      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED === '1'),
-      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED === '1'),
+      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED !== '0'),
+      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED !== '0'),
     ];
   }
 
