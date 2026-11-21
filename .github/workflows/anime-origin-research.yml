@@ -1,0 +1,30 @@
+name: Anime raw media origin audit
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/anime-origin-research.mjs', '.github/workflows/anime-origin-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci && npm run build:backend
+      - name: Novus audit
+        run: |
+          export RESEARCH_STREAM_FILE="$RUNNER_TEMP/anime-streams.json"
+          node backend/test/novus-raw-research.mjs
+          node backend/test/anime-origin-research.mjs
+          rm -f "$RESEARCH_STREAM_FILE"
+      - name: MegaPlay audit
+        run: |
+          export RESEARCH_STREAM_FILE="$RUNNER_TEMP/anime-streams.json"
+          node backend/test/megaplay-extractor-research.mjs
+          node backend/test/anime-origin-research.mjs
+          rm -f "$RESEARCH_STREAM_FILE"
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/anime-streams.json"
