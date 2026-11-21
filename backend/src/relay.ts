@@ -1046,7 +1046,11 @@ export async function handleStreamRelay(
   const onClientClose = () => {
     if (!res.writableEnded) abortController.abort();
   };
-  req.on('close', onClientClose);
+  // IncomingMessage 'close' can mean the request body completed, not that
+  // the viewer disconnected. Use response close for restricted media so long
+  // CDN segment requests are not cancelled while the client is still waiting.
+  if (ticket.ro) res.on('close', onClientClose);
+  else req.on('close', onClientClose);
 
   try {
     const upstreamInit: RequestInit = {
@@ -1284,6 +1288,7 @@ export async function handleStreamRelay(
       res.destroy(err instanceof Error ? err : undefined);
     }
   } finally {
-    req.off('close', onClientClose);
+    if (ticket.ro) res.off('close', onClientClose);
+    else req.off('close', onClientClose);
   }
 }
