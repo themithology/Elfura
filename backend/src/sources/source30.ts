@@ -10,7 +10,7 @@ const ORIGIN='https://megaplay.buzz';
 const UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const empty=(): RawSourceResult => ({candidates:[]});
 
-function subtitles(raw: unknown[], page: string): RawTrackRef[] {
+function subtitles(raw: unknown[]): RawTrackRef[] {
   const result: RawTrackRef[]=[];
   for(const entry of raw.slice(0,24)) {
     if(!entry || typeof entry !== 'object') continue;
@@ -26,7 +26,7 @@ function subtitles(raw: unknown[], page: string): RawTrackRef[] {
       if(!isPublicMediaUrl(url.href))continue;
       const ext=url.pathname.match(/\.(vtt|srt|ass|ssa)$/i)?.[1]?.toLowerCase();
       if(!ext)continue;
-      result.push({url:url.href,lang,label:label||lang,format:ext==='ssa'?'ass':ext as 'vtt'|'srt'|'ass',headers:{'User-Agent':UA,Referer:page}});
+      result.push({url:url.href,lang,label:label||lang,format:ext==='ssa'?'ass':ext as 'vtt'|'srt'|'ass',headers:{'User-Agent':UA,Referer:ORIGIN+'/'}});
     } catch { /* skip malformed track */ }
   }
   return result;
@@ -58,7 +58,7 @@ export function createSource30Adapter(enabled:()=>boolean=()=>true, options:{fet
         };
         try {
           const data=await extractMegaPlayDetails(page,{fetchImpl:guarded,userAgent:UA,referer:ORIGIN+'/'});
-          const tracks=subtitles(data.tracks,page);
+          const tracks=subtitles(data.tracks);
           return data.sources.slice(0,2).flatMap((source):RawStreamCandidate[]=>{
             if(typeof source.url!=='string'||!isPublicMediaUrl(source.url))return [];
             return [{key:source.url,url:source.url,restrictedOrigin:'*public*',type:'hls',quality:'auto',rank:20,
