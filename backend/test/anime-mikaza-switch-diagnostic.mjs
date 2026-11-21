@@ -48,7 +48,7 @@ try{
    row.video=await page.evaluate(()=>{const p=window.__elfura.player,v=p.video;return {width:v.videoWidth,height:v.videoHeight,duration:v.duration,languages:p.getAudioTracks().map(t=>({lang:t.lang,kind:t.kind})),current:p.currentSource?{lang:p.currentSource.audioLang??null,type:p.currentSource.type,multi:!!p.currentSource.multiAudio}:null,options:p.sources.map(s=>({lang:s.audioLang??null,type:s.type,multi:!!s.multiAudio})),subtitleCount:p.getSubtitleTracks?.().length??0}});
    if(!(row.video.duration>1100&&row.video.duration<1900))throw Error('unexpected-duration');
    for(const lang of ['ja','en','ja']){
-    step='switch-'+lang;const changed=await page.evaluate(lang=>window.__elfura.player.setAudio(lang),lang);row.afterSwitch=await page.evaluate(()=>{const p=window.__elfura.player;return {current:p.currentSource?{lang:p.currentSource.audioLang??null,type:p.currentSource.type,multi:!!p.currentSource.multiAudio}:null,currentAudio:p.currentAudio?{lang:p.currentAudio.lang,kind:p.currentAudio.kind}:null,tracks:p.getAudioTracks().map(t=>({lang:t.lang,kind:t.kind}))}});if(!changed)throw Error('switch-refused');
+    step='switch-'+lang;const changed=await page.evaluate(lang=>window.__elfura.player.setAudio(lang),lang);row.afterSwitch=await page.evaluate(()=>{const p=window.__elfura.player;return {current:p.currentSource?{lang:p.currentSource.audioLang??null,type:p.currentSource.type,multi:!!p.currentSource.multiAudio}:null,currentAudio:p.currentAudio?{lang:p.currentAudio.lang,kind:p.currentAudio.kind}:null,ready:p.video.readyState,time:p.video.currentTime,tracks:p.getAudioTracks().map(t=>({lang:t.lang,kind:t.kind}))}});if(!changed)throw Error('switch-refused');
     await page.waitForFunction(lang=>{const p=window.__elfura.player;return p.currentSource?.audioLang===lang&&p.video.readyState>=1},lang,{timeout:20000});
     await page.evaluate(()=>{const v=window.__elfura.player.video;v.currentTime=420;v.play().catch(()=>{})});
     await page.waitForFunction(()=>{const v=window.__elfura.player.video;return !v.seeking&&v.currentTime>=420&&v.readyState>=2},null,{timeout:20000});
@@ -67,7 +67,7 @@ try{
    }
    row.ok=true;
   }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':/unexpected-duration|switch-refused|silent-audio/.test(e.message)?e.message:e.name;}
-  page.off('response',response);row.api=statuses;rows.push(row);console.log('anime sample '+JSON.stringify(row));
+  row.finalState=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?{lang:p.currentSource.audioLang??null,type:p.currentSource.type}:null,ready:v?.readyState,time:v?.currentTime,paused:v?.paused,error:v?.error?.code??null,activeProbe:!!p?.activeProbe}}).catch(()=>null);page.off('response',response);row.api=statuses;rows.push(row);console.log('anime sample '+JSON.stringify(row));
  }
  console.log('::notice title=Prototype anime separate-audio browser audit::'+JSON.stringify({rows,total:rows.length,passed:rows.filter(r=>r.ok).length}));
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
