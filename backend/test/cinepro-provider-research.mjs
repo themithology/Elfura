@@ -33,6 +33,10 @@ async function inspect(job){
  try {
   const response=await fetch(job.url,{redirect:'manual',signal:AbortSignal.timeout(10000),headers:{'User-Agent':ua,Accept:'application/json, */*',...(job.referer?{Referer:job.referer}:{}),...(job.origin?{Origin:job.origin}:{})}});
   row.status=response.status;
+  if(response.status>=300 && response.status<400){
+   const location=response.headers.get('location');
+   if(location){try{const target=new URL(location,job.url);row.redirectHost=target.hostname;row.redirectKind=/login|sign.?in|auth/i.test(target.pathname)?'auth':'other';}catch{row.redirectKind='invalid';}}
+  }
   const length=Number(response.headers.get('content-length')||0);
   if(length>1000000){await response.body?.cancel();row.error='oversize';return row;}
   const reader=response.body?.getReader();let size=0,chunks=[];
