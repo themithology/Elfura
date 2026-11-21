@@ -27,7 +27,7 @@ import {
   sealStreamTicket,
   setCloudflareCache,
 } from './security.js';
-import { restrictedFetch } from './restricted-fetch.js';
+import { restrictedFetchWithRedirects } from './restricted-fetch.js';
 import { normalizeLang } from './sources/lang.js';
 import { isImageContentType, unwrapPngTransportStream } from './sources/media-sniff.js';
 import { PolicyCache } from './memory-policy.js';
@@ -1063,7 +1063,7 @@ export async function handleStreamRelay(
         AbortSignal.timeout(ticket.k === 'm' ? 12_000 : 25_000),
       ]),
     };
-    const upstreamRes = ticket.ro ? await restrictedFetch(ticket.u, upstreamInit) : await fetch(ticket.u, upstreamInit);
+    const upstreamRes = ticket.ro ? await restrictedFetchWithRedirects(ticket.u, upstreamInit, ticket.ro) : await fetch(ticket.u, upstreamInit);
 
     const finalUrl = upstreamRes.url || ticket.u;
     if (!isSafeUpstreamUrl(finalUrl) || (ticket.ro && !matchesRestrictedOrigin(finalUrl, ticket.ro))) {

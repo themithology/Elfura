@@ -18,7 +18,7 @@ import {
   verifyDirectSegmentOffload,
 } from '../relay.js';
 import { isSafeUpstreamUrl, matchesRestrictedOrigin } from '../security.js';
-import { restrictedFetch } from '../restricted-fetch.js';
+import { restrictedFetchWithRedirects } from '../restricted-fetch.js';
 import { normalizeLang } from './lang.js';
 import { extractMp4SingleAudioLanguage, extractMp4AudioByRanges } from './mp4-audio.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
@@ -290,7 +290,7 @@ async function verifyChildHlsPlaylist(
 ): Promise<{ state: 'alive' | 'dead' | 'unknown'; bodyText?: string }> {
   if (restrictedOrigin && !matchesRestrictedOrigin(childUrl, restrictedOrigin)) return { state: 'dead' };
   const init: RequestInit = { method: 'GET', headers, redirect: restrictedOrigin ? 'manual' : 'follow', signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]) };
-  const res = restrictedOrigin ? await restrictedFetch(childUrl, init) : await fetch(childUrl, init);
+  const res = restrictedOrigin ? await restrictedFetchWithRedirects(childUrl, init, restrictedOrigin) : await fetch(childUrl, init);
   const finalUrl = res.url || childUrl;
   if (!isSafeUpstreamUrl(finalUrl) || (restrictedOrigin && !matchesRestrictedOrigin(finalUrl, restrictedOrigin))) return { state: 'dead' };
   if (!res.ok) return { state: isTransientHttpStatus(res.status) ? 'unknown' : 'dead' };
@@ -432,7 +432,7 @@ async function runSingleProbe(
       // A retry only happens for statuses that are explicitly transient, so a
       // genuinely missing stream still costs exactly one request.
       const probeInit: RequestInit = { method: 'GET', headers: manifestHeaders, redirect: cand.restrictedOrigin ? 'manual' : 'follow', signal: sig };
-      const probe = () => cand.restrictedOrigin ? restrictedFetch(cand.url, probeInit) : fetch(cand.url, probeInit);
+      const probe = () => cand.restrictedOrigin ? restrictedFetchWithRedirects(cand.url, probeInit, cand.restrictedOrigin) : fetch(cand.url, probeInit);
       let res = await probe();
       if (isTransientHttpStatus(res.status)) {
         try {
@@ -865,7 +865,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
           return null;
         }
         const init: RequestInit = { headers, redirect: 'manual', signal: wholeRequest };
-        const res = candidate.restrictedOrigin ? await restrictedFetch(url, init) : await fetch(url, init);
+        const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
         if (res.status >= 300 && res.status < 400) {
           const location = res.headers.get('location');
           await res.body?.cancel().catch(() => {});
@@ -919,7 +919,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
         return null;
       }
       const init: RequestInit = { headers: { ...headers, Range: 'bytes=0-1023' }, redirect: 'manual', signal: AbortSignal.any([wholeRequest, AbortSignal.timeout(3000)]) };
-      const res = candidate.restrictedOrigin ? await restrictedFetch(url, init) : await fetch(url, init);
+      const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get('location');
         await res.body?.cancel().catch(() => {});
@@ -1124,7 +1124,7 @@ export async function diagnoseMultiAudioCandidate(candidate: RawStreamCandidate)
       for (let i = 0; i <= 3; i++) {
         if (!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin))) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
         const init: RequestInit = {headers, signal, redirect:'manual'};
-        const res = candidate.restrictedOrigin ? await restrictedFetch(url, init) : await fetch(url, init);
+        const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
         if (res.status >= 300 && res.status < 400) {
           const location = res.headers.get('location');
           await res.body?.cancel();

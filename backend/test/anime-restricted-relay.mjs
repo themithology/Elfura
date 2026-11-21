@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import dns from 'node:dns';
-import {isPublicMediaAddress,restrictedFetch} from '../../dist/backend/restricted-fetch.js';
+import {isPublicMediaAddress,restrictedFetch,restrictedFetchWithRedirects} from '../../dist/backend/restricted-fetch.js';
 import {rewriteHlsManifest,handleStreamRelay} from '../../dist/backend/relay.js';
 import {matchesRestrictedOrigin,openStreamTicket,sealStreamTicket} from '../../dist/backend/security.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
@@ -34,6 +34,11 @@ try {
 }finally{globalThis.fetch=original;}
 for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','100.64.0.1','::1','::ffff:127.0.0.1'])assert.equal(isPublicMediaAddress(ip),false,ip);
 assert(isPublicMediaAddress('8.8.8.8'));
+const redirectCalls=[];
+const fakeRedirect=async(url,init)=>{redirectCalls.push({url,headers:new Headers(init.headers),redirect:init.redirect});return redirectCalls.length===1?new Response(null,{status:302,headers:{location:'https://other.example/next'}}):new Response('ok');};
+assert.equal((await restrictedFetchWithRedirects('https://safe.example/start',{headers:{Authorization:'secret',Cookie:'secret',Referer:'https://safe.example/'}},'*public*',fakeRedirect)).status,200);
+assert.equal(redirectCalls.length,2);assert.equal(redirectCalls[1].headers.get('authorization'),null);assert.equal(redirectCalls[1].headers.get('cookie'),null);assert.equal(redirectCalls[1].headers.get('referer'),'https://safe.example/');
+await assert.rejects(restrictedFetchWithRedirects('https://safe.example/start',{},'https://safe.example',async()=>new Response(null,{status:302,headers:{location:'https://other.example/'}})));
 // DNS can change after a URL is issued: validate the address in the actual
 // socket lookup, not in a separate pre-flight lookup vulnerable to rebinding.
 const lookup=dns.lookup;let checked=false;
