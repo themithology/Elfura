@@ -18,7 +18,8 @@ let browser;const rows=[];
 try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
- for(const sample of samples){const row={title:sample.title,episode:sample.ep,lanes:[]};let step='start';try{
+ const streamResponses=[];page.on('response',r=>{if(r.url().includes('/api/v1/stream?'))streamResponses.push({status:r.status(),type:(r.headers()['content-type']||'').split(';')[0].slice(0,50)})});
+ for(const sample of samples){streamResponses.length=0;const row={title:sample.title,episode:sample.ep,lanes:[]};let step='start';try{
   await page.goto(`${base}/embed/tv/${sample.id}/1/${sample.ep}?autoplay=1&source=source-30`,{waitUntil:'domcontentloaded',timeout:15000});
   step='variants';await page.waitForFunction(()=>{const a=window.__elfura?.player?.getSources?.()??[];return a.some(s=>s.audioVariant==='sub')&&a.some(s=>s.audioVariant==='dub')},null,{timeout:35000});
   row.options=await page.evaluate(()=>window.__elfura.player.getSources().map(s=>({variant:s.audioVariant,label:s.label,subtitleCount:s.subtitles.length,claimedAsAudioLang:!!s.audioLang})));
@@ -39,7 +40,7 @@ try{
    row.lanes.push(entry);
   }
   row.ok=true;
- }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;}rows.push(row);}
+ }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});}rows.push(row);}
  console.log('::notice title=MegaPlay actual adapter player test::'+JSON.stringify(rows));
  if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
