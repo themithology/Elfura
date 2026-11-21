@@ -362,6 +362,29 @@ def main() -> None:
                     # the proxy, egress profile and DNS rescue all need undici.
                     write_entry(zf, f"vendor/undici/{rel}", content)
 
+        # Ship the native client and the bindings installed for the build host.
+        # Without this, the resolver-only installer (which deliberately does not
+        # run npm) would silently skip the multi-audio anime source. Other
+        # architectures can install the optional dependency on the target.
+        wreq_dir = ROOT / "node_modules" / "wreq-js"
+        bindings_dir = ROOT / "node_modules" / "@wreq-js"
+        bindings = sorted(p for p in bindings_dir.glob("binding-*") if p.is_dir()) if bindings_dir.is_dir() else []
+        if not wreq_dir.is_dir() or not bindings:
+            raise SystemExit("wreq-js and a native binding are required to build the bundle; run npm ci on the target platform")
+        for package_dir, prefix in [(wreq_dir, "node_modules/wreq-js"), *[(p, f"node_modules/@wreq-js/{p.name}") for p in bindings]]:
+            for file_path in sorted(package_dir.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                rel = file_path.relative_to(package_dir).as_posix()
+                if rel == "package.json":
+                    manifest = json.loads(file_path.read_text("utf-8"))
+                    manifest.pop("scripts", None)
+                    manifest.pop("devDependencies", None)
+                    content = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+                else:
+                    content = file_path.read_bytes()
+                write_entry(zf, f"{prefix}/{rel}", content)
+
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():
                 rel = file_path.relative_to(ROOT).as_posix()
