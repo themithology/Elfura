@@ -54,6 +54,25 @@ try {
   assert.deepEqual([a,c].map(n=>n.state.calls),[counts[0],counts[2]]);
 } finally {pool.close();}
 
+// Source-specific enrichment belongs to the same owner as the initial
+// discovery, so it can reuse that resolver's in-flight work and cache.
+const r1=mock('r1'),r2=mock('r2'),r3=mock('r3');
+const recoveryPool=createBalancedPlaybackResolver(r1,r2,{additionalClients:[r3],healthIntervalMs:10000,log:()=>{}});
+try {
+  const title={...request,lateAffinityKey:'recovery-viewer'};
+  assert.equal((await recoveryPool.resolve(title)).node,'r1');
+  assert.equal((await recoveryPool.resolve({...request,lateAffinityKey:'other-viewer'})).node,'r2');
+  assert.equal((await recoveryPool.resolve({...title,sourceId:'source-29'})).node,'r1','source-specific recovery must use the discovery owner');
+  assert.equal((await recoveryPool.resolve({...title,late:true})).node,'r1');
+  assert.equal(r3.state.calls,0,'recovery must not start fresh discovery on another node');
+  r1.state.fail=true;
+  assert.equal((await recoveryPool.resolve({...title,sourceId:'source-29'})).node,'r2','recovery may fail over to a healthy peer');
+  const failedCalls=r1.state.calls;
+  await recoveryPool.resolve({...title,sourceId:'source-29'});
+  await recoveryPool.resolve({...title,late:true});
+  assert.equal(r1.state.calls,failedCalls,'neither recovery nor late requests may hit an unavailable owner');
+} finally {recoveryPool.close();}
+
 // A health endpoint can be healthy while playback fails: no immediate repeat,
 // and recovery checks cannot guarantee that the next playback will work.
 const h=mock('h'),j=mock('j');h.state.fail=true;

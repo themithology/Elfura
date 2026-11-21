@@ -94,7 +94,11 @@ export function createBalancedPlaybackResolver(
     close() { stopped = true; if (timer) clearTimeout(timer); },
     async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
       const key = request.lateAffinityKey?.slice(0, 256);
-      let pinned = request.late && key ? affinity.get(key) : undefined;
+      // Both late joins and single-source enrichment should reuse the node
+      // running this viewer's original discovery. Otherwise each recovery can
+      // start the same provider work again on a different resolver and miss the
+      // first node's in-flight results and per-node cache.
+      let pinned = (request.late || request.sourceId) && key ? affinity.get(key) : undefined;
       if (pinned && pinned.expires <= Date.now()) { affinity.delete(key!); pinned = undefined; }
       const available = nodes.filter(node => node.available);
       if (!available.length) throw new ResolverUnavailableError('no resolver is currently available');

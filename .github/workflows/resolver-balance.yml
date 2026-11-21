@@ -9,6 +9,7 @@ on:
       - 'index.js'
       - 'elfura-pterodactyl.zip'
       - 'backend/test/resolver-balance*.mjs'
+      - 'backend/test/resolver-late-waves.mjs'
       - '.github/workflows/resolver-balance.yml'
   workflow_dispatch:
 permissions:
@@ -25,6 +26,9 @@ jobs:
       - run: npm run test:zip
       - run: node backend/test/resolver-balance.mjs
       - run: node backend/test/resolver-balance-integration.mjs
+      - run: node backend/test/resolver-late-waves.mjs
       - run: node backend/test/resolver-balance-package.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
+      - run: ELFURA_TEST_BROWSER=1 node backend/test/resolver-late-waves.mjs
       - run: node backend/test/timeout-ladder.mjs
       - run: node backend/test/standing-rules.mjs

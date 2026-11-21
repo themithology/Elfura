@@ -48,6 +48,8 @@ try {
   assert.deepEqual(got,['a','b','c','a','b','c','a','b','c']);
   assert.equal((await playback(11,'&nonce=session-one')).node,'a');
   assert.equal((await playback(12,'&nonce=session-two')).node,'b');
+  assert.equal((await playback(11,'&nonce=session-one&source=source-29')).node,'a','source recovery must reuse the original resolver');
+  assert.equal(a.state.lastRequest.sourceId,'source-29');
   assert.equal((await playback(11,'&nonce=session-one&late=1')).node,'a','late request must reach the original resolver');
   assert.equal(a.state.lastRequest.late,true);
   assert.equal('lateAffinityKey' in a.state.lastRequest,false,'routing key must not leave media node');
