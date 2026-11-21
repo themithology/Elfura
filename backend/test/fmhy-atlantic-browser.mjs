@@ -12,6 +12,7 @@ const index=Number(process.env.AUDIT_INDEX??'0');
 if(!Number.isInteger(index)||index!==0)throw Error('unknown audit configuration');
 const samples=[
  {label:'Fight Club',type:'movie',id:'550',title:'Fight Club',year:'1999',runtime:139},
+ {label:'Inception',type:'movie',id:'27205',title:'Inception',year:'2010',runtime:148},
  {label:'Dune Part Two',type:'movie',id:'693134',title:'Dune: Part Two',year:'2024',runtime:166},
  {label:'Parasite',type:'movie',id:'496243',title:'Parasite',year:'2019',runtime:132},
  {label:'Casablanca',type:'movie',id:'289',title:'Casablanca',year:'1943',runtime:102},
@@ -19,6 +20,7 @@ const samples=[
  {label:'Game of Thrones E2',type:'tv',id:'1399',title:'Game of Thrones',year:'2011',season:1,episode:2,runtime:56},
  {label:'Breaking Bad E1',type:'tv',id:'1396',title:'Breaking Bad',year:'2008',season:1,episode:1,runtime:58},
  {label:'Breaking Bad E2',type:'tv',id:'1396',title:'Breaking Bad',year:'2008',season:1,episode:2,runtime:48},
+ {label:'Breaking Bad S3E10',type:'tv',id:'1396',title:'Breaking Bad',year:'2008',season:3,episode:10,runtime:47},
  {label:'Breaking Bad S5E16',type:'tv',id:'1396',title:'Breaking Bad',year:'2008',season:5,episode:16,runtime:55},
  {label:'Naruto E1',type:'tv',id:'46260',title:'Naruto',year:'2002',season:1,episode:1,runtime:24,lang:'ja'},
  {label:'Naruto E2',type:'tv',id:'46260',title:'Naruto',year:'2002',season:1,episode:2,runtime:24,lang:'ja'},
