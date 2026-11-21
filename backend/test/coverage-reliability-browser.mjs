@@ -36,18 +36,17 @@ let browser;
 try {
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
- // Sparticuz's single-process Chromium can exit when the last page closes.
- // Keep a blank page open throughout the audit.
- const keeper=await browser.newPage();
+ // Reuse one page: closing a page/context can terminate the single-process
+ // Chromium binary on Actions and invalidate the remaining samples.
+ const page=await browser.newPage();
  const deadline=(p,ms)=>Promise.race([p,new Promise((_,reject)=>{const t=setTimeout(()=>reject(Error('audit-deadline')),ms);t.unref();})]);
  const rows=[];
  for(const s of samples){
-  const row={source:id,sample:s.label};let page,step='resolve';
+  const row={source:id,sample:s.label};let step='resolve';
   try{
    const result=await deadline(registry.resolvePlayback({type:s.type,tmdbId:s.id,season:s.season,episode:s.episode,sourceId:id}),25000);
    row.options=result?.sources?.length??0;if(!row.options)throw Error('no candidate');
    const opt=result.sources[0];row.type=opt.type;
-   page=await browser.newPage();
    await page.route('**/api/v1/playback**',route=>route.fulfill({json:{...result,primary:opt,sources:[opt],sourceGroups:[],pendingSources:[]}}));
    const path=s.type==='movie'?`movie/${s.id}`:`tv/${s.id}/${s.season}/${s.episode}`;
    await page.goto(`${base}/embed/${path}?autoplay=1`,{waitUntil:'domcontentloaded',timeout:15000});
@@ -68,7 +67,7 @@ try {
    const pixels=await page.evaluate(()=>{const v=window.__elfura.player.video,c=document.createElement('canvas');c.width=64;c.height=36;const x=c.getContext('2d');x.drawImage(v,0,0,64,36);return [...x.getImageData(0,0,64,36).data]});
    row.frameHash=createHash('sha256').update(Buffer.from(pixels)).digest('hex').slice(0,12);row.ok=true;
   }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'||e.message==='audit-deadline'?'timeout':e.message==='no candidate'?'no-candidate':e.message==='unexpected-duration'?'unexpected-duration':/browser has been closed|page, context or browser has been closed/i.test(e.message)?'browser-closed':e.name;}
-  finally{if(page)await deadline(page.close(),4000).catch(()=>{});}
+  finally{await deadline(page.unroute('**/api/v1/playback**'),4000).catch(()=>{});}
   rows.push(row);console.log('browser-sample '+JSON.stringify(row));
  }
  for(const name of ['Game of Thrones','Breaking Bad','Naruto']){
@@ -76,5 +75,5 @@ try {
   console.log('::notice title=Episode frame comparison::'+JSON.stringify({source:id,name,distinct:!!e1?.frameHash&&!!e2?.frameHash&&e1.frameHash!==e2.frameHash}));
  }
  console.log('::notice title=Browser sample summary::'+JSON.stringify({source:id,total:rows.length,passed:rows.filter(r=>r.ok).length,nonSilent:rows.filter(r=>r.audioRms>0.0001).length,rows}));
- await keeper.close();
+
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
