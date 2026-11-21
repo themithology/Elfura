@@ -53,18 +53,24 @@ const { parseAniZipMappings, anilistIdForTmdb } = await import('../../dist/backe
 /* ── a bad TMDB id must not cost a request ────────────────────────────────── */
 
 {
-  assert.equal(await anilistIdForTmdb('tv', 'abc'), null);
-  assert.equal(await anilistIdForTmdb('tv', '0'), null);
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = () => { requests++; throw new Error('unexpected fetch'); };
+  try {
+    assert.equal(await anilistIdForTmdb('abc'), null);
+    assert.equal(await anilistIdForTmdb('0'), null);
+    assert.equal(requests, 0, 'invalid IDs must not fetch');
+  } finally { globalThis.fetch = originalFetch; }
 }
 
 /* ── unreachable service degrades, never throws ───────────────────────────── */
 
 {
-  assert.equal(
-    await anilistIdForTmdb('movie', '550'),
-    null,
-    'no network here, so this must be null rather than an exception',
-  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  try {
+    assert.equal(await anilistIdForTmdb('550'), null, 'unreachable mapping must not throw');
+  } finally { globalThis.fetch = originalFetch; }
 }
 
 /* ── the source ───────────────────────────────────────────────────────────── */
@@ -74,10 +80,15 @@ const { fetchFromMikaza } = await import('../../dist/backend/sources/source16.js
 {
   // A source that answers "no mapping" must return nothing and say why.
   const trace = [];
-  const rows = await fetchFromMikaza(
-    { type: 'movie', tmdbId: '550', signal: AbortSignal.timeout(3_000) },
-    { trace },
-  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(null, {status: 404});
+  let rows;
+  try {
+    rows = await fetchFromMikaza(
+      { type: 'movie', tmdbId: '550', signal: AbortSignal.timeout(3_000) },
+      { trace },
+    );
+  } finally { globalThis.fetch = originalFetch; }
   assert.deepEqual(rows, [], 'no mapping means no candidates, not a guessed id');
   assert.ok(
     trace.some((t) => /no-anilist-mapping|embed-unreachable|embed-refused/.test(t)),
@@ -98,14 +109,18 @@ const { fetchFromMikaza } = await import('../../dist/backend/sources/source16.js
   // An explicit AniList id must bypass conversion entirely, so an embed that
   // already carries `?anilist=` still works when the mapping API is down.
   const trace = [];
-  await fetchFromMikaza(
-    { type: 'tv', tmdbId: '46260', anilistId: '20', season: 1, episode: 1, signal: AbortSignal.timeout(3_000) },
-    { trace },
-  ).catch(() => []);
-  assert.ok(
-    !trace.includes('no-anilist-mapping'),
-    'an explicit anilist id must not be routed through the mapping service',
-  );
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url) => { requests.push(String(url)); return new Response(null, {status: 404}); };
+  try {
+    await fetchFromMikaza(
+      { type: 'tv', tmdbId: '46260', anilistId: '20', season: 1, episode: 1, signal: AbortSignal.timeout(3_000) },
+      { trace },
+    );
+    assert.equal(requests.length, 1);
+    assert.match(requests[0], /mikaza\.buzz\/embed\//);
+    assert.ok(!trace.includes('no-anilist-mapping'));
+  } finally { globalThis.fetch = originalFetch; }
 }
 
 /* ── later seasons must not silently resolve to season-one episode numbers ── */

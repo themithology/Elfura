@@ -45,7 +45,7 @@ export function parseAniZipMappings(body: unknown): AnimeMapping | null {
 export async function anilistIdForTmdb(
   tmdbId: string,
 ): Promise<AnimeMapping | null> {
-  if (!/^\d{1,12}$/.test(String(tmdbId))) return null;
+  if (!/^\d{1,12}$/.test(String(tmdbId)) || !asId(tmdbId)) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
