@@ -16,6 +16,8 @@ globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?inp
  return Response.json({id:Number(s.id),name:s.title,original_name:s.title,first_air_date:s.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[24],images:{logos:[]}});
 };
 const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
+// Reuse one page: closing the last page can terminate single-process Chromium.
+const page=await browser.newPage();
 const rows=[];
 try{
  for(const s of samples)for(const lane of ['sub','dub']){
@@ -28,9 +30,9 @@ try{
     return {candidates:[{key:u.href,url:u.href,type:'hls',quality:'auto',rank:20,headers:{Referer:r.href},audioLang:lane==='sub'?'ja':'en',audioVariant:lane}]};
    }catch{return {candidates:[]}}
   }}];
-  let page;let step='start';
+  let step='start';
   try{
-   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;page=await browser.newPage();
+   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
    await page.goto(`${base}/embed/tv/${s.id}/1/1?autoplay=1&source=source-29`,{waitUntil:'domcontentloaded',timeout:15000});step='video';
    await page.waitForFunction(()=>{const p=window.__elfura?.player,v=p?.video;return v?.videoWidth>0&&v.currentTime>2&&v.getVideoPlaybackQuality().totalVideoFrames>0},null,{timeout:40000});
    row.video=await page.evaluate(async()=>{const p=window.__elfura.player,v=p.video;await p.setSubtitle(null);return {width:v.videoWidth,height:v.videoHeight,duration:v.duration,subtitleCount:p.getSubtitleTracks?.().length??0}});
@@ -54,7 +56,7 @@ try{
    }
    row.ok=true;
   }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['silent','unexpected-duration'].includes(e.message)?e.message:e.name;}
-  finally{await page?.close();await new Promise(r=>server.close(r));}
+  finally{await page.goto('about:blank').catch(()=>{});await new Promise(r=>server.close(r));}
   rows.push(row);
  }
  for(const row of rows)console.log('::notice title=Dedicated anime browser sample::'+JSON.stringify(row));
