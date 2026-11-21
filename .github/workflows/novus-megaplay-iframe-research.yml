@@ -1,0 +1,18 @@
+name: Requested anime host iframe research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/novus-megaplay-iframe-research.mjs', '.github/workflows/novus-megaplay-iframe-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/novus-megaplay-iframe-research.mjs
