@@ -80,6 +80,8 @@ export interface BackendConfig {
   source16?: { enabled: boolean };
   /** Direct multi-audio anime with conservative TMDB episode verification. */
   source28?: { enabled: boolean };
+  source29?: { enabled: boolean };
+  source30?: { enabled: boolean };
   source8?: { enabled: boolean };
   source9?: { enabled: boolean };
   source10?: { enabled: boolean };
@@ -318,6 +320,8 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     source6: { enabled: env.ELFURA_TELUGU_ENABLED === '1' },
     source16: { enabled: env.ELFURA_HINDI_DUB_ENABLED !== '0' },
     source28: { enabled: env.ELFURA_ANIME_MULTI_ENABLED !== '0' },
+    source29: { enabled: env.ELFURA_ANIME_29_ENABLED === '1' },
+    source30: { enabled: env.ELFURA_ANIME_30_ENABLED === '1' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },

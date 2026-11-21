@@ -1,4 +1,5 @@
 import { isSafeUpstreamUrl } from '../security.js';
+import { restrictedFetch } from '../restricted-fetch.js';
 import { resolveDirectAnimeEpisode } from './anime-direct-mapping.js';
 import { normalizeLang } from './lang.js';
 import { readBoundedText } from './upstream-fetch.js';
@@ -61,11 +62,11 @@ export function createSource29Adapter(enabled: () => boolean = () => true, optio
           const headers = { 'User-Agent': UA, Referer: ORIGIN + '/' };
           // Manual, not error: the optional Worker egress propagates manual
           // without following upstream redirects. Reject every 3xx below.
-          const response = await f(page, { redirect: 'manual', signal, headers });
+          const response = await restrictedFetch(page, { signal, headers }, f);
           if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
           const html = await readBoundedText(response, 1_500_000); if (!html) return null;
           const api = novusSourceReference(html); if (!api) return null;
-          const resolved = await f(api, { redirect: 'manual', signal, headers: { ...headers, Referer: page.href, Accept: 'application/json' } });
+          const resolved = await restrictedFetch(api, { signal, headers: { ...headers, Referer: page.href, Accept: 'application/json' } }, f);
           if (!resolved.ok) { await resolved.body?.cancel().catch(() => {}); return null; }
           const json = await readBoundedText(resolved, 256_000); if (!json) return null;
           const payload = JSON.parse(json) as { sources?: unknown; tracks?: unknown };

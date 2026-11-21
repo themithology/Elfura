@@ -38,6 +38,8 @@ import { createSource22Adapter } from './source22.js';
 import { createSource24Adapter } from './source24.js';
 import { createSource25Adapter } from './source25.js';
 import { createSource28Adapter } from './source28.js';
+import { createSource29Adapter } from './source29.js';
+import { createSource30Adapter } from './source30.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -95,6 +97,8 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-24': 'ELFURA_VIDLINK_ENABLED',
   'source-25': 'ELFURA_GREYBOX_ENABLED',
   'source-28': 'ELFURA_ANIME_MULTI_ENABLED',
+  'source-29': 'ELFURA_ANIME_29_ENABLED',
+  'source-30': 'ELFURA_ANIME_30_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
@@ -232,6 +236,8 @@ export class SourceRegistry {
       // Direct multi-audio anime. Only mapped season-one episodes with matching
       // TMDB episode titles are accepted; no title or language is guessed.
       createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
+      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED === '1'),
+      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED === '1'),
     ];
   }
 
@@ -1131,7 +1137,7 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          if (opt.sourceId === 'source-29' && opt.subtitles.length) {
+          if (['source-29', 'source-30'].includes(opt.sourceId) && opt.subtitles.length) {
             const existing = new Set(opt.subtitles.map(track => track.lang));
             opt.subtitles = [...opt.subtitles, ...sealedFallbackSubs.filter(track => !existing.has(track.lang))];
           } else {
@@ -1318,7 +1324,7 @@ export class SourceRegistry {
 
     // Only the new anime lane opts into source-specific, episode-aligned
     // subtitles. Keep the existing subtitle policy for every other adapter.
-    const subtitles = adapter.id === 'source-29' ? (cand.subtitles ?? []).map((track) => ({
+    const subtitles = ['source-29', 'source-30'].includes(adapter.id) ? (cand.subtitles ?? []).map((track) => ({
       lang: track.lang,
       label: track.label,
       ...(track.format ? { format: track.format } : {}),

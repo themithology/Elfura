@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import crypto from 'node:crypto';
+import dns from 'node:dns';
+import {isPublicMediaAddress,restrictedFetch} from '../../dist/backend/restricted-fetch.js';
 import {rewriteHlsManifest,handleStreamRelay} from '../../dist/backend/relay.js';
 import {matchesRestrictedOrigin,openStreamTicket,sealStreamTicket} from '../../dist/backend/security.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
@@ -30,4 +32,14 @@ try {
   assert.equal(await get(sealStreamTicket(secret,{u:'http://169.254.169.254/',k:'s',ro:origin})),400);assert.equal(calls.length,0);
  } finally {await new Promise(r=>server.close(r));}
 }finally{globalThis.fetch=original;}
-console.log('restricted anime HLS: origin pinning, redirects, child tickets and expiry passed');
+for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','100.64.0.1','::1','::ffff:127.0.0.1'])assert.equal(isPublicMediaAddress(ip),false,ip);
+assert(isPublicMediaAddress('8.8.8.8'));
+// DNS can change after a URL is issued: validate the address in the actual
+// socket lookup, not in a separate pre-flight lookup vulnerable to rebinding.
+const lookup=dns.lookup;let checked=false;
+try {
+ dns.lookup=(host,opts,cb)=>{checked=true;cb(null,[{address:'127.0.0.1',family:4}]);};
+ await assert.rejects(restrictedFetch('https://rebinding-test.invalid/'));
+ assert(checked,'guarded dispatcher must perform the socket DNS lookup');
+}finally{dns.lookup=lookup;}
+console.log('restricted anime HLS: origin, DNS rebinding, redirects, child tickets and expiry passed');

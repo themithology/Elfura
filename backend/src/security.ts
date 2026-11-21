@@ -11,6 +11,7 @@
  */
 
 import crypto from 'node:crypto';
+import net from 'node:net';
 import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -314,12 +315,21 @@ export function openPlaybackEnvelope<T = unknown>(
 /* SSRF Guard                                                          */
 /* ------------------------------------------------------------------ */
 
+export function isPublicMediaUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && !u.username && !u.password && !u.port &&
+      !net.isIP(u.hostname.replace(/^\[|\]$/g, '')) && isSafeUpstreamUrl(u.href);
+  } catch { return false; }
+}
+
 export function matchesRestrictedOrigin(rawUrl: string, origin: string): boolean {
   try {
     const url = new URL(rawUrl);
+    if (!isPublicMediaUrl(url.href)) return false;
+    if (origin === '*public*') return true;
     const allowed = new URL(origin);
-    return allowed.protocol === 'https:' && allowed.origin === origin && !allowed.username && !allowed.password &&
-      url.origin === origin && !url.username && !url.password && isSafeUpstreamUrl(url.href);
+    return allowed.protocol === 'https:' && allowed.origin === origin && !allowed.username && !allowed.password && url.origin === origin;
   } catch { return false; }
 }
 

@@ -1,4 +1,5 @@
 import { readBoundedText } from './upstream-fetch.js';
+import { restrictedFetch } from '../restricted-fetch.js';
 import type { SourceQuery } from './types.js';
 
 /** Match only a named episode; generic placeholders cannot establish identity. */
@@ -23,9 +24,9 @@ export async function resolveDirectAnimeEpisode(query: SourceQuery, fetchImpl: t
     const expected = normalizeAnimeEpisodeTitle(meta.episodeName ?? '');
     if (expected.length < 5 || /^(?:episode|ep)\s*\d+$/i.test(expected)) return null;
     const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(6500)]) : AbortSignal.timeout(6500);
-    const response = await fetchImpl(`https://api.ani.zip/mappings?themoviedb_id=${encodeURIComponent(query.tmdbId)}`, {
-      redirect: 'manual', signal, headers: { Accept: 'application/json' },
-    });
+    const response = await restrictedFetch(`https://api.ani.zip/mappings?themoviedb_id=${encodeURIComponent(query.tmdbId)}`, {
+      signal, headers: { Accept: 'application/json' },
+    }, fetchImpl);
     if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
     const body = await readBoundedText(response, 4_000_000); if (!body) return null;
     const data: unknown = JSON.parse(body);

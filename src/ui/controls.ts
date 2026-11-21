@@ -2419,7 +2419,7 @@ export class PlayerUI {
 
     const animeVariants = new Map<string, SourceOption[]>();
     for (const source of this.player.getSources()) {
-      if (!['source-16', 'source-29'].includes(source.sourceId) || !source.audioVariant) continue;
+      if (!['source-16', 'source-29', 'source-30'].includes(source.sourceId) || !source.audioVariant) continue;
       const variants = animeVariants.get(source.sourceId) ?? [];
       // Preserve Source 16's existing one-row-per-mode presentation; the new
       // source can have separate hard-sub and soft-sub fallbacks.
