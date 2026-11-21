@@ -24,6 +24,9 @@ for(const s of samples){
     jobs.push({name:'popr-'+server,s,url:url.href,referer:'https://popr.ink/'});
   }
   for(const server of ['onion','allmovies','uniquestream','vidfast-alpha'])jobs.push({name:'tulnex-'+server,s,url:endpoint(s,`https://api.tulnex.com/${server}`)});
+  jobs.push({name:'icefy',s,url:endpoint(s,'https://streams.icefy.top'),referer:'https://streams.icefy.top/',origin:'https://streams.icefy.top'});
+  jobs.push({name:'cinesu',s,url:endpoint(s,'https://cine.su/v1/stream/master')+'.m3u8',referer:'https://cine.su/en/watch',origin:'https://cine.su'});
+  jobs.push({name:'fmovies4u',s,url:endpoint(s,'https://fmovies4u.com/api'),referer:'https://fmovies4u.com/'});
 }
 async function inspect(job){
  const row={provider:job.name,sample:job.s.name};
@@ -35,8 +38,15 @@ async function inspect(job){
   const reader=response.body?.getReader();let size=0,chunks=[];
   if(reader){try{for(;;){const n=await reader.read();if(n.done)break;size+=n.value.length;if(size>1000000){row.error='oversize';return row;}chunks.push(n.value);}}finally{await reader.cancel().catch(()=>{});}}
   const text=Buffer.concat(chunks).toString('utf8');let data;
-  try{data=JSON.parse(text);}catch{row.bodyType=/^\s*</.test(text)?'html':'other';return row;}
-  row.bodyType='json';row.keys=Object.keys(data??{}).slice(0,12);
+  try{data=JSON.parse(text);}catch{
+   row.bodyType=text.trimStart().startsWith('#EXTM3U')?'hls':/^\s*</.test(text)?'html':'other';
+   if(row.bodyType==='hls'){
+    row.audio=[...text.matchAll(/#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*LANGUAGE="([a-z-]{1,15})"/gi)].map(m=>m[1]);
+    row.variants=(text.match(/#EXT-X-STREAM-INF:/g)||[]).length;
+   }
+   return row;
+  }
+  row.bodyType='json';row.keys=Object.keys(data??{}).slice(0,12);row.streamField=typeof data?.stream==='string';
   row.encrypted=Boolean(data?.isEncrypted || data?.payload);
   const sources=Array.isArray(data?.sources)?data.sources:Array.isArray(data?.results)?data.results.flatMap(r=>Array.isArray(r?.streams)?r.streams:[]):[];
   row.count=sources.length;
