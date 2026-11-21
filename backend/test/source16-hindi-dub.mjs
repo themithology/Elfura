@@ -108,6 +108,30 @@ const { fetchFromMikaza } = await import('../../dist/backend/sources/source16.js
   );
 }
 
+/* ── later seasons must not silently resolve to season-one episode numbers ── */
+{
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.includes('/embed/')) return new Response('resolve:"https://mikaza.buzz/resolve"');
+    return Response.json({src:'https://media.example/episode.mp4',source:{resolvedLanguage:'hin'}});
+  };
+  try {
+    for (const extra of [{}, {anilistId:'20'}, {anilistEpisode:53}]) {
+      const trace = [];
+      const rows = await fetchFromMikaza({type:'tv',tmdbId:'46260',season:2,episode:1,...extra}, {trace});
+      assert.deepEqual(rows, []);
+      assert.deepEqual(trace, ['unmapped-season']);
+      assert.equal(requests.length, 0, 'ambiguous season must not request any provider');
+    }
+    const rows = await fetchFromMikaza({type:'tv',tmdbId:'46260',season:2,episode:1,anilistId:'20',anilistEpisode:53});
+    assert.equal(rows.length, 1);
+    assert.match(requests[0], /\/20\/53\/hin$/);
+  } finally { globalThis.fetch = originalFetch; }
+}
+
 /* ── honesty check: a non-Hindi payload must be refused ──────────────────── */
 {
   const src = await import('node:fs').then((fs) =>

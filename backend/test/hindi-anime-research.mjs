@@ -1,6 +1,6 @@
 // Network-only research: report counts/statuses, never provider links or secrets.
 import {createSource16Adapter} from '../../dist/backend/sources/source16.js';
-import {createSource18Adapter} from '../../dist/backend/sources/source18.js';
+import {createSource18Adapter,loadSubDubCatalog,catalogVariants} from '../../dist/backend/sources/source18.js';
 import {createHash} from 'node:crypto';
 const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 async function req(url, opts={}) {const r=await fetch(url,{...opts,headers:{'User-Agent':ua,Accept:'text/html,application/json,*/*',...(opts.headers??{})},signal:AbortSignal.timeout(8000)});const text=await r.text();return {status:r.status,text,url:r.url};}
@@ -12,6 +12,9 @@ for(const [name,id,tmdb] of [['Naruto','20','46260'],['Demon Slayer','101922','8
 }
 console.log('::notice title=Existing Hindi anime::'+JSON.stringify(report));
 for(const [name,tmdb] of [['Naruto','46260'],['Demon Slayer','85937'],['Jujutsu Kaisen','95479']]) {
+ const catalog=await loadSubDubCatalog(AbortSignal.timeout(12000));
+ const labels=catalog?catalogVariants(catalog,'tv',tmdb).map(v=>({language:v.language??null,title:String(v.title??'').slice(0,80)})):[];
+ console.log('::notice title=Anime catalog claims::'+JSON.stringify({name,labels}));
  const rows=[];
  for(const episode of [1,2]){
   const diag=[];try {const res=await createSource18Adapter(()=>true).resolve({type:'tv',tmdbId:tmdb,season:1,episode,diag,signal:AbortSignal.timeout(18000)});
