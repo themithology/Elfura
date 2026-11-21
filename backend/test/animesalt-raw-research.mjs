@@ -49,7 +49,7 @@ for(const access of active) for(const [title,slug] of [['Naruto','naruto'],['Juj
   row.videoPaths=(page.text.match(/\/video\/[a-f0-9]{10,}/gi)??[]).length;
   row.playerStrings=(page.text.match(/(?:as-cdn|zephyrix|zephyrflick|multi-lang-plyr)/gi)??[]).length;
   let iframe;
-  for(const item of found){try{const u=new URL(item,`https://${host}`);if(/^as-cdn\d*\.top$|^(?:play\.)?zephyrix\.org$|^zephyrflick\.[a-z]+$/i.test(u.hostname)&&/^\/video\/[a-f0-9]+\/?$/i.test(u.pathname)){iframe=u;break}}catch{}}
+  for(const item of found){try{const u=new URL(item,`https://${host}`);if(/^as-cdn\d*\.top$|^(?:play\.)?zephyrix\.org$|^zephyrflick\.[a-z]+$|^ravok\.buzz$/i.test(u.hostname)&&/^\/video\/[a-f0-9]+\/?$/i.test(u.pathname)){iframe=u;break}}catch{}}
   row.iframeCount=found.length;row.rawPlayer=!!iframe;
   if(!iframe){reports.push(row);continue;}
   const id=iframe.pathname.split('/').filter(Boolean).at(-1);
