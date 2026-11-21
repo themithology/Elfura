@@ -25,16 +25,23 @@ try{
  // Probe decoded audio as well as video. This only shows that non-silent audio
  // exists; neither its spoken language nor episode identity can be inferred.
  for(const episode of [1,2]) {
+  let step='resolve';
   try {
    const rows=await fetchFromMikaza({type:'tv',tmdbId:'46260',anilistId:'20',season:1,episode,signal:AbortSignal.timeout(12000)});
    if(!rows.length) throw Error('no candidate');
    const u=rows[0].url;
+   step='probe';
    const probe=await execFileAsync('ffprobe',['-v','error','-show_entries','stream=codec_type,codec_name:stream_tags=language','-of','json',u],{timeout:25000,maxBuffer:1024*1024});
    const streams=JSON.parse(probe.stdout).streams.map(s=>({type:s.codec_type,codec:s.codec_name,language:s.tags?.language??'unknown'}));
+   step='decode';
    const volume=await execFileAsync('ffmpeg',['-hide_banner','-loglevel','info','-t','15','-i',u,'-vn','-af','volumedetect','-f','null','-'],{timeout:35000,maxBuffer:1024*1024});
    const mean=volume.stderr.match(/mean_volume:\s*(-?[\d.]+|-inf) dB/)?.[1]??'unknown';
    console.log('::notice title=Anime decoded audio sample::'+JSON.stringify({episode,streams,meanDb:mean}));
-  } catch(e) {console.log('::warning title=Anime audio sample failed::'+JSON.stringify({episode,error:e.name}));}
+  } catch(e) {
+   const stderr=String(e.stderr??'');
+   const reason=stderr.match(/HTTP error \d+|Server returned \d+|Connection (?:refused|timed out)|Invalid data found|Protocol not found|No such file or directory|Error opening input/i)?.[0]??'unknown';
+   console.log('::warning title=Anime audio sample failed::'+JSON.stringify({episode,step,error:e.name,code:e.code??null,killed:!!e.killed,reason}));
+  }
  }
  for(const [id,adapter,episodes] of [['source-16',createSource16Adapter(()=>true),[1,2]],['source-18',createSource18Adapter(()=>true),[1]]]){
   registry.adapters=[adapter];
