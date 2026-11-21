@@ -28,7 +28,7 @@ for(const s of samples){
 async function inspect(job){
  const row={provider:job.name,sample:job.s.name};
  try {
-  const response=await fetch(job.url,{redirect:'error',signal:AbortSignal.timeout(10000),headers:{'User-Agent':ua,Accept:'application/json, */*',...(job.referer?{Referer:job.referer}:{}),...(job.origin?{Origin:job.origin}:{})}});
+  const response=await fetch(job.url,{redirect:'manual',signal:AbortSignal.timeout(10000),headers:{'User-Agent':ua,Accept:'application/json, */*',...(job.referer?{Referer:job.referer}:{}),...(job.origin?{Origin:job.origin}:{})}});
   row.status=response.status;
   const length=Number(response.headers.get('content-length')||0);
   if(length>1000000){await response.body?.cancel();row.error='oversize';return row;}
@@ -42,8 +42,8 @@ async function inspect(job){
   row.count=sources.length;
   const labels=new Set();for(const item of sources){if(!item||typeof item!=='object')continue;for(const k of ['language','lang','dub','audio','audioLang','audioName','quality']){const v=item[k];if(typeof v==='string'&&/^[a-z0-9 _.-]{1,35}$/i.test(v))labels.add(`${k}:${v}`);}}
   row.labels=[...labels].slice(0,20);
- }catch(e){row.error=e?.name??'error';}
+ }catch(e){row.error=e?.name??'error';if(typeof e?.cause?.code==='string')row.code=e.cause.code;}
  return row;
 }
 const rows=[];for(let i=0;i<jobs.length;i+=10)rows.push(...await Promise.all(jobs.slice(i,i+10).map(inspect)));
-console.log('::notice title=Redacted Cinepro candidate survey::'+JSON.stringify(rows));
+for(const sample of samples)console.log(`::notice title=Redacted candidate survey ${sample.name}::`+JSON.stringify(rows.filter(row=>row.sample===sample.name)));
