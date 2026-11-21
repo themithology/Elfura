@@ -17,7 +17,7 @@ assert(path);const token=new URL(path,'http://localhost').searchParams.get('t');
 assert.equal(openStreamTicket(secret,sealStreamTicket(secret,{u:origin+'/file',ro:origin,k:'m',exp:Math.floor(Date.now()/1000)-2})),null);
 const calls=[];const original=globalThis.fetch;
 try {
- globalThis.fetch=async(input,init)=>{calls.push({url:String(input),redirect:init.redirect});if(String(input).endsWith('/master'))return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');if(String(input).endsWith('/slow')){await new Promise(r=>setTimeout(r,100));if(init.signal.aborted)throw new DOMException('aborted','AbortError');return new Response('media',{headers:{'content-type':'video/mp2t'}});}return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}})};
+ globalThis.fetch=async(input,init)=>{calls.push({url:String(input),redirect:init.redirect});if(String(input).endsWith('/master'))return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');if(String(input).endsWith('/image-segment'))return new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('encrypted-media-start'));setTimeout(()=>{try{c.enqueue(new TextEncoder().encode('-rest'));c.close()}catch{}},1000)}}),{headers:{'content-type':'image/jpeg'}});if(String(input).endsWith('/png-segment'))return new Response(Buffer.concat([Buffer.from('89504e470d0a1a0a0000000474734461','hex'),Buffer.from('test'),Buffer.alloc(4),Buffer.from('0000000049454e4400000000','hex')]),{headers:{'content-type':'image/png'}});if(String(input).endsWith('/slow')){await new Promise(r=>setTimeout(r,100));if(init.signal.aborted)throw new DOMException('aborted','AbortError');return new Response('media',{headers:{'content-type':'video/mp2t'}});}return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}})};
  const cand={key:'restricted',url:origin+'/master',restrictedOrigin:origin,type:'hls',quality:'auto',rank:1};
  const result=await verifyAndFilterCandidatesDetailed([cand]);
  assert.equal(result.verifiedAliveCount,0);assert(calls.every(c=>c.redirect==='manual'));assert(calls.every(c=>!c.url.includes('169.254')));
@@ -31,6 +31,16 @@ try {
   calls.length=0;
   assert.equal(await get(sealStreamTicket(secret,{u:'http://169.254.169.254/',k:'s',ro:origin})),400);assert.equal(calls.length,0);
   assert.equal(await get(sealStreamTicket(secret,{u:origin+'/slow',k:'a',ro:origin})),200,'normal request completion must not abort a slow upstream fetch');
+  const imageToken=sealStreamTicket(secret,{u:origin+'/image-segment',k:'a',ro:origin});
+  const started=Date.now();
+  const response=await original(`http://127.0.0.1:${server.address().port}/?t=${encodeURIComponent(imageToken)}`);
+  const streamReader=response.body.getReader();const first=await streamReader.read();
+  assert(Date.now()-started<800,'non-PNG image-labelled segment must stream before its body completes');
+  let bytes=Buffer.from(first.value);for(;;){const next=await streamReader.read();if(next.done)break;bytes=Buffer.concat([bytes,Buffer.from(next.value)]);}
+  assert.equal(bytes.toString(),'encrypted-media-start-rest');
+  const pngToken=sealStreamTicket(secret,{u:origin+'/png-segment',k:'a',ro:origin});
+  const png=await original(`http://127.0.0.1:${server.address().port}/?t=${encodeURIComponent(pngToken)}`);
+  assert.equal(png.headers.get('content-type'),'video/mp2t');assert.equal(await png.text(),'test');
  } finally {await new Promise(r=>server.close(r));}
 }finally{globalThis.fetch=original;}
 for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','100.64.0.1','::1','::ffff:127.0.0.1'])assert.equal(isPublicMediaAddress(ip),false,ip);

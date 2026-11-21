@@ -21,7 +21,7 @@ try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
  await page.addInitScript(()=>{const diag=window.__hlsDiag={events:[],hls:null};setInterval(()=>{const h=window.__elfura?.player?.hls;if(!h||h===diag.hls)return;diag.hls=h;h.on('hlsError',(_e,d)=>{diag.events.push({type:d.type,details:d.details,fatal:d.fatal,status:d.response?.code??null});if(diag.events.length>30)diag.events.shift()})},25)});
- const streamResponses=[];page.on('response',r=>{if(r.url().includes('/api/v1/stream?'))streamResponses.push({status:r.status(),type:(r.headers()['content-type']||'').split(';')[0].slice(0,50)})});
+ const streamResponses=[];page.on('response',async r=>{if(r.url().includes('/api/v1/stream?')){const row={status:r.status(),type:(r.headers()['content-type']||'').split(';')[0].slice(0,50)};streamResponses.push(row);if(row.status>=400)try{const body=await r.json();row.reason=String(body.error??'').slice(0,100)}catch{}}});
  for(const sample of samples){streamResponses.length=0;relayErrors.length=0;const row={title:sample.title,episode:sample.ep,lanes:[]};let step='start';try{
   await page.goto(`${base}/embed/tv/${sample.id}/1/${sample.ep}?autoplay=1&source=source-30`,{waitUntil:'domcontentloaded',timeout:15000});
   step='variants';await page.waitForFunction(()=>{const a=window.__elfura?.player?.getSources?.()??[];return a.some(s=>s.audioVariant==='sub')&&a.some(s=>s.audioVariant==='dub')},null,{timeout:35000});
@@ -43,7 +43,7 @@ try{
    row.lanes.push(entry);
   }
   row.ok=true;
- }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});row.relayErrors=[...new Set(relayErrors)].slice(0,5);row.playerState=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?.audioVariant,ready:v?.readyState,paused:v?.paused,seeking:v?.seeking,time:v?.currentTime,duration:v?.duration,error:v?.error?.code,levels:p?.hls?.levels?.length??0,hlsErrors:window.__hlsDiag?.events??[]}}).catch(()=>null);}rows.push(row);}
+ }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type+(r.reason?':'+r.reason:'');a[k]=(a[k]??0)+1;return a},{});row.relayErrors=[...new Set(relayErrors)].slice(0,5);row.playerState=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?.audioVariant,ready:v?.readyState,paused:v?.paused,seeking:v?.seeking,time:v?.currentTime,duration:v?.duration,error:v?.error?.code,levels:p?.hls?.levels?.length??0,hlsErrors:window.__hlsDiag?.events??[]}}).catch(()=>null);}rows.push(row);}
  console.log('::notice title=MegaPlay actual adapter player test::'+JSON.stringify(rows));
  if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}

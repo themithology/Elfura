@@ -29,7 +29,7 @@ import {
 } from './security.js';
 import { restrictedFetchWithRedirects } from './restricted-fetch.js';
 import { normalizeLang } from './sources/lang.js';
-import { isImageContentType, unwrapPngTransportStream } from './sources/media-sniff.js';
+import { isImageContentType, isPng, unwrapPngTransportStream } from './sources/media-sniff.js';
 import { PolicyCache } from './memory-policy.js';
 
 const DEFAULT_RELAY_UA =
@@ -1188,7 +1188,56 @@ export async function handleStreamRelay(
       isImageContentType(ct) &&
       !(Number(upstreamRes.headers.get('content-length') || 0) > MAX_WRAPPED_SEGMENT_BYTES)
     ) {
-      const original = await readBoundedBinary(upstreamRes, MAX_WRAPPED_SEGMENT_BYTES);
+      let original: Buffer | null;
+      if (ticket.ro) {
+        // Some anime CDNs label ordinary (including encrypted) transport bytes
+        // as images. Buffering those entire segments before writing anything can
+        // make hls.js time out. Inspect only the PNG signature first; stream
+        // everything else unchanged, with backpressure and client cancellation.
+        const reader = upstreamRes.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        let done = false;
+        while (size < 8 && !done) {
+          const next = await reader.read();
+          done = next.done;
+          if (next.value) { chunks.push(next.value); size += next.value.length; }
+        }
+        if (!isPng(Buffer.concat(chunks))) {
+          setCloudflareCache(res, 'segment');
+          const headers: Record<string, string> = {
+            'Content-Type': upstreamRes.headers.get('content-type') || 'application/octet-stream',
+            'X-Content-Type-Options': 'nosniff',
+          };
+          for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+            const value = upstreamRes.headers.get(name);
+            if (value) headers[name] = value;
+          }
+          res.writeHead(upstreamRes.status, headers);
+          const stream = Readable.from((async function* () {
+            try {
+              yield* chunks;
+              while (!done) {
+                const next = await reader.read();
+                done = next.done;
+                if (next.value) yield next.value;
+              }
+            } finally { await reader.cancel().catch(() => {}); }
+          })());
+          await pipeline(stream, res);
+          return;
+        }
+        try {
+          while (!done && size <= MAX_WRAPPED_SEGMENT_BYTES) {
+            const next = await reader.read();
+            done = next.done;
+            if (next.value) { chunks.push(next.value); size += next.value.length; }
+          }
+          original = size <= MAX_WRAPPED_SEGMENT_BYTES ? Buffer.concat(chunks, size) : null;
+        } finally { await reader.cancel().catch(() => {}); }
+      } else {
+        original = await readBoundedBinary(upstreamRes, MAX_WRAPPED_SEGMENT_BYTES);
+      }
       if (original) {
         const payload = unwrapPngTransportStream(original, MAX_WRAPPED_SEGMENT_BYTES);
         if (payload) {
