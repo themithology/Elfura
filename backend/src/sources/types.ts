@@ -49,6 +49,7 @@ export interface SourceQuery {
   resolveMetaFallback?: () => Promise<{
     title?: string;
     rawTitle?: string;
+    episodeName?: string;
     year?: string;
     releaseDate?: string;
     latestDate?: string;

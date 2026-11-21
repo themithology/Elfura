@@ -28,7 +28,8 @@ const rows=await Promise.all(hosts.map(async host=>{
 console.log('::notice title=Anime raw provider access::'+JSON.stringify(rows));
 const active=rows.filter(r=>['animesalt.cx','animesalt.ac'].includes(r.host) && (r.status===200 || r.browserTlsStatus===200));
 const reports=[];
-for(const access of active) for(const [title,slug] of [['Naruto','naruto'],['Jujutsu Kaisen','jujutsu-kaisen']]) for(const episode of [1,2]) {
+// The mirrors redirect to the same catalogue; avoid duplicate media requests.
+for(const access of active.slice(0,1)) for(const [title,slug] of [['Naruto','naruto'],['Jujutsu Kaisen','jujutsu-kaisen']]) for(const episode of [1,2]) {
  const host=access.host;
  const row={host,title,episode};
  try {
