@@ -11,6 +11,16 @@ const id='source-28';
 const index=Number(process.env.AUDIT_INDEX??'0');
 if(!Number.isInteger(index)||index!==0)throw Error('unknown audit configuration');
 const samples=[
+ {label:'The Godfather',type:'movie',id:'238',title:'The Godfather',year:'1972',runtime:175},
+ {label:'Jaws',type:'movie',id:'578',title:'Jaws',year:'1975',runtime:124},
+ {label:'Titanic',type:'movie',id:'597',title:'Titanic',year:'1997',runtime:194},
+ {label:'The Dark Knight',type:'movie',id:'155',title:'The Dark Knight',year:'2008',runtime:152},
+ {label:'3 Idiots',type:'movie',id:'20453',title:'3 Idiots',year:'2009',runtime:170},
+ {label:'Dangal',type:'movie',id:'360814',title:'Dangal',year:'2016',runtime:161},
+ {label:'The Boys S2E1',type:'tv',id:'76479',title:'The Boys',year:'2019',season:2,episode:1,runtime:61},
+ {label:'Stranger Things S4E1',type:'tv',id:'66732',title:'Stranger Things',year:'2016',season:4,episode:1,runtime:78},
+ {label:'Friends S5E14',type:'tv',id:'1668',title:'Friends',year:'1994',season:5,episode:14,runtime:22},
+ {label:'The Simpsons S10E1',type:'tv',id:'456',title:'The Simpsons',year:'1989',season:10,episode:1,runtime:22},
  {label:'Fight Club',type:'movie',id:'550',title:'Fight Club',year:'1999',runtime:139},
  {label:'Inception',type:'movie',id:'27205',title:'Inception',year:'2010',runtime:148},
  {label:'Dune Part Two',type:'movie',id:'693134',title:'Dune: Part Two',year:'2024',runtime:166},
