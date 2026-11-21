@@ -2,7 +2,7 @@ name: Independent provider discovery
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['backend/test/reliability-candidate-research.mjs', '.github/workflows/reliability-candidates.yml']
+    paths: ['backend/test/reliability-candidate-research.mjs', 'backend/test/hicine-research.mjs', '.github/workflows/reliability-candidates.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -15,3 +15,4 @@ jobs:
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: node backend/test/reliability-candidate-research.mjs
+      - run: node backend/test/hicine-research.mjs
