@@ -144,6 +144,13 @@ const { fetchFromMikaza } = await import('../../dist/backend/sources/source16.js
     const rows = await fetchFromMikaza({type:'tv',tmdbId:'46260',season:2,episode:1,anilistId:'20',anilistEpisode:53});
     assert.equal(rows.length, 1);
     assert.match(requests[0], /\/20\/53\/hin$/);
+    for (const language of ['eng', '', undefined]) {
+      globalThis.fetch = async (input) => String(input).includes('/embed/')
+        ? new Response('resolve:"https://mikaza.buzz/resolve"')
+        : Response.json({src:'https://media.example/episode.mp4',source:{resolvedLanguage:language}});
+      const notHindi = await fetchFromMikaza({type:'tv',tmdbId:'46260',season:1,episode:1,anilistId:'20'});
+      assert.deepEqual(notHindi, [], 'unconfirmed audio is not presented as Hindi');
+    }
   } finally { globalThis.fetch = originalFetch; }
 }
 
