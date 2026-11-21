@@ -75,6 +75,7 @@ try {
   let ready=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/api/v1/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(ready,`packaged media failed to start: ${logs}`);
   assert.match(logs,/2 resolver URLs configured/,'startup must confirm balancing');
+  assert.match(logs,/Stalled failover v2: hedge after 2500ms/,'package must contain the updated failover');
   assert.match(logs,/public HTTP backup is unencrypted/,'insecure transport must be clearly reported');
   async function playback(id){
     const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
@@ -133,9 +134,14 @@ try {
   const start=Date.now();
   assert.equal((await slowPlayback(101)).node,1,'blackhole must fail over to a slow healthy resolver');
   assert.ok(Date.now()-start<11000,'healthy resolver needs enough of the overall budget');
-  const deadCalls=requestCounts[1];
+  const healthyCalls=requestCounts[0];
   assert.equal((await slowPlayback(102)).node,1);
-  assert.equal(requestCounts[1],deadCalls,'do not keep sending requests to the blackholed backend');
+  assert.equal(requestCounts[0],healthyCalls+1,'subsequent discovery should start at the healthy backend');
+  assert.match(stalledLogs,/skipping for 30000ms/,'the blackholed node must have entered cooldown');
+  // Now reverse the outage before that cooldown expires. The recovered node
+  // must not be left with only two seconds after the newly dead node times out.
+  a.state.hang=true; b.state.hang=false; b.state.delay=4000;
+  assert.equal((await slowPlayback(103)).node,2,'recovered cooling resolver must get enough time to respond');
   console.log('packaged .env + HTTPS primary and public HTTP backup: 50/50, 403 and stalled failover, diagnostics and override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}

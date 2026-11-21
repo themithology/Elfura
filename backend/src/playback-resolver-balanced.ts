@@ -64,6 +64,12 @@ export function createBalancedPlaybackResolver(
         let lastError: unknown;
         let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
         let slowNode: Node | undefined;
+        // A late request belongs to its original resolver's in-memory stash.
+        // A peer response is only useful if that owner fails, not if it is
+        // merely slower than the peer's unrelated (often empty) late result.
+        const pinnedOwner = pinned && order[0] === pinned.node ? pinned.node : undefined;
+        let peerAnswer: { result: PlaybackResolution | null; node: Node } | undefined;
+        let ownerFailed = false;
 
         const finish = (result: PlaybackResolution | null, node?: Node) => {
           if (settled) return;
@@ -93,15 +99,33 @@ export function createBalancedPlaybackResolver(
               if (node.retryAt) log(`[elfura-resolver] ${node.client.label} recovered`);
               node.retryAt = 0;
             }
+            if (pinnedOwner && node !== pinnedOwner && !ownerFailed) {
+              peerAnswer = { result, node };
+              return;
+            }
             if (result) finish(result, node);
             else hadAnswer = true;
           }).catch(error => {
             if (!(error instanceof ResolverUnavailableError)) { fail(error); return; }
-            node.failures++;
-            node.lastFailure = Math.max(node.lastFailure, attempt);
-            if (attempt >= node.lastSuccess) {
-              node.retryAt = now() + cooldown;
-              log(`[elfura-resolver] ${node.client.label} unavailable (${error.message}); skipping for ${cooldown}ms`);
+            if (node === pinnedOwner) {
+              ownerFailed = true;
+              if (peerAnswer) {
+                if (peerAnswer.result) finish(peerAnswer.result, peerAnswer.node);
+                else hadAnswer = true;
+              }
+            }
+            // A peer launched close to the shared deadline may have too little
+            // time to answer. Do not declare it unhealthy on that timeout.
+            const starvedTimeout = error.timedOut && remaining < budget / 2;
+            if (!starvedTimeout) {
+              node.failures++;
+              node.lastFailure = Math.max(node.lastFailure, attempt);
+              if (attempt >= node.lastSuccess) {
+                node.retryAt = now() + cooldown;
+                log(`[elfura-resolver] ${node.client.label} unavailable (${error.message}); skipping for ${cooldown}ms`);
+              }
+            } else {
+              log(`[elfura-resolver] ${node.client.label} timed out with only ${remaining}ms of request budget; not marking it unavailable`);
             }
             lastError = error;
           }).finally(() => {
@@ -124,11 +148,12 @@ export function createBalancedPlaybackResolver(
         };
         launch(order[0]);
         hedgeTimer = setTimeout(() => {
-          if (settled || started !== 1 || finished !== 0 || order[1].slowInFlight > 0) return;
-          // Do not repeatedly hit a node in cooldown just because the healthy
-          // node takes time to scan. A pinned late request must also wait for
-          // its stash owner: another node's empty late result cannot replace it.
-          if ((order[1].retryAt > now() && order[0].retryAt <= now()) || (pinned && order[0] === pinned.node)) return;
+          if (settled || started !== 1 || finished !== 0) return;
+          // Even a cooling or already-busy peer can have recovered (or be
+          // serving another title successfully). Suppressing this hedge can
+          // leave it only two seconds after the first call times out, poisoning
+          // its health and failing viewers. Normal routing still prefers the
+          // healthy node; hedges are bounded to one additional call per request.
           // Do not mistake a slow node for a failed one. Keep its original call
           // alive (bounded by its timeout) to learn whether it really recovers;
           // new requests meanwhile prefer its peer instead of piling onto it.

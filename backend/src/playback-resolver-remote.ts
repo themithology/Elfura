@@ -83,7 +83,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       if (parsed === null) throw new Error('resolver returned a non-JSON body');
       return parsed as T;
     } catch (error) {
-      if (timedOut) throw new Error(`request timed out after ${timeoutMs}ms before a complete response; check resolver logs and network`);
+      if (timedOut) throw new ResolverCallTimeoutError(`request timed out after ${timeoutMs}ms before a complete response; check resolver logs and network`);
       throw error;
     } finally {
       clearTimeout(timer);
@@ -119,7 +119,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       // One line, not a stack: the interesting part of a provider outage is that
       // it happened at all, and the resolver keeps its own detailed log.
       this.log(`[elfura-resolver-client] ${request.type}/${request.tmdbId} failed: ${detail}`);
-      throw new ResolverUnavailableError(detail);
+      throw new ResolverUnavailableError(detail, error instanceof ResolverCallTimeoutError);
     }
   }
 
@@ -175,8 +175,10 @@ export class InvalidRequestError extends Error {
   }
 }
 
+class ResolverCallTimeoutError extends Error {}
+
 export class ResolverUnavailableError extends Error {
-  constructor(detail: string) {
+  constructor(detail: string, readonly timedOut = false) {
     super(detail);
     this.name = 'ResolverUnavailableError';
   }

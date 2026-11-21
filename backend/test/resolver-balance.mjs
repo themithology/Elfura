@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createBalancedPlaybackResolver } from '../../dist/backend/playback-resolver-balanced.js';
-import { RemotePlaybackResolver } from '../../dist/backend/playback-resolver-remote.js';
+import { RemotePlaybackResolver, ResolverUnavailableError } from '../../dist/backend/playback-resolver-remote.js';
 import { createResilientPlaybackResolver, resolverBackupConfig, resolverConfig, resolverFallbackReason } from '../../dist/backend/playback-resolver.js';
 
 function server(id) {
@@ -106,13 +106,13 @@ try {
   assert.ok(Date.now()-hedgeStarted<750,'healthy backup should have time to answer');
   const aAfterHedge=a.state.calls;
   assert.equal((await hedged.resolve(request)).node,'b');
-  assert.equal(a.state.calls,aAfterHedge,'do not pile more calls onto a stalled node');
+  assert.equal(a.state.calls,aAfterHedge+1,'slow primary may hedge to the stalled peer as a last resort');
   await new Promise(r=>setTimeout(r,160));
   const hedgeStatus=await hedged.probe();
   assert.ok(hedgeStatus.nodes[0].failures>0 && hedgeStatus.nodes[0].cooldownMs>0,'a genuine timeout enters cooldown');
   const aDuringCooldown=a.state.calls;
   assert.equal((await hedged.resolve(request)).node,'b');
-  assert.equal(a.state.calls,aDuringCooldown,'a slow healthy scan must not hedge onto a cooling node');
+  assert.equal(a.state.calls,aDuringCooldown+1,'a slow primary may hedge even onto a cooling peer');
   a.state.delay=0; hedgeNow+=30001;
   const recoveredAfterStall=[];
   for(let i=0;i<4;i++) recoveredAfterStall.push((await hedged.resolve(request)).node);
@@ -144,7 +144,24 @@ try {
   a.state.delay=160;
   const beforeLate=b.state.calls;
   assert.equal((await lateSlow.resolve({...lateRequest,late:true})).node,'a');
-  assert.equal(b.state.calls,beforeLate);
+  assert.equal(b.state.calls,beforeLate+1,'a late hedge is allowed, but its answer cannot replace the stash owner');
+  a.state.delay=2000; b.state.delay=100;
+  assert.equal((await lateSlow.resolve({...lateRequest,late:true})).node,'b','when the stash owner fails, a completed peer answer is available');
+  // A previous transient failure put B in cooldown, then A blackholes while B
+  // recovers. B still needs enough time to answer before the overall deadline.
+  a.state.mode='ok'; a.state.delay=0; b.state.mode='fail'; b.state.delay=0;
+  const cooledPeer=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  assert.equal((await cooledPeer.resolve(request)).node,'a');
+  assert.equal((await cooledPeer.resolve(request)).node,'a'); // B fails and cools.
+  a.state.delay=2000; b.state.mode='ok'; b.state.delay=300;
+  assert.equal((await cooledPeer.resolve(request)).node,'b','recovered cooldown peer needs a full hedge window');
+  // A previously hedged A is still in flight. If B then stalls, a new request
+  // must not wait for B to time out before trying the now-healthy A.
+  a.state.delay=2000; b.state.delay=100;
+  const busyPeer=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  assert.equal((await busyPeer.resolve(request)).node,'b');
+  a.state.delay=300; b.state.delay=2000;
+  assert.equal((await busyPeer.resolve(request)).node,'a','busy peer must still get time to answer');
   // If both were in cooldown, one recovery must still be tried rather than
   // only rechecking the still-dead node.
   a.state.delay=0; b.state.delay=0; a.state.mode='fail'; b.state.mode='fail';
@@ -152,6 +169,20 @@ try {
   await assert.rejects(recovering.resolve(request));
   b.state.mode='ok';
   assert.equal((await recovering.resolve(request)).node,'b');
+  // If the event loop stalls until almost the overall deadline, a peer gets
+  // only the remaining budget. Its short timeout is not evidence it is down.
+  const healthClient={probe:async()=>({reachable:true}),authProbe:async()=>({authenticated:true})};
+  const delayedFailure={...healthClient,label:'delayed',resolve:async()=>{
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,320);
+    throw new ResolverUnavailableError('offline');
+  }};
+  const starvedPeer={...healthClient,label:'starved',resolve:async(_request,ms)=>{
+    await new Promise(r=>setTimeout(r,ms));
+    throw new ResolverUnavailableError('timeout',true);
+  }};
+  const starvation=createBalancedPlaybackResolver(delayedFailure,starvedPeer,{budgetMs:400,hedgeDelayMs:50,log:()=>{}});
+  await assert.rejects(starvation.resolve(request));
+  assert.equal((await starvation.probe()).nodes[1].failures,0,'a starved timeout must not poison node health');
   // Slow failures cannot add two full independent timeout windows.
   a.state.mode='ok'; b.state.mode='ok'; a.state.delay=500; b.state.delay=500;
   const bounded = createBalancedPlaybackResolver(client(a),client(b),{budgetMs:180,log:()=>{}});

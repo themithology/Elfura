@@ -244,7 +244,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       : primaryClient;
     if (backup && backup.url === remote.url) console.warn('[elfura-resolver] backup URL matches primary; using one resolver.');
     if (pool !== primaryClient) {
-      console.log('[elfura-resolver] 2 resolver URLs configured: round-robin balancing and failover enabled. Check Source health in /roxy for per-node authentication and request counts.');
+      console.log('[elfura-resolver] 2 resolver URLs configured: round-robin balancing and failover enabled. Stalled failover v2: hedge after 2500ms, including cooling/busy peer. Check Source health in /roxy for per-node authentication and request counts.');
     } else {
       console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
     }
