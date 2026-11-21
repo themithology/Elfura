@@ -6,6 +6,7 @@ the Actions runner and must not be uploaded as artifacts.
 """
 import json
 import os
+import traceback
 from pathlib import Path
 
 result = []
@@ -18,10 +19,11 @@ try:
             count = sum(1 for _ in segments)
             title_id, episode, expected = path.stem.split('-')
             result.append({'titleId': title_id, 'episode': int(episode), 'track': expected,
-                           'detected': info.language, 'probability': round(info.language_probability, 3),
+                           'detected': info.language, 'probability': round(info.language_probability, 3) if info.language_probability is not None else None,
                            'segments': count})
         except Exception as exc:
-            result.append({'clip': path.stem, 'error': type(exc).__name__})
+            last = traceback.extract_tb(exc.__traceback__)[-1]
+            result.append({'clip': path.stem, 'error': type(exc).__name__, 'at': last.name, 'line': last.lineno})
     print('::notice title=Automatic audio language research::' + json.dumps({'clips': result}, separators=(',', ':')))
 except Exception as exc:
     print('::notice title=Automatic audio language research::' + json.dumps({'unavailable': type(exc).__name__}, separators=(',', ':')))
