@@ -53,19 +53,21 @@ console.log('::notice title=Multilingual provider research::'+JSON.stringify(rep
 // A second candidate: resolve a TMDB movie to a direct HLS manifest. HTML is
 // consulted only on the server; no embed URL would be returned to the player.
 const cineverse=[];
-for(const [title,id] of [['Avengers: Endgame',299534],['Fight Club',550],['Dune',438631]]) {
+for(const [title,id,kind] of [['Avengers: Endgame',299534,'movie'],['Fight Club',550,'movie'],['Dune',438631,'movie'],['Breaking Bad S1E1',1396,'tv']]) {
  const row={title};
  try {
-  const u=`https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${id}`;
+  const u=`https://rozgarlelo.modiplay.xyz/embed/tmdb/${kind}?id=${id}${kind==='tv'?'&season=1&episode=1':''}`;
   const h={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',Referer:'https://m1.multimovies.courses/'};
   const a=await get(u,h), html=await a.text();
   const iframe=html.match(/<iframe[^>]+src=["']([^"']+)/i)?.[1]?.replace(/&amp;/g,'&');
   if(!iframe)throw Error('no player reference');
   const playerUrl=new URL(iframe,a.url).toString();
+  row.playerSameOrigin=new URL(playerUrl).origin===new URL(u).origin;
   const b=await get(playerUrl,{...h,Referer:u}),script=await b.text();
   const raw=script.match(/(?:var|let|const)\s+src\s*=\s*["']([^"']*stream_proxy\.php[^"']*)["']/i)?.[1];
   if(!raw)throw Error('no direct manifest');
   const manifestUrl=new URL(raw.replace(/\\\//g,'/').replace(/&amp;/g,'&'),b.url).toString();
+  row.manifestSameOrigin=new URL(manifestUrl).origin===new URL(u).origin;
   const manifest=await (await get(manifestUrl,{...h,Referer:playerUrl})).text();
   row.manifest=manifest.trimStart().startsWith('#EXTM3U');row.languages=extractManifestAudioLangs(manifest);
   row.variants=(manifest.match(/#EXT-X-STREAM-INF:/g)??[]).length;
