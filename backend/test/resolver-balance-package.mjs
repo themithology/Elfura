@@ -77,8 +77,8 @@ try {
   assert.match(logs,/3 resolver URLs configured/,'startup must confirm balancing');
   assert.match(logs,/periodic health checks enabled; no speculative hedges/);
   assert.match(logs,/public HTTP backup is unencrypted/,'insecure transport must be clearly reported');
-  async function playback(id){
-    const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
+  async function playback(id,extra=''){
+    const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}${extra}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
     assert.equal(response.status,200,`playback failed: ${await response.clone().text()}\n${logs}`);return response.json();
   }
   const got=[];for(let i=1;i<=9;i++)got.push((await playback(i)).node);
@@ -103,6 +103,12 @@ try {
   assert.equal(status.resolver.nodes[1].available,false);
   assert.match(logs,/HTTP 403.*Cloudflare/);
   assert(!JSON.stringify(status.resolver.nodes).includes(secret),'diagnostics must not reveal token');
+  // Verify the actual shipped package keeps source enrichment on the node
+  // that performed discovery, even when another viewer is interleaved.
+  const owner=(await playback(80,'&nonce=package-viewer')).node;
+  await playback(81,'&nonce=other-viewer');
+  assert.equal((await playback(80,'&nonce=package-viewer&source=source-29')).node,owner);
+  assert.equal((await playback(80,'&nonce=package-viewer&late=1')).node,owner);
   // Pterodactyl startup variables can override the .env values. Confirm that the
   // package emits a useful warning instead of silently running only one node.
   const nextSocket=net.createServer();await new Promise(r=>nextSocket.listen(0,'127.0.0.1',r));
