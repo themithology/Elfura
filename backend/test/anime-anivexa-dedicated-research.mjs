@@ -19,7 +19,9 @@ try{
    const row={title,lane};try{
     const request=new Request(`https://test.invalid/watch/anikoto/${map.anilistId}/${lane}/anikoto-1`);
     const res=await handler.fetch(request);row.status=res.status;
-    const data=await res.json();const direct=(data.streams??[]).filter(s=>s?.type==='hls'&&typeof s.url==='string');
+    const data=await res.json();
+    if(res.status!==200){const err=typeof data.error==='string'?data.error:'';row.reason=/No data found for AniList ID/.test(err)?'anilist-metadata-unavailable':/No confident Anikoto/.test(err)?'identity-unconfirmed':/HTTP\s\d{3}/.test(err)?err.match(/HTTP\s\d{3}/)[0]:'other';}
+    const direct=(data.streams??[]).filter(s=>s?.type==='hls'&&typeof s.url==='string');
     row.returned=direct.length;row.types=direct.map(s=>s.subtitleType??'unknown').slice(0,12);row.subtitleCounts=direct.map(s=>Array.isArray(s.subtitles)?s.subtitles.length:0).slice(0,12);
     row.fingerprints=direct.map(s=>createHash('sha256').update(s.url).digest('hex').slice(0,12)).slice(0,12);
    }catch(e){row.error=e.name;}console.log('::notice title=Bundled anime extractor sample::'+JSON.stringify(row));
