@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createBackendServer} from '../../dist/backend/index.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
+import {fetchTmdbMetadata} from '../../dist/backend/tmdb.js';
 import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',episodes:['Enter: Naruto Uzumaki!','My Name is Konohamaru']},{id:'95479',title:'Jujutsu Kaisen',year:'2020',episodes:['Ryomen Sukuna','For Myself']}];
@@ -32,6 +33,15 @@ try{
  for(const sample of samples)for(const episode of [1,2]){
   sampleInfo=`${sample.title} S1E${episode}`;step='resolve';
   const result=await registry.resolvePlayback({type:'tv',tmdbId:sample.id,season:1,episode,sourceId:'source-28'});
+  if (!result?.sources?.length) {
+   // Retry the real adapter with its safe stage diagnostics so a provider,
+   // identity or metadata miss is not mistaken for a browser failure.
+   const params={type:'tv',tmdbId:sample.id,season:1,episode};
+   const meta=await fetchTmdbMetadata(cfg.tmdb,params);
+   const diag=[];
+   const retried=await registry.adapters[0].resolve({...params,diag,signal:AbortSignal.timeout(12000),resolveMetaFallback:async()=>meta});
+   console.log('::notice title=Source 28 discovery stages::'+JSON.stringify({sampleInfo,meta:{title:!!meta.rawTitle,episode:!!meta.episodeName,japanese:meta.originalLanguage==='ja',animation:meta.genres?.includes('Animation')??false},diag,candidates:retried.candidates.length}));
+  }
   assert(result?.sources?.length,'no source found');
   const opt=result.sources.find(s=>s.multiAudio && s.availableAudioLangs?.includes('hi') && s.availableAudioLangs?.includes('en'));
   assert(opt,'multi-audio Hindi/English unavailable');
