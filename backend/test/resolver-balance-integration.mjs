@@ -13,6 +13,7 @@ async function mock(id) {
     if(req.url==='/resolver/api/health') return res.end(JSON.stringify({ok:true}));
     if(req.headers['x-elfura-resolver-token']!==secret) {res.writeHead(401);return res.end(JSON.stringify({error:'auth'}));}
     if(req.url==='/resolver/api/playback') {
+      let body=''; req.on('data',chunk=>body+=chunk); req.on('end',()=>{try{state.lastRequest=JSON.parse(body);}catch{}});
       state.calls++;
       if(state.fail) {res.writeHead(503);return res.end(JSON.stringify({error:'offline'}));}
       return res.end(JSON.stringify({ok:true,node:id}));
@@ -38,17 +39,22 @@ try {
   const base=`http://127.0.0.1:${port}`;let ready=false;
   for(let i=0;i<100;i++) {try{if((await fetch(base+'/api/v1/health')).ok){ready=true;break;}}catch{} await new Promise(r=>setTimeout(r,100));}
   assert(ready,`media node failed to start: ${logs}`);
-  async function playback(i) {
-    const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${i}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
+  async function playback(i,extra='') {
+    const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${i}${extra}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
     assert.equal(response.status,200,`playback ${response.status}: ${await response.clone().text()}\n${logs}`);
     return response.json();
   }
   const got=[];for(let i=1;i<=8;i++) got.push((await playback(i)).node);
   assert.equal(got.filter(x=>x==='a').length,4);assert.equal(got.filter(x=>x==='b').length,4);
+  assert.equal((await playback(11,'&nonce=session-one')).node,'a');
+  assert.equal((await playback(12,'&nonce=session-two')).node,'b');
+  assert.equal((await playback(11,'&nonce=session-one&late=1')).node,'a','late request must reach the original resolver');
+  assert.equal(a.state.lastRequest.late,true);
+  assert.equal('lateAffinityKey' in a.state.lastRequest,false,'routing key must not leave media node');
   a.state.fail=true;
   assert.equal((await playback(9)).node,'b','real media server must fail over');
   assert.equal((await playback(10)).node,'b','real media server must skip failed node');
-  assert.equal(a.state.calls,5);assert.equal(b.state.calls,6);
+  assert.equal(a.state.calls,7);assert.equal(b.state.calls,7);
   console.log('media-server integration: env config, 50/50 playback and failover OK');
 } finally {
   try{process.kill(-child.pid,'SIGTERM');}catch{}

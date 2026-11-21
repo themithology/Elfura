@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['.github/workflows/anime-live-tmdb.yml']
+    paths: ['.github/workflows/anime-live-tmdb.yml', 'backend/test/source30-real-browser.mjs']
 permissions: {contents: read}
 jobs:
   live:
