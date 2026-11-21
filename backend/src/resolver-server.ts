@@ -134,6 +134,11 @@ export function createResolverServer(options: ResolverServerOptions): {
 } {
   const { registry, token } = options;
   const log = options.log ?? console.log;
+  const configuredLimit = Number(process.env.ELFURA_RESOLVER_MAX_CONCURRENT ?? 8);
+  const maxConcurrent = Number.isInteger(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 1000 ? configuredLimit : 8;
+  if (maxConcurrent !== configuredLimit) log('[elfura-resolver] invalid ELFURA_RESOLVER_MAX_CONCURRENT; using 8');
+  log(`[elfura-resolver] capacity limit: ${maxConcurrent} active discovery jobs per resolver process`);
+  let active = 0;
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -183,6 +188,11 @@ export function createResolverServer(options: ResolverServerOptions): {
         return;
       }
 
+      if (method(req) === 'GET' && pathname === '/resolver/api/capacity') {
+        sendJson(res, 200, { ok: true, active, maxConcurrent, ready: active < maxConcurrent });
+        return;
+      }
+
       if (method(req) === 'GET' && pathname === '/resolver/api/sources') {
         sendJson(res, 200, { ok: true, sources: registry.health.snapshot(registry.listPublicSources()) });
         return;
@@ -222,8 +232,19 @@ export function createResolverServer(options: ResolverServerOptions): {
           sendJson(res, 400, { ok: false, error: 'invalid playback request' });
           return;
         }
+        // Hold the slot until the provider work really completes, even if the
+        // media node disconnects. A disconnected HTTP request does not cancel
+        // discovery or its late-source stash.
+        if (active >= maxConcurrent) {
+          res.setHeader('Retry-After', '5');
+          sendJson(res, 503, { ok: false, reason: 'resolver-busy', error: 'source resolver is busy; try again shortly' });
+          return;
+        }
+        active++;
+        let background: Promise<unknown> = Promise.resolve();
         try {
-          const resolution = await registry.resolvePlayback(request);
+          const resolution = await registry.resolvePlayback({ ...request, onDiscoverySettled: work => { background = work; } });
+          if (res.destroyed) return;
           if (!resolution) {
             // Deliberately 200 with ok:false. This is the resolver's *answer*,
             // not a failure of the resolver: the caller must not confuse "this
@@ -239,7 +260,11 @@ export function createResolverServer(options: ResolverServerOptions): {
             `[elfura-resolver] ${request.type}/${request.tmdbId} threw: ` +
               `${error instanceof Error ? error.message : 'unknown error'}`,
           );
-          sendJson(res, 500, { ok: false, error: 'resolver failed while resolving this title' });
+          if (!res.destroyed) sendJson(res, 500, { ok: false, error: 'resolver failed while resolving this title' });
+        } finally {
+          // A sealed response can leave provider and enrichment lanes running
+          // for late discovery. Do not admit replacement work until they settle.
+          void background.then(() => { active--; }, () => { active--; });
         }
         return;
       }

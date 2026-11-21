@@ -56,6 +56,7 @@ import {
   createRefusingPlaybackResolver,
   createResilientPlaybackResolver,
   ResolverBackendDownError,
+  ResolverBusyError,
   resolverConfig,
   resolverBackupConfig,
   resolverThirdConfig,
@@ -253,7 +254,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       ? createBalancedPlaybackResolver(clients[0], clients[1], { additionalClients: clients.slice(2) })
       : clients[0];
     if (clients.length > 1) {
-      console.log(`[elfura-resolver] ${clients.length} resolver URLs configured: round-robin balancing and failover enabled. Stalled failover v2: hedge after 2500ms, including cooling/busy peer. Check Source health in /roxy for per-node authentication and request counts.`);
+      console.log(`[elfura-resolver] ${clients.length} resolver URLs configured: capacity-aware routing and circuit breaker enabled. Limited hedge budget; open circuits are not sent normal traffic. Check Source health in /roxy.`);
     } else {
       console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
     }
@@ -1071,6 +1072,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           lateAffinityKey: `${mediaType}|${tmdbId}|${season ?? ''}|${episode ?? ''}|${anilistId ?? ''}|${anilistEpisode ?? ''}|${(nonce ?? '').slice(0, 128)}`,
         });
       } catch (error) {
+        if (error instanceof ResolverBusyError) {
+          res.setHeader('Retry-After', '5');
+          sendJson(res, 503, { ok: false, error: 'Source servers are busy. Please try again shortly.', reason: 'resolver-busy' }, allowOrigin);
+          return;
+        }
         // A resolver that cannot be reached is an outage, not an answer. Saying
         // "no sources for this title" would send the viewer hunting for a
         // different title when the problem is behind us.

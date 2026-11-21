@@ -15,6 +15,7 @@
 
 import {
   RESOLVER_AUTH_HEADER,
+  ResolverBusyError,
   type PlaybackRequest,
   type PlaybackResolution,
   type PlaybackResolver,
@@ -73,6 +74,9 @@ export class RemotePlaybackResolver implements PlaybackResolver {
         /* a non-JSON body from a healthy resolver means a proxy sat in the way */
       }
       if (!response.ok) {
+        if (response.status === 503 && (parsed as { reason?: string } | null)?.reason === 'resolver-busy') {
+          throw new ResolverBusyError();
+        }
         const detail =
           (parsed as { error?: string } | null)?.error ?? `resolver answered HTTP ${response.status}`;
         // 4xx is the resolver judging a request, and it is alive: that is not an
@@ -101,6 +105,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       if (!body || (body as { ok?: boolean }).ok !== true) return null;
       return body as PlaybackResolution;
     } catch (error) {
+      if (error instanceof ResolverBusyError) throw error;
       if (error instanceof InvalidRequestError) {
         // A bad caller request (400/422) is an answer. Auth failures, a missing
         // route, or upstream rate limiting make this node unusable for this

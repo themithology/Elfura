@@ -9,6 +9,7 @@ on:
       - 'index.js'
       - 'elfura-pterodactyl.zip'
       - 'backend/test/resolver-balance*.mjs'
+      - 'backend/test/resolver-capacity.mjs'
       - '.github/workflows/resolver-balance.yml'
   workflow_dispatch:
 permissions:
@@ -24,6 +25,7 @@ jobs:
       - run: npm ci
       - run: npm run test:zip
       - run: node backend/test/resolver-balance.mjs
+      - run: node backend/test/resolver-capacity.mjs
       - run: node backend/test/resolver-balance-integration.mjs
       - run: node backend/test/resolver-balance-package.mjs
       - run: node backend/test/timeout-ladder.mjs

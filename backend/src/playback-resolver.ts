@@ -77,6 +77,9 @@ export interface ResolverNodeStatus {
   attempts: number;
   failures: number;
   cooldownMs: number;
+  circuit?: 'closed' | 'open' | 'half-open';
+  active?: number;
+  maxInFlight?: number;
 }
 
 export interface ResolverSourceStatus {
@@ -325,6 +328,14 @@ export class ResolverBackendDownError extends Error {
   }
 }
 
+/** Temporary capacity exhaustion, distinct from an unreachable resolver. */
+export class ResolverBusyError extends Error {
+  constructor(message = 'Source servers are busy. Please try again shortly.') {
+    super(message);
+    this.name = 'ResolverBusyError';
+  }
+}
+
 /**
  * Remote-only resolver proxy. ONE call. No retry, no health check, no scraping.
  *
@@ -367,7 +378,7 @@ export function createResilientPlaybackResolver(options: {
       } catch (error) {
         // A 4xx the resolver itself raised is an ANSWER, not an outage: it is
         // alive and judging the request. Everything else is "cannot reach it".
-        if ((error as { name?: string })?.name === 'InvalidRequestError') throw error;
+        if (error instanceof ResolverBusyError || (error as { name?: string })?.name === 'InvalidRequestError') throw error;
         failing = true;
         lastReason = error instanceof Error ? error.message : String(error);
         options.onFallback?.(lastReason);

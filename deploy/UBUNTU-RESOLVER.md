@@ -68,18 +68,42 @@ HTTPS or a private VPN, and restrict resolver access to the streaming node's
 outbound IP where possible. A Pterodactyl-hosted resolver must listen on its
 allocated accessible port; a localhost-only listener will not work remotely.
 
-Restart the streaming node. Playback searches start round-robin across healthy
-resolvers (by request, not bandwidth or exact concurrent load). A failed node
-is deprioritized for 30 seconds; there are no background health checks. Fast
-failures try another node immediately. If a request is still pending after 2.5
-seconds, the remaining peers are also tried within the 12-second overall budget,
-including cooling nodes: this allows recovery even if the preferred node has
-failed too. Slow searches may therefore perform duplicate work on two or three
-nodes. An empty search or invalid request does not itself trigger failover.
+Update **both the streaming server and every resolver**, then restart them.
+The streaming node routes to the least busy closed circuit; ties rotate across
+nodes. Errors open a circuit for roughly 30 seconds (5 seconds for explicit
+capacity responses), with jitter and increasing backoff after failed recovery
+trials. Open circuits receive no playback requests until their cooldown expires,
+when at most one request per streaming process tests recovery. There are no
+background health checks. A fast failure can try another available node. An
+empty search or invalid request does not itself trigger failover.
+
+For a slow request, the pool may send at most one extra request to a closed
+node with spare capacity. This is limited globally per streaming process to one
+concurrent hedge and about one hedge per 20 initial searches, plus one initial
+token. When the budget is exhausted, a stalled viewer may time out instead of
+multiplying work on already-busy servers. An already-started search continues
+on its resolver even if another answers first; cancellation is not propagated
+into provider work or the late-source stash.
+
+The streaming node limits outstanding requests per resolver with
+`ELFURA_RESOLVER_NODE_MAX_INFLIGHT` (default 8, per streaming process). Each
+updated resolver independently limits actual discovery work with
+`ELFURA_RESOLVER_MAX_CONCURRENT` (default 8, per resolver process), including
+work whose client has disconnected. These are starting values, not verified
+capacity: tune using load tests and logs. They do not coordinate across multiple
+streaming or resolver processes; the resolver-side limit is essential when
+multiple streaming servers share it. Over-capacity requests get 503 and
+`Retry-After`; there is no unbounded queue. The authenticated
+`/resolver/api/capacity` reports active work and the configured limit. A provider
+lane that never settles keeps its slot occupied; investigate stuck tasks and
+restart the resolver if necessary rather than automatically admitting more work.
+Older resolver versions do not enforce that server-side limit.
+
 Authentication/access failures (401/403), missing routes (404/405), and rate
-limits (429) do; fix the underlying token or access rule. If neither optional
-URL is set, single-resolver behavior is unchanged. Duplicate URLs are ignored.
-The streaming node does not scrape locally during remote failures.
+limits (429) open a circuit; fix the underlying token or access rule. If neither
+optional URL is set, single-resolver behavior is unchanged on the media node.
+Duplicate URLs are ignored. The streaming node does not scrape locally during
+remote failures.
 
 The startup console reports how many distinct resolver URLs were loaded.
 Non-empty hosting environment variables take precedence over `.env`; the

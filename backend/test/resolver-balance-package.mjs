@@ -75,7 +75,7 @@ try {
   let ready=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/api/v1/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(ready,`packaged media failed to start: ${logs}`);
   assert.match(logs,/2 resolver URLs configured/,'startup must confirm balancing');
-  assert.match(logs,/Stalled failover v2: hedge after 2500ms/,'package must contain the updated failover');
+  assert.match(logs,/capacity-aware routing and circuit breaker enabled/,'package must contain the overload-safe failover');
   assert.match(logs,/public HTTP backup is unencrypted/,'insecure transport must be clearly reported');
   async function playback(id){
     const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
@@ -119,7 +119,7 @@ try {
   // failover waited ten seconds, leaving only two for the healthy node.
   const thirdSocket=net.createServer();await new Promise(r=>thirdSocket.listen(0,'127.0.0.1',r));
   const thirdPort=thirdSocket.address().port;await new Promise(r=>thirdSocket.close(r));
-  b.state.blocked=false; b.state.hang=true; a.state.delay=4000;
+  b.state.blocked=false; b.state.hang=true; a.state.delay=0;
   const stalled=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(thirdPort),SERVER_PORT:String(thirdPort)}});
   children.push(stalled); let stalledLogs='';stalled.stdout.on('data',d=>stalledLogs+=d);stalled.stderr.on('data',d=>stalledLogs+=d);
   const stalledBase=`http://127.0.0.1:${thirdPort}`;
@@ -131,19 +131,19 @@ try {
     return response.json();
   }
   assert.equal((await slowPlayback(100)).node,1); // Make node 2 the next round-robin choice.
+  a.state.delay=4000;
   const start=Date.now();
   assert.equal((await slowPlayback(101)).node,1,'blackhole must fail over to a slow healthy resolver');
   assert.ok(Date.now()-start<11000,'healthy resolver needs enough of the overall budget');
   const healthyCalls=requestCounts[0];
   assert.equal((await slowPlayback(102)).node,1);
   assert.equal(requestCounts[0],healthyCalls+1,'subsequent discovery should start at the healthy backend');
-  assert.match(stalledLogs,/skipping for 30000ms/,'the blackholed node must have entered cooldown');
-  // Now reverse the outage before that cooldown expires. The recovered node
-  // must not be left with only two seconds after the newly dead node times out.
-  a.state.hang=true; b.state.hang=false; b.state.delay=4000;
-  assert.equal((await slowPlayback(103)).node,2,'recovered cooling resolver must get enough time to respond');
-  // A new install with the third URL in .env must actually balance three
-  // resolvers and survive the first two accepting connections but never replying.
+  assert.match(stalledLogs,/circuit open/,'the blackholed node must have entered cooldown');
+  const deadCalls=requestCounts[1];
+  assert.equal((await slowPlayback(103)).node,1);
+  assert.equal(requestCounts[1],deadCalls,'a slow healthy search must not hit the open circuit');
+  // A new install with the third URL in .env must balance three resolvers
+  // and survive two immediate failures.
   a.state.hang=false; a.state.delay=0; b.state.hang=false; b.state.delay=0;
   const c=await node(3,true);
   appendFileSync(path.join(tmp,'.env'),`ELFURA_RESOLVER_THIRD_URL=${c.url}\n`);
@@ -168,20 +168,32 @@ try {
   const threeStatus=await (await fetch(threeBase+'/roxy/api/sources',{headers:{origin:threeBase,cookie:threeCookie}})).json();
   assert.equal(threeStatus.resolver.nodes.length,3);
   assert.deepEqual(threeStatus.resolver.nodes.map(n=>n.attempts),[3,3,3]);
-  a.state.hang=true; b.state.hang=true; c.state.delay=4000;
+  a.state.blocked=true; b.state.blocked=true; c.state.delay=4000;
   const threeStart=Date.now();
-  assert.equal((await threePlayback(210)).node,3,'both blackholed nodes must fail over to the third');
+  assert.equal((await threePlayback(210)).node,3,'two fast failures must fail over to the third');
   assert.ok(Date.now()-threeStart<11000,'third node must get sufficient time to resolve');
+  const failedCounts=[requestCounts[0],requestCounts[1]];
+  assert.equal((await threePlayback(211)).node,3);
+  assert.deepEqual([requestCounts[0],requestCounts[1]],failedCounts,'open circuits must not receive playback work');
   // A duplicate backup cannot hide a distinct third node.
   const fifthSocket=net.createServer();await new Promise(r=>fifthSocket.listen(0,'127.0.0.1',r));
   const fifthPort=fifthSocket.address().port;await new Promise(r=>fifthSocket.close(r));
-  const duplicate=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(fifthPort),SERVER_PORT:String(fifthPort),ELFURA_RESOLVER_BACKUP_URL:a.url}});
+  a.state.blocked=false; a.state.delay=1000; c.state.delay=1000;
+  const duplicate=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(fifthPort),SERVER_PORT:String(fifthPort),ELFURA_RESOLVER_BACKUP_URL:a.url,ELFURA_RESOLVER_NODE_MAX_INFLIGHT:'1'}});
   children.push(duplicate);let duplicateLogs='';duplicate.stdout.on('data',d=>duplicateLogs+=d);duplicate.stderr.on('data',d=>duplicateLogs+=d);
   let duplicateReady=false;for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${fifthPort}/api/v1/health`)).ok){duplicateReady=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(duplicateReady,`duplicate test media node failed to start: ${duplicateLogs}`);
   assert.match(duplicateLogs,/backup URL matches another resolver; ignoring duplicate/);
   assert.match(duplicateLogs,/2 resolver URLs configured/,'third must remain usable without a distinct backup');
-  console.log('packaged .env: two/three-node balancing, 403 and stalled failover, diagnostics and override warning OK');
+  const busyBase=`http://127.0.0.1:${fifthPort}`;
+  const busyHeaders={origin:busyBase,'user-agent':'Mozilla/5.0'};
+  const pending=[fetch(`${busyBase}/api/v1/playback?type=movie&tmdb=300`,{headers:busyHeaders}),fetch(`${busyBase}/api/v1/playback?type=movie&tmdb=301`,{headers:busyHeaders})];
+  await new Promise(r=>setTimeout(r,150));
+  const busy=await fetch(`${busyBase}/api/v1/playback?type=movie&tmdb=302`,{headers:busyHeaders});
+  assert.equal(busy.status,503); assert.equal(busy.headers.get('retry-after'),'5');
+  assert.equal((await busy.json()).reason,'resolver-busy');
+  assert.ok((await Promise.all(pending)).every(r=>r.status===200));
+  console.log('packaged .env: two/three-node balancing, bounded failover, busy response, diagnostics and override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}

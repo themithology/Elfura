@@ -597,6 +597,8 @@ export class SourceRegistry {
     anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
+    /** Resolver admission holds its slot until background discovery settles. */
+    onDiscoverySettled?: (work: Promise<unknown>) => void;
     /**
      * "Late join" pass: only sources whose discovery already finished (their
      * result is in the RAM cache) are reported. Nothing is started and nothing
@@ -781,6 +783,10 @@ export class SourceRegistry {
         }
       }
     });
+
+    // The HTTP response may be sealed while provider lanes and enrichment are
+    // still running for late discovery. Admission must count those tasks too.
+    params.onDiscoverySettled?.(Promise.allSettled([mediaPromise, earlyOpenSubsPromise, ...segmentTasks, ...adapterTasks]));
 
     if (!lateOnly) {
       await Promise.race([
