@@ -19,7 +19,7 @@ for(const s of samples){const row={title:s.title};try{
  const hits=(Array.isArray(search.data)?search.data:[]).map(x=>x.show).filter(x=>x&&normalize(x.name??'')===normalize(s.title)&&String(x.premiered??'').startsWith(s.year));row.matches=hits.length;
  if(hits.length!==1){rows.push(row);continue;}
  const e=await get(`https://api.tvmaze.com/shows/${Number(hits[0].id)}/episodebynumber?season=1&number=1`);row.episodeStatus=e.status;
- const name=e.data?.name;if(typeof name!=='string'||!name){rows.push(row);continue;}
+ const name=e.data?.name;if(e.status!==200||typeof name!=='string'||!name){rows.push(row);continue;}
  const diag=[];const result=await createSource28Adapter(()=>true).resolve({type:'tv',tmdbId:s.id,season:1,episode:1,diag,signal:AbortSignal.timeout(14000),resolveMetaFallback:async()=>({rawTitle:s.title,episodeName:name,originalLanguage:'ja',genres:['Animation']})});
  row.candidates=result.candidates.length;row.result=diag.map(d=>d.detail).slice(0,1);
  if(result.candidates.length){const checked=await verifyAndFilterCandidatesDetailed(result.candidates,AbortSignal.timeout(8000));const ev=candidateEvidence(checked.candidates[0]??result.candidates[0]);row.alive=checked.verifiedAliveCount;row.languages=ev?.discoveredAudioLangs??[];row.duration=ev?.durationSec??null;}
