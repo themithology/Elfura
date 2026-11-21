@@ -36,12 +36,18 @@ for(const access of active) for(const [title,slug] of [['Naruto','naruto'],['Juj
   let page;
   if(access.status!==200 && access.browserTlsStatus===200){
    const wr=await wreqFetch(episodeUrl,{session:'audit-'+host,headers:{...headers,Referer:`https://${host}/`},signal:AbortSignal.timeout(12000)});
-   page={status:wr.status,text:await wr.text()};
+   page={status:wr.status,text:await wr.text(),url:wr.url};
   } else page=await get(episodeUrl,{headers:{Referer:`https://${host}/`}});
   row.status=page.status;
   if(page.status!==200){reports.push(row);continue;}
-  const titleText=page.text.match(/<title[^>]*>([^<]+)/i)?.[1]??'';row.titleMatches=titleText.toLowerCase().includes(title.toLowerCase());
+  const titleText=page.text.match(/<title[^>]*>([^<]+)/i)?.[1]??'';row.pageTitle=titleText.slice(0,110);row.titleMatches=titleText.toLowerCase().includes(title.toLowerCase());
+  try{row.finalPath=new URL(page.url).pathname}catch{}
   const found=[...page.text.matchAll(/(?:src|data-src)\s*=\s*["']([^"']+)["']/gi)].map(m=>m[1].replace(/&amp;/g,'&'));
+  const iframeTags=[...page.text.matchAll(/<iframe\b[^>]*>/gi)].map(m=>m[0]);
+  row.iframeTags=iframeTags.length;
+  row.iframeHosts=iframeTags.map(t=>{const s=t.match(/(?:src|data-src)\s*=\s*["']([^"']+)/i)?.[1];try{return new URL(s,`https://${host}`).hostname}catch{return 'none'}}).slice(0,12);
+  row.videoPaths=(page.text.match(/\/video\/[a-f0-9]{10,}/gi)??[]).length;
+  row.playerStrings=(page.text.match(/(?:as-cdn|zephyrix|zephyrflick|multi-lang-plyr)/gi)??[]).length;
   let iframe;
   for(const item of found){try{const u=new URL(item,`https://${host}`);if(/^as-cdn\d*\.top$|^(?:play\.)?zephyrix\.org$|^zephyrflick\.[a-z]+$/i.test(u.hostname)&&/^\/video\/[a-f0-9]+\/?$/i.test(u.pathname)){iframe=u;break}}catch{}}
   row.iframeCount=found.length;row.rawPlayer=!!iframe;
