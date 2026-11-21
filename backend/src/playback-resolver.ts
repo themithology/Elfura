@@ -77,9 +77,6 @@ export interface ResolverNodeStatus {
   attempts: number;
   failures: number;
   cooldownMs: number;
-  circuit?: 'closed' | 'open' | 'half-open';
-  active?: number;
-  maxInFlight?: number;
 }
 
 export interface ResolverSourceStatus {
@@ -178,31 +175,23 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
   return { url: clean, token };
 }
 
-/** Optional resolver nodes use the same public-network policy as the primary.
+/** Optional second resolver. Apply the same public-network policy as the primary.
  * Never let validation of an optional backup overwrite primary diagnostics. */
 export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
-  return optionalResolverConfig(env, 'ELFURA_RESOLVER_BACKUP_URL', 'backup');
-}
-
-export function resolverThirdConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
-  return optionalResolverConfig(env, 'ELFURA_RESOLVER_THIRD_URL', 'third');
-}
-
-function optionalResolverConfig(env: NodeJS.ProcessEnv, key: string, label: string): { url: string; token: string } | null {
-  const raw = (env[key] ?? '').trim();
+  const raw = (env.ELFURA_RESOLVER_BACKUP_URL ?? '').trim();
   if (!raw) return null;
   try {
     const parsed = new URL(raw);
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
   } catch {
-    console.error(`[elfura-resolver] invalid ${label} URL (${key}); use an HTTP(S) URL without credentials, query or fragment.`);
+    console.error('[elfura-resolver] invalid backup URL; use an HTTP(S) URL without credentials, query or fragment.');
     return null;
   }
   const oldReason = lastFallbackReason;
   try {
     const result = resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
     if (result && new URL(result.url).protocol === 'http:' && !isPrivateResolverUrl(result.url)) {
-      console.warn(`[elfura-resolver] WARNING: the public HTTP ${label} is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.`);
+      console.warn('[elfura-resolver] WARNING: the public HTTP backup is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.');
     }
     return result;
   } finally {
@@ -328,14 +317,6 @@ export class ResolverBackendDownError extends Error {
   }
 }
 
-/** Temporary capacity exhaustion, distinct from an unreachable resolver. */
-export class ResolverBusyError extends Error {
-  constructor(message = 'Source servers are busy. Please try again shortly.') {
-    super(message);
-    this.name = 'ResolverBusyError';
-  }
-}
-
 /**
  * Remote-only resolver proxy. ONE call. No retry, no health check, no scraping.
  *
@@ -378,7 +359,7 @@ export function createResilientPlaybackResolver(options: {
       } catch (error) {
         // A 4xx the resolver itself raised is an ANSWER, not an outage: it is
         // alive and judging the request. Everything else is "cannot reach it".
-        if (error instanceof ResolverBusyError || (error as { name?: string })?.name === 'InvalidRequestError') throw error;
+        if ((error as { name?: string })?.name === 'InvalidRequestError') throw error;
         failing = true;
         lastReason = error instanceof Error ? error.message : String(error);
         options.onFallback?.(lastReason);

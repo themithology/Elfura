@@ -45,9 +45,9 @@ at least 24 characters; do not use credentials published in this repository.
    the separate resolver. A reachable health endpoint alone does not prove
    matching tokens or successful playback.
 
-## Optional: balance two or three resolver nodes
+## Optional: balance two resolver VPSes
 
-Install a resolver and configure a separate tunnel hostname on each node. All
+Install a resolver and configure a separate tunnel hostname on each VPS. Both
 resolvers and the streaming node must have the **same** `ELFURA_SECRET` and
 `ELFURA_RESOLVER_TOKEN`, the same enabled source configuration, and compatible
 software versions. On the Pterodactyl streaming node set:
@@ -55,8 +55,6 @@ software versions. On the Pterodactyl streaming node set:
 ```ini
 ELFURA_RESOLVER_URL=https://resolver-one.example.com
 ELFURA_RESOLVER_BACKUP_URL=https://resolver-two.example.com
-# Optional third resolver:
-ELFURA_RESOLVER_THIRD_URL=https://resolver-three.example.com
 ELFURA_RESOLVER_ALLOW_PUBLIC=1
 ELFURA_RESOLVER_ALLOW_LOCAL=0
 ```
@@ -68,59 +66,31 @@ HTTPS or a private VPN, and restrict resolver access to the streaming node's
 outbound IP where possible. A Pterodactyl-hosted resolver must listen on its
 allocated accessible port; a localhost-only listener will not work remotely.
 
-Update **both the streaming server and every resolver**, then restart them.
-The streaming node routes to the least busy closed circuit; ties rotate across
-nodes. Errors open a circuit for roughly 30 seconds (5 seconds for explicit
-capacity responses), with jitter and increasing backoff after failed recovery
-trials. Open circuits receive no playback requests until their cooldown expires,
-when at most one request per streaming process tests recovery. There are no
-background health checks. A fast failure can try another available node. An
-empty search or invalid request does not itself trigger failover.
+Restart the streaming node. Each playback search alternates between healthy
+resolvers (50/50 by request, not bandwidth or exact concurrent load). On a
+network, timeout or server failure, the other healthy resolver is tried within
+one 12-second overall request budget. A failed node is skipped for 30 seconds,
+then tried again; no background health checks are performed. A slow failed
+first attempt may leave too little time for the second to finish. An empty
+search or invalid playback request does not trigger failover. Authentication or
+access failures (401/403), missing routes (404/405), and rate limits (429) do
+trigger failover in a two-node pool; fix the underlying token or Cloudflare rule
+instead of relying on the other node. Without `ELFURA_RESOLVER_BACKUP_URL`,
+single-resolver behavior is unchanged.
+The Pterodactyl node does not scrape locally during remote failures.
 
-For a slow request, the pool may send at most one extra request to a closed
-node with spare capacity. This is limited globally per streaming process to one
-concurrent hedge and about one hedge per 20 initial searches, plus one initial
-token. When the budget is exhausted, a stalled viewer may time out instead of
-multiplying work on already-busy servers. An already-started search continues
-on its resolver even if another answers first; cancellation is not propagated
-into provider work or the late-source stash.
-
-No fixed concurrency limit is enabled by default: the earlier default of eight
-could reject healthy traffic and indefinitely occupy slots for stalled background
-providers. An operator can optionally set `ELFURA_RESOLVER_NODE_MAX_INFLIGHT`
-on the streaming server or `ELFURA_RESOLVER_MAX_CONCURRENT` on a resolver to a
-positive integer (1–1000); zero or unset disables the respective limit. Choose
-limits only after measuring the actual deployment. The optional resolver limit
-counts the foreground resolve until it returns, even if its client disconnects;
-background lanes may keep running after the response and are not restricted by
-that limit. A configured limit returns 503 with `Retry-After` when reached.
-These limits and circuit states are per process, not cluster-wide.
-
-The authenticated `/resolver/api/capacity` reports foreground `active`,
-`backgroundPending` jobs, the configured limit (`0` means disabled), and
-`ready`. Background work may accumulate; the limit is not a measurement of CPU,
-memory or real server capacity. Monitor resource use and investigate stuck
-providers. Older resolver versions may still enforce their own default limit;
-update each resolver to remove it.
-
-Authentication/access failures (401/403), missing routes (404/405), and rate
-limits (429) open a circuit; fix the underlying token or access rule. If neither
-optional URL is set, single-resolver behavior is unchanged on the media node.
-Duplicate URLs are ignored. The streaming node does not scrape locally during
-remote failures.
-
-The startup console reports how many distinct resolver URLs were loaded.
-Non-empty hosting environment variables take precedence over `.env`; the
-console warns by key name if a resolver setting was overridden. After login,
+The Pterodactyl startup console reports whether one or two resolver URLs were
+loaded. Non-empty hosting environment variables take precedence over `.env`;
+the console warns by key name if a resolver setting was overridden. After login,
 `/roxy` → Source health shows each resolver's authenticated status, playback
-attempts, failures and cooldown. Per-source health counters come from one
+attempts, failures and cooldown. Its per-source health counters come from one
 resolver, not aggregated cluster counters; request counters reset on restart.
-Source enable/disable changes are sent to every node; an error means one or
-more did not accept the change, so retry after all are online. Source settings
-and cached data are independent on each resolver node. The pool probe checks
-both public health and authenticated source APIs, but does not verify playback
-tickets or shared encryption secrets. Protect all tunnel hostnames as described
-below.
+Source enable/disable changes are sent to both; an error
+means one or both did not accept the change, so retry after both are online.
+Source settings and cached data are independent on the two resolver nodes.
+The pool probe checks both the public health endpoint and the authenticated
+source API, but it does not verify playback tickets or shared encryption secrets.
+Protect both tunnel hostnames as described below.
 
 **Security:** A Tunnel hostname is publicly reachable unless you separately
 restrict it; `.env` itself is not a network access control. The resolver has

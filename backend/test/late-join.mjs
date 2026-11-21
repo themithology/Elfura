@@ -31,10 +31,8 @@ try {
   ];
 
   const started = Date.now();
-  let backgroundSettled=false;
-  const first = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', onDiscoverySettled: work => { void work.then(()=>backgroundSettled=true); } });
+  const first = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242' });
   const firstMs = Date.now() - started;
-  assert.equal(backgroundSettled,false,'admission must be able to see still-running discovery after the first response');
   assert(first, 'first pass must return a playable source');
   const firstIds = first.sources.map((s) => s.sourceId);
   assert(firstIds.includes('source-1'), `fast lane missing: ${firstIds.join(',')}`);

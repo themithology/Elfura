@@ -56,10 +56,8 @@ import {
   createRefusingPlaybackResolver,
   createResilientPlaybackResolver,
   ResolverBackendDownError,
-  ResolverBusyError,
   resolverConfig,
   resolverBackupConfig,
-  resolverThirdConfig,
   resolverFallbackReason,
   resolverIntended,
   ResolverRefusedError,
@@ -239,22 +237,14 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
-    const configs = [remote];
-    const canonicalResolverUrl = (value: string) => {
-      try { return new URL(value).href.replace(/\/+$/, ''); } catch { return value; }
-    };
-    for (const [name, config] of [['backup', resolverBackupConfig()], ['third', resolverThirdConfig()]] as const) {
-      if (!config) continue;
-      if (configs.some(existing => canonicalResolverUrl(existing.url) === canonicalResolverUrl(config.url))) {
-        console.warn(`[elfura-resolver] ${name} URL matches another resolver; ignoring duplicate.`);
-      } else configs.push(config);
-    }
-    const clients = configs.map(config => new RemotePlaybackResolver(config.url, config.token));
-    const pool = clients.length > 1
-      ? createBalancedPlaybackResolver(clients[0], clients[1], { additionalClients: clients.slice(2) })
-      : clients[0];
-    if (clients.length > 1) {
-      console.log(`[elfura-resolver] ${clients.length} resolver URLs configured: capacity-aware routing and circuit breaker enabled. Limited hedge budget; open circuits are not sent normal traffic. Check Source health in /roxy.`);
+    const backup = resolverBackupConfig();
+    const primaryClient = new RemotePlaybackResolver(remote.url, remote.token);
+    const pool = backup && backup.url !== remote.url
+      ? createBalancedPlaybackResolver(primaryClient, new RemotePlaybackResolver(backup.url, backup.token))
+      : primaryClient;
+    if (backup && backup.url === remote.url) console.warn('[elfura-resolver] backup URL matches primary; using one resolver.');
+    if (pool !== primaryClient) {
+      console.log('[elfura-resolver] 2 resolver URLs configured: round-robin balancing and failover enabled. Stalled failover v2: hedge after 2500ms, including cooling/busy peer. Check Source health in /roxy for per-node authentication and request counts.');
     } else {
       console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
     }
@@ -1072,11 +1062,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           lateAffinityKey: `${mediaType}|${tmdbId}|${season ?? ''}|${episode ?? ''}|${anilistId ?? ''}|${anilistEpisode ?? ''}|${(nonce ?? '').slice(0, 128)}`,
         });
       } catch (error) {
-        if (error instanceof ResolverBusyError) {
-          res.setHeader('Retry-After', '5');
-          sendJson(res, 503, { ok: false, error: 'Source servers are busy. Please try again shortly.', reason: 'resolver-busy' }, allowOrigin);
-          return;
-        }
         // A resolver that cannot be reached is an outage, not an answer. Saying
         // "no sources for this title" would send the viewer hunting for a
         // different title when the problem is behind us.

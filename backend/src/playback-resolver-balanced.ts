@@ -1,56 +1,33 @@
-/** Capacity-aware discovery across remote resolvers. The media node never scrapes. */
-import { ResolverBusyError, type PlaybackRequest, type PlaybackResolution, type PlaybackResolver } from './playback-resolver.js';
+/** Round-robin discovery across two independent remote resolvers. No media relay
+ * or provider work runs here. A single resolver keeps the original no-retry path. */
+import type { PlaybackRequest, PlaybackResolution, PlaybackResolver } from './playback-resolver.js';
 import { RemotePlaybackResolver, ResolverUnavailableError } from './playback-resolver-remote.js';
 
 const COOLDOWN_MS = 30_000;
-const BUSY_COOLDOWN_MS = 5_000;
-const TOTAL_BUDGET_MS = 12_000; // The player waits 15 seconds.
-const HEDGE_DELAY_MS = 4_000;
-const HEDGE_EVERY = 20; // At most one extra speculative request per 20 searches, plus one initial token.
-// A hardware-independent cap is not a capacity estimate. Limits are opt-in.
-const DEFAULT_MAX_INFLIGHT = 0;
+// Player aborts after 15 seconds. A stalled first resolver must not consume
+// almost the entire budget before the other one gets a chance to answer.
+const TOTAL_BUDGET_MS = 12_000;
+const HEDGE_DELAY_MS = 2_500;
 
-type Circuit = 'closed' | 'open' | 'half-open';
 type Node = {
-  client: RemotePlaybackResolver;
-  circuit: Circuit;
-  retryAt: number;
-  generation: number;
-  consecutiveOpens: number;
-  openReason: 'busy' | 'unavailable';
-  attempts: number;
-  failures: number;
-  active: number;
+  client: RemotePlaybackResolver; retryAt: number; attempts: number; failures: number;
+  slowInFlight: number; lastSuccess: number; lastFailure: number;
 };
-
-function boundedInt(raw: unknown, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
-}
 
 export function createBalancedPlaybackResolver(
   first: RemotePlaybackResolver,
   second: RemotePlaybackResolver,
-  options: {
-    now?: () => number; random?: () => number; cooldownMs?: number; busyCooldownMs?: number;
-    budgetMs?: number; hedgeDelayMs?: number; hedgeEvery?: number; maxInFlight?: number;
-    log?: (line: string) => void; additionalClients?: RemotePlaybackResolver[];
-  } = {},
+  options: { now?: () => number; cooldownMs?: number; budgetMs?: number; hedgeDelayMs?: number; log?: (line: string) => void } = {},
 ): PlaybackResolver {
   const now = options.now ?? Date.now;
-  const random = options.random ?? Math.random;
-  const cooldown = Math.max(1, options.cooldownMs ?? COOLDOWN_MS);
-  const busyCooldown = Math.max(1, options.busyCooldownMs ?? BUSY_COOLDOWN_MS);
+  const cooldown = options.cooldownMs ?? COOLDOWN_MS;
   const budget = Math.max(1, options.budgetMs ?? TOTAL_BUDGET_MS);
-  const hedgeDelay = Math.max(1, Math.min(options.hedgeDelayMs ?? HEDGE_DELAY_MS, budget / 3));
-  const hedgeEvery = Math.max(1, options.hedgeEvery ?? HEDGE_EVERY);
-  const maxInFlight = boundedInt(options.maxInFlight ?? process.env.ELFURA_RESOLVER_NODE_MAX_INFLIGHT, DEFAULT_MAX_INFLIGHT, 0, 1000);
-  const hasCapacity = (node: Node) => maxInFlight === 0 || node.active < maxInFlight;
+  const hedgeDelay = Math.max(0, Math.min(options.hedgeDelayMs ?? HEDGE_DELAY_MS, budget / 4));
   const log = options.log ?? console.warn;
-  const nodes: Node[] = [first, second, ...(options.additionalClients ?? [])].map(client => ({
-    client, circuit: 'closed', retryAt: 0, generation: 0, consecutiveOpens: 0,
-    openReason: 'unavailable', attempts: 0, failures: 0, active: 0,
-  }));
+  const nodes: Node[] = [first, second].map(client => ({ client, retryAt: 0, attempts: 0, failures: 0, slowInFlight: 0, lastSuccess: 0, lastFailure: 0 }));
+  // Late results live only on the resolver that did the initial discovery.
+  // Bound and expire the media-node routing hints; no candidates or tokens are
+  // stored here, and ordinary discovery stays round-robin.
   const affinity = new Map<string, { node: Node; expires: number }>();
   const remember = (key: string, node: Node) => {
     affinity.delete(key);
@@ -58,151 +35,130 @@ export function createBalancedPlaybackResolver(
     while (affinity.size > 2048) affinity.delete(affinity.keys().next().value!);
   };
   let turn = 0;
-  // A tiny per-process retry budget and concurrency cap prevent a slow scan
-  // from fanning out for every viewer. Tokens are spent only on hedges, not on
-  // an immediate retry after a real error. At most one hedge is in flight.
-  let hedgeTokens = 1;
-  let hedgesInFlight = 0;
-
-  function opened(node: Node, generation: number, error: ResolverUnavailableError | ResolverBusyError, probe: boolean) {
-    if (node.generation !== generation || (probe ? node.circuit !== 'half-open' : node.circuit !== 'closed')) return;
-    node.failures++;
-    node.openReason = error instanceof ResolverBusyError ? 'busy' : 'unavailable';
-    node.consecutiveOpens++;
-    const base = node.openReason === 'busy' ? busyCooldown : cooldown;
-    const backoff = Math.min(300_000, base * 2 ** Math.min(node.consecutiveOpens - 1, 10));
-    const delay = Math.max(1, Math.round(backoff * (0.8 + Math.max(0, Math.min(1, random())) * 0.4)));
-    node.retryAt = now() + delay;
-    node.circuit = 'open';
-    node.generation++;
-    log(`[elfura-resolver] ${node.client.label} ${node.openReason} (${error.message}); circuit open for ${delay}ms`);
-  }
-
-  function answered(node: Node, generation: number, probe: boolean) {
-    if (node.generation !== generation) return;
-    if (probe && node.circuit === 'half-open') {
-      node.circuit = 'closed'; node.retryAt = 0; node.consecutiveOpens = 0;
-      log(`[elfura-resolver] ${node.client.label} recovered; circuit closed`);
-    } else if (!probe && node.circuit === 'closed') {
-      node.consecutiveOpens = 0;
-    }
-  }
 
   return {
     kind: 'remote',
-    label: `balanced (${nodes.map(node => node.client.label).join(', ')})`,
+    label: `balanced (${first.label}, ${second.label})`,
     async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
       const current = now();
       const key = request.lateAffinityKey?.slice(0, 256);
       let pinned = request.late && key ? affinity.get(key) : undefined;
       if (pinned && pinned.expires <= current) { affinity.delete(key!); pinned = undefined; }
-      const offset = pinned ? nodes.indexOf(pinned.node) : turn++ % nodes.length;
-      const order = nodes.map((_, i) => nodes[(offset + i) % nodes.length]);
+      const preferred = pinned ? nodes.indexOf(pinned.node) : turn++ % nodes.length;
+      const order = [nodes[preferred], nodes[1 - preferred]];
+      // Prefer a node that is not cooling down or already holding a stalled
+      // request. Keep the other as a last resort even if both are in cooldown:
+      // it may have recovered since its last failed request.
+      order.sort((a, b) =>
+        Number(a.retryAt > current) - Number(b.retryAt > current) ||
+        (pinned ? Number(a !== pinned.node) - Number(b !== pinned.node) : 0) ||
+        Number(a.slowInFlight > 0) - Number(b.slowInFlight > 0) ||
+        (a.retryAt > current && b.retryAt > current ? a.retryAt - b.retryAt : 0),
+      );
       const deadline = Date.now() + budget;
-      hedgeTokens = Math.min(1, hedgeTokens + 1 / hedgeEvery);
-
       return new Promise<PlaybackResolution | null>((resolve, reject) => {
         let settled = false;
-        let inFlight = 0;
+        let started = 0;
+        let finished = 0;
         let hadAnswer = false;
-        let hitBusy = false;
         let lastError: unknown;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const attempted = new Set<Node>();
+        let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
+        let slowNode: Node | undefined;
+        // A late request belongs to its original resolver's in-memory stash.
+        // A peer response is only useful if that owner fails, not if it is
+        // merely slower than the peer's unrelated (often empty) late result.
+        const pinnedOwner = pinned && order[0] === pinned.node ? pinned.node : undefined;
+        let peerAnswer: { result: PlaybackResolution | null; node: Node } | undefined;
+        let ownerFailed = false;
+
         const finish = (result: PlaybackResolution | null, node?: Node) => {
           if (settled) return;
           settled = true;
-          if (timer) clearTimeout(timer);
+          if (hedgeTimer) clearTimeout(hedgeTimer);
           if (result && node && key && !request.late && !request.sourceId) remember(key, node);
           resolve(result);
         };
         const fail = (error: unknown) => {
           if (settled) return;
           settled = true;
-          if (timer) clearTimeout(timer);
+          if (hedgeTimer) clearTimeout(hedgeTimer);
           reject(error);
         };
-        const pick = (allowProbe: boolean): Node | undefined => {
-          const t = now();
-          // Only one actual playback request may test an expired open circuit.
-          // Late stash affinity wins when its owner is healthy.
-          if (pinned && !attempted.has(pinned.node) && pinned.node.circuit === 'closed' && hasCapacity(pinned.node)) return pinned.node;
-          if (allowProbe) {
-            const candidate = order.find(n => !attempted.has(n) && n.circuit === 'open' && n.retryAt <= t && n.active === 0);
-            if (candidate) return candidate;
-          }
-          return order.filter(n => !attempted.has(n) && n.circuit === 'closed' && hasCapacity(n))
-            .sort((a, b) => a.active - b.active)[0];
-        };
-        const unavailable = () => {
-          if (hitBusy || nodes.some(n => n.circuit === 'half-open' || (n.circuit === 'closed' && !hasCapacity(n)) || (n.circuit === 'open' && n.openReason === 'busy'))) {
-            return new ResolverBusyError();
-          }
-          return lastError ?? new ResolverUnavailableError('all resolver circuits are open');
-        };
-        const launch = (node: Node, hedge = false) => {
+        const launch = (node: Node) => {
           const remaining = deadline - Date.now();
-          if (remaining <= 0) { fail(lastError ?? new ResolverUnavailableError('resolver request budget exhausted')); return; }
-          const probe = node.circuit === 'open';
-          if (probe) node.circuit = 'half-open';
-          const generation = node.generation;
-          attempted.add(node);
-          node.active++; node.attempts++; inFlight++;
-          if (hedge) hedgesInFlight++;
-          void (async () => {
-            let result: PlaybackResolution | null = null;
-            let gotAnswer = false;
-            let unexpected: unknown;
-            try {
-              result = await node.client.resolve(request, remaining, true);
-              answered(node, generation, probe);
-              gotAnswer = true;
-            } catch (error) {
-              if (!(error instanceof ResolverUnavailableError) && !(error instanceof ResolverBusyError)) unexpected = error;
-              else {
-                if (error instanceof ResolverBusyError) hitBusy = true;
-                // A timeout with an unfairly short remaining request budget is
-                // not evidence the peer is down.
-                if (!(error instanceof ResolverUnavailableError && error.timedOut && remaining < budget / 2)) opened(node, generation, error, probe);
-                else if (probe && node.generation === generation && node.circuit === 'half-open') node.circuit = 'open';
-                lastError = error;
+          if (remaining <= 0) {
+            if (hadAnswer) finish(null);
+            else fail(lastError ?? new ResolverUnavailableError('resolver request budget exhausted'));
+            return;
+          }
+          started++;
+          const attempt = ++node.attempts;
+          void node.client.resolve(request, remaining, true).then(result => {
+            node.lastSuccess = Math.max(node.lastSuccess, attempt);
+            if (attempt >= node.lastFailure) {
+              if (node.retryAt) log(`[elfura-resolver] ${node.client.label} recovered`);
+              node.retryAt = 0;
+            }
+            if (pinnedOwner && node !== pinnedOwner && !ownerFailed) {
+              peerAnswer = { result, node };
+              return;
+            }
+            if (result) finish(result, node);
+            else hadAnswer = true;
+          }).catch(error => {
+            if (!(error instanceof ResolverUnavailableError)) { fail(error); return; }
+            if (node === pinnedOwner) {
+              ownerFailed = true;
+              if (peerAnswer) {
+                if (peerAnswer.result) finish(peerAnswer.result, peerAnswer.node);
+                else hadAnswer = true;
               }
-            } finally {
-              node.active--; inFlight--;
-              if (hedge) hedgesInFlight--;
             }
+            // A peer launched close to the shared deadline may have too little
+            // time to answer. Do not declare it unhealthy on that timeout.
+            const starvedTimeout = error.timedOut && remaining < budget / 2;
+            if (!starvedTimeout) {
+              node.failures++;
+              node.lastFailure = Math.max(node.lastFailure, attempt);
+              if (attempt >= node.lastSuccess) {
+                node.retryAt = now() + cooldown;
+                log(`[elfura-resolver] ${node.client.label} unavailable (${error.message}); skipping for ${cooldown}ms`);
+              }
+            } else {
+              log(`[elfura-resolver] ${node.client.label} timed out with only ${remaining}ms of request budget; not marking it unavailable`);
+            }
+            lastError = error;
+          }).finally(() => {
+            finished++;
+            if (slowNode === node) { node.slowInFlight--; slowNode = undefined; }
             if (settled) return;
-            if (unexpected) { fail(unexpected); return; }
-            if (gotAnswer) {
-              if (result) { finish(result, node); return; }
-              hadAnswer = true;
+            if (started === 1 && finished === 1) {
+              // An ordinary empty answer is not an outage. Fast transport or
+              // server errors, however, immediately try the other backend.
+              if (hadAnswer) { finish(null); return; }
+              if (hedgeTimer) clearTimeout(hedgeTimer);
+              launch(order[1]);
+              return;
             }
-            if (inFlight > 0) return;
-            if (hadAnswer) { finish(null); return; }
-            // A fast failure may try another node, but never an open circuit
-            // before its single allowed recovery trial is due.
-            const next = pick(true);
-            if (next && deadline - Date.now() >= budget / 2) launch(next);
-            else fail(unavailable());
-          })();
+            if (started === 2 && finished === 2) {
+              if (hadAnswer) finish(null);
+              else fail(lastError ?? new ResolverUnavailableError('resolver request budget exhausted'));
+            }
+          });
         };
-        // A saturated stash owner is not a missing stash. Do not misroute a
-        // late pass to another node just because the owner is at capacity.
-        if (pinned && pinned.node.circuit === 'closed' && !hasCapacity(pinned.node)) {
-          fail(new ResolverBusyError());
-          return;
-        }
-        const firstNode = pick(true);
-        if (!firstNode) { fail(unavailable()); return; }
-        launch(firstNode);
-        if (!request.late) timer = setTimeout(() => {
-          if (settled || inFlight !== 1 || hedgeTokens < 1 || hedgesInFlight >= 1) return;
-          // Hedge only to another CLOSED node with spare capacity. Never use a
-          // recovery probe as a speculative request, or fan out to all peers.
-          const peer = pick(false);
-          if (!peer) return;
-          hedgeTokens -= 1;
-          launch(peer, true);
+        launch(order[0]);
+        hedgeTimer = setTimeout(() => {
+          if (settled || started !== 1 || finished !== 0) return;
+          // Even a cooling or already-busy peer can have recovered (or be
+          // serving another title successfully). Suppressing this hedge can
+          // leave it only two seconds after the first call times out, poisoning
+          // its health and failing viewers. Normal routing still prefers the
+          // healthy node; hedges are bounded to one additional call per request.
+          // Do not mistake a slow node for a failed one. Keep its original call
+          // alive (bounded by its timeout) to learn whether it really recovers;
+          // new requests meanwhile prefer its peer instead of piling onto it.
+          slowNode = order[0]; slowNode.slowInFlight++;
+          launch(order[1]);
         }, hedgeDelay);
       });
     },
@@ -217,15 +173,19 @@ export function createBalancedPlaybackResolver(
         detail: `resolver pool: ${usable.length}/${nodes.length} reachable and authenticated`,
         ...(usable[0]?.health.sources ? { sources: usable[0].health.sources } : {}),
         nodes: results.map(({ node, health, auth, name }) => ({
-          name, reachable: health.reachable, authenticated: auth.authenticated,
+          name,
+          reachable: health.reachable,
+          authenticated: auth.authenticated,
           detail: !health.reachable ? 'health endpoint unreachable' : auth.detail,
-          attempts: node.attempts, failures: node.failures,
+          attempts: node.attempts,
+          failures: node.failures,
           cooldownMs: Math.max(0, node.retryAt - now()),
-          circuit: node.circuit, active: node.active, maxInFlight,
         })),
       };
     },
     async sourceStatus() {
+      // These counters are per resolver, not cluster-wide; use the first that
+      // answers and keep switching independent from the playback round robin.
       for (const node of nodes) {
         const status = await node.client.sourceStatus();
         if (status !== null) return status;
@@ -233,6 +193,8 @@ export function createBalancedPlaybackResolver(
       return null;
     },
     async setSourceEnabled(id, enabled) {
+      // The resolver processes do not share their operator switches. Broadcast
+      // and report partial failure rather than pretend both changed.
       const results = await Promise.all(nodes.map(n => n.client.setSourceEnabled(id, enabled)));
       return results.every(Boolean);
     },

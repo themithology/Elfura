@@ -597,8 +597,6 @@ export class SourceRegistry {
     anilistEpisode?: number;
     preferredLang?: string;
     streamPathPrefix?: string;
-    /** Optional observer for background discovery that can outlive the response. */
-    onDiscoverySettled?: (work: Promise<unknown>) => void;
     /**
      * "Late join" pass: only sources whose discovery already finished (their
      * result is in the RAM cache) are reported. Nothing is started and nothing
@@ -783,10 +781,6 @@ export class SourceRegistry {
         }
       }
     });
-
-    // The HTTP response may be sealed while provider lanes and enrichment are
-    // still running for late discovery. Report these separately from admission.
-    params.onDiscoverySettled?.(Promise.allSettled([mediaPromise, earlyOpenSubsPromise, ...segmentTasks, ...adapterTasks]));
 
     if (!lateOnly) {
       await Promise.race([

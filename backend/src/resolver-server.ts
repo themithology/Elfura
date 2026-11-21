@@ -134,14 +134,6 @@ export function createResolverServer(options: ResolverServerOptions): {
 } {
   const { registry, token } = options;
   const log = options.log ?? console.log;
-  // Do not impose an unmeasured fixed capacity. A positive limit is optional;
-  // zero (the default) disables admission rejection.
-  const configuredLimit = Number(process.env.ELFURA_RESOLVER_MAX_CONCURRENT ?? 0);
-  const maxConcurrent = Number.isInteger(configuredLimit) && configuredLimit >= 0 && configuredLimit <= 1000 ? configuredLimit : 0;
-  if (maxConcurrent !== configuredLimit) log('[elfura-resolver] invalid ELFURA_RESOLVER_MAX_CONCURRENT; limit disabled');
-  log(maxConcurrent ? `[elfura-resolver] foreground request limit: ${maxConcurrent} per resolver process` : '[elfura-resolver] foreground request limit disabled');
-  let active = 0;
-  let backgroundPending = 0;
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -191,11 +183,6 @@ export function createResolverServer(options: ResolverServerOptions): {
         return;
       }
 
-      if (method(req) === 'GET' && pathname === '/resolver/api/capacity') {
-        sendJson(res, 200, { ok: true, active, backgroundPending, maxConcurrent, ready: maxConcurrent === 0 || active < maxConcurrent });
-        return;
-      }
-
       if (method(req) === 'GET' && pathname === '/resolver/api/sources') {
         sendJson(res, 200, { ok: true, sources: registry.health.snapshot(registry.listPublicSources()) });
         return;
@@ -235,22 +222,8 @@ export function createResolverServer(options: ResolverServerOptions): {
           sendJson(res, 400, { ok: false, error: 'invalid playback request' });
           return;
         }
-        // Optional foreground limit. An HTTP disconnect does not cancel a
-        // running resolve, so keep its slot until that resolve actually ends.
-        // Background lanes remain visible, but must not permanently consume
-        // admission slots after the response has been sealed.
-        if (maxConcurrent > 0 && active >= maxConcurrent) {
-          res.setHeader('Retry-After', '5');
-          sendJson(res, 503, { ok: false, reason: 'resolver-busy', error: 'source resolver is busy; try again shortly' });
-          return;
-        }
-        active++;
         try {
-          const resolution = await registry.resolvePlayback({ ...request, onDiscoverySettled: work => {
-            backgroundPending++;
-            void work.then(() => { backgroundPending--; }, () => { backgroundPending--; });
-          } });
-          if (res.destroyed) return;
+          const resolution = await registry.resolvePlayback(request);
           if (!resolution) {
             // Deliberately 200 with ok:false. This is the resolver's *answer*,
             // not a failure of the resolver: the caller must not confuse "this
@@ -266,9 +239,7 @@ export function createResolverServer(options: ResolverServerOptions): {
             `[elfura-resolver] ${request.type}/${request.tmdbId} threw: ` +
               `${error instanceof Error ? error.message : 'unknown error'}`,
           );
-          if (!res.destroyed) sendJson(res, 500, { ok: false, error: 'resolver failed while resolving this title' });
-        } finally {
-          active--;
+          sendJson(res, 500, { ok: false, error: 'resolver failed while resolving this title' });
         }
         return;
       }
