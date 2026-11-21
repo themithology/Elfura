@@ -37,7 +37,6 @@ import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
 import { createSource24Adapter } from './source24.js';
 import { createSource25Adapter } from './source25.js';
-import { createSource26Adapter } from './source26.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -94,7 +93,6 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
   'source-24': 'ELFURA_VIDLINK_ENABLED',
   'source-25': 'ELFURA_GREYBOX_ENABLED',
-  'source-26': 'ELFURA_MOVIEBOX_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
@@ -227,8 +225,8 @@ export class SourceRegistry {
       createSource24Adapter(cfg.source24),
       // Greybox: plain JSON with per-stream language labels and no token.
       createSource25Adapter(cfg.source25),
-      // Direct API; enabled by default, with an explicit operator off switch.
-      createSource26Adapter(),
+      // Source 26 is intentionally not registered: tested streams can play
+      // audio without video on browsers that lack HEVC decoding.
     ];
   }
 

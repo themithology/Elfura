@@ -448,16 +448,13 @@ Press **Test all** to check the list. Each reachable proxy shows the exit addres
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
 
 
-### Experimental direct source (Source 26)
+### Source 26 retired
 
-The experimental direct-API adapter is enabled by default for
-movies and series. It searches using TMDB metadata and accepts only an
-unambiguous title/type/year match. Only HTTPS MP4, HLS, and DASH URLs are
-eligible; MKV and notice clips are not. CDN cookies stay in encrypted stream
-relay tickets, and sessions are kept in memory. Audio capabilities must come
-from the media, not provider labels. Set `ELFURA_MOVIEBOX_ENABLED=0` on the resolver node to disable it.
-The source may be unavailable or
-rate-limited; a GitHub runner's result does not establish VPS availability.
+MovieBox (Source 26) is not registered, including when an older `.env` contains
+`ELFURA_MOVIEBOX_ENABLED=1`. Browser tests showed audio-only playback for the
+HEVC streams on browsers without HEVC decoding, and some reported resolutions
+were inaccurate. Research adapters remain unregistered until real video playback,
+audio switching and episode identity have been verified.
 
 Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree/b901738b56170c278b35468c32ade32b9de1890d/src/providers/moviebox)
 (MIT OR Apache-2.0). `.github/workflows/moviebox-direct.yml` checks the adapter

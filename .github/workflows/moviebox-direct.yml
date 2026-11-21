@@ -25,6 +25,7 @@ jobs:
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: npm run build:backend
+      - run: node backend/test/moviebox-retired.mjs
       - run: node backend/test/moviebox-adapter.mjs
       - run: node backend/test/moviebox-dubs.mjs
       - run: node backend/test/moviebox-mp4-audio.mjs

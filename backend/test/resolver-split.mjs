@@ -41,8 +41,8 @@ import assert from 'node:assert/strict';
 // (Anivexa), source-17 (Anivortex) and source-19 (DesiDub) each made zero
 // network requests without credentials or a title, and were replaced by the
 // single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
-// Source 26 is enabled by default, adding one row to the previous 19.
-const MIN_LISTED_SOURCES = 20;
+// Source 26 was removed after real-browser audio-only playback failures.
+const MIN_LISTED_SOURCES = 19;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -227,8 +227,9 @@ await check('public health exposes a count, never a list', async () => {
 });
 
 await check('resolver lists every source with health', () => {
-  // The default board includes source-26; each row is one source group.
+  // Each row is one source group; the broken MovieBox lane is not registered.
   assert.equal(listed.sources.length, MIN_LISTED_SOURCES, 'the configured board');
+  assert(!listed.sources.some(source => source.id === 'source-26'), 'audio-only MovieBox lane must stay removed');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
