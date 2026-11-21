@@ -86,3 +86,18 @@ for(const [title,id,kind] of [['Avengers: Endgame',299534,'movie'],['Fight Club'
  cineverse.push(row);
 }
 console.log('::notice title=Cineverse research::'+JSON.stringify(cineverse));
+const direct=[];
+for(const sample of [{type:'movie',id:550},{type:'tv',id:1396,s:1,e:1}]) {
+ const row={sample:sample.type};
+ try {
+  const u=new URL('/api/embed-tmdb/'+sample.id,'https://net27.cc');
+  if(sample.type==='tv'){u.searchParams.set('type','tv');u.searchParams.set('s',String(sample.s));u.searchParams.set('e',String(sample.e));}
+  const res=await get(u,{'User-Agent':'Mozilla/5.0',Referer:'https://net27.cc/'});
+  const json=await res.json();
+  row.keys=Object.keys(json);row.ok=json.ok;row.streams=Array.isArray(json.streams)?json.streams.length:0;
+  row.formats=(json.streams??[]).slice(0,5).map(s=>{try{return new URL(s.url).pathname.split('.').pop().slice(0,8)}catch{return 'unknown'}});
+  row.mp4=!!json.mp4;row.captionLangs=(json.captions??[]).map(s=>s.lang).filter(Boolean);
+ } catch(e){row.error=String(e.message??e).replace(/https?:\/\/\S+/g,'[url]').slice(0,80);}
+ direct.push(row);
+}
+console.log('::notice title=Alternate endpoint research::'+JSON.stringify(direct));
