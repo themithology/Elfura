@@ -46,7 +46,7 @@ try {
  let playlists=[];
  page.on('response', async response=>{try{
    const u=new URL(response.url());if(u.origin!==base||!u.pathname.startsWith('/api/v1/stream')||!(response.headers()['content-type']??'').includes('mpegurl'))return;
-   const text=await response.text();playlists.push({startsM3u:text.trimStart().startsWith('#EXTM3U'),bytes:Buffer.byteLength(text),streams:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,media:(text.match(/#EXTINF/g)??[]).length,headerLines:text.split('\n').filter(x=>x.startsWith('#EXT')).length});
+   const text=await response.text();playlists.push({startsM3u:text.trimStart().startsWith('#EXTM3U'),bytes:Buffer.byteLength(text),streams:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,media:(text.match(/#EXTINF/g)??[]).length,headerLines:text.split('\n').filter(x=>x.startsWith('#EXT')).length,codecs:[...text.matchAll(/CODECS="([^"]+)"/g)].map(m=>m[1]).filter(x=>/^[a-zA-Z0-9., _-]{1,120}$/.test(x)).slice(0,6)});
  }catch{}});
  await page.addInitScript(()=>{window.__auditHlsErrors=[];let last=null;const timer=setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&h!==last){last=h;h.on('hlsError',(_event,d)=>window.__auditHlsErrors.push({type:d.type,details:d.details,fatal:d.fatal}));}if(window.__auditHlsErrors.length>30)clearInterval(timer)},25);});
  const deadline=(p,ms)=>Promise.race([p,new Promise((_,reject)=>{const t=setTimeout(()=>reject(Error('audit-deadline')),ms);t.unref();})]);
