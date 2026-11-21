@@ -1023,6 +1023,18 @@ export class SourceRegistry {
       blockedByRuntime.clear();
     }
 
+    // Wait for subtitles before taking the coverage snapshot, not after sealing
+    // sources. This is the same existing 100ms window, but adapters finishing
+    // during it can now join the first list rather than being needlessly late.
+    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
+    if (shouldResolveOpenSubtitles && !subtitleState.value && remaining() > 0 &&
+        slots.some(slot => Boolean(slot?.result.candidates.length))) {
+      await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
+    }
+    // Freeze the slots used for this response. A source completing after this
+    // point must remain pending even if the live slots or stash change before
+    // the reply is sent. The same applies to late-only responses.
+    const coverageSlots = slots.slice();
     // Coverage pass: every adapter that answered contributes its usable lanes,
     // not only the ones whose probe finished inside the budget. Verified lanes
     // are already in `candidateEntries` and sort first downstream; these fill in
@@ -1032,7 +1044,7 @@ export class SourceRegistry {
     {
       const seenUrls = new Set(candidateEntries.map((entry) => entry.candidate.url));
       let appended = 0;
-      for (const slot of slots) {
+      for (const slot of coverageSlots) {
         if (!slot) continue;
         let added = 0;
         for (const cand of slot.result.candidates) {
@@ -1125,11 +1137,7 @@ export class SourceRegistry {
     // separate, unauthenticated subtitle catalogue. It is used only when
     // OpenSubtitles produced nothing, so it can add languages but can never
     // displace a working OpenSubtitles track.
-    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
-
     if (shouldResolveOpenSubtitles && media.imdbId) {
-      // Never issue a serial second request or wait beyond the startup budget.
-      if (!subtitleState.value && remaining() > 0) await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
       const rawFallbackSubs = subtitleState.value ?? [];
 
       if (rawFallbackSubs.length > 0) {
@@ -1254,11 +1262,7 @@ export class SourceRegistry {
       // Sources that have not produced anything yet. The client uses this to
       // decide whether a late-join pass is worth making.
       pendingSources: activeAdapters
-        .filter((adapter, idx) =>
-          lateOnly
-            ? !(this.finishedLate.get(lateKey) ?? []).some((entry) => entry.adapter.id === adapter.id)
-            : slots[idx] === null,
-        )
+        .filter((_, idx) => coverageSlots[idx] === null)
         .map((adapter) => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
