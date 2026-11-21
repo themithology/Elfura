@@ -1164,6 +1164,55 @@ export async function handleStreamRelay(
       return;
     }
 
+    // Some restricted anime CDNs mislabel genuine MPEG-TS fragments as HTML.
+    // Require several consecutive packet sync bytes before treating such a
+    // response as media; actual HTML and short/ambiguous payloads stay blocked.
+    if (ticket.ro && ticket.k === 'a' && req.method !== 'HEAD' && upstreamRes.body &&
+        (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+      const reader = upstreamRes.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      let done = false;
+      while (size < 564 && !done) {
+        const next = await reader.read();
+        done = next.done;
+        if (next.value) { chunks.push(next.value); size += next.value.length; }
+      }
+      const sample = Buffer.concat(chunks, size);
+      let transport = false;
+      // Reject an HTML prefix even if it is deliberately padded with TS sync bytes.
+      const htmlPrefix = /^\s*<(?:!doctype\s+html|html\b|head\b|body\b|script\b)/i.test(sample.toString('utf8').replace(/^\uFEFF/, ''));
+      if (!htmlPrefix) for (let i = 0; i < 188 && i + 376 < sample.length; i++) {
+        if (sample[i] === 0x47 && sample[i + 188] === 0x47 && sample[i + 376] === 0x47) { transport = true; break; }
+      }
+      if (!transport) {
+        await reader.cancel().catch(() => {});
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
+        return;
+      }
+      setCloudflareCache(res, 'segment');
+      const headers: Record<string, string> = { 'Content-Type': 'video/mp2t', 'X-Content-Type-Options': 'nosniff' };
+      for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+        const value = upstreamRes.headers.get(name);
+        if (value) headers[name] = value;
+      }
+      res.writeHead(upstreamRes.status, headers);
+      const stream = Readable.from((async function* () {
+        try {
+          yield* chunks;
+          while (!done) {
+            const next = await reader.read();
+            done = next.done;
+            if (next.value) yield next.value;
+          }
+        } finally { await reader.cancel().catch(() => {}); }
+      })());
+      await pipeline(stream, res);
+      return;
+    }
+
     // Never pipe HTML error/redirect pages as binary media segments, encryption keys, or MP4 byte ranges
     if ((ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
       try {
