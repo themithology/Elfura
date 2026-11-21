@@ -26,6 +26,7 @@ for(const [title,id,ep] of samples){
   const norm=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
   row.hasEpisodeTitle=typeof data.episodeTitle==='string';row.titleExact=!!expected&&!!data.episodeTitle&&norm(expected)===norm(data.episodeTitle);
   row.trackCount=Array.isArray(data.tracks)?data.tracks.length:0;
+  row.trackShapes=(Array.isArray(data.tracks)?data.tracks:[]).slice(0,6).map(t=>({keys:Object.keys(t??{}).filter(k=>/^[a-zA-Z_]{1,24}$/.test(k)),kind:typeof t?.kind==='string'?t.kind.slice(0,16):null,label:typeof t?.label==='string'?t.label.slice(0,24):null,extension:(()=>{try{return new URL(t.file??t.url??'',origin).pathname.match(/\.[a-z0-9]{2,5}$/i)?.[0]??''}catch{return ''}})()}));
   const values=[];
   const items=Array.isArray(rawSources)?rawSources:[rawSources];
   for(const item of items){const raw=typeof item==='string'?item:typeof item?.file==='string'?item.file:typeof item?.url==='string'?item.url:null;
