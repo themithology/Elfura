@@ -22,6 +22,9 @@ for(const [title,id,ep] of samples){
   const ar=await fetch(endpoint,{redirect:'error',signal:AbortSignal.timeout(10000),headers:{'User-Agent':ua,Referer:page.href,Accept:'application/json'}});row.sourceStatus=ar.status;
   const payload=await readBoundedText(ar,256000);if(!ar.ok||!payload)throw Error('source-api');
   const data=JSON.parse(payload),rawSources=data.sources;row.sourceShape=Array.isArray(rawSources)?'array':typeof rawSources;row.sourceKeys=rawSources&&typeof rawSources==='object'&&!Array.isArray(rawSources)?Object.keys(rawSources).filter(k=>/^[a-zA-Z_]{1,24}$/.test(k)).slice(0,12):[];
+  const expected=({46260:{1:'Enter: Naruto Uzumaki!',2:'My Name is Konohamaru'},95479:{1:'Ryomen Sukuna'},1429:{1:'To You, in 2000 Years: The Fall of Shiganshina, Part 1'}})[id]?.[ep];
+  const norm=s=>String(s??'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  row.hasEpisodeTitle=typeof data.episodeTitle==='string';row.titleExact=!!expected&&!!data.episodeTitle&&norm(expected)===norm(data.episodeTitle);
   row.trackCount=Array.isArray(data.tracks)?data.tracks.length:0;
   const values=[];
   const items=Array.isArray(rawSources)?rawSources:[rawSources];
