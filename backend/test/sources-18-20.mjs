@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { loadBackendConfig } from '../../dist/backend/config.js';
 import { SourceRegistry } from '../../dist/backend/sources/registry.js';
 import { pngCarriesTransportStream, sniffMediaBytes, unwrapPngTransportStream } from '../../dist/backend/sources/media-sniff.js';
-import { catalogVariants, fetchFromSubDub, renditionsFromPayload } from '../../dist/backend/sources/source18.js';
+import { audioFromLabel, catalogVariants, fetchFromSubDub, renditionsFromPayload } from '../../dist/backend/sources/source18.js';
 import { fetchFromVidora, vidoraCandidates } from '../../dist/backend/sources/source20.js';
 
 /* ── media sniffing (Source 8 PNG-wrapped transport streams) ─────────────── */
@@ -48,6 +48,11 @@ assert.equal(sniffMediaBytes(Buffer.from('<!doctype html>')), 'unknown');
 
 /* ── Source 18: SubDubAnime renditions ───────────────────────────────────── */
 
+assert.equal(audioFromLabel('ORG'), null, 'catalogue ORG is not the Oring language');
+assert.equal(audioFromLabel('original'), null);
+assert.equal(audioFromLabel('Hindi Dubbed')?.code, 'hi');
+assert.equal(audioFromLabel('English')?.code, 'en');
+
 const hlsRow = {
   dataId: 'abc123XY',
   format: 'M3U8',
@@ -80,6 +85,7 @@ const catalog = {
   },
   series: {
     '0010070': { tmdbId: '0010070', originalTmdbId: '10070', language: 'English', title: 'Example' },
+    '46260': { tmdbId: '46260', originalTmdbId: '46260', language: 'ORG', title: 'Hindi Dubbed' },
   },
   dramas: {},
 };
@@ -104,6 +110,10 @@ try {
   const rows = await fetchFromSubDub({ type: 'movie', tmdbId: '438631' });
   assert.equal(rows.length, 1, 'base payload lane');
   assert.equal(rows[0].quality, '720p');
+  const original = await fetchFromSubDub({type: 'tv', tmdbId: '46260', season: 1, episode: 1});
+  assert.equal(original.length, 1);
+  assert.equal(original[0].audioLang, undefined, 'ORG is unspecified despite a Hindi title');
+  assert.equal(original[0].claimedAudioLang, undefined);
 } finally {
   globalThis.fetch = originalFetch;
 }
