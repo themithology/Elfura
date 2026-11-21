@@ -1,6 +1,6 @@
 # Anime sub/dub research
 
-Status: **not a complete new source**. Do not register the experimental adapter or assert that every title has a dub or subtitles based on these checks.
+Status: Sources 29 and 30 are registered as additional direct anime sources, with the coverage and playback limitations documented below. Do not assert that every title has a dub or subtitles based on these samples.
 
 ## Existing multi-audio source (Source 28)
 
