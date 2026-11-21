@@ -7,6 +7,7 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',ep:1,episode:'Enter: Naruto Uzumaki!'},{id:'46260',title:'Naruto',year:'2002',ep:2,episode:'My Name is Konohamaru'},{id:'95479',title:'Jujutsu Kaisen',year:'2020',ep:1,episode:'Ryomen Sukuna'}];
 const orig=globalThis.fetch;
+process.env.ELFURA_ANIME_RELAY_DEBUG='1';const relayErrors=[];const oldWarn=console.warn;console.warn=(...args)=>{if(args[0]==='[elfura-anime-relay]')relayErrors.push(args.slice(1).join(':'));else oldWarn(...args)};
 globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return orig(input,init);
  const p=u.pathname.split('/'),i=p.indexOf('tv'),e=p.indexOf('episode'),sample=samples.find(x=>x.id===p[i+1]&&(e<0||x.ep===Number(p[e+1])));if(!sample)return new Response(null,{status:404});
  if(e>=0)return Response.json({name:sample.episode,runtime:24});
@@ -19,7 +20,7 @@ try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
  const streamResponses=[];page.on('response',r=>{if(r.url().includes('/api/v1/stream?'))streamResponses.push({status:r.status(),type:(r.headers()['content-type']||'').split(';')[0].slice(0,50)})});
- for(const sample of samples){streamResponses.length=0;const row={title:sample.title,episode:sample.ep,lanes:[]};let step='start';try{
+ for(const sample of samples){streamResponses.length=0;relayErrors.length=0;const row={title:sample.title,episode:sample.ep,lanes:[]};let step='start';try{
   await page.goto(`${base}/embed/tv/${sample.id}/1/${sample.ep}?autoplay=1&source=source-30`,{waitUntil:'domcontentloaded',timeout:15000});
   step='variants';await page.waitForFunction(()=>{const a=window.__elfura?.player?.getSources?.()??[];return a.some(s=>s.audioVariant==='sub')&&a.some(s=>s.audioVariant==='dub')},null,{timeout:35000});
   row.options=await page.evaluate(()=>window.__elfura.player.getSources().map(s=>({variant:s.audioVariant,label:s.label,subtitleCount:s.subtitles.length,claimedAsAudioLang:!!s.audioLang})));
@@ -40,7 +41,7 @@ try{
    row.lanes.push(entry);
   }
   row.ok=true;
- }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});}rows.push(row);}
+ }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});row.relayErrors=[...new Set(relayErrors)].slice(0,5);}rows.push(row);}
  console.log('::notice title=MegaPlay actual adapter player test::'+JSON.stringify(rows));
  if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}

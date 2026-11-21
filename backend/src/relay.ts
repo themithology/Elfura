@@ -1272,6 +1272,10 @@ export async function handleStreamRelay(
     const nodeStream = Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
     await pipeline(nodeStream, res);
   } catch (err) {
+    if (ticket.ro && process.env.ELFURA_ANIME_RELAY_DEBUG === '1') {
+      const e = err as { name?: string; code?: string; cause?: { code?: string } };
+      console.warn('[elfura-anime-relay]', String(e?.name ?? 'Error').replace(/[^\w-]/g, '').slice(0,40), String(e?.code ?? e?.cause?.code ?? '').replace(/[^\w-]/g, '').slice(0,40));
+    }
     if (!res.headersSent) {
       setCloudflareCache(res, 'no-store');
       res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
