@@ -19,7 +19,11 @@ for(const sample of samples){
    const raw=await readBoundedText(res,256000);let payload;try{payload=JSON.parse(raw??'null')}catch{}
    const url=lane==='vidbox'?(payload?.sources?.Vidbox?.type==='hls'?payload.sources.Vidbox.url:null):payload?.releases?.[0]?.master;
    if(res.ok&&typeof url==='string'&&isSafeUpstreamUrl(url)&&new URL(url).protocol==='https:'){
-    row.candidates=1;row.hostFingerprint=createHash('sha256').update(new URL(url).hostname).digest('hex').slice(0,10);
+    row.candidates=1;
+    const parsed=new URL(url),nested=[];
+    for(const value of parsed.searchParams.values()){for(const str of [value, (()=>{try{return Buffer.from(value,'base64url').toString('utf8')}catch{return ''}})()]){try{const n=new URL(str);if(['http:','https:'].includes(n.protocol))nested.push(n.hostname)}catch{}}}
+    row.shape={hostLooksRelay:/proxy|relay|transcode|worker/i.test(parsed.hostname),pathLooksRelay:/proxy|relay|transcode/i.test(parsed.pathname),nestedHostHashes:[...new Set(nested)].map(x=>createHash('sha256').update(x).digest('hex').slice(0,10))};
+    row.hostFingerprint=createHash('sha256').update(new URL(url).hostname).digest('hex').slice(0,10);
     const c={key:url,url,type:'hls',quality:'auto',headers};const v=await verifyAndFilterCandidatesDetailed([c],AbortSignal.timeout(6000));row.alive=v.verifiedAliveCount;row.fingerprint=createHash('sha256').update(url).digest('hex').slice(0,10);
    }else row.candidates=0;
   }catch(e){row.error=e?.cause?.code??e.name;}return row;
