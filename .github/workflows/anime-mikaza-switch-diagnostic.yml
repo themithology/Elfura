@@ -1,0 +1,19 @@
+name: Anime direct audio switching diagnostic
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/anime-mikaza-switch-diagnostic.mjs', '.github/workflows/anime-mikaza-switch-diagnostic.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/anime-mikaza-switch-diagnostic.mjs

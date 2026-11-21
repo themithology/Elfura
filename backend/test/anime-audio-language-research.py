@@ -23,7 +23,8 @@ try:
                            'segments': count})
         except Exception as exc:
             last = traceback.extract_tb(exc.__traceback__)[-1]
-            result.append({'clip': path.stem, 'error': type(exc).__name__, 'at': last.name, 'line': last.lineno})
+            message = str(exc).replace(str(path), '[clip]').replace(os.environ['AUDIT_AUDIO_DIR'], '[temp]')
+            result.append({'clip': path.stem, 'error': type(exc).__name__, 'at': last.name, 'line': last.lineno, 'message': message[:120]})
     print('::notice title=Automatic audio language research::' + json.dumps({'clips': result}, separators=(',', ':')))
 except Exception as exc:
     print('::notice title=Automatic audio language research::' + json.dumps({'unavailable': type(exc).__name__}, separators=(',', ':')))
