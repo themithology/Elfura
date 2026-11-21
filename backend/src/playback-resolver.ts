@@ -66,6 +66,8 @@ export interface PlaybackResolver {
   sourceStatus(): Promise<ResolverSourceStatus[] | null>;
   /** Turn a source on or off without a redeploy. */
   setSourceEnabled(id: string, enabled: boolean): Promise<boolean>;
+  /** Stop optional background monitoring when the owning media server closes. */
+  close?(): void;
 }
 
 /** Operator-only pool diagnostics; contains no URLs, credentials or titles. */
@@ -77,6 +79,8 @@ export interface ResolverNodeStatus {
   attempts: number;
   failures: number;
   cooldownMs: number;
+  /** Whether the playback router currently permits new requests to this node. */
+  available?: boolean;
 }
 
 export interface ResolverSourceStatus {
@@ -175,23 +179,23 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
   return { url: clean, token };
 }
 
-/** Optional second resolver. Apply the same public-network policy as the primary.
- * Never let validation of an optional backup overwrite primary diagnostics. */
-export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
-  const raw = (env.ELFURA_RESOLVER_BACKUP_URL ?? '').trim();
+/** Optional second or third resolver. Apply the primary's public-network policy.
+ * Validation of an optional node must not overwrite primary diagnostics. */
+export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env, which: 'backup' | 'third' = 'backup'): { url: string; token: string } | null {
+  const raw = ((which === 'third' ? env.ELFURA_RESOLVER_THIRD_URL : env.ELFURA_RESOLVER_BACKUP_URL) ?? '').trim();
   if (!raw) return null;
   try {
     const parsed = new URL(raw);
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
   } catch {
-    console.error('[elfura-resolver] invalid backup URL; use an HTTP(S) URL without credentials, query or fragment.');
+    console.error(`[elfura-resolver] invalid ${which} URL; use an HTTP(S) URL without credentials, query or fragment.`);
     return null;
   }
   const oldReason = lastFallbackReason;
   try {
     const result = resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
     if (result && new URL(result.url).protocol === 'http:' && !isPrivateResolverUrl(result.url)) {
-      console.warn('[elfura-resolver] WARNING: the public HTTP backup is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.');
+      console.warn(`[elfura-resolver] WARNING: the public HTTP ${which} is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.`);
     }
     return result;
   } finally {
@@ -369,6 +373,7 @@ export function createResilientPlaybackResolver(options: {
     probe: () => options.remote.probe(),
     sourceStatus: () => options.remote.sourceStatus(),
     setSourceEnabled: (id: string, enabled: boolean) => options.remote.setSourceEnabled(id, enabled),
+    close: () => options.remote.close?.(),
     usingLocalFallback: () => false,
     lastFallbackReason: () => lastReason,
   } as unknown as PlaybackResolver & { usingLocalFallback(): boolean };

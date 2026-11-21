@@ -237,14 +237,21 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
-    const backup = resolverBackupConfig();
-    const primaryClient = new RemotePlaybackResolver(remote.url, remote.token);
-    const pool = backup && backup.url !== remote.url
-      ? createBalancedPlaybackResolver(primaryClient, new RemotePlaybackResolver(backup.url, backup.token))
-      : primaryClient;
-    if (backup && backup.url === remote.url) console.warn('[elfura-resolver] backup URL matches primary; using one resolver.');
-    if (pool !== primaryClient) {
-      console.log('[elfura-resolver] 2 resolver URLs configured: round-robin balancing and failover enabled. Stalled failover v2: hedge after 2500ms, including cooling/busy peer. Check Source health in /roxy for per-node authentication and request counts.');
+    const configs = [remote];
+    for (const which of ['backup', 'third'] as const) {
+      const extra = resolverBackupConfig(process.env, which);
+      if (!extra) continue;
+      const normalized = (url: string) => { try { return new URL(url).href.replace(/\/+$/, ''); } catch { return url; } };
+      if (configs.some(config => normalized(config.url) === normalized(extra.url))) {
+        console.warn(`[elfura-resolver] ${which} URL duplicates another resolver; ignoring it.`);
+      } else configs.push(extra);
+    }
+    const clients = configs.map(config => new RemotePlaybackResolver(config.url, config.token));
+    const pool = clients.length > 1
+      ? createBalancedPlaybackResolver(clients[0], clients[1], { additionalClients: clients.slice(2) })
+      : clients[0];
+    if (clients.length > 1) {
+      console.log(`[elfura-resolver] ${clients.length} resolver URLs configured: round-robin and periodic health checks enabled; no speculative hedges. Check Source health in /roxy.`);
     } else {
       console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
     }
@@ -1370,7 +1377,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     sendJson(res, 404, { ok: false, error: 'not found' });
   };
 
-  server.on('close', () => roxy.close());
+  server.on('close', () => { roxy.close(); resolver.close?.(); });
   return { server, cfg, registry, selfTestLocal: resolver.kind === 'local' };
 }
 

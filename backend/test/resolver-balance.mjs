@@ -1,202 +1,153 @@
 import assert from 'node:assert/strict';
-import http from 'node:http';
-import { createBalancedPlaybackResolver } from '../../dist/backend/playback-resolver-balanced.js';
-import { RemotePlaybackResolver, ResolverUnavailableError } from '../../dist/backend/playback-resolver-remote.js';
-import { createResilientPlaybackResolver, resolverBackupConfig, resolverConfig, resolverFallbackReason } from '../../dist/backend/playback-resolver.js';
+import {createBalancedPlaybackResolver} from '../../dist/backend/playback-resolver-balanced.js';
+import {ResolverUnavailableError} from '../../dist/backend/playback-resolver-remote.js';
+import {resolverBackupConfig,resolverConfig,resolverFallbackReason} from '../../dist/backend/playback-resolver.js';
 
-function server(id) {
-  const state = { id, mode: 'ok', calls: 0, changes: 0, token: 'shared-token', delay: 0 };
-  const srv = http.createServer((req, res) => {
-    if (req.url === '/resolver/api/health') return res.end(JSON.stringify({ok:true,sources:['source-1']}));
-    if (req.headers['x-elfura-resolver-token'] !== state.token) {res.writeHead(401); return res.end(JSON.stringify({error:'unauthorized'}));}
-    if (req.url === '/resolver/api/sources') {
-      if (req.method === 'POST') state.changes++;
-      return res.end(JSON.stringify({sources:[{id:'source-1'}]}));
-    }
-    if (req.url !== '/resolver/api/playback') {res.writeHead(404); return res.end();}
-    state.calls++;
-    if (state.mode === 'disconnect') return req.socket.destroy();
-    if (state.mode === 'fail') {res.writeHead(503); return res.end(JSON.stringify({error:'down'}));}
-    if (state.mode === 'invalid') {res.writeHead(400); return res.end(JSON.stringify({error:'bad request'}));}
-    if (state.mode === 'limited') {res.writeHead(429); return res.end(JSON.stringify({error:'rate limited'}));}
-    const body = state.mode === 'empty' ? {ok:false} : {ok:true,node:id};
-    setTimeout(() => res.end(JSON.stringify(body)), state.delay);
-  });
-  return new Promise(resolve => srv.listen(0,'127.0.0.1',()=>resolve({state,srv,url:`http://127.0.0.1:${srv.address().port}`})));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn,what){for(let i=0;i<100;i++){if(await fn())return;await sleep(10);}throw Error(`timed out waiting for ${what}`);}
+function mock(label){
+  const state={calls:0,checks:0,authChecks:0,healthy:true,authenticated:true,fail:false,empty:false,toggles:0};
+  return {label,state,
+    async resolve(){state.calls++; if(state.handler)return state.handler();if(state.fail)throw new ResolverUnavailableError('offline');return state.empty?null:{ok:true,node:label};},
+    async probe(){state.checks++;return {reachable:state.healthy,detail:'health'};},
+    async authProbe(){state.authChecks++;return {authenticated:state.authenticated,detail:'auth'};},
+    async sourceStatus(){return [];},
+    async setSourceEnabled(){state.toggles++;return true;},
+  };
 }
-const a = await server('a'), b = await server('b');
+const a=mock('a'),b=mock('b'),c=mock('c');
+const pool=createBalancedPlaybackResolver(a,b,{additionalClients:[c],healthIntervalMs:30,budgetMs:200,log:()=>{}});
+const request={type:'movie',tmdbId:'1'};
 try {
-  const client = n => new RemotePlaybackResolver(n.url, 'shared-token', () => {});
-  let now = 1000;
-  const pool = createBalancedPlaybackResolver(client(a), client(b), {now:()=>now, cooldownMs:30000, log:()=>{}});
-  const request = {type:'movie',tmdbId:'1'};
-  const results = await Promise.all(Array.from({length:20},()=>pool.resolve(request)));
-  assert.equal(results.filter(x=>x.node === 'a').length,10);
-  assert.equal(results.filter(x=>x.node === 'b').length,10);
-  // Outage switches to peer, and cooldown avoids repeated requests to it.
-  a.state.mode = 'fail';
+  const got=[];for(let i=0;i<9;i++)got.push((await pool.resolve(request)).node);
+  assert.deepEqual(got,['a','b','c','a','b','c','a','b','c']);
+  a.state.fail=true;a.state.healthy=false;
   assert.equal((await pool.resolve(request)).node,'b');
-  const failedCalls = a.state.calls;
-  for (let i=0;i<4;i++) assert.equal((await pool.resolve(request)).node,'b');
-  assert.equal(a.state.calls,failedCalls,'failed resolver should be skipped in cooldown');
-  a.state.mode = 'ok'; now += 30001;
-  const recovered = [];
-  for (let i=0;i<4;i++) recovered.push((await pool.resolve(request)).node);
+  const after=a.state.calls;
+  const remaining=[];for(let i=0;i<6;i++)remaining.push((await pool.resolve(request)).node);
+  assert.deepEqual(remaining,['b','c','b','c','b','c']);
+  assert.equal(a.state.calls,after,'no playback to down node');
+  assert.equal(await pool.setSourceEnabled('source-1',true),false);
+  assert.equal(a.state.toggles,0,'no source writes to down node');
+  await until(()=>a.state.checks>=2,'background checks without traffic');
+  assert.equal(a.state.calls,after);
+  a.state.healthy=true;a.state.fail=false;
+  await until(async()=> (await pool.probe()).nodes[0].available,'recovery');
+  const recovered=[];for(let i=0;i<6;i++)recovered.push((await pool.resolve(request)).node);
   assert.equal(recovered.filter(x=>x==='a').length,2);
-  assert.equal(recovered.filter(x=>x==='b').length,2);
-  assert.equal((await pool.probe()).reachable,true);
-  const diagnostics=await pool.probe();
-  assert.equal(diagnostics.detail,'resolver pool: 2/2 reachable and authenticated');
-  assert.equal(diagnostics.nodes.length,2);
-  assert.ok(diagnostics.nodes.every(n=>n.authenticated && n.attempts>0));
-  assert.ok(diagnostics.nodes[0].failures>0);
-  assert.equal(await pool.setSourceEnabled('source-1',false),true);
-  assert.equal(a.state.changes,1); assert.equal(b.state.changes,1);
-  b.state.token='other';
-  assert.equal(await pool.setSourceEnabled('source-1',true),false,'partial switch must be reported');
-  assert.equal(a.state.changes,2); assert.equal(b.state.changes,1);
-  b.state.token='shared-token';
-  // An empty search and invalid requests are answers, not an outage.
-  const solo = createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}});
-  a.state.mode='empty'; const before=b.state.calls;
-  assert.equal(await solo.resolve(request),null); assert.equal(b.state.calls,before);
-  a.state.mode='invalid';
-  const invalid = createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}});
-  assert.equal(await invalid.resolve(request),null); assert.equal(b.state.calls,before);
-  // Authentication failure and Cloudflare rate limits must try the other node,
-  // rather than masquerading as a title with no sources.
-  a.state.mode='ok';
-  const badToken = createBalancedPlaybackResolver(new RemotePlaybackResolver(a.url,'wrong',()=>{}),client(b),{log:()=>{}});
-  assert.equal((await badToken.resolve(request)).node,'b');
-  const authStatus=await badToken.probe();
-  assert.equal(authStatus.nodes[0].authenticated,false);
-  assert.match(authStatus.nodes[0].detail,/401/);
-  assert.equal(authStatus.nodes[1].authenticated,true);
-  assert.equal(authStatus.detail,'resolver pool: 1/2 reachable and authenticated');
-  a.state.mode='limited';
-  const limited=createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}});
-  assert.equal((await limited.resolve(request)).node,'b');
-  a.state.mode='disconnect'; b.state.mode='disconnect';
-  const bothDown = createResilientPlaybackResolver({remote:createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}})});
-  await assert.rejects(bothDown.resolve(request),{name:'ResolverBackendDownError'});
-  // Late discovery is local to the node that served the initial request. Even
-  // with interleaved viewers, late calls must not follow round-robin to a node
-  // whose in-memory stash cannot contain that player's slow anime sources.
-  a.state.mode='ok'; b.state.mode='ok';
-  const sticky = createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}});
-  const one = {...request, lateAffinityKey:'title|session-one'};
-  const two = {...request, lateAffinityKey:'title|session-two'};
-  assert.equal((await sticky.resolve(one)).node,'a');
-  assert.equal((await sticky.resolve(two)).node,'b');
-  assert.equal((await sticky.resolve({...one,late:true})).node,'a');
-  assert.equal((await sticky.resolve({...two,late:true})).node,'b');
-  // A source-specific recovery must not overwrite the main discovery route.
-  await sticky.resolve({...one,sourceId:'source-29'});
-  assert.equal((await sticky.resolve({...one,late:true})).node,'a');
-  // If the pinned node is unavailable, the ordinary failover path still works.
-  a.state.mode='fail';
-  assert.equal((await sticky.resolve({...one,late:true})).node,'b');
-  // Blackholed first node, healthy but non-instant second node. The old code
-  // spent almost the entire budget on A and left B too little time to resolve.
-  a.state.mode='ok'; b.state.mode='ok'; a.state.delay=2000; b.state.delay=300;
-  let hedgeNow=1000;
-  const hedged = createBalancedPlaybackResolver(client(a),client(b),{now:()=>hedgeNow,budgetMs:800,hedgeDelayMs:100,cooldownMs:30000,log:()=>{}});
-  const hedgeStarted=Date.now();
-  assert.equal((await hedged.resolve(request)).node,'b');
-  assert.ok(Date.now()-hedgeStarted<750,'healthy backup should have time to answer');
-  const aAfterHedge=a.state.calls;
-  assert.equal((await hedged.resolve(request)).node,'b');
-  assert.equal(a.state.calls,aAfterHedge+1,'slow primary may hedge to the stalled peer as a last resort');
-  await new Promise(r=>setTimeout(r,160));
-  const hedgeStatus=await hedged.probe();
-  assert.ok(hedgeStatus.nodes[0].failures>0 && hedgeStatus.nodes[0].cooldownMs>0,'a genuine timeout enters cooldown');
-  const aDuringCooldown=a.state.calls;
-  assert.equal((await hedged.resolve(request)).node,'b');
-  assert.equal(a.state.calls,aDuringCooldown+1,'a slow primary may hedge even onto a cooling peer');
-  a.state.delay=0; hedgeNow+=30001;
-  const recoveredAfterStall=[];
-  for(let i=0;i<4;i++) recoveredAfterStall.push((await hedged.resolve(request)).node);
-  assert.ok(recoveredAfterStall.includes('a'),'a recovered node should rejoin after cooldown');
-  assert.equal((await hedged.probe()).nodes[0].cooldownMs,0);
-  // Exercise the same timeout when the backup is the failed first choice.
-  a.state.delay=300; b.state.delay=2000;
-  const reversed=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
-  assert.equal((await reversed.resolve(request)).node,'a');
-  assert.equal((await reversed.resolve(request)).node,'a');
-  // A slow but healthy node must not be marked down just because the other
-  // node answered the hedged request first.
-  a.state.delay=450; b.state.delay=20;
-  const healthySlow=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:900,hedgeDelayMs:50,log:()=>{}});
-  assert.equal((await healthySlow.resolve(request)).node,'b');
-  await new Promise(r=>setTimeout(r,500));
-  assert.equal((await healthySlow.probe()).nodes[0].failures,0);
-  // A quick empty answer from a hedged peer must not hide the first node's
-  // still-pending real result.
-  a.state.delay=160; b.state.delay=10; b.state.mode='empty';
-  const noFalseEmpty=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:40,log:()=>{}});
-  assert.equal((await noFalseEmpty.resolve(request)).node,'a');
-  // A late request must prefer its original stash owner, even when the peer
-  // could return an immediate successful but empty late payload.
-  a.state.delay=0; b.state.mode='ok'; b.state.delay=0;
-  const lateSlow=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:40,log:()=>{}});
-  const lateRequest={...request,lateAffinityKey:'slow-late'};
-  assert.equal((await lateSlow.resolve(lateRequest)).node,'a');
-  a.state.delay=160;
-  const beforeLate=b.state.calls;
-  assert.equal((await lateSlow.resolve({...lateRequest,late:true})).node,'a');
-  assert.equal(b.state.calls,beforeLate+1,'a late hedge is allowed, but its answer cannot replace the stash owner');
-  a.state.delay=2000; b.state.delay=100;
-  assert.equal((await lateSlow.resolve({...lateRequest,late:true})).node,'b','when the stash owner fails, a completed peer answer is available');
-  // A previous transient failure put B in cooldown, then A blackholes while B
-  // recovers. B still needs enough time to answer before the overall deadline.
-  a.state.mode='ok'; a.state.delay=0; b.state.mode='fail'; b.state.delay=0;
-  const cooledPeer=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
-  assert.equal((await cooledPeer.resolve(request)).node,'a');
-  assert.equal((await cooledPeer.resolve(request)).node,'a'); // B fails and cools.
-  a.state.delay=2000; b.state.mode='ok'; b.state.delay=300;
-  assert.equal((await cooledPeer.resolve(request)).node,'b','recovered cooldown peer needs a full hedge window');
-  // A previously hedged A is still in flight. If B then stalls, a new request
-  // must not wait for B to time out before trying the now-healthy A.
-  a.state.delay=2000; b.state.delay=100;
-  const busyPeer=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
-  assert.equal((await busyPeer.resolve(request)).node,'b');
-  a.state.delay=300; b.state.delay=2000;
-  assert.equal((await busyPeer.resolve(request)).node,'a','busy peer must still get time to answer');
-  // If both were in cooldown, one recovery must still be tried rather than
-  // only rechecking the still-dead node.
-  a.state.delay=0; b.state.delay=0; a.state.mode='fail'; b.state.mode='fail';
-  const recovering=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:50,log:()=>{}});
-  await assert.rejects(recovering.resolve(request));
-  b.state.mode='ok';
-  assert.equal((await recovering.resolve(request)).node,'b');
-  // If the event loop stalls until almost the overall deadline, a peer gets
-  // only the remaining budget. Its short timeout is not evidence it is down.
-  const healthClient={probe:async()=>({reachable:true}),authProbe:async()=>({authenticated:true})};
-  const delayedFailure={...healthClient,label:'delayed',resolve:async()=>{
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,320);
-    throw new ResolverUnavailableError('offline');
-  }};
-  const starvedPeer={...healthClient,label:'starved',resolve:async(_request,ms)=>{
-    await new Promise(r=>setTimeout(r,ms));
-    throw new ResolverUnavailableError('timeout',true);
-  }};
-  const starvation=createBalancedPlaybackResolver(delayedFailure,starvedPeer,{budgetMs:400,hedgeDelayMs:50,log:()=>{}});
-  await assert.rejects(starvation.resolve(request));
-  assert.equal((await starvation.probe()).nodes[1].failures,0,'a starved timeout must not poison node health');
-  // Slow failures cannot add two full independent timeout windows.
-  a.state.mode='ok'; b.state.mode='ok'; a.state.delay=500; b.state.delay=500;
-  const bounded = createBalancedPlaybackResolver(client(a),client(b),{budgetMs:180,log:()=>{}});
-  const start=Date.now(); await assert.rejects(bounded.resolve(request));
-  assert.ok(Date.now()-start < 450,'pooled call exceeded its overall deadline');
-  assert.ok(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1',ELFURA_SECRET:'shared'}));
-  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_SECRET:'shared'}),null);
-  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'http://203.0.113.9:3002',ELFURA_RESOLVER_ALLOW_PUBLIC:'1',ELFURA_SECRET:'shared'})?.url,'http://203.0.113.9:3002');
-  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'http://203.0.113.9:3002',ELFURA_SECRET:'shared'}),null,'public HTTP still requires explicit opt-in');
-  assert.equal(resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://user:pass@two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'}),null);
-  resolverConfig({ELFURA_RESOLVER_URL:'wrong'}); const reason=resolverFallbackReason();
-  resolverBackupConfig({ELFURA_RESOLVER_BACKUP_URL:'https://two.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'});
-  assert.equal(resolverFallbackReason(),reason,'backup must not overwrite primary diagnostics');
-  console.log('resolver balancing: round robin, failover, cooldown/recovery, auth, switches and deadline OK');
-} finally {
-  for (const n of [a,b]) {n.srv.closeAllConnections(); await new Promise(r=>n.srv.close(r));}
-}
+  const one={...request,lateAffinityKey:'session-1'},two={...request,lateAffinityKey:'session-2'};
+  const owner=(await pool.resolve(one)).node;
+  await pool.resolve(two);
+  assert.equal((await pool.resolve({...one,late:true})).node,owner);
+  await pool.resolve({...one,sourceId:'source-29'});
+  assert.equal((await pool.resolve({...one,late:true})).node,owner);
+  // Health may answer even when playback fails: the node must stay paused
+  // until two later health checks, not get called repeatedly by retries.
+  for(const n of [a,b,c]) {n.state.fail=true;n.state.healthy=false;}
+  await assert.rejects(pool.resolve(request),{name:'ResolverUnavailableError'});
+  const counts=[a,b,c].map(n=>n.state.calls);
+  await assert.rejects(pool.resolve(request),{name:'ResolverUnavailableError'});
+  assert.deepEqual([a,b,c].map(n=>n.state.calls),counts,'all-down cannot send playback');
+  b.state.healthy=true;b.state.fail=false;
+  await until(async()=> (await pool.probe()).nodes[1].available,'one node recovered');
+  assert.equal((await pool.resolve(request)).node,'b');
+  assert.deepEqual([a,c].map(n=>n.state.calls),[counts[0],counts[2]]);
+} finally {pool.close();}
+
+// A health endpoint can be healthy while playback fails: no immediate repeat,
+// and recovery checks cannot guarantee that the next playback will work.
+const h=mock('h'),j=mock('j');h.state.fail=true;
+const pingOnly=createBalancedPlaybackResolver(h,j,{healthIntervalMs:40,log:()=>{}});
+try {
+  assert.equal((await pingOnly.resolve(request)).node,'j');
+  const calls=h.state.calls;
+  for(let k=0;k<4;k++)assert.equal((await pingOnly.resolve(request)).node,'j');
+  assert.equal(h.state.calls,calls);
+  await until(async()=> (await pingOnly.probe()).nodes[0].available,'healthy probes after playback failure');
+  for(let k=0;k<2;k++) assert.equal((await pingOnly.resolve(request)).node,'j'); // h is tried once and fails
+  assert.equal(h.state.calls,calls+1);
+} finally {pingOnly.close();}
+
+// Idle nodes are removed by probes, without waiting for a viewer to hit them.
+const idle=mock('idle'),live=mock('live');idle.state.healthy=false;
+const watched=createBalancedPlaybackResolver(idle,live,{healthIntervalMs:25,log:()=>{}});
+try {
+  await until(async()=> !(await watched.probe()).nodes[0].available,'idle health failure');
+  assert.equal((await watched.resolve(request)).node,'live');assert.equal(idle.state.calls,0);
+} finally {watched.close();}
+
+// A very slow failed first attempt is not duplicated speculatively and a peer
+// is not poisoned by the tiny remaining timeout window.
+const slow=mock('slow'),peer=mock('peer');
+slow.state.handler=async()=>{await sleep(150);throw new ResolverUnavailableError('timeout',true);};
+const bounded=createBalancedPlaybackResolver(slow,peer,{budgetMs:200,healthIntervalMs:10000,log:()=>{}});
+try {
+  const pending=bounded.resolve(request);await sleep(30);assert.equal(peer.state.calls,0,'no speculative hedge');
+  await assert.rejects(pending);assert.equal(peer.state.calls,0,'no starved retry');
+  assert.equal((await bounded.probe()).nodes[1].available,true);
+  assert.equal((await bounded.resolve(request)).node,'peer');
+} finally {bounded.close();}
+
+// A valid empty result is not a failure and must not fan out.
+const empty=mock('empty'),unused=mock('unused');empty.state.empty=true;
+const noFanout=createBalancedPlaybackResolver(empty,unused,{healthIntervalMs:10000,log:()=>{}});
+try {assert.equal(await noFanout.resolve(request),null);assert.equal(unused.state.calls,0);}
+finally {noFanout.close();}
+
+// A check started before a playback failure cannot clear that later failure.
+const p=mock('p'),q=mock('q');let releaseProbe, probeStarted;
+const started=new Promise(r=>probeStarted=r);
+p.probe=async()=>{probeStarted();return new Promise(r=>releaseProbe=r);};
+const staleCheck=createBalancedPlaybackResolver(p,q,{healthIntervalMs:20,log:()=>{}});
+try {
+  await Promise.race([started,sleep(100).then(()=>{throw Error('probe did not start');})]);p.state.fail=true;
+  assert.equal((await staleCheck.resolve(request)).node,'q');
+  releaseProbe({reachable:true,detail:'old response'});await sleep(5);
+  assert.equal(p.state.calls,1);
+  for(let k=0;k<3;k++)assert.equal((await staleCheck.resolve(request)).node,'q');
+  assert.equal(p.state.calls,1,'stale probe must not restore failed node');
+} finally {staleCheck.close();}
+
+// No arbitrary admission limit: concurrent requests are still shared equally.
+const u=mock('u'),v=mock('v'),w=mock('w');let release;
+const gate=new Promise(r=>release=r);
+for(const item of [u,v,w]) item.state.handler=async()=>{await gate;return {ok:true,node:item.label};};
+const concurrent=createBalancedPlaybackResolver(u,v,{additionalClients:[w],healthIntervalMs:10000,log:()=>{}});
+try {
+  const pending=Array.from({length: 90},()=>concurrent.resolve(request));
+  assert.deepEqual([u,v,w].map(n=>n.state.calls),[30,30,30]);
+  release();assert.equal((await Promise.all(pending)).length,90);
+} finally {concurrent.close();}
+
+// A late, older in-flight failure must not undo a newer successful result.
+const x=mock('x'),y=mock('y');let rejectOld;
+x.state.handler=()=>new Promise((_,reject)=>rejectOld=reject);
+const race=createBalancedPlaybackResolver(x,y,{healthIntervalMs:10000,log:()=>{}});
+try {
+  const old=race.resolve(request); await race.resolve(request); // x pending; y answers
+  x.state.handler=async()=>({ok:true,node:'x'});
+  assert.equal((await race.resolve(request)).node,'x');
+  rejectOld(new ResolverUnavailableError('old failure'));
+  assert.equal((await old).node,'y');
+  assert.equal((await race.probe()).nodes[0].available,true);
+} finally {race.close();}
+
+// A stale success must not revive a node which a newer request marked down.
+const m=mock('m'),n=mock('n');let resolveOld;
+m.state.handler=()=>new Promise(resolve=>resolveOld=resolve);
+const stale=createBalancedPlaybackResolver(m,n,{healthIntervalMs:10000,log:()=>{}});
+try {
+  const old=stale.resolve(request);await stale.resolve(request);
+  m.state.handler=async()=>{throw new ResolverUnavailableError('new failure');};
+  assert.equal((await stale.resolve(request)).node,'n');
+  resolveOld({ok:true,node:'m'});await old;
+  assert.equal((await stale.probe()).nodes[0].available,false);
+} finally {stale.close();}
+
+assert.ok(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'third'));
+assert.equal(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example'},'third'),null);
+assert.equal(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://user:pass@three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'third'),null);
+resolverConfig({ELFURA_RESOLVER_URL:'wrong'});const reason=resolverFallbackReason();
+resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'third');
+assert.equal(resolverFallbackReason(),reason);
+console.log('resolver pool: equal distribution, down-only checks, recovery, all-down, affinity and concurrency OK');

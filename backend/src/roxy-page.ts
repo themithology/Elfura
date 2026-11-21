@@ -22,7 +22,7 @@ async function loadHealth(){
   const r=d.resolver||{};
   const nodeSummary=Array.isArray(r.nodes)?r.nodes.map(n=>String(n.name)+': '+String(n.detail)
     +' · '+Number(n.attempts||0)+' search attempts, '+Number(n.failures||0)+' failures'
-    +(n.cooldownMs>0?' · retrying in '+Math.ceil(n.cooldownMs/1000)+'s':'')).join(' | '):'';
+    +(n.available===false?' · playback paused, health checks continue':'')).join(' | '):'';
   if(state)state.textContent= r.reachable ? 'RESOLVER · '+String(r.label||'').toUpperCase() : 'RESOLVER OFFLINE';
   if(d.unavailable){
     if(note)note.textContent='The source resolver is not reachable or authenticated ('+(r.detail||'no answer')+'). '
