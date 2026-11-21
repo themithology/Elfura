@@ -21,14 +21,17 @@ execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',ke
 const tls={key:readFileSync(keyPath),cert:readFileSync(certPath)};
 async function listen(server) { servers.push(server); await new Promise(r=>server.listen(0,'127.0.0.1',r)); return server.address().port; }
 async function node(id, useHttps) {
+  const state={blocked:false,hang:false,delay:0,backgroundHang:false};
   const registry={
     listPublicSources:()=>[{id:'source-1',label:'Source 1'}],
     health:{snapshot:()=>[{id:'source-1',label:'Source 1'}],setEnabled:()=>{}},
-    resolvePlayback:async()=>({ok:true,node:id}),
+    resolvePlayback:async(request)=>{
+      if(state.backgroundHang) request.onDiscoverySettled(new Promise(()=>{}));
+      return {ok:true,node:id};
+    },
   };
   const real=createResolverServer({cfg:{},registry,token:secret,log:()=>{}}).server;
   const resolverPort=await listen(real);
-  const state={blocked:false,hang:false,delay:0};
   const handler=(req,res)=>{
     if(state.blocked && req.url !== '/resolver/api/health') {res.writeHead(403,{'content-type':'text/html'});return res.end('Access denied');}
     if(req.url==='/resolver/api/playback') {
@@ -168,6 +171,16 @@ try {
   const threeStatus=await (await fetch(threeBase+'/roxy/api/sources',{headers:{origin:threeBase,cookie:threeCookie}})).json();
   assert.equal(threeStatus.resolver.nodes.length,3);
   assert.deepEqual(threeStatus.resolver.nodes.map(n=>n.attempts),[3,3,3]);
+  // Regression: more than eight simultaneous viewers per node, followed by a
+  // second wave while old provider background promises never settle. The old
+  // default permanently filled all admission slots and locked out playback.
+  for(const n of [a,b,c]) { n.state.backgroundHang=true; n.state.delay=100; }
+  for(let wave=0;wave<2;wave++) {
+    const responses=await Promise.all(Array.from({length:48},(_,i)=>threePlayback(400+wave*48+i)));
+    assert.equal(responses.length,48);
+    assert.ok([1,2,3].every(node=>responses.some(r=>r.node===node)),'all healthy resolvers must carry load');
+  }
+  for(const n of [a,b,c]) { n.state.backgroundHang=false; n.state.delay=0; }
   a.state.blocked=true; b.state.blocked=true; c.state.delay=4000;
   const threeStart=Date.now();
   assert.equal((await threePlayback(210)).node,3,'two fast failures must fail over to the third');

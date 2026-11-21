@@ -134,11 +134,14 @@ export function createResolverServer(options: ResolverServerOptions): {
 } {
   const { registry, token } = options;
   const log = options.log ?? console.log;
-  const configuredLimit = Number(process.env.ELFURA_RESOLVER_MAX_CONCURRENT ?? 8);
-  const maxConcurrent = Number.isInteger(configuredLimit) && configuredLimit >= 1 && configuredLimit <= 1000 ? configuredLimit : 8;
-  if (maxConcurrent !== configuredLimit) log('[elfura-resolver] invalid ELFURA_RESOLVER_MAX_CONCURRENT; using 8');
-  log(`[elfura-resolver] capacity limit: ${maxConcurrent} active discovery jobs per resolver process`);
+  // Do not impose an unmeasured fixed capacity. A positive limit is optional;
+  // zero (the default) disables admission rejection.
+  const configuredLimit = Number(process.env.ELFURA_RESOLVER_MAX_CONCURRENT ?? 0);
+  const maxConcurrent = Number.isInteger(configuredLimit) && configuredLimit >= 0 && configuredLimit <= 1000 ? configuredLimit : 0;
+  if (maxConcurrent !== configuredLimit) log('[elfura-resolver] invalid ELFURA_RESOLVER_MAX_CONCURRENT; limit disabled');
+  log(maxConcurrent ? `[elfura-resolver] foreground request limit: ${maxConcurrent} per resolver process` : '[elfura-resolver] foreground request limit disabled');
   let active = 0;
+  let backgroundPending = 0;
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -189,7 +192,7 @@ export function createResolverServer(options: ResolverServerOptions): {
       }
 
       if (method(req) === 'GET' && pathname === '/resolver/api/capacity') {
-        sendJson(res, 200, { ok: true, active, maxConcurrent, ready: active < maxConcurrent });
+        sendJson(res, 200, { ok: true, active, backgroundPending, maxConcurrent, ready: maxConcurrent === 0 || active < maxConcurrent });
         return;
       }
 
@@ -232,18 +235,21 @@ export function createResolverServer(options: ResolverServerOptions): {
           sendJson(res, 400, { ok: false, error: 'invalid playback request' });
           return;
         }
-        // Hold the slot until the provider work really completes, even if the
-        // media node disconnects. A disconnected HTTP request does not cancel
-        // discovery or its late-source stash.
-        if (active >= maxConcurrent) {
+        // Optional foreground limit. An HTTP disconnect does not cancel a
+        // running resolve, so keep its slot until that resolve actually ends.
+        // Background lanes remain visible, but must not permanently consume
+        // admission slots after the response has been sealed.
+        if (maxConcurrent > 0 && active >= maxConcurrent) {
           res.setHeader('Retry-After', '5');
           sendJson(res, 503, { ok: false, reason: 'resolver-busy', error: 'source resolver is busy; try again shortly' });
           return;
         }
         active++;
-        let background: Promise<unknown> = Promise.resolve();
         try {
-          const resolution = await registry.resolvePlayback({ ...request, onDiscoverySettled: work => { background = work; } });
+          const resolution = await registry.resolvePlayback({ ...request, onDiscoverySettled: work => {
+            backgroundPending++;
+            void work.then(() => { backgroundPending--; }, () => { backgroundPending--; });
+          } });
           if (res.destroyed) return;
           if (!resolution) {
             // Deliberately 200 with ok:false. This is the resolver's *answer*,
@@ -262,9 +268,7 @@ export function createResolverServer(options: ResolverServerOptions): {
           );
           if (!res.destroyed) sendJson(res, 500, { ok: false, error: 'resolver failed while resolving this title' });
         } finally {
-          // A sealed response can leave provider and enrichment lanes running
-          // for late discovery. Do not admit replacement work until they settle.
-          void background.then(() => { active--; }, () => { active--; });
+          active--;
         }
         return;
       }

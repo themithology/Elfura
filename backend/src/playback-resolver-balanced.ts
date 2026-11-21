@@ -7,7 +7,8 @@ const BUSY_COOLDOWN_MS = 5_000;
 const TOTAL_BUDGET_MS = 12_000; // The player waits 15 seconds.
 const HEDGE_DELAY_MS = 4_000;
 const HEDGE_EVERY = 20; // At most one extra speculative request per 20 searches, plus one initial token.
-const DEFAULT_MAX_INFLIGHT = 8;
+// A hardware-independent cap is not a capacity estimate. Limits are opt-in.
+const DEFAULT_MAX_INFLIGHT = 0;
 
 type Circuit = 'closed' | 'open' | 'half-open';
 type Node = {
@@ -43,7 +44,8 @@ export function createBalancedPlaybackResolver(
   const budget = Math.max(1, options.budgetMs ?? TOTAL_BUDGET_MS);
   const hedgeDelay = Math.max(1, Math.min(options.hedgeDelayMs ?? HEDGE_DELAY_MS, budget / 3));
   const hedgeEvery = Math.max(1, options.hedgeEvery ?? HEDGE_EVERY);
-  const maxInFlight = boundedInt(options.maxInFlight ?? process.env.ELFURA_RESOLVER_NODE_MAX_INFLIGHT, DEFAULT_MAX_INFLIGHT, 1, 1000);
+  const maxInFlight = boundedInt(options.maxInFlight ?? process.env.ELFURA_RESOLVER_NODE_MAX_INFLIGHT, DEFAULT_MAX_INFLIGHT, 0, 1000);
+  const hasCapacity = (node: Node) => maxInFlight === 0 || node.active < maxInFlight;
   const log = options.log ?? console.warn;
   const nodes: Node[] = [first, second, ...(options.additionalClients ?? [])].map(client => ({
     client, circuit: 'closed', retryAt: 0, generation: 0, consecutiveOpens: 0,
@@ -124,16 +126,16 @@ export function createBalancedPlaybackResolver(
           const t = now();
           // Only one actual playback request may test an expired open circuit.
           // Late stash affinity wins when its owner is healthy.
-          if (pinned && !attempted.has(pinned.node) && pinned.node.circuit === 'closed' && pinned.node.active < maxInFlight) return pinned.node;
+          if (pinned && !attempted.has(pinned.node) && pinned.node.circuit === 'closed' && hasCapacity(pinned.node)) return pinned.node;
           if (allowProbe) {
             const candidate = order.find(n => !attempted.has(n) && n.circuit === 'open' && n.retryAt <= t && n.active === 0);
             if (candidate) return candidate;
           }
-          return order.filter(n => !attempted.has(n) && n.circuit === 'closed' && n.active < maxInFlight)
+          return order.filter(n => !attempted.has(n) && n.circuit === 'closed' && hasCapacity(n))
             .sort((a, b) => a.active - b.active)[0];
         };
         const unavailable = () => {
-          if (hitBusy || nodes.some(n => n.circuit === 'half-open' || (n.circuit === 'closed' && n.active >= maxInFlight) || (n.circuit === 'open' && n.openReason === 'busy'))) {
+          if (hitBusy || nodes.some(n => n.circuit === 'half-open' || (n.circuit === 'closed' && !hasCapacity(n)) || (n.circuit === 'open' && n.openReason === 'busy'))) {
             return new ResolverBusyError();
           }
           return lastError ?? new ResolverUnavailableError('all resolver circuits are open');
@@ -186,7 +188,7 @@ export function createBalancedPlaybackResolver(
         };
         // A saturated stash owner is not a missing stash. Do not misroute a
         // late pass to another node just because the owner is at capacity.
-        if (pinned && pinned.node.circuit === 'closed' && pinned.node.active >= maxInFlight) {
+        if (pinned && pinned.node.circuit === 'closed' && !hasCapacity(pinned.node)) {
           fail(new ResolverBusyError());
           return;
         }

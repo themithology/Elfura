@@ -85,19 +85,23 @@ multiplying work on already-busy servers. An already-started search continues
 on its resolver even if another answers first; cancellation is not propagated
 into provider work or the late-source stash.
 
-The streaming node limits outstanding requests per resolver with
-`ELFURA_RESOLVER_NODE_MAX_INFLIGHT` (default 8, per streaming process). Each
-updated resolver independently limits actual discovery work with
-`ELFURA_RESOLVER_MAX_CONCURRENT` (default 8, per resolver process), including
-work whose client has disconnected. These are starting values, not verified
-capacity: tune using load tests and logs. They do not coordinate across multiple
-streaming or resolver processes; the resolver-side limit is essential when
-multiple streaming servers share it. Over-capacity requests get 503 and
-`Retry-After`; there is no unbounded queue. The authenticated
-`/resolver/api/capacity` reports active work and the configured limit. A provider
-lane that never settles keeps its slot occupied; investigate stuck tasks and
-restart the resolver if necessary rather than automatically admitting more work.
-Older resolver versions do not enforce that server-side limit.
+No fixed concurrency limit is enabled by default: the earlier default of eight
+could reject healthy traffic and indefinitely occupy slots for stalled background
+providers. An operator can optionally set `ELFURA_RESOLVER_NODE_MAX_INFLIGHT`
+on the streaming server or `ELFURA_RESOLVER_MAX_CONCURRENT` on a resolver to a
+positive integer (1–1000); zero or unset disables the respective limit. Choose
+limits only after measuring the actual deployment. The optional resolver limit
+counts the foreground resolve until it returns, even if its client disconnects;
+background lanes may keep running after the response and are not restricted by
+that limit. A configured limit returns 503 with `Retry-After` when reached.
+These limits and circuit states are per process, not cluster-wide.
+
+The authenticated `/resolver/api/capacity` reports foreground `active`,
+`backgroundPending` jobs, the configured limit (`0` means disabled), and
+`ready`. Background work may accumulate; the limit is not a measurement of CPU,
+memory or real server capacity. Monitor resource use and investigate stuck
+providers. Older resolver versions may still enforce their own default limit;
+update each resolver to remove it.
 
 Authentication/access failures (401/403), missing routes (404/405), and rate
 limits (429) open a circuit; fix the underlying token or access rule. If neither
