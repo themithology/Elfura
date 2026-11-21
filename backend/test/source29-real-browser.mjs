@@ -37,4 +37,5 @@ try{
   row.ok=true;
  }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;}rows.push(row);}
  console.log('::notice title=Novus actual adapter player test::'+JSON.stringify(rows));
+ if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}

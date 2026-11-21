@@ -96,6 +96,8 @@ export interface RawStreamCandidate {
   probeMp4Audio?: boolean;
   /** Provider-declared source mode, not a verified language/manifest track. */
   audioVariant?: 'sub' | 'dub';
+  /** Provider-declared subtitle presentation, not independently verified. */
+  animeSubtitleMode?: 'hard' | 'soft';
   audioLabel?: string;
   /** Dynamically discovered BCP-47 language codes carried inside a multi-audio stream. */
   availableAudioLangs?: string[];

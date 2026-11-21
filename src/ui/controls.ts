@@ -2430,7 +2430,9 @@ export class PlayerUI {
       colAudio.appendChild(el('div', 'elf-col-heading', 'Anime source version'));
       colAudio.appendChild(el('div', 'elf-anime-variant-note', 'SUB/DUB are provider source labels; verified audio tracks are listed separately above.'));
       const variantList = el('div', 'elf-col-list');
-      for (const [sourceId, variants] of animeVariants) for (const source of variants) {
+      for (const [sourceId, variants] of animeVariants) for (const source of [...variants].sort((a, b) =>
+        sourceId === 'source-16' ? Number(a.audioVariant === 'dub') - Number(b.audioVariant === 'dub') : 0,
+      )) {
         const variant = source.audioVariant;
         if (!variant) continue;
         const selected = st.source === source.id;

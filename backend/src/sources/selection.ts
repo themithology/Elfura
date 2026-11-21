@@ -118,7 +118,7 @@ export function selectPlaybackCandidates(
   // provider source variants, not claims about manifest audio tracks.
   const animeVariants: typeof single = [];
   for (const variant of variantOrder) {
-    const item = single.find(candidate => candidate.alive && candidate.candidate.audioVariant === variant);
+    const item = single.find(candidate => candidate.alive && candidate.adapter.id !== 'source-29' && candidate.candidate.audioVariant === variant);
     if (item && !selected.includes(item)) animeVariants.push(item);
   }
   // Additional anime adapters must not displace one another's sub/dub lanes.

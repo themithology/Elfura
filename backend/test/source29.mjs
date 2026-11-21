@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {resolveDirectAnimeEpisode} from '../../dist/backend/sources/anime-direct-mapping.js';
 import {createSource29Adapter,novusSourceReference} from '../../dist/backend/sources/source29.js';
+import {selectPlaybackCandidates} from '../../dist/backend/sources/selection.js';
+import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
 
 const metadata={originalLanguage:'ja',genres:['Animation'],episodeName:'Enter: Naruto Uzumaki!'};
 const query={type:'tv',tmdbId:'46260',season:1,episode:1,resolveMetaFallback:async()=>metadata};
@@ -49,4 +51,20 @@ const hard=await createSource29Adapter(()=>true,{fetchImpl:hardFetch,mapEpisode:
 assert.equal(hard.candidates.length,3);assert.equal(hard.candidates[0].audioLabel,'Hard Sub');assert.ok(hard.candidates[0].url.endsWith('/hsub'));assert.ok(hard.candidates[1].url.endsWith('/sub'));
 const disabled=await createSource29Adapter(()=>false,{fetchImpl:fakeFetch,mapEpisode:async()=>{throw Error('should not map')}}).resolve(query);
 assert.deepEqual(disabled.candidates,[]);
+// Verify that multiple live sub modes and dub survive alongside an older
+// adapter, without promoting unknown/unverified variants.
+const oldFetch=globalThis.fetch;
+try {
+  globalThis.fetch=async()=>new Response('#EXTM3U\n#EXTINF:10,\nsegment.ts\n#EXT-X-ENDLIST');
+  const old={id:'source-16',label:'Source 16',enabled:()=>true};
+  const newAdapter={id:'source-29',label:'Source 29',enabled:()=>true};
+  const prev={key:'old',url:'https://old.example/old.m3u8',type:'hls',quality:'auto',rank:0,audioVariant:'sub'};
+  const live=await verifyAndFilterCandidatesDetailed([prev,...hard.candidates]);
+  const entries=live.candidates.map(c=>({adapter:c.key==='old'?old:newAdapter,candidate:c}));
+  const picked=selectPlaybackCandidates(entries);
+  assert(picked.some(x=>x.adapter.id==='source-16'));
+  assert.equal(picked.filter(x=>x.adapter.id==='source-29').length,3);
+  assert.equal(picked.filter(x=>x.adapter.id==='source-29'&&x.candidate.audioVariant==='sub').length,2);
+  assert.equal(picked.filter(x=>x.adapter.id==='source-29'&&x.candidate.audioVariant==='dub').length,1);
+} finally {globalThis.fetch=oldFetch;}
 console.log('source29 fixture tests passed');

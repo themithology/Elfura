@@ -77,6 +77,7 @@ export function createSource29Adapter(enabled: () => boolean = () => true, optio
             return {
               key: url.href, url: url.href, type: 'hls', quality: 'auto', rank: lane === 'hsub' ? 19 : 20,
               audioVariant: lane === 'dub' ? 'dub' : 'sub',
+              ...(lane !== 'dub' ? { animeSubtitleMode: lane === 'hsub' ? 'hard' : 'soft' } : {}),
               claimedAudioLang: lane === 'dub' ? 'en' : 'ja',
               audioLabel: lane === 'hsub' ? 'Hard Sub' : lane === 'dub' ? 'Dub' : 'Sub',
               headers: { 'User-Agent': UA, Referer: page.href },

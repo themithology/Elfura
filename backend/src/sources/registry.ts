@@ -1272,7 +1272,9 @@ export class SourceRegistry {
   ): UniformStreamOption {
     // Build strictly anonymized display label using ONLY adapter.label + audio/quality traits
     let trait = '';
-    if (cand.multiAudio) {
+    if (adapter.id === 'source-29' && cand.animeSubtitleMode === 'hard') {
+      trait = 'Hard Sub';
+    } else if (cand.multiAudio) {
       trait = 'Multi-Audio';
     } else if (cand.audioLabel && cand.audioLabel !== 'Original') {
       trait = cand.audioLabel;
