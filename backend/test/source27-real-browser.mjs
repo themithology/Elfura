@@ -16,6 +16,8 @@ const cfg=loadBackendConfig({ELFURA_SECRET:'test-only-secret',TMDB_API_BASE:'htt
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});
 registry.adapters=[createSource27Adapter(()=>true)];
 let browser,page,step='resolve';
+const responses={},failures=[];
+server.on('request',(req,res)=>{if(req.url?.startsWith('/api/v1/stream?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;responses[key]=(responses[key]??0)+1;});});
 try {
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  const result=await registry.resolvePlayback({type:'movie',tmdbId:'299534',sourceId:'source-27'});
@@ -23,6 +25,7 @@ try {
  assert(result.sources.some(s=>s.multiAudio && s.availableAudioLangs?.includes('hi') && s.availableAudioLangs?.includes('en')),'registry did not verify both languages');
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  page=await browser.newPage();
+ page.on('requestfailed',req=>{if(req.url().includes('/api/v1/stream?'))failures.push(req.failure()?.errorText??'failed');});
  await page.route('**/api/v1/playback**',route=>route.fulfill({json:{...result,sourceGroups:[],pendingSources:[]}}));
  await page.goto(base+'/embed/movie/299534?autoplay=1&muted=1',{waitUntil:'domcontentloaded'});
  step='render video';
@@ -40,5 +43,5 @@ try {
  console.log('::notice title=Real multilingual browser::'+JSON.stringify({ok:true,...before,switched:['en','hi']}));
 } catch(error) {
  const state=await page?.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {time:v?.currentTime,width:v?.videoWidth,height:v?.videoHeight,duration:v?.duration,ready:v?.readyState,tracks:p?.getAudioTracks().map(t=>t.lang)}}).catch(()=>null);
- console.log('::error title=Real multilingual browser::'+JSON.stringify({step,error:String(error).replace(/https?:\/\/\S+/g,'[url]').slice(0,250),state}));process.exitCode=1;
+ console.log('::error title=Real multilingual browser::'+JSON.stringify({step,error:String(error).replace(/https?:\/\/\S+/g,'[url]').slice(0,250),state,responses,failures:failures.slice(0,10)}));process.exitCode=1;
 } finally {await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=originalFetch;}
