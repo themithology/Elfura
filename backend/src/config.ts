@@ -78,6 +78,8 @@ export interface BackendConfig {
   source6?: { enabled: boolean };
   /** Hindi-dub anime lane (Mikaza). AniList-keyed; TMDB ids are converted server-side. */
   source16?: { enabled: boolean };
+  /** Direct multi-audio anime with conservative TMDB episode verification. */
+  source28?: { enabled: boolean };
   source8?: { enabled: boolean };
   source9?: { enabled: boolean };
   source10?: { enabled: boolean };
@@ -315,6 +317,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // Default off: a new source is opt-in until it has run in production.
     source6: { enabled: env.ELFURA_TELUGU_ENABLED === '1' },
     source16: { enabled: env.ELFURA_HINDI_DUB_ENABLED !== '0' },
+    source28: { enabled: env.ELFURA_ANIME_MULTI_ENABLED !== '0' },
     source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
     source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
     source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },

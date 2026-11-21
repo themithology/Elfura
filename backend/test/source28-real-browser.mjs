@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createBackendServer} from '../../dist/backend/index.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
-import {createSource28Adapter} from '../../dist/backend/sources/source28.js';
 import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',episodes:['Enter: Naruto Uzumaki!','My Name is Konohamaru']},{id:'95479',title:'Jujutsu Kaisen',year:'2020',episodes:['Ryomen Sukuna','For Myself']}];
@@ -15,13 +14,14 @@ globalThis.fetch=async(input,init)=>{
   const parts=u.pathname.split('/');const tv=parts.indexOf('tv');const s=samples.find(x=>x.id===parts[tv+1]);
   if(!s)return new Response(null,{status:404});
   const ep=parts.indexOf('episode');if(ep>=0)return Response.json({name:s.episodes[Number(parts[ep+1])-1]??''});
-  return Response.json({id:Number(s.id),name:s.title,original_name:s.title,first_air_date:s.year+'-01-01',original_language:'ja',episode_run_time:[24],images:{logos:[]}});
+  return Response.json({id:Number(s.id),name:s.title,original_name:s.title,first_air_date:s.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[24],images:{logos:[]}});
  }
  return orig(input,init);
 };
 const cfg=loadBackendConfig({ELFURA_SECRET:'test-only-secret',TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});
-registry.adapters=[createSource28Adapter(()=>true)];
+registry.adapters=registry.adapters.filter(a=>a.id==='source-28');
+assert.equal(registry.adapters.length,1,'production source registry must include the anime lane');
 let browser,page,step='start',sampleInfo='';const responses={};
 server.on('request',(req,res)=>{if(req.url?.startsWith('/api/v1/stream?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;responses[key]=(responses[key]??0)+1;});});
 try{

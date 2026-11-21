@@ -37,6 +37,7 @@ import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
 import { createSource24Adapter } from './source24.js';
 import { createSource25Adapter } from './source25.js';
+import { createSource28Adapter } from './source28.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -93,6 +94,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
   'source-24': 'ELFURA_VIDLINK_ENABLED',
   'source-25': 'ELFURA_GREYBOX_ENABLED',
+  'source-28': 'ELFURA_ANIME_MULTI_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
@@ -227,6 +229,9 @@ export class SourceRegistry {
       createSource25Adapter(cfg.source25),
       // Source 26 is intentionally not registered: tested streams can play
       // audio without video on browsers that lack HEVC decoding.
+      // Direct multi-audio anime. Only mapped season-one episodes with matching
+      // TMDB episode titles are accepted; no title or language is guessed.
+      createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
     ];
   }
 

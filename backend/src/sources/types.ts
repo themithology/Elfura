@@ -50,6 +50,7 @@ export interface SourceQuery {
     title?: string;
     rawTitle?: string;
     episodeName?: string;
+    genres?: string[];
     year?: string;
     releaseDate?: string;
     latestDate?: string;

@@ -42,7 +42,8 @@ import assert from 'node:assert/strict';
 // network requests without credentials or a title, and were replaced by the
 // single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
 // Source 26 was removed after real-browser audio-only playback failures.
-const MIN_LISTED_SOURCES = 19;
+// Source 28 adds verified multi-audio anime: 19 -> 20.
+const MIN_LISTED_SOURCES = 20;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -230,6 +231,7 @@ await check('resolver lists every source with health', () => {
   // Each row is one source group; the broken MovieBox lane is not registered.
   assert.equal(listed.sources.length, MIN_LISTED_SOURCES, 'the configured board');
   assert(!listed.sources.some(source => source.id === 'source-26'), 'audio-only MovieBox lane must stay removed');
+  assert(listed.sources.some(source => source.id === 'source-28'), 'verified multi-audio anime lane is registered');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');

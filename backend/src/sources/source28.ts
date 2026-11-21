@@ -1,13 +1,12 @@
 /**
- * Experimental direct multi-audio anime lane. Not registered until a real
- * registry -> relay -> browser audit succeeds. Catalogue requests stay server
- * side; the player only ever receives Elfura's sealed media tickets.
+ * Direct multi-audio anime lane, tested through registry -> relay -> browser.
+ * Catalogue requests stay server side; the player only receives Elfura's sealed
+ * media tickets. Audio languages and quality are harvested from the manifest.
  *
  * The catalogue's season numbering can differ from TMDB. Restrict the lane to
  * season 1 and require its episode title to match TMDB's episode title exactly;
  * an absent/ambiguous title is not a reason to guess a match.
  */
-import { fetch as browserFetch } from 'wreq-js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { readBoundedText } from './upstream-fetch.js';
 import type { RawSourceResult, SourceAdapter, SourceQuery } from './types.js';
@@ -57,6 +56,9 @@ export function findPlayer(html: string): string | null {
 
 type PageFetch = (url: string, signal: AbortSignal) => Promise<string | null>;
 const defaultPageFetch: PageFetch = async (url, signal) => {
+  // Runtime ZIPs install this native client optionally. If unavailable, only
+  // this lane is skipped; the backend and other providers must still start.
+  const { fetch: browserFetch } = await import('wreq-js');
   const response = await browserFetch(url, {browser:'chrome_149',os:'windows',headers:{'User-Agent':UA,Referer:SITE+'/'},signal,timeout:6000,redirect:'error'});
   if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
   const len = Number(response.headers.get('content-length') || 0);
@@ -84,7 +86,10 @@ export function createSource28Adapter(enabled: () => boolean = () => true, optio
       const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(8500)]) : AbortSignal.timeout(8500);
       try {
         const meta = await query.resolveMetaFallback?.();
-        const slug = titleSlug(meta?.rawTitle ?? query.title ?? '');
+        // Limit catalogue requests to positively identified Japanese animation.
+        // Missing TMDB metadata is a miss, not permission to search by guess.
+        if (meta?.originalLanguage !== 'ja' || !meta.genres?.some(g => g.toLowerCase() === 'animation')) { diag(false,'not-confirmed-anime'); return empty(); }
+        const slug = titleSlug(meta.rawTitle ?? query.title ?? '');
         const epName = meta?.episodeName ?? '';
         if (!slug || !epName) { diag(false,'metadata-unavailable'); return empty(); }
         const page = await (options.fetchPage ?? defaultPageFetch)(`${SITE}/episode/${slug}-1x${query.episode ?? 1}/`, signal);

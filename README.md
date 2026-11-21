@@ -460,3 +460,10 @@ Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree
 (MIT OR Apache-2.0). `.github/workflows/moviebox-direct.yml` checks the adapter
 with mocked responses and probes a movie and an episode on a GitHub runner.
 The ffprobe test checks media streams, not browser playback or audio switching.
+# Multi-audio anime source (Source 28)
+
+Source 28 resolves directly from the anime catalogue to a multi-audio HLS master. It runs only in the resolver and never sends catalogue or player URLs to the client. Audio languages and available quality levels are read from the actual HLS manifest, not assumed from a title or subtitle labels.
+
+The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each resolver and restart to disable it. A TMDB API key or configured TMDB mirror is required. To avoid wrong episodes, the source currently supports season 1 only and requires TMDB to identify Japanese animation and provide an episode title that matches the provider's title. Missing metadata, alternate title spellings or numbering differences can cause legitimate episodes to be skipped. Movies and other seasons are not supported by this lane.
+
+The browser audit exercises real discovery, the production registry and relay, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It does not establish the spoken language independently; language names come from upstream HLS metadata, and availability may vary by region or over time.
