@@ -1299,6 +1299,7 @@ export class SourceRegistry {
     const streamTicket = sealStreamTicket(this.cfg.secret, {
       u: cand.url,
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
+      ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin, fp: 1 as const } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
       ...(singleDubHint ? { l: singleDubHint } : {}),
     });
@@ -1324,6 +1325,7 @@ export class SourceRegistry {
       url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
         u: track.url,
         ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+        ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin } : {}),
         k: 's',
       }))}`,
     })) : [];

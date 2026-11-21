@@ -22,6 +22,7 @@ import type { StreamTicketPayload } from './security.js';
 import {
   applyCorsHeaders,
   isSafeUpstreamUrl,
+  matchesRestrictedOrigin,
   openStreamTicket,
   sealStreamTicket,
   setCloudflareCache,
@@ -453,6 +454,10 @@ function headersForManifestChild(headers: Record<string, string> | undefined, ma
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
+  /** Confine all child resources and issued tickets to a single HTTPS origin. */
+  restrictedOrigin?: string;
+  /** Do not extend the lifetime of restricted child tickets. */
+  restrictedExpiry?: number;
   /** Private signed-ticket context for refreshing this provider's HLS paths. */
   /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
   canOffloadSegment?: (absUrl: string) => boolean;
@@ -484,9 +489,9 @@ export function rewriteHlsManifest(
     try {
       abs = resolveHlsChildUrl(trimmed, baseUrl);
     } catch {
-      return rawRef;
+      return options?.restrictedOrigin ? '' : rawRef;
     }
-    if (!isSafeUpstreamUrl(abs)) return '';
+    if (!isSafeUpstreamUrl(abs) || (options?.restrictedOrigin && !matchesRestrictedOrigin(abs, options.restrictedOrigin))) return '';
     if (kind === 'a' && !options?.forceProxy && options?.canOffloadSegment?.(abs)) {
       return abs;
     }
@@ -495,6 +500,7 @@ export function rewriteHlsManifest(
       u: abs,
       ...(childHeaders ? { h: childHeaders } : {}),
       k: kind,
+      ...(options?.restrictedOrigin ? { ro: options.restrictedOrigin, exp: options.restrictedExpiry } : {}),
       ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
@@ -896,6 +902,8 @@ async function sendRewrittenManifest(
     relayMode: 'hybrid' | 'full';
     forceProxy: boolean;
     requireHttpsOffload: boolean;
+    restrictedOrigin?: string;
+    restrictedExpiry?: number;
     },
 ): Promise<void> {
   const allowedBuckets = new Set<string>();
@@ -922,6 +930,8 @@ async function sendRewrittenManifest(
 
   const rewriteOptions: RewriteManifestOptions = {
     forceProxy: relayOpts.forceProxy,
+    restrictedOrigin: relayOpts.restrictedOrigin,
+    restrictedExpiry: relayOpts.restrictedExpiry,
     ...(allowedBuckets.size > 0
       ? {
           canOffloadSegment: (absUrl: string) =>
@@ -981,7 +991,7 @@ export async function handleStreamRelay(
     return;
   }
 
-  if (!isSafeUpstreamUrl(ticket.u)) {
+  if (!isSafeUpstreamUrl(ticket.u) || (ticket.ro !== undefined && !matchesRestrictedOrigin(ticket.u, ticket.ro))) {
     setCloudflareCache(res, 'no-store');
     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: 'disallowed upstream target' }));
@@ -990,9 +1000,9 @@ export async function handleStreamRelay(
 
   const streamPath = opts.streamPath || '/api/v1/stream';
   const relayMode = opts.relayMode ?? 'hybrid';
-  const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1;
+  const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1 || ticket.ro !== undefined;
   const requireHttpsOffload = opts.requireHttpsOffload ?? true;
-  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload };
+  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload, restrictedOrigin: ticket.ro, restrictedExpiry: ticket.ro ? ticket.exp : undefined };
 
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
@@ -1001,7 +1011,7 @@ export async function handleStreamRelay(
 
   if (manifestCacheKey) {
     const cached = getCachedManifest(manifestCacheKey);
-    if (cached) {
+    if (cached && (!ticket.ro || (cached.kind === 'hls' && matchesRestrictedOrigin(cached.finalUrl, ticket.ro)))) {
       await sendRewrittenManifest(
         res,
         cached.kind,
@@ -1041,7 +1051,7 @@ export async function handleStreamRelay(
     const upstreamRes = await fetch(ticket.u, {
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
-      redirect: 'follow',
+      redirect: ticket.ro ? 'error' : 'follow',
       signal: AbortSignal.any([
         abortController.signal,
         // Manifests must fail fast so the player can fail over to the next
@@ -1052,7 +1062,7 @@ export async function handleStreamRelay(
     });
 
     const finalUrl = upstreamRes.url || ticket.u;
-    if (!isSafeUpstreamUrl(finalUrl)) {
+    if (!isSafeUpstreamUrl(finalUrl) || (ticket.ro && !matchesRestrictedOrigin(finalUrl, ticket.ro))) {
       setCloudflareCache(res, 'no-store');
       res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: false, error: 'blocked unsafe redirect' }));
@@ -1106,7 +1116,7 @@ export async function handleStreamRelay(
         return;
       }
 
-      if (looksLikeDash && trimmedLead.includes('<MPD')) {
+      if (!ticket.ro && looksLikeDash && trimmedLead.includes('<MPD')) {
         if (manifestCacheKey && !/\btype\s*=\s*["']dynamic["']/i.test(bodyText)) {
           setCachedManifest(manifestCacheKey, {
             finalUrl,

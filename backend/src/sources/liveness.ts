@@ -17,7 +17,7 @@ import {
   seedManifestRamCache,
   verifyDirectSegmentOffload,
 } from '../relay.js';
-import { isSafeUpstreamUrl } from '../security.js';
+import { isSafeUpstreamUrl, matchesRestrictedOrigin } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { extractMp4SingleAudioLanguage, extractMp4AudioByRanges } from './mp4-audio.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
@@ -108,8 +108,8 @@ interface CachedLivenessEntry extends LivenessProbeOutcome {
 const livenessRamCache = new PolicyCache<CachedLivenessEntry>(MAX_LIVENESS_CACHE);
 const livenessInFlight = new Map<string, Promise<LivenessProbeOutcome>>();
 
-function cacheKeyFor(url: string, headers?: Record<string, string>): string {
-  return `${url}|${JSON.stringify(headers ?? {})}`;
+function cacheKeyFor(url: string, headers?: Record<string, string>, restrictedOrigin?: string): string {
+  return `${url}|${JSON.stringify(headers ?? {})}${restrictedOrigin ? `|restricted:${restrictedOrigin}` : ''}`;
 }
 
 function getCachedLiveness(key: string): CachedLivenessEntry | null {
@@ -126,7 +126,7 @@ function getCachedLiveness(key: string): CachedLivenessEntry | null {
 
 /** Age of the cached observation; this is not a fresh playback test. */
 export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): number | null {
-  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers, candidate.restrictedOrigin));
   return hit ? Math.max(0, Date.now() - hit.observedAt) : null;
 }
 
@@ -160,7 +160,7 @@ export function candidateEvidence(candidate: RawStreamCandidate): LivenessProbeO
 }
 
 export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
-  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers, candidate.restrictedOrigin));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
@@ -285,15 +285,17 @@ async function verifyChildHlsPlaylist(
   childUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
+  restrictedOrigin?: string,
 ): Promise<{ state: 'alive' | 'dead' | 'unknown'; bodyText?: string }> {
+  if (restrictedOrigin && !matchesRestrictedOrigin(childUrl, restrictedOrigin)) return { state: 'dead' };
   const res = await fetch(childUrl, {
     method: 'GET',
     headers,
-    redirect: 'follow',
+    redirect: restrictedOrigin ? 'error' : 'follow',
     signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
   });
   const finalUrl = res.url || childUrl;
-  if (!isSafeUpstreamUrl(finalUrl)) return { state: 'dead' };
+  if (!isSafeUpstreamUrl(finalUrl) || (restrictedOrigin && !matchesRestrictedOrigin(finalUrl, restrictedOrigin))) return { state: 'dead' };
   if (!res.ok) return { state: isTransientHttpStatus(res.status) ? 'unknown' : 'dead' };
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -338,14 +340,14 @@ function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): 
 }
 
 async function runSingleProbe(
-  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers' | 'probeMp4Audio'>,
+  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers' | 'probeMp4Audio' | 'restrictedOrigin'>,
   outerSignal?: AbortSignal,
 ): Promise<LivenessProbeOutcome> {
-  if (!isSafeUpstreamUrl(cand.url)) {
+  if (!isSafeUpstreamUrl(cand.url) || (cand.restrictedOrigin && (!matchesRestrictedOrigin(cand.url, cand.restrictedOrigin) || cand.type !== 'hls'))) {
     return { alive: false, confirmedDead: true };
   }
 
-  const key = cacheKeyFor(cand.url, cand.headers);
+  const key = cacheKeyFor(cand.url, cand.headers, cand.restrictedOrigin);
   const cached = getCachedLiveness(key);
   if (cached) return cached;
 
@@ -435,7 +437,7 @@ async function runSingleProbe(
       let res = await fetch(cand.url, {
         method: 'GET',
         headers: manifestHeaders,
-        redirect: 'follow',
+        redirect: cand.restrictedOrigin ? 'error' : 'follow',
         signal: sig,
       });
       if (isTransientHttpStatus(res.status)) {
@@ -448,12 +450,12 @@ async function runSingleProbe(
         res = await fetch(cand.url, {
           method: 'GET',
           headers: manifestHeaders,
-          redirect: 'follow',
+          redirect: cand.restrictedOrigin ? 'error' : 'follow',
           signal: sig,
         });
       }
       const finalUrl = res.url || cand.url;
-      if (!isSafeUpstreamUrl(finalUrl) || !res.ok) {
+      if (!isSafeUpstreamUrl(finalUrl) || (cand.restrictedOrigin && !matchesRestrictedOrigin(finalUrl, cand.restrictedOrigin)) || !res.ok) {
         try {
           await res.body?.cancel();
         } catch {
@@ -488,7 +490,7 @@ async function runSingleProbe(
       const lead = bodyText.trimStart();
 
       if (cand.type === 'dash' || lead.includes('<MPD')) {
-        if (!lead.includes('<MPD')) {
+        if (cand.restrictedOrigin || !lead.includes('<MPD')) {
           const dead = { alive: false, confirmedDead: true };
           setCachedLiveness(key, dead);
           return dead;
@@ -534,10 +536,15 @@ async function runSingleProbe(
       let masterDurationSec: number | undefined;
       if (isMaster) {
         const childTargets = pickHlsChildCheckTargets(bodyText, finalUrl);
+        if (cand.restrictedOrigin && childTargets.length === 0) {
+          const dead = { alive: false, confirmedDead: true };
+          setCachedLiveness(key, dead);
+          return dead;
+        }
         if (childTargets.length > 0) {
           const childChecks = await Promise.all(
             childTargets.map((cu) =>
-              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(
+              verifyChildHlsPlaylist(cu, manifestHeaders, sig, cand.restrictedOrigin).catch(
                 () => ({ state: 'unknown' as const, bodyText: undefined }),
               ),
             ),
@@ -638,22 +645,22 @@ export async function verifyAndFilterCandidatesDetailed(
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
   const uniqueTargets = new Map<
     string,
-    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; probeMp4Audio?: boolean; priority: number }
+    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; probeMp4Audio?: boolean; restrictedOrigin?: string; priority: number }
   >();
   for (const c of candidates) {
-    const pKey = cacheKeyFor(c.url, c.headers);
+    const pKey = cacheKeyFor(c.url, c.headers, c.restrictedOrigin);
     const candPrio = (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
     const prev = uniqueTargets.get(pKey);
     if (!prev || candPrio < prev.priority) {
-      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, probeMp4Audio: c.probeMp4Audio, priority: candPrio });
+      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, probeMp4Audio: c.probeMp4Audio, restrictedOrigin: c.restrictedOrigin, priority: candPrio });
     }
     if (c.standbyUrl && c.standbyUrl !== c.url) {
       const sHeaders = c.standbyHeaders ?? c.headers;
-      const sKey = cacheKeyFor(c.standbyUrl, sHeaders);
+      const sKey = cacheKeyFor(c.standbyUrl, sHeaders, c.restrictedOrigin);
       const standbyPrio = candPrio + 1500;
       const prevS = uniqueTargets.get(sKey);
       if (!prevS || standbyPrio < prevS.priority) {
-        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders, priority: standbyPrio });
+        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders, restrictedOrigin: c.restrictedOrigin, priority: standbyPrio });
       }
     }
   }
@@ -761,9 +768,9 @@ export async function verifyAndFilterCandidatesDetailed(
   };
 
   const outcomeFor = (cand: RawStreamCandidate) => ({
-    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers)),
+    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers, cand.restrictedOrigin)),
     standby: cand.standbyUrl && cand.standbyUrl !== cand.url
-      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
+      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers, cand.restrictedOrigin))
       : undefined,
   });
   const kept: RawStreamCandidate[] = [];

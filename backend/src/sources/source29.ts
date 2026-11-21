@@ -75,7 +75,7 @@ export function createSource29Adapter(enabled: () => boolean = () => true, optio
             // URLs supplied by its page or accept embeds masquerading as media.
             if (url.origin !== ORIGIN || url.username || url.password || !isSafeUpstreamUrl(url.href)) continue;
             return {
-              key: url.href, url: url.href, type: 'hls', quality: 'auto', rank: lane === 'hsub' ? 19 : 20,
+              key: url.href, url: url.href, restrictedOrigin: ORIGIN, type: 'hls', quality: 'auto', rank: lane === 'hsub' ? 19 : 20,
               audioVariant: lane === 'dub' ? 'dub' : 'sub',
               ...(lane !== 'dub' ? { animeSubtitleMode: lane === 'hsub' ? 'hard' : 'soft' } : {}),
               claimedAudioLang: lane === 'dub' ? 'en' : 'ja',

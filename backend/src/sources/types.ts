@@ -81,6 +81,8 @@ export interface RawStreamCandidate {
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   headers?: Record<string, string>;
+  /** Restrict probe, relay and every HLS child to this exact HTTPS origin. */
+  restrictedOrigin?: string;
   quality: string;
   /** Distinct rendition heights (desc) when the stream is a multi-quality ABR ladder. */
   qualityLadder?: number[];

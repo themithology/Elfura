@@ -201,6 +201,8 @@ export interface StreamTicketPayload {
   l?: string;
   /** Force 100% backend segment relay (bypasses hybrid CDN offload, e.g. on ISP block fallback). */
   fp?: 1;
+  /** If present, every fetch and HLS reference must stay on this HTTPS origin. */
+  ro?: string;
   /** Unix seconds expiration. */
   exp: number;
 }
@@ -311,6 +313,15 @@ export function openPlaybackEnvelope<T = unknown>(
 /* ------------------------------------------------------------------ */
 /* SSRF Guard                                                          */
 /* ------------------------------------------------------------------ */
+
+export function matchesRestrictedOrigin(rawUrl: string, origin: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    const allowed = new URL(origin);
+    return allowed.protocol === 'https:' && allowed.origin === origin && !allowed.username && !allowed.password &&
+      url.origin === origin && !url.username && !url.password && isSafeUpstreamUrl(url.href);
+  } catch { return false; }
+}
 
 export function isSafeUpstreamUrl(rawUrl: string): boolean {
   let u: URL;
