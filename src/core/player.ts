@@ -42,6 +42,7 @@ import {
   languageLabel,
   loadPreferredAudio,
   matchScore,
+  providerVariantLanguage,
   savePreferredAudio,
   type AudioTrack,
 } from './audio';
@@ -651,6 +652,11 @@ export class ElfuraPlayer {
         }
         this.pendingSourceGroups = (payload.pendingSources ?? []).filter((id) => typeof id === 'string');
         if (added) {
+          // Late source versions can add languages as well as servers.
+          // Do not turn a previously inferred provider label into native proof.
+          const native = this.audioTracks.filter(t => t.kind === 'native' && typeof t.ref === 'number')
+            .map(t => ({ id: t.ref as number, lang: t.providerHint ? 'und' : t.lang, label: t.providerHint ? undefined : t.label, default: t.default }));
+          this.mergeNativeAudio(native);
           // Re-rank without emitting 'sources' — that event resets the control
           // surface, and playback must not be disturbed by a list refresh.
           this.sortSourcesForDisplay(this.desiredAudioLang ?? this.currentAudio?.lang ?? null);
@@ -951,7 +957,14 @@ export class ElfuraPlayer {
                 break;
               }
             }
-            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
+            const hasTaggedAudio = audioMediaLines.some((line) => {
+              const lang = line.match(/\bLANGUAGE="([^"]*)"/i)?.[1] ?? '';
+              const name = line.match(/\bNAME="([^"]*)"/i)?.[1] ?? '';
+              return canonLang(lang) !== 'und' || canonLang(name) !== 'und';
+            });
+            const hint = providerVariantLanguage(opt);
+            const possibleHint = !hasTaggedAudio && hint && matchScore(targetLang, hint) >= 0;
+            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0 && !possibleHint) {
               return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
           }
@@ -1402,7 +1415,7 @@ export class ElfuraPlayer {
             }
             if (added) {
               const native = this.audioTracks.filter((t) => t.kind === 'native' && typeof t.ref === 'number')
-                .map((t) => ({ id: t.ref as number, lang: t.lang, label: t.label, default: t.default }));
+                .map((t) => ({ id: t.ref as number, lang: t.providerHint ? 'und' : t.lang, label: t.providerHint ? undefined : t.label, default: t.default }));
               this.mergeNativeAudio(native);
               this.emit('sourcesUpdated', this.sources);
               // If the user explicitly requested a language while the group
@@ -1698,6 +1711,8 @@ export class ElfuraPlayer {
         return !s.multiAudio && canonLang(s.audioLang) === 'und';
       }
       if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
+      const hint = providerVariantLanguage(s);
+      if (hint && matchScore(targetLang, hint) >= 0) return true;
       if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
       if ((s.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0)) return true;
       // Provider language summaries can be incomplete. Every multi-audio source
@@ -1712,6 +1727,7 @@ export class ElfuraPlayer {
       .sort(
         (a, b) =>
           Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
+          Number(Boolean(providerVariantLanguage(a))) - Number(Boolean(providerVariantLanguage(b))) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
           this.qualityRank(b) - this.qualityRank(a),
       );
@@ -1727,7 +1743,7 @@ export class ElfuraPlayer {
 
     const finalizeChosenCandidate = (cand: SourceOption): boolean => {
       this.shell.dataset.buffering = 'false';
-      if (targetLang && targetLang !== 'und') {
+      if (targetLang && targetLang !== 'und' && !providerVariantLanguage(cand)) {
         this.recordDiscoveredAudioLangs(cand, [targetLang]);
       }
       // Dynamically update server hierarchy so the fastest winning server (Multi-Audio OR Direct)
@@ -2617,9 +2633,12 @@ export class ElfuraPlayer {
     const claimsMulti =
       !!probe.opt.multiAudio || (probe.opt.availableAudioLangs?.length ?? 0) > 1;
     if (claimsMulti && !hasSidecarMatch) return false;
+    const hint = providerVariantLanguage(probe.opt);
+    const hasTaggedTrack = manifestAudioTracks.some(track => canonLang(track.lang) !== 'und' || canonLang(track.name) !== 'und');
     return (
       manifestAudioTracks.length <= 1 &&
-      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0)
+      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 ||
+        (!!hint && !hasTaggedTrack && matchScore(probe.targetLang, hint) >= 0))
     );
   }
 
@@ -3160,19 +3179,23 @@ export class ElfuraPlayer {
         : native;
 
     // Dynamically gather audio languages actually reported across resolved raw sources
-    const discoveredSourceLangs: { lang: string; label?: string; active?: boolean }[] = [];
+    const discoveredSourceLangs: { lang: string; label?: string; active?: boolean; providerHint?: boolean }[] = [];
     if (this.currentSource && !this.currentSource.multiAudio) {
+      const hint = providerVariantLanguage(this.currentSource);
       discoveredSourceLangs.push({
-        lang: this.currentSource.audioLang ?? 'und',
+        lang: hint ?? this.currentSource.audioLang ?? 'und',
         active: true,
+        ...(hint ? { providerHint: true } : {}),
       });
     }
     for (const s of this.sources) {
       if (this.isCandidateFailed(s)) continue;
-      if (!s.multiAudio && s.audioLang) {
+      const hint = providerVariantLanguage(s);
+      if (!s.multiAudio && (s.audioLang || hint)) {
         discoveredSourceLangs.push({
-          lang: s.audioLang,
+          lang: hint ?? s.audioLang!,
           active: s.id === this.currentSource?.id,
+          ...(hint ? { providerHint: true } : {}),
         });
       }
       for (const l of s.availableAudioLangs ?? []) {

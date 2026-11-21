@@ -31,6 +31,22 @@ export interface AudioTrack {
   default?: boolean;
   codec?: string;
   channels?: number;
+  /** The language comes from a provider's source-mode label, not a tagged audio track. */
+  providerHint?: boolean;
+}
+
+/**
+ * Narrow, provider-labelled fallback for anime source versions. This is not
+ * verified language evidence: explicit manifest language always takes priority.
+ */
+export function providerVariantLanguage(source: {
+  sourceId: string; audioVariant?: 'sub' | 'dub'; audioLang?: string;
+  availableAudioLangs?: string[]; multiAudio?: boolean;
+}): 'ja' | 'en' | null {
+  if (!['source-16', 'source-29', 'source-30'].includes(source.sourceId) || source.multiAudio ||
+      canonLang(source.audioLang) !== 'und' ||
+      (source.availableAudioLangs ?? []).some(l => canonLang(l) !== 'und')) return null;
+  return source.audioVariant === 'sub' ? 'ja' : source.audioVariant === 'dub' ? 'en' : null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -344,7 +360,7 @@ export function savePreferredAudio(lang: string): void {
 export function buildTrackList(input: {
   native?: { lang: string; label?: string; id: number; default?: boolean; codec?: string; channels?: number }[];
   external?: { lang: string; label?: string; url: string }[];
-  discoveredSourceLangs?: { lang: string; label?: string; active?: boolean }[];
+  discoveredSourceLangs?: { lang: string; label?: string; active?: boolean; providerHint?: boolean }[];
 }): AudioTrack[] {
   const out: AudioTrack[] = [];
   const labelCounts = new Map<string, number>();
@@ -392,6 +408,7 @@ export function buildTrackList(input: {
       if (activeLang !== 'und') {
         out[0].lang = activeLang;
         out[0].label = languageLabel(activeLang, activeSourceEntry.label);
+        if (activeSourceEntry.providerHint) out[0].providerHint = true;
       }
       out[0].default = true;
     } else if (out.length === 0 && activeSourceEntry) {
@@ -403,6 +420,7 @@ export function buildTrackList(input: {
         label: uniqueLabel(languageLabel(activeLang, activeSourceEntry.label)),
         ref: activeLang,
         default: true,
+        ...(activeSourceEntry.providerHint ? { providerHint: true } : {}),
       });
     }
 
@@ -419,6 +437,7 @@ export function buildTrackList(input: {
         label: uniqueLabel(languageLabel(cLang, d.label)),
         ref: cLang,
         default: !!d.active,
+        ...(d.providerHint ? { providerHint: true } : {}),
       });
     }
   }

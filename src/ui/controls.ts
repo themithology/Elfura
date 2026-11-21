@@ -25,7 +25,7 @@
  * Strictly zero hardcoded audio tracks or static language lists.
  */
 
-import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, SourceOption, TitleMediaInfo } from '../core/player';
+import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
@@ -2404,7 +2404,7 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
+        const row = this.row(t.label, selected ? 'Selected' : t.providerHint ? 'Provider label' : '', selected, () => {
           this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
           this.renderPanelBody();
@@ -2416,39 +2416,6 @@ export class PlayerUI {
       listAudio.appendChild(this.row('Original', '', true, () => {}));
     }
     colAudio.appendChild(listAudio);
-
-    const animeVariants = new Map<string, SourceOption[]>();
-    for (const source of this.player.getSources()) {
-      if (!['source-16', 'source-29', 'source-30'].includes(source.sourceId) || !source.audioVariant) continue;
-      const variants = animeVariants.get(source.sourceId) ?? [];
-      // Preserve Source 16's existing one-row-per-mode presentation; the new
-      // source can have separate hard-sub and soft-sub fallbacks.
-      if (source.sourceId !== 'source-16' || !variants.some(v => v.audioVariant === source.audioVariant)) variants.push(source);
-      animeVariants.set(source.sourceId, variants);
-    }
-    if (animeVariants.size > 0) {
-      colAudio.appendChild(el('div', 'elf-col-heading', 'Anime source version'));
-      colAudio.appendChild(el('div', 'elf-anime-variant-note', 'SUB/DUB are provider source labels; verified audio tracks are listed separately above.'));
-      const variantList = el('div', 'elf-col-list');
-      for (const [sourceId, variants] of animeVariants) for (const source of [...variants].sort((a, b) =>
-        sourceId === 'source-16' ? Number(a.audioVariant === 'dub') - Number(b.audioVariant === 'dub') : 0,
-      )) {
-        const variant = source.audioVariant;
-        if (!variant) continue;
-        const selected = st.source === source.id;
-        const title = sourceId === 'source-16'
-          ? variant === 'sub' ? 'Japanese (SUB)' : 'English (DUB)'
-          : `${source.label} (${variant.toUpperCase()})`;
-        variantList.appendChild(this.row(
-          title,
-          'Switch stream',
-          selected,
-          () => { void this.player.setSource(source.id).then(() => this.renderPanelBody()); },
-          sourceId === 'source-16' ? (variant === 'sub' ? 'JA' : 'EN') : variant.toUpperCase(),
-        ));
-      }
-      colAudio.appendChild(variantList);
-    }
 
     const boostPct = this.player.getAudioBoost();
     const boostCard = el('div', 'elf-qol-card');

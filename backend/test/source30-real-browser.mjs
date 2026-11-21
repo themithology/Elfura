@@ -26,10 +26,15 @@ try{
   await page.goto(`${base}/embed/tv/${sample.id}/1/${sample.ep}?autoplay=1&source=source-30`,{waitUntil:'domcontentloaded',timeout:15000});
   step='variants';await page.waitForFunction(()=>{const a=window.__elfura?.player?.getSources?.()??[];return a.some(s=>s.audioVariant==='sub')&&a.some(s=>s.audioVariant==='dub')},null,{timeout:35000});
   row.options=await page.evaluate(()=>window.__elfura.player.getSources().map(s=>({variant:s.audioVariant,label:s.label,subtitleCount:s.subtitles.length,claimedAsAudioLang:!!s.audioLang})));
+  step='language-menu';await page.waitForFunction(()=>{const t=window.__elfura.player.getAudioTracks();return t.some(x=>x.lang==='ja')&&t.some(x=>x.lang==='en')},null,{timeout:15000});
+  await page.getByRole('button',{name:'Change audio and subtitles'}).evaluate(button=>button.click());
+  const menu=await page.locator('.elf-audio-option').allTextContents();
+  if(menu.filter(x=>x.includes('Japanese')).length!==1||menu.filter(x=>x.includes('English')).length!==1||await page.locator('.elf-col-heading').filter({hasText:'Anime source version'}).count())throw Error('language-menu');
   for(const mode of ['sub','dub','sub']){
-   step='switch-'+mode;const id=await page.evaluate(mode=>window.__elfura.player.getSources().find(s=>s.audioVariant===mode)?.id,mode);if(!id)throw Error('no-variant');
-   await page.evaluate(id=>window.__elfura.player.setSource(id),id);
-   await page.waitForFunction(id=>{const p=window.__elfura.player,v=p.video;return p.currentSource?.id===id&&v.videoWidth>0&&v.readyState>=2},id,{timeout:30000});
+   step='switch-'+mode;const lang=mode==='sub'?'ja':'en';const label=mode==='sub'?'Japanese':'English';
+   await page.locator('.elf-audio-option').filter({hasText:label}).click();
+   await page.waitForFunction(({mode,lang})=>{const p=window.__elfura.player,v=p.video;return p.currentSource?.audioVariant===mode&&p.getState().audioLang===lang&&v.videoWidth>0&&v.readyState>=2},{mode,lang},{timeout:30000});
+   const id=await page.evaluate(()=>window.__elfura.player.currentSource?.id);if(!id)throw Error('no-variant');
    await page.evaluate(()=>{const v=window.__elfura.player.video;v.currentTime=420;v.play().catch(()=>{})});
    await page.waitForFunction(id=>{const p=window.__elfura.player,v=p.video;return p.currentSource?.id===id&&!v.seeking&&v.currentTime>=420&&v.readyState>=2},id,{timeout:25000});
    const metrics=await page.evaluate(async()=>{const p=window.__elfura.player,v=p.video,ctx=new AudioContext(),a=ctx.createAnalyser(),src=ctx.createMediaStreamSource(v.captureStream());src.connect(a);const x=new Float32Array(a.fftSize);let rms=0;for(let i=0;i<30;i++){a.getFloatTimeDomainData(x);rms=Math.max(rms,Math.sqrt(x.reduce((n,v)=>n+v*v,0)/x.length));await new Promise(r=>setTimeout(r,100))}src.disconnect();await ctx.close();return {rms:Math.round(rms*100000)/100000,current:p.currentSource?.id,video:v.videoWidth>0,duration:v.duration,subtitleTracks:p.getSubtitleTracks().length}});
