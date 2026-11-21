@@ -1051,7 +1051,9 @@ export async function handleStreamRelay(
     const upstreamRes = await fetch(ticket.u, {
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
-      redirect: ticket.ro ? 'error' : 'follow',
+      // The optional Worker egress preserves manual redirects; using 'error'
+      // there can otherwise result in a Worker following before Node sees it.
+      redirect: ticket.ro ? 'manual' : 'follow',
       signal: AbortSignal.any([
         abortController.signal,
         // Manifests must fail fast so the player can fail over to the next

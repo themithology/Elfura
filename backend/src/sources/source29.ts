@@ -59,11 +59,13 @@ export function createSource29Adapter(enabled: () => boolean = () => true, optio
           const page = new URL(`/embed/ani/${mapping.anilistId}/${mapping.episode}/${lane}`, ORIGIN);
           page.searchParams.set('k', '1');
           const headers = { 'User-Agent': UA, Referer: ORIGIN + '/' };
-          const response = await f(page, { redirect: 'error', signal, headers });
+          // Manual, not error: the optional Worker egress propagates manual
+          // without following upstream redirects. Reject every 3xx below.
+          const response = await f(page, { redirect: 'manual', signal, headers });
           if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
           const html = await readBoundedText(response, 1_500_000); if (!html) return null;
           const api = novusSourceReference(html); if (!api) return null;
-          const resolved = await f(api, { redirect: 'error', signal, headers: { ...headers, Referer: page.href, Accept: 'application/json' } });
+          const resolved = await f(api, { redirect: 'manual', signal, headers: { ...headers, Referer: page.href, Accept: 'application/json' } });
           if (!resolved.ok) { await resolved.body?.cancel().catch(() => {}); return null; }
           const json = await readBoundedText(resolved, 256_000); if (!json) return null;
           const payload = JSON.parse(json) as { sources?: unknown; tracks?: unknown };

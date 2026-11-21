@@ -18,14 +18,14 @@ try {
  globalThis.fetch=async(input,init)=>{calls.push({url:String(input),redirect:init.redirect});if(String(input).endsWith('/master'))return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}})};
  const cand={key:'restricted',url:origin+'/master',restrictedOrigin:origin,type:'hls',quality:'auto',rank:1};
  const result=await verifyAndFilterCandidatesDetailed([cand]);
- assert.equal(result.verifiedAliveCount,0);assert(calls.every(c=>c.redirect==='error'));assert(calls.every(c=>!c.url.includes('169.254')));
+ assert.equal(result.verifiedAliveCount,0);assert(calls.every(c=>c.redirect==='manual'));assert(calls.every(c=>!c.url.includes('169.254')));
  calls.length=0;
  const server=http.createServer((req,res)=>{const t=new URL(req.url,'http://localhost').searchParams.get('t');void handleStreamRelay(req,res,{secret,allowOrigin:'*',ticketParam:t,relayMode:'hybrid'});});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const get=t=>new Promise((resolve,reject)=>http.get({host:'127.0.0.1',port:server.address().port,path:'/?t='+encodeURIComponent(t)},res=>{res.resume();res.on('end',()=>resolve(res.statusCode))}).on('error',reject));
  try {
   const redirect=sealStreamTicket(secret,{u:origin+'/redirect',k:'s',ro:origin});
-  assert.notEqual(await get(redirect),200);assert.equal(calls.length,1);assert.equal(calls[0].redirect,'error');
+  assert.notEqual(await get(redirect),200);assert.equal(calls.length,1);assert.equal(calls[0].redirect,'manual');
   calls.length=0;
   assert.equal(await get(sealStreamTicket(secret,{u:'http://169.254.169.254/',k:'s',ro:origin})),400);assert.equal(calls.length,0);
  } finally {await new Promise(r=>server.close(r));}

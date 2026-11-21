@@ -291,7 +291,7 @@ async function verifyChildHlsPlaylist(
   const res = await fetch(childUrl, {
     method: 'GET',
     headers,
-    redirect: restrictedOrigin ? 'error' : 'follow',
+    redirect: restrictedOrigin ? 'manual' : 'follow',
     signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
   });
   const finalUrl = res.url || childUrl;
@@ -437,7 +437,7 @@ async function runSingleProbe(
       let res = await fetch(cand.url, {
         method: 'GET',
         headers: manifestHeaders,
-        redirect: cand.restrictedOrigin ? 'error' : 'follow',
+        redirect: cand.restrictedOrigin ? 'manual' : 'follow',
         signal: sig,
       });
       if (isTransientHttpStatus(res.status)) {
@@ -450,7 +450,7 @@ async function runSingleProbe(
         res = await fetch(cand.url, {
           method: 'GET',
           headers: manifestHeaders,
-          redirect: cand.restrictedOrigin ? 'error' : 'follow',
+          redirect: cand.restrictedOrigin ? 'manual' : 'follow',
           signal: sig,
         });
       }

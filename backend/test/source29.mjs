@@ -19,7 +19,7 @@ for(const ref of ['https://127.0.0.1/stream/getSources?t=abc','https://evil.test
 }
 const calls=[];
 const fakeFetch=async(input,init)=>{
- const u=new URL(input);calls.push(u.pathname);assert.equal(init.redirect,'error');
+ const u=new URL(input);calls.push(u.pathname);assert.equal(init.redirect,'manual');
  if(u.pathname.startsWith('/embed/')) {
    const mode=u.pathname.split('/').at(-1);
    return new Response(`var sourcesUrl = '/stream/getSources?t=${mode}';`,{status:200});

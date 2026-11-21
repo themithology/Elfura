@@ -24,7 +24,7 @@ export async function resolveDirectAnimeEpisode(query: SourceQuery, fetchImpl: t
     if (expected.length < 5 || /^(?:episode|ep)\s*\d+$/i.test(expected)) return null;
     const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(6500)]) : AbortSignal.timeout(6500);
     const response = await fetchImpl(`https://api.ani.zip/mappings?themoviedb_id=${encodeURIComponent(query.tmdbId)}`, {
-      redirect: 'error', signal, headers: { Accept: 'application/json' },
+      redirect: 'manual', signal, headers: { Accept: 'application/json' },
     });
     if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
     const body = await readBoundedText(response, 4_000_000); if (!body) return null;
