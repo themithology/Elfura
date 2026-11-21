@@ -1,6 +1,7 @@
 // Disposable host/redirect shape audit; never print URLs, query strings or media.
 import {readFile} from 'node:fs/promises';
 const streams=JSON.parse(await readFile(process.env.RESEARCH_STREAM_FILE,'utf8'));
+const rows=[];
 for(const [sample,s] of Object.entries(streams)){
  const root=new URL(s.url), ua='Mozilla/5.0';const row={sample,levels:[]};
  try{let current=s.url;for(let depth=0;depth<3;depth++){
@@ -12,5 +13,6 @@ for(const [sample,s] of Object.entries(streams)){
   for(const m of text.matchAll(/URI="([^"]+)"/g))refs.push(m[1]);
   level.refs=[...new Set(refs.slice(0,100).map(ref=>{try{return new URL(ref,current).origin}catch{return 'invalid'}}))].slice(0,12);row.levels.push(level);
   const next=refs.find(x=>/\.m3u8(?:[?#]|$)/i.test(x))||((/#EXT-X-STREAM-INF/.test(text))?refs[0]:null);if(!next)break;current=new URL(next,current).href;
- }}catch(e){row.error=e.name;} console.log('::notice title=Anime media origin shape::'+JSON.stringify(row));
+ }}catch(e){row.error=e.name;} rows.push(row);
 }
+console.log('::notice title=Anime media origin shapes::'+JSON.stringify(rows));
