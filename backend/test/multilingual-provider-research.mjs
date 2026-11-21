@@ -74,6 +74,14 @@ for(const [title,id,kind] of [['Avengers: Endgame',299534,'movie'],['Fight Club'
   row.manifest=manifest.trimStart().startsWith('#EXTM3U');row.languages=extractManifestAudioLangs(manifest);
   row.variants=(manifest.match(/#EXT-X-STREAM-INF:/g)??[]).length;
   row.codecs=[...new Set([...manifest.matchAll(/CODECS="([^"]+)"/g)].map(m=>m[1]))];
+  const lines=manifest.split(/\r?\n/);const at=lines.findIndex(l=>l.startsWith('#EXT-X-STREAM-INF:'));
+  const child=lines.slice(at+1).find(l=>l.trim()&&!l.startsWith('#'));
+  if(child){
+   const cu=new URL(child,manifestUrl);const childRes=await get(cu,{...h,Referer:playerUrl});const body=await childRes.text();
+   const segment=body.split(/\r?\n/).find(l=>l.trim()&&!l.startsWith('#'));
+   row.childOk=body.trimStart().startsWith('#EXTM3U');
+   if(segment){const seg=new URL(segment,cu);const r=await fetch(seg,{headers:{...h,Referer:playerUrl,Range:'bytes=0-1023'},signal:AbortSignal.timeout(8000)});row.segmentStatus=r.status;await r.body?.cancel();}
+  }
  } catch(e) {row.error=String(e.message??e).replace(/https?:\/\/\S+/g,'[url]').slice(0,80);}
  cineverse.push(row);
 }
