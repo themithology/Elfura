@@ -35,7 +35,7 @@ for(const [title,id,ep] of samples){
   }
   row.candidates=values.length;row.checks=[];
   for(const source of values.slice(0,2)){
-   const parsed=new URL(source);const check={sameHost:parsed.origin===origin,fingerprint:createHash('sha256').update(source).digest('hex').slice(0,12),pathFingerprint:createHash('sha256').update(parsed.origin+parsed.pathname).digest('hex').slice(0,12)};
+   const parsed=new URL(source);const check={sameHost:parsed.origin===origin,fingerprint:createHash('sha256').update(source).digest('hex').slice(0,12),pathFingerprint:createHash('sha256').update(parsed.origin+parsed.pathname).digest('hex').slice(0,12),queryKeys:[...new Set(parsed.searchParams.keys())].filter(k=>/^[a-zA-Z_]{1,24}$/.test(k))};
    try{const mr=await fetch(source,{redirect:'manual',signal:AbortSignal.timeout(8000),headers:{'User-Agent':ua,Referer:page.href}});check.status=mr.status;const text=await readBoundedText(mr,256000);check.hls=!!text?.trimStart().startsWith('#EXTM3U');check.master=!!text?.includes('#EXT-X-STREAM-INF');check.subtitles=!!text?.includes('TYPE=SUBTITLES');
     if(mr.ok&&check.hls&&!output[`${id}-${ep}-${lane}`])output[`${id}-${ep}-${lane}`]={url:source,referer:page.href};
    }catch(e){check.error=e.name;}row.checks.push(check);

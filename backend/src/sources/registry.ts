@@ -1131,7 +1131,12 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          opt.subtitles = [...sealedFallbackSubs];
+          if (opt.sourceId === 'source-29' && opt.subtitles.length) {
+            const existing = new Set(opt.subtitles.map(track => track.lang));
+            opt.subtitles = [...opt.subtitles, ...sealedFallbackSubs.filter(track => !existing.has(track.lang))];
+          } else {
+            opt.subtitles = [...sealedFallbackSubs];
+          }
         }
       }
     }
@@ -1308,6 +1313,18 @@ export class SourceRegistry {
       )}`,
     }));
 
+    // Only the new anime lane opts into source-specific, episode-aligned
+    // subtitles. Keep the existing subtitle policy for every other adapter.
+    const subtitles = adapter.id === 'source-29' ? (cand.subtitles ?? []).map((track) => ({
+      lang: track.lang,
+      label: track.label,
+      ...(track.format ? { format: track.format } : {}),
+      url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+        u: track.url,
+        ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+        k: 's',
+      }))}`,
+    })) : [];
 
     const latencyHintMs =
       typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
@@ -1333,7 +1350,7 @@ export class SourceRegistry {
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
-      subtitles: [],
+      subtitles,
     };
   }
 }

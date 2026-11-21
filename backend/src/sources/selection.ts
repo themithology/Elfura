@@ -121,5 +121,12 @@ export function selectPlaybackCandidates(
     const item = single.find(candidate => candidate.alive && candidate.candidate.audioVariant === variant);
     if (item && !selected.includes(item)) animeVariants.push(item);
   }
+  // Additional anime adapters must not displace one another's sub/dub lanes.
+  // Preserve their distinct, verified-live variants alongside the existing set.
+  for (const sourceId of ['source-29']) for (const variant of variantOrder) {
+    for (const item of single.filter(candidate => candidate.alive && candidate.adapter.id === sourceId && candidate.candidate.audioVariant === variant)) {
+      if (!selected.includes(item) && !animeVariants.includes(item)) animeVariants.push(item);
+    }
+  }
   return [...multi,...selected,...animeVariants].map(({adapter,candidate})=>({adapter,candidate}));
 }

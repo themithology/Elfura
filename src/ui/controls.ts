@@ -2417,26 +2417,32 @@ export class PlayerUI {
     }
     colAudio.appendChild(listAudio);
 
-    const animeVariantByMode = new Map<'sub' | 'dub', SourceOption>();
+    const animeVariants = new Map<string, SourceOption[]>();
     for (const source of this.player.getSources()) {
-      if (source.sourceId === 'source-16' && source.audioVariant && !animeVariantByMode.has(source.audioVariant)) {
-        animeVariantByMode.set(source.audioVariant, source);
-      }
+      if (!['source-16', 'source-29'].includes(source.sourceId) || !source.audioVariant) continue;
+      const variants = animeVariants.get(source.sourceId) ?? [];
+      // Preserve Source 16's existing one-row-per-mode presentation; the new
+      // source can have separate hard-sub and soft-sub fallbacks.
+      if (source.sourceId !== 'source-16' || !variants.some(v => v.audioVariant === source.audioVariant)) variants.push(source);
+      animeVariants.set(source.sourceId, variants);
     }
-    if (animeVariantByMode.size > 0) {
+    if (animeVariants.size > 0) {
       colAudio.appendChild(el('div', 'elf-col-heading', 'Anime source version'));
       colAudio.appendChild(el('div', 'elf-anime-variant-note', 'SUB/DUB are provider source labels; verified audio tracks are listed separately above.'));
       const variantList = el('div', 'elf-col-list');
-      for (const variant of ['sub', 'dub'] as const) {
-        const source = animeVariantByMode.get(variant);
-        if (!source) continue;
+      for (const [sourceId, variants] of animeVariants) for (const source of variants) {
+        const variant = source.audioVariant;
+        if (!variant) continue;
         const selected = st.source === source.id;
+        const title = sourceId === 'source-16'
+          ? variant === 'sub' ? 'Japanese (SUB)' : 'English (DUB)'
+          : `${source.label} (${variant.toUpperCase()})`;
         variantList.appendChild(this.row(
-          variant === 'sub' ? 'Japanese (SUB)' : 'English (DUB)',
+          title,
           'Switch stream',
           selected,
           () => { void this.player.setSource(source.id).then(() => this.renderPanelBody()); },
-          variant === 'sub' ? 'JA' : 'EN',
+          sourceId === 'source-16' ? (variant === 'sub' ? 'JA' : 'EN') : variant.toUpperCase(),
         ));
       }
       colAudio.appendChild(variantList);
