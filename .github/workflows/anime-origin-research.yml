@@ -23,8 +23,8 @@ jobs:
       - name: MegaPlay audit
         run: |
           export RESEARCH_STREAM_FILE="$RUNNER_TEMP/anime-streams.json"
-          node backend/test/megaplay-extractor-research.mjs
+          node backend/test/megaplay-extractor-research.mjs > "$RUNNER_TEMP/extractor-audit.log"
           node backend/test/anime-origin-research.mjs
-          rm -f "$RESEARCH_STREAM_FILE"
+          rm -f "$RESEARCH_STREAM_FILE" "$RUNNER_TEMP/extractor-audit.log"
       - if: always()
         run: rm -f "$RUNNER_TEMP/anime-streams.json"
