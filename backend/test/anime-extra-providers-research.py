@@ -84,5 +84,6 @@ async def main():
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
     result = asyncio.run(main())
 print('::notice title=Anime metadata research::' + json.dumps(result['mapping'], separators=(',', ':')))
-for row in result['rows']:
-    print('::notice title=Additional anime provider sample::' + json.dumps(row, separators=(',', ':')))
+for provider in PROVIDERS:
+    rows = [row for row in result['rows'] if row['provider'] == provider]
+    print('::notice title=Anime provider ' + provider + '::' + json.dumps(rows, separators=(',', ':')))
