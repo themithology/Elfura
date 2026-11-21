@@ -71,14 +71,16 @@ try {
  // Reuse one page: closing a page/context can terminate the single-process
  // Chromium binary on Actions and invalidate the remaining samples.
  const page=await browser.newPage();
- let apiStatuses=[],exposedUpstream=false;
+ let apiStatuses=[],exposedUpstream=false,playlists=[];
+ page.on('response',async res=>{try{const u=new URL(res.url());if(u.origin!==base||u.pathname!=='/api/v1/stream'||!(res.headers()['content-type']??'').includes('mpegurl'))return;const text=await res.text();playlists.push({codecs:[...text.matchAll(/CODECS="([^"]+)"/g)].map(m=>m[1]).filter(x=>/^[a-zA-Z0-9., _-]{1,120}$/.test(x)).slice(0,6),variants:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,segments:(text.match(/#EXTINF/g)??[]).length})}catch{}});
+ await page.addInitScript(()=>{window.__auditHlsErrors=[];let last=null;setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&h!==last){last=h;h.on('hlsError',(_e,d)=>window.__auditHlsErrors.push({type:d.type,details:d.details,fatal:d.fatal}));}},25);});
  page.on('response',res=>{try{const url=new URL(res.url());if(url.origin===base&&url.pathname==='/api/v1/playback')apiStatuses.push(res.status());}catch{}});
  page.on('request',req=>{try{if(upstreamHosts.has(new URL(req.url()).hostname))exposedUpstream=true}catch{}});
  const deadline=(p,ms)=>Promise.race([p,new Promise((_,reject)=>{const t=setTimeout(()=>reject(Error('audit-deadline')),ms);t.unref();})]);
  const rows=[];
- const selectedSamples=process.env.AUDIT_SHORT==='1'?samples.filter(s=>['Fight Club','Game of Thrones E1','Naruto E1'].includes(s.label)):samples;
+ const selectedSamples=samples.filter(s=>['Fight Club','Game of Thrones E1','Naruto E1'].includes(s.label));
  for(const s of selectedSamples){
-  const row={source:id,sample:s.label,index};let step='resolve';apiStatuses=[];exposedUpstream=false;
+  const row={source:id,sample:s.label,index};let step='resolve';apiStatuses=[];exposedUpstream=false;playlists=[];
   try{
    const path=s.type==='movie'?`movie/${s.id}`:`tv/${s.id}/${s.season}/${s.episode}`;
    await page.goto(`${base}/embed/${path}?autoplay=1&source=source-28`,{waitUntil:'domcontentloaded',timeout:15000});
@@ -104,7 +106,7 @@ try {
   }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'||e.message==='audit-deadline'?'timeout':e.message==='no candidate'?'no-candidate':e.message==='unexpected-duration'?'unexpected-duration':e.message==='silent-audio'?'silent-audio':/browser has been closed|page, context or browser has been closed/i.test(e.message)?'browser-closed':e.name;
    if(step==='frames')row.state=await deadline(page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {time:v?.currentTime??0,width:v?.videoWidth??0,height:v?.videoHeight??0,ready:v?.readyState??0,error:v?.error?.code??null};}),3000).catch(()=>null);
   }
-  row.apiStatuses=apiStatuses;row.exposedUpstream=exposedUpstream;
+  row.apiStatuses=apiStatuses;row.exposedUpstream=exposedUpstream;row.playlists=playlists;row.hlsErrors=await page.evaluate(()=>window.__auditHlsErrors??[]).catch(()=>[]);
   rows.push(row);console.log('browser-sample '+JSON.stringify(row));
  }
  for(const name of ['Game of Thrones','Breaking Bad','Naruto']){

@@ -88,6 +88,10 @@ try {
    Object.assign(row,await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,height:v.videoHeight,duration:Number.isFinite(v.duration)?v.duration:null,frames:v.getVideoPlaybackQuality().totalVideoFrames}}));
    const firstPixels=await page.evaluate(()=>{const v=window.__elfura.player.video,c=document.createElement('canvas');c.width=64;c.height=36;const x=c.getContext('2d');x.drawImage(v,0,0,64,36);return [...x.getImageData(0,0,64,36).data]});
    row.firstFrameHash=createHash('sha256').update(Buffer.from(firstPixels)).digest('hex').slice(0,12);
+   step='seek';
+   if(!(row.duration>330) || Math.abs(row.duration-s.runtime*60)>s.runtime*60*0.3)throw Error('unexpected-duration');
+   await page.evaluate(()=>{window.__elfura.player.video.currentTime=300});
+   await page.waitForFunction(()=>{const v=window.__elfura.player.video;return !v.seeking&&v.currentTime>300&&v.readyState>=2},null,{timeout:20000});
    step='audio';
    row.audioRms=await deadline(page.evaluate(async()=>{
     const v=window.__elfura.player.video;const ctx=new AudioContext(),source=ctx.createMediaStreamSource(v.captureStream()),analyser=ctx.createAnalyser();source.connect(analyser);
@@ -95,11 +99,7 @@ try {
     while(Date.now()<end){analyser.getFloatTimeDomainData(data);let sum=0;for(const x of data)sum+=x*x;max=Math.max(max,Math.sqrt(sum/data.length));await new Promise(r=>setTimeout(r,100));}
     source.disconnect();await ctx.close();return Math.round(max*100000)/100000;
    }),10000);
-   step='seek';
-   if(!(row.duration>330) || Math.abs(row.duration-s.runtime*60)>s.runtime*60*0.3)throw Error('unexpected-duration');
    if(!(row.audioRms>0.0001))throw Error('silent-audio');
-   await page.evaluate(()=>{window.__elfura.player.video.currentTime=300});
-   await page.waitForFunction(()=>{const v=window.__elfura.player.video;return !v.seeking&&v.currentTime>300&&v.readyState>=2},null,{timeout:20000});
    const pixels=await page.evaluate(()=>{const v=window.__elfura.player.video,c=document.createElement('canvas');c.width=64;c.height=36;const x=c.getContext('2d');x.drawImage(v,0,0,64,36);return [...x.getImageData(0,0,64,36).data]});
    row.frameHash=createHash('sha256').update(Buffer.from(pixels)).digest('hex').slice(0,12);row.ok=true;
   }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'||e.message==='audit-deadline'?'timeout':e.message==='no candidate'?'no-candidate':e.message==='unexpected-duration'?'unexpected-duration':e.message==='silent-audio'?'silent-audio':/browser has been closed|page, context or browser has been closed/i.test(e.message)?'browser-closed':e.name;
@@ -112,6 +112,7 @@ try {
   const e1=rows.find(r=>r.sample===name+' E1'),e2=rows.find(r=>r.sample===name+' E2');
   console.log('::notice title=Episode frame comparison::'+JSON.stringify({source:id,name,distinct:!!e1?.frameHash&&!!e2?.frameHash&&e1.frameHash!==e2.frameHash}));
  }
+ console.log('::notice title=Compact coverage::'+JSON.stringify({total:rows.length,passed:rows.filter(r=>r.ok).length,rows:rows.map(r=>({sample:r.sample,ok:r.ok,error:r.error,api:r.apiStatuses?.[0]}))}));
  console.log('::notice title=Browser sample summary::'+JSON.stringify({source:id,total:rows.length,passed:rows.filter(r=>r.ok).length,nonSilent:rows.filter(r=>r.audioRms>0.0001).length,rows}));
 
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}
