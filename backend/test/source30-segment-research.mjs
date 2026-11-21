@@ -11,7 +11,9 @@ for(const c of (await adapter.resolve({type:'tv',tmdbId:'46260',season:1,episode
   const item={depth,host:new URL(u).hostname,status:res.status,ct:res.headers.get('content-type')?.split(';')[0]??''};row.steps.push(item);
   if(depth===2){const reader=res.body?.getReader();const r=await reader?.read();item.bytes=r?.value?.length??0;await reader?.cancel();break;}
   const text=await readBoundedText(res,500000);if(!text?.startsWith('#EXTM3U'))break;
-  const ref=text.split(/\r?\n/).map(x=>x.trim()).find(x=>x&&!x.startsWith('#'));if(!ref)break;u=resolveHlsChildUrl(ref,res.url||u);
+  let ref=text.split(/\r?\n/).map(x=>x.trim()).find(x=>x&&!x.startsWith('#'));
+  if(depth===1){let elapsed=0,seg=0;for(const line of text.split(/\r?\n/).map(x=>x.trim())){const m=line.match(/^#EXTINF:([\d.]+)/);if(m){seg=Number(m[1]);continue}if(line&&!line.startsWith('#')&&seg){if(elapsed+seg>=420){ref=line;break}elapsed+=seg;seg=0;}}}
+  if(!ref)break;u=resolveHlsChildUrl(ref,res.url||u);
  }catch(e){row.steps.push({depth,error:e.name,code:e.cause?.code??e.code??''});break;}
  rows.push(row);
 }
