@@ -1,4 +1,4 @@
-/** Round-robin discovery across two independent remote resolvers. No media relay
+/** Round-robin discovery across independent remote resolvers. No media relay
  * or provider work runs here. A single resolver keeps the original no-retry path. */
 import type { PlaybackRequest, PlaybackResolution, PlaybackResolver } from './playback-resolver.js';
 import { RemotePlaybackResolver, ResolverUnavailableError } from './playback-resolver-remote.js';
@@ -17,14 +17,14 @@ type Node = {
 export function createBalancedPlaybackResolver(
   first: RemotePlaybackResolver,
   second: RemotePlaybackResolver,
-  options: { now?: () => number; cooldownMs?: number; budgetMs?: number; hedgeDelayMs?: number; log?: (line: string) => void } = {},
+  options: { now?: () => number; cooldownMs?: number; budgetMs?: number; hedgeDelayMs?: number; log?: (line: string) => void; additionalClients?: RemotePlaybackResolver[] } = {},
 ): PlaybackResolver {
   const now = options.now ?? Date.now;
   const cooldown = options.cooldownMs ?? COOLDOWN_MS;
   const budget = Math.max(1, options.budgetMs ?? TOTAL_BUDGET_MS);
   const hedgeDelay = Math.max(0, Math.min(options.hedgeDelayMs ?? HEDGE_DELAY_MS, budget / 4));
   const log = options.log ?? console.warn;
-  const nodes: Node[] = [first, second].map(client => ({ client, retryAt: 0, attempts: 0, failures: 0, slowInFlight: 0, lastSuccess: 0, lastFailure: 0 }));
+  const nodes: Node[] = [first, second, ...(options.additionalClients ?? [])].map(client => ({ client, retryAt: 0, attempts: 0, failures: 0, slowInFlight: 0, lastSuccess: 0, lastFailure: 0 }));
   // Late results live only on the resolver that did the initial discovery.
   // Bound and expire the media-node routing hints; no candidates or tokens are
   // stored here, and ordinary discovery stays round-robin.
@@ -38,14 +38,14 @@ export function createBalancedPlaybackResolver(
 
   return {
     kind: 'remote',
-    label: `balanced (${first.label}, ${second.label})`,
+    label: `balanced (${nodes.map(node => node.client.label).join(', ')})`,
     async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
       const current = now();
       const key = request.lateAffinityKey?.slice(0, 256);
       let pinned = request.late && key ? affinity.get(key) : undefined;
       if (pinned && pinned.expires <= current) { affinity.delete(key!); pinned = undefined; }
       const preferred = pinned ? nodes.indexOf(pinned.node) : turn++ % nodes.length;
-      const order = [nodes[preferred], nodes[1 - preferred]];
+      const order = nodes.map((_, i) => nodes[(preferred + i) % nodes.length]);
       // Prefer a node that is not cooling down or already holding a stalled
       // request. Keep the other as a last resort even if both are in cooldown:
       // it may have recovered since its last failed request.
@@ -61,6 +61,7 @@ export function createBalancedPlaybackResolver(
         let started = 0;
         let finished = 0;
         let hadAnswer = false;
+        let next = 0;
         let lastError: unknown;
         let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
         let slowNode: Node | undefined;
@@ -92,6 +93,7 @@ export function createBalancedPlaybackResolver(
             return;
           }
           started++;
+          let unavailable = false;
           const attempt = ++node.attempts;
           void node.client.resolve(request, remaining, true).then(result => {
             node.lastSuccess = Math.max(node.lastSuccess, attempt);
@@ -100,13 +102,15 @@ export function createBalancedPlaybackResolver(
               node.retryAt = 0;
             }
             if (pinnedOwner && node !== pinnedOwner && !ownerFailed) {
-              peerAnswer = { result, node };
+              // Retain a useful result in preference to an empty peer answer.
+              if (!peerAnswer?.result || result) peerAnswer = { result, node };
               return;
             }
             if (result) finish(result, node);
             else hadAnswer = true;
           }).catch(error => {
             if (!(error instanceof ResolverUnavailableError)) { fail(error); return; }
+            unavailable = true;
             if (node === pinnedOwner) {
               ownerFailed = true;
               if (peerAnswer) {
@@ -132,33 +136,26 @@ export function createBalancedPlaybackResolver(
             finished++;
             if (slowNode === node) { node.slowInFlight--; slowNode = undefined; }
             if (settled) return;
-            if (started === 1 && finished === 1) {
-              // An ordinary empty answer is not an outage. Fast transport or
-              // server errors, however, immediately try the other backend.
-              if (hadAnswer) { finish(null); return; }
-              if (hedgeTimer) clearTimeout(hedgeTimer);
-              launch(order[1]);
-              return;
-            }
-            if (started === 2 && finished === 2) {
-              if (hadAnswer) finish(null);
-              else fail(lastError ?? new ResolverUnavailableError('resolver request budget exhausted'));
-            }
+            // Immediate failures advance to the next node without waiting for
+            // the hedge timer. An ordinary empty answer is not an outage.
+            if (unavailable && !hadAnswer && next < order.length) launchNext();
+            if (settled || finished !== started) return;
+            if (hadAnswer) finish(null);
+            else if (next >= order.length) fail(lastError ?? new ResolverUnavailableError('resolver request budget exhausted'));
           });
         };
-        launch(order[0]);
+        const launchNext = () => {
+          if (!settled && next < order.length) launch(order[next++]);
+        };
+        launchNext();
         hedgeTimer = setTimeout(() => {
-          if (settled || started !== 1 || finished !== 0) return;
-          // Even a cooling or already-busy peer can have recovered (or be
-          // serving another title successfully). Suppressing this hedge can
-          // leave it only two seconds after the first call times out, poisoning
-          // its health and failing viewers. Normal routing still prefers the
-          // healthy node; hedges are bounded to one additional call per request.
-          // Do not mistake a slow node for a failed one. Keep its original call
-          // alive (bounded by its timeout) to learn whether it really recovers;
-          // new requests meanwhile prefer its peer instead of piling onto it.
-          slowNode = order[0]; slowNode.slowInFlight++;
-          launch(order[1]);
+          if (settled || finished === started || next >= order.length) return;
+          // All remaining peers get enough of the shared budget even if two
+          // nodes are blackholed. This costs at most one call per node.
+          // Mark the original as slow without declaring it down; the request
+          // remains alive until its real outcome or timeout.
+          if (finished === 0) { slowNode = order[0]; slowNode.slowInFlight++; }
+          while (!settled && next < order.length) launchNext();
         }, hedgeDelay);
       });
     },

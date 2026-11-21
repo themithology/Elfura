@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createBalancedPlaybackResolver } from '../../dist/backend/playback-resolver-balanced.js';
 import { RemotePlaybackResolver, ResolverUnavailableError } from '../../dist/backend/playback-resolver-remote.js';
-import { createResilientPlaybackResolver, resolverBackupConfig, resolverConfig, resolverFallbackReason } from '../../dist/backend/playback-resolver.js';
+import { createResilientPlaybackResolver, resolverBackupConfig, resolverThirdConfig, resolverConfig, resolverFallbackReason } from '../../dist/backend/playback-resolver.js';
 
 function server(id) {
   const state = { id, mode: 'ok', calls: 0, changes: 0, token: 'shared-token', delay: 0 };
@@ -24,7 +24,7 @@ function server(id) {
   });
   return new Promise(resolve => srv.listen(0,'127.0.0.1',()=>resolve({state,srv,url:`http://127.0.0.1:${srv.address().port}`})));
 }
-const a = await server('a'), b = await server('b');
+const a = await server('a'), b = await server('b'), c = await server('c');
 try {
   const client = n => new RemotePlaybackResolver(n.url, 'shared-token', () => {});
   let now = 1000;
@@ -183,6 +183,40 @@ try {
   const starvation=createBalancedPlaybackResolver(delayedFailure,starvedPeer,{budgetMs:400,hedgeDelayMs:50,log:()=>{}});
   await assert.rejects(starvation.resolve(request));
   assert.equal((await starvation.probe()).nodes[1].failures,0,'a starved timeout must not poison node health');
+  // Three-node round robin, sticky late discovery and broadcast switches.
+  a.state.mode='ok'; b.state.mode='ok'; c.state.mode='ok';
+  a.state.delay=0; b.state.delay=0; c.state.delay=0;
+  const three=createBalancedPlaybackResolver(client(a),client(b),{additionalClients:[client(c)],budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  const threeResults=[];
+  for(let i=0;i<9;i++) threeResults.push((await three.resolve({...request,lateAffinityKey:`three-${i}`})).node);
+  assert.deepEqual(threeResults,['a','b','c','a','b','c','a','b','c']);
+  assert.equal((await three.resolve({...request,lateAffinityKey:'three-2',late:true})).node,'c');
+  assert.equal((await three.probe()).nodes.length,3);
+  const changes=[a.state.changes,b.state.changes,c.state.changes];
+  assert.equal(await three.setSourceEnabled('source-1',true),true);
+  assert.deepEqual([a.state.changes,b.state.changes,c.state.changes],changes.map(x=>x+1));
+  c.state.token='wrong';
+  assert.equal(await three.setSourceEnabled('source-1',true),false,'third node partial failure must be reported');
+  c.state.token='shared-token';
+  a.state.mode='fail'; b.state.mode='disconnect'; c.state.delay=300;
+  assert.equal((await three.resolve(request)).node,'c','two failed nodes fail over to third');
+  assert.equal((await three.resolve(request)).node,'c','failed nodes are deprioritized');
+  // Two simultaneous blackholes still leave the last node enough time.
+  a.state.mode='ok'; b.state.mode='ok'; a.state.delay=2000; b.state.delay=2000; c.state.delay=300;
+  const threeStalled=createBalancedPlaybackResolver(client(a),client(b),{additionalClients:[client(c)],budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  assert.equal((await threeStalled.resolve(request)).node,'c');
+  a.state.mode='empty'; a.state.delay=0; const oldB=b.state.calls,oldC=c.state.calls;
+  const threeEmpty=createBalancedPlaybackResolver(client(a),client(b),{additionalClients:[client(c)],budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  assert.equal(await threeEmpty.resolve(request),null);
+  assert.equal(b.state.calls,oldB); assert.equal(c.state.calls,oldC);
+  a.state.mode='fail'; b.state.mode='fail'; c.state.mode='fail';
+  const threeDown=createBalancedPlaybackResolver(client(a),client(b),{additionalClients:[client(c)],budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  await assert.rejects(threeDown.resolve(request));
+  c.state.mode='ok'; c.state.delay=0;
+  assert.equal((await threeDown.resolve(request)).node,'c','recovered node is tried even when all were cooling');
+  assert.equal(resolverThirdConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1',ELFURA_SECRET:'shared'})?.token,'shared');
+  assert.equal(resolverThirdConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example',ELFURA_SECRET:'shared'}),null);
+  assert.equal(resolverThirdConfig({ELFURA_RESOLVER_THIRD_URL:'https://user:pass@three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'}),null);
   // Slow failures cannot add two full independent timeout windows.
   a.state.mode='ok'; b.state.mode='ok'; a.state.delay=500; b.state.delay=500;
   const bounded = createBalancedPlaybackResolver(client(a),client(b),{budgetMs:180,log:()=>{}});
@@ -198,5 +232,5 @@ try {
   assert.equal(resolverFallbackReason(),reason,'backup must not overwrite primary diagnostics');
   console.log('resolver balancing: round robin, failover, cooldown/recovery, auth, switches and deadline OK');
 } finally {
-  for (const n of [a,b]) {n.srv.closeAllConnections(); await new Promise(r=>n.srv.close(r));}
+  for (const n of [a,b,c]) {n.srv.closeAllConnections(); await new Promise(r=>n.srv.close(r));}
 }

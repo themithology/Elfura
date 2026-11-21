@@ -175,23 +175,31 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
   return { url: clean, token };
 }
 
-/** Optional second resolver. Apply the same public-network policy as the primary.
+/** Optional resolver nodes use the same public-network policy as the primary.
  * Never let validation of an optional backup overwrite primary diagnostics. */
 export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
-  const raw = (env.ELFURA_RESOLVER_BACKUP_URL ?? '').trim();
+  return optionalResolverConfig(env, 'ELFURA_RESOLVER_BACKUP_URL', 'backup');
+}
+
+export function resolverThirdConfig(env: NodeJS.ProcessEnv = process.env): { url: string; token: string } | null {
+  return optionalResolverConfig(env, 'ELFURA_RESOLVER_THIRD_URL', 'third');
+}
+
+function optionalResolverConfig(env: NodeJS.ProcessEnv, key: string, label: string): { url: string; token: string } | null {
+  const raw = (env[key] ?? '').trim();
   if (!raw) return null;
   try {
     const parsed = new URL(raw);
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
   } catch {
-    console.error('[elfura-resolver] invalid backup URL; use an HTTP(S) URL without credentials, query or fragment.');
+    console.error(`[elfura-resolver] invalid ${label} URL (${key}); use an HTTP(S) URL without credentials, query or fragment.`);
     return null;
   }
   const oldReason = lastFallbackReason;
   try {
     const result = resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
     if (result && new URL(result.url).protocol === 'http:' && !isPrivateResolverUrl(result.url)) {
-      console.warn('[elfura-resolver] WARNING: the public HTTP backup is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.');
+      console.warn(`[elfura-resolver] WARNING: the public HTTP ${label} is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.`);
     }
     return result;
   } finally {

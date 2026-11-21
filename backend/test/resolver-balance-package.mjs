@@ -8,11 +8,11 @@ import https from 'node:https';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import {mkdtempSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync,readFileSync,appendFileSync} from 'node:fs';
 import { createResolverServer } from '../../dist/backend/resolver-server.js';
 
 const secret='test-package-secret-0123456789-abcdef';
-const requestCounts=[0,0];
+const requestCounts=[0,0,0];
 const servers=[];
 const children=[];
 const tmp=mkdtempSync(path.join(os.tmpdir(),'elfura-pool-package-'));
@@ -68,7 +68,7 @@ try {
   const env={...process.env,HOST:'127.0.0.1',PORT:String(port),SERVER_PORT:String(port),NODE_ENV:'test',ELFURA_SUPERVISE:'0',NODE_EXTRA_CA_CERTS:certPath,NODE_OPTIONS:`--require=${dnsHook}`};
   // The test must actually load these values from the installed .env, not a
   // convenient parent environment that hides a launcher or Pterodactyl bug.
-  for(const key of ['ELFURA_SECRET','ELFURA_RESOLVER_TOKEN','ELFURA_RESOLVER_URL','ELFURA_RESOLVER_BACKUP_URL','ELFURA_RESOLVER_ALLOW_PUBLIC','ELFURA_RESOLVER_ALLOW_LOCAL','REQUIRE_PLAYBACK_TOKEN','ALLOWED_ORIGINS','ELFURA_SELF_TEST']) delete env[key];
+  for(const key of ['ELFURA_SECRET','ELFURA_RESOLVER_TOKEN','ELFURA_RESOLVER_URL','ELFURA_RESOLVER_BACKUP_URL','ELFURA_RESOLVER_THIRD_URL','ELFURA_RESOLVER_ALLOW_PUBLIC','ELFURA_RESOLVER_ALLOW_LOCAL','REQUIRE_PLAYBACK_TOKEN','ALLOWED_ORIGINS','ELFURA_SELF_TEST']) delete env[key];
   const child=spawn(process.execPath,['index.js'],{cwd:tmp,env,detached:true,stdio:['ignore','pipe','pipe']});children.push(child);
   let logs='';child.stdout.on('data',d=>logs+=d);child.stderr.on('data',d=>logs+=d);
   const base=`http://127.0.0.1:${port}`;
@@ -82,7 +82,7 @@ try {
     assert.equal(response.status,200,`playback failed: ${await response.clone().text()}\n${logs}`);return response.json();
   }
   const got=[];for(let i=1;i<=8;i++)got.push((await playback(i)).node);
-  assert.deepEqual(got,[1,2,1,2,1,2,1,2]);assert.deepEqual(requestCounts,[4,4]);
+  assert.deepEqual(got,[1,2,1,2,1,2,1,2]);assert.deepEqual(requestCounts,[4,4,0]);
   const login=await fetch(base+'/roxy/api/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({password:secret})});
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
   async function panel(){return (await fetch(base+'/roxy/api/sources',{headers:{origin:base,cookie}})).json();}
@@ -142,7 +142,46 @@ try {
   // must not be left with only two seconds after the newly dead node times out.
   a.state.hang=true; b.state.hang=false; b.state.delay=4000;
   assert.equal((await slowPlayback(103)).node,2,'recovered cooling resolver must get enough time to respond');
-  console.log('packaged .env + HTTPS primary and public HTTP backup: 50/50, 403 and stalled failover, diagnostics and override warning OK');
+  // A new install with the third URL in .env must actually balance three
+  // resolvers and survive the first two accepting connections but never replying.
+  a.state.hang=false; a.state.delay=0; b.state.hang=false; b.state.delay=0;
+  const c=await node(3,true);
+  appendFileSync(path.join(tmp,'.env'),`ELFURA_RESOLVER_THIRD_URL=${c.url}\n`);
+  const fourthSocket=net.createServer();await new Promise(r=>fourthSocket.listen(0,'127.0.0.1',r));
+  const fourthPort=fourthSocket.address().port;await new Promise(r=>fourthSocket.close(r));
+  const threeNode=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(fourthPort),SERVER_PORT:String(fourthPort)}});
+  children.push(threeNode);let threeLogs='';threeNode.stdout.on('data',d=>threeLogs+=d);threeNode.stderr.on('data',d=>threeLogs+=d);
+  const threeBase=`http://127.0.0.1:${fourthPort}`;
+  let threeReady=false;for(let i=0;i<100;i++){try{if((await fetch(threeBase+'/api/v1/health')).ok){threeReady=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
+  assert(threeReady,`three-resolver media node failed to start: ${threeLogs}`);
+  assert.match(threeLogs,/3 resolver URLs configured/);
+  async function threePlayback(id){
+    const response=await fetch(`${threeBase}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:threeBase,'user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(14000)});
+    assert.equal(response.status,200,`three-node playback failed: ${response.status} ${await response.clone().text()}\n${threeLogs}`);
+    return response.json();
+  }
+  const balanced=[];for(let i=0;i<9;i++) balanced.push((await threePlayback(200+i)).node);
+  assert.deepEqual(balanced,[1,2,3,1,2,3,1,2,3]);
+  const threeLogin=await fetch(threeBase+'/roxy/api/login',{method:'POST',headers:{origin:threeBase,'content-type':'application/json'},body:JSON.stringify({password:secret})});
+  assert.equal(threeLogin.status,200);
+  const threeCookie=threeLogin.headers.get('set-cookie').split(';')[0];
+  const threeStatus=await (await fetch(threeBase+'/roxy/api/sources',{headers:{origin:threeBase,cookie:threeCookie}})).json();
+  assert.equal(threeStatus.resolver.nodes.length,3);
+  assert.deepEqual(threeStatus.resolver.nodes.map(n=>n.attempts),[3,3,3]);
+  a.state.hang=true; b.state.hang=true; c.state.delay=4000;
+  const threeStart=Date.now();
+  assert.equal((await threePlayback(210)).node,3,'both blackholed nodes must fail over to the third');
+  assert.ok(Date.now()-threeStart<11000,'third node must get sufficient time to resolve');
+  // A duplicate backup cannot hide a distinct third node.
+  const fifthSocket=net.createServer();await new Promise(r=>fifthSocket.listen(0,'127.0.0.1',r));
+  const fifthPort=fifthSocket.address().port;await new Promise(r=>fifthSocket.close(r));
+  const duplicate=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(fifthPort),SERVER_PORT:String(fifthPort),ELFURA_RESOLVER_BACKUP_URL:a.url}});
+  children.push(duplicate);let duplicateLogs='';duplicate.stdout.on('data',d=>duplicateLogs+=d);duplicate.stderr.on('data',d=>duplicateLogs+=d);
+  let duplicateReady=false;for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${fifthPort}/api/v1/health`)).ok){duplicateReady=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
+  assert(duplicateReady,`duplicate test media node failed to start: ${duplicateLogs}`);
+  assert.match(duplicateLogs,/backup URL matches another resolver; ignoring duplicate/);
+  assert.match(duplicateLogs,/2 resolver URLs configured/,'third must remain usable without a distinct backup');
+  console.log('packaged .env: two/three-node balancing, 403 and stalled failover, diagnostics and override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
