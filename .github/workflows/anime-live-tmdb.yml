@@ -1,0 +1,26 @@
+name: Anime sources with real TMDB and browser
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['.github/workflows/anime-live-tmdb.yml', 'backend/test/source30-real-browser.mjs', 'backend/src/relay.ts']
+permissions: {contents: read}
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ['28', '29', '30']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - name: Live TMDB, provider, relay and real player (one source at a time)
+        env:
+          ELFURA_TEST_LIVE_TMDB: '1'
+        run: node backend/test/source${{ matrix.source }}-real-browser.mjs

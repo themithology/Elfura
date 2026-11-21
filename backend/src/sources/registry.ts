@@ -37,6 +37,9 @@ import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
 import { createSource24Adapter } from './source24.js';
 import { createSource25Adapter } from './source25.js';
+import { createSource28Adapter } from './source28.js';
+import { createSource29Adapter } from './source29.js';
+import { createSource30Adapter } from './source30.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -93,6 +96,9 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
   'source-24': 'ELFURA_VIDLINK_ENABLED',
   'source-25': 'ELFURA_GREYBOX_ENABLED',
+  'source-28': 'ELFURA_ANIME_MULTI_ENABLED',
+  'source-29': 'ELFURA_ANIME_29_ENABLED',
+  'source-30': 'ELFURA_ANIME_30_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
@@ -225,6 +231,13 @@ export class SourceRegistry {
       createSource24Adapter(cfg.source24),
       // Greybox: plain JSON with per-stream language labels and no token.
       createSource25Adapter(cfg.source25),
+      // Source 26 is intentionally not registered: tested streams can play
+      // audio without video on browsers that lack HEVC decoding.
+      // Direct multi-audio anime. Only mapped season-one episodes with matching
+      // TMDB episode titles are accepted; no title or language is guessed.
+      createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
+      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED !== '0'),
+      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED !== '0'),
     ];
   }
 
@@ -249,17 +262,25 @@ export class SourceRegistry {
    */
   async selfTestAll(
     params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
-  ): Promise<{ id: string; raw: number; ms: number; net: string }[]> {
+  ): Promise<{ id: string; raw: number; ms: number; net: string; skipped?: string }[]> {
+    // Share one lazy metadata lookup just as the playback resolver does. Anime
+    // adapters cannot correctly resolve an episode without TMDB metadata.
+    let metaPromise: ReturnType<typeof fetchTmdbMetadata> | undefined;
+    const resolveMetaFallback = () => (metaPromise ??= fetchTmdbMetadata(this.cfg.tmdb, params));
     return Promise.all(
       this.adapters
         .filter((adapter) => adapter.enabled())
         .map(async (adapter) => {
           const started = Date.now();
+          if (params.type === 'movie' && ['source-28', 'source-29', 'source-30'].includes(adapter.id)) {
+            return { id: adapter.id, raw: 0, ms: 0, net: '0 req', skipped: 'TV anime only' };
+          }
           const query: SourceQuery = {
             type: params.type,
             tmdbId: params.tmdbId,
             season: params.season,
             episode: params.episode,
+            resolveMetaFallback,
             signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
           };
           try {
@@ -695,7 +716,9 @@ export class SourceRegistry {
     // A fresh resolve owns a fresh stash. This has to run before any adapter
     // task can record into it — the tasks below start immediately — and never
     // on a late pass, which is the pass that reads it.
-    if (!lateOnly) this.finishedLate.delete(lateKey);
+    // A source-specific background recovery must not erase the results from
+    // the initial all-source request: those are still needed by late joins.
+    if (!lateOnly && !singleSource) this.finishedLate.delete(lateKey);
     if (lateOnly) {
       // Report what finished after the previous response was sealed. The
       // payload cache is not consulted: it may be disabled entirely, and using
@@ -720,7 +743,7 @@ export class SourceRegistry {
         // is not pending even if it answered early. The stash is cleared when a
         // fresh resolve of this title starts, so it never accumulates.
         if (result.candidates.length) {
-          const prior = this.finishedLate.get(lateKey) ?? [];
+          const prior = (this.finishedLate.get(lateKey) ?? []).filter(entry => entry.adapter.id !== adapter.id);
           prior.push({ adapter, result });
           this.finishedLate.set(lateKey, prior);
           this.pruneFinishedLate();
@@ -794,7 +817,11 @@ export class SourceRegistry {
         }
         if (byLanguage.size < 2) return entry.result.candidates;
         const ordered: RawStreamCandidate[] = [];
-        for (const bucket of byLanguage.values()) ordered.push(...bucket);
+        const buckets = [...byLanguage.values()];
+        const maxBucket = Math.max(...buckets.map((bucket) => bucket.length));
+        for (let i = 0; i < maxBucket; i += 1) {
+          for (const bucket of buckets) if (bucket[i]) ordered.push(bucket[i]);
+        }
         return ordered;
       });
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
@@ -1120,7 +1147,12 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          opt.subtitles = [...sealedFallbackSubs];
+          if (['source-29', 'source-30'].includes(opt.sourceId) && opt.subtitles.length) {
+            const existing = new Set(opt.subtitles.map(track => track.lang));
+            opt.subtitles = [...opt.subtitles, ...sealedFallbackSubs.filter(track => !existing.has(track.lang))];
+          } else {
+            opt.subtitles = [...sealedFallbackSubs];
+          }
         }
       }
     }
@@ -1256,7 +1288,9 @@ export class SourceRegistry {
   ): UniformStreamOption {
     // Build strictly anonymized display label using ONLY adapter.label + audio/quality traits
     let trait = '';
-    if (cand.multiAudio) {
+    if (adapter.id === 'source-29' && cand.animeSubtitleMode === 'hard') {
+      trait = 'Provider-labelled Hard Sub';
+    } else if (cand.multiAudio) {
       trait = 'Multi-Audio';
     } else if (cand.audioLabel && cand.audioLabel !== 'Original') {
       trait = cand.audioLabel;
@@ -1281,6 +1315,7 @@ export class SourceRegistry {
     const streamTicket = sealStreamTicket(this.cfg.secret, {
       u: cand.url,
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
+      ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin, fp: 1 as const } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
       ...(singleDubHint ? { l: singleDubHint } : {}),
     });
@@ -1297,6 +1332,19 @@ export class SourceRegistry {
       )}`,
     }));
 
+    // Only the new anime lane opts into source-specific, episode-aligned
+    // subtitles. Keep the existing subtitle policy for every other adapter.
+    const subtitles = ['source-29', 'source-30'].includes(adapter.id) ? (cand.subtitles ?? []).map((track) => ({
+      lang: track.lang,
+      label: track.label,
+      ...(track.format ? { format: track.format } : {}),
+      url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+        u: track.url,
+        ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+        ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin } : {}),
+        k: 's',
+      }))}`,
+    })) : [];
 
     const latencyHintMs =
       typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
@@ -1322,7 +1370,7 @@ export class SourceRegistry {
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
-      subtitles: [],
+      subtitles,
     };
   }
 }

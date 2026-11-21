@@ -346,6 +346,10 @@ export async function installEgressProfile(log: (line: string) => void = console
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
 
+    // A request with an explicit guarded dispatcher must resolve and connect
+    // locally through that dispatcher, not a remote Worker or proxy.
+    if (normalized.init.dispatcher) return fetch(normalized.url, normalized.init as never);
+
     if (isMediaRequest(normalized.url, normalized.init)) {
       return previousFetch(input as never, init as never);
     }

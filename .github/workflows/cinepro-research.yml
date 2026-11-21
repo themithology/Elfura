@@ -1,0 +1,16 @@
+name: Cinepro candidate availability research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/cinepro-provider-research.mjs', '.github/workflows/cinepro-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: node backend/test/cinepro-provider-research.mjs

@@ -25,8 +25,9 @@ try {
   const registry = new SourceRegistry(cfg);
   registry.adapters = [
     adapter('source-1', async () => ({ candidates: [fast] })),
+    adapter('source-20', async () => ({ candidates: [] })),
     // Finishes well after the first response is sealed.
-    adapter('source-14', async () => { await sleep(3200); return { candidates: [slow] }; }),
+    adapter('source-14', async () => { await sleep(6000); return { candidates: [slow] }; }),
   ];
 
   const started = Date.now();
@@ -39,6 +40,12 @@ try {
   assert(first.pendingSources?.includes('source-14'), 'slow lane must be reported as pending');
   assert(firstMs < 4000, `first pass too slow: ${firstMs}ms`);
 
+  // The player's source-specific background recovery must not wipe the
+  // original request's late-join stash while slower adapters are still running.
+  await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', sourceId: 'source-20' });
+  const afterRecovery = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
+  assert(afterRecovery?.sources.some(s => s.sourceId === 'source-1'), 'recovery erased the original late stash');
+
   // While the slow lane is still working, a late pass must never block.
   const earlyStarted = Date.now();
   const early = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
@@ -47,7 +54,7 @@ try {
   assert(early === null || !early.sources.some((s) => s.sourceId === 'source-14'));
 
   // After it finishes, the same late pass returns it from RAM cache.
-  await sleep(2200);
+  await sleep(4200);
   const lateStarted = Date.now();
   const late = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
   const lateMs = Date.now() - lateStarted;

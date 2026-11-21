@@ -1,0 +1,18 @@
+name: MegaPlay safe extractor research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/megaplay-extractor-research.mjs', '.github/workflows/megaplay-extractor-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/megaplay-extractor-research.mjs

@@ -55,6 +55,15 @@ export type EventName =
   | 'media'
   | 'config';
 
+/** Fired when an episode selection starts, not when playback is confirmed. */
+export interface EpisodeChangeData {
+  mediaType: 'tv';
+  tmdbId: string;
+  season: number;
+  episode: number;
+  previous: { season: number; episode: number };
+}
+
 export type CommandName =
   | 'play'
   | 'pause'
@@ -166,7 +175,7 @@ export class PostMessageBridge {
       'audioTracks', 'audioChange', 'audio:searching', 'audio:unavailable',
       'subtitleTracks', 'subtitleChange', 'subtitleStyle',
       'qualityLevels', 'qualityChange', 'qualityEffective', 'volumechange', 'speedchange',
-      'autoplay:blocked', 'fullscreen', 'back', 'episode:next', 'config',
+      'autoplay:blocked', 'fullscreen', 'back', 'episode:next', 'episodeChange', 'config',
     ];
     for (const e of EVENTS) bus.on(e, forward(e));
 
@@ -252,8 +261,10 @@ export class PostMessageBridge {
 /** Small helper a host site can drop in to talk to the iframe with promises. */
 export function createHostClient(iframe: HTMLIFrameElement, targetOrigin = '*') {
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  const fromPlayer = (ev: MessageEvent) =>
+    ev.source === iframe.contentWindow && (targetOrigin === '*' || ev.origin === targetOrigin);
   window.addEventListener('message', (ev: MessageEvent) => {
-    if (!isEnvelope(ev.data)) return;
+    if (!fromPlayer(ev) || !isEnvelope(ev.data)) return;
     if (ev.data.kind === 'ack' && ev.data.reqId) {
       const p = pending.get(ev.data.reqId);
       if (!p) return;
@@ -277,7 +288,7 @@ export function createHostClient(iframe: HTMLIFrameElement, targetOrigin = '*') 
     },
     on(name: EventName, fn: (data: unknown) => void): () => void {
       const h = (ev: MessageEvent) => {
-        if (isEnvelope(ev.data) && ev.data.kind === 'event' && ev.data.name === name) fn(ev.data.data);
+        if (fromPlayer(ev) && isEnvelope(ev.data) && ev.data.kind === 'event' && ev.data.name === name) fn(ev.data.data);
       };
       window.addEventListener('message', h);
       return () => window.removeEventListener('message', h);

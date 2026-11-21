@@ -1,0 +1,22 @@
+name: Ubuntu resolver installer
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths:
+      - 'scripts/install-ubuntu-resolver.sh'
+      - 'backend/test/ubuntu-resolver-install.mjs'
+      - 'elfura-pterodactyl.zip'
+      - '.github/workflows/ubuntu-resolver.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: bash -n scripts/install-ubuntu-resolver.sh
+      - run: node backend/test/ubuntu-resolver-install.mjs

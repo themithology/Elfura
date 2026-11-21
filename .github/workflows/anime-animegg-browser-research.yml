@@ -1,0 +1,37 @@
+name: Anime alternative player research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/anime-animegg-*-research.*', '.github/workflows/anime-animegg-browser-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - name: Install ephemeral research tools
+        run: |
+          git clone --quiet https://github.com/aryaniiil/anime-api.git "$RUNNER_TEMP/kuhi-reference"
+          git -C "$RUNNER_TEMP/kuhi-reference" checkout --quiet d9a785ad030d6fc6a8ad709291be9612c864449e
+          python3 -m venv "$RUNNER_TEMP/anime-venv"
+          "$RUNNER_TEMP/anime-venv/bin/pip" install --quiet --disable-pip-version-check httpx fastapi uvicorn faster-whisper imageio-ffmpeg pillow
+          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
+      - name: Extract candidates without logging URLs
+        run: RESEARCH_STREAM_FILE="$RUNNER_TEMP/anime-streams.json" "$RUNNER_TEMP/anime-venv/bin/python" backend/test/anime-animegg-extract-research.py "$RUNNER_TEMP/kuhi-reference"
+      - name: Playback test with subtitles disabled
+        run: RESEARCH_STREAM_FILE="$RUNNER_TEMP/anime-streams.json" AUDIT_AUDIO_DIR="$RUNNER_TEMP/anime-clips" node backend/test/anime-animegg-browser-research.mjs
+      - name: Analyse ephemeral audio and frames
+        run: |
+          export AUDIT_AUDIO_DIR="$RUNNER_TEMP/anime-clips" HF_HOME="$RUNNER_TEMP/anime-model"
+          "$RUNNER_TEMP/anime-venv/bin/python" backend/test/anime-audio-language-research.py
+          "$RUNNER_TEMP/anime-venv/bin/python" backend/test/anime-hardsub-ocr-research.py
+      - name: Delete all temporary media and dependencies
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/anime-streams.json" "$RUNNER_TEMP/anime-clips" "$RUNNER_TEMP/anime-model" "$RUNNER_TEMP/anime-venv" "$RUNNER_TEMP/kuhi-reference"

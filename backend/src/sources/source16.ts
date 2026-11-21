@@ -87,14 +87,22 @@ export async function fetchFromMikaza(
   options: { trace?: string[] } = {},
 ): Promise<RawStreamCandidate[]> {
   const trace = options.trace;
+  // A TMDB show can span multiple AniList entries or use different episode
+  // numbering. Reusing episode 1 for every TMDB season silently plays the
+  // wrong episode. Until we have a verified TMDB-season mapping, only an
+  // explicitly supplied AniList id AND episode can opt into later seasons.
+  if (query.type === 'tv' && (query.season ?? 1) !== 1 &&
+      !(query.anilistId && /^\d{1,10}$/.test(query.anilistId) && query.anilistEpisode != null)) {
+    trace?.push('unmapped-season');
+    return [];
+  }
   const episode = query.anilistEpisode ?? query.episode ?? 1;
   if (!Number.isSafeInteger(episode) || episode < 1) {
     trace?.push('bad-episode');
     return [];
   }
 
-  // Prefer an explicit AniList id, otherwise convert from TMDB. Conversion is a
-  // RAM lookup, not a request, so this costs nothing on the hot path.
+  // Prefer an explicit AniList id, otherwise convert from TMDB over the network.
   let anilistId = query.anilistId && /^\d{1,10}$/.test(query.anilistId) ? query.anilistId : '';
   if (!anilistId) {
     const mapped = await anilistIdForTmdb(query.tmdbId).catch(() => null);

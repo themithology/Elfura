@@ -42,6 +42,7 @@ import {
   languageLabel,
   loadPreferredAudio,
   matchScore,
+  providerVariantLanguage,
   savePreferredAudio,
   type AudioTrack,
 } from './audio';
@@ -245,6 +246,8 @@ export class ElfuraPlayer {
   } | null = null;
   private startupWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private resolveGeneration = 0;
+  /** Invalidates stale seek restores, probes and prewarms across episodes. */
+  private episodeGeneration = 0;
   private resolveAbort: AbortController | null = null;
   private exhaustedRecoveryAttempted = false;
   private exhaustedRecoveryInFlight = false;
@@ -622,7 +625,10 @@ export class ElfuraPlayer {
           headers['X-Elfura-Envelope'] = '1';
         }
         const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(6_000) });
-        if (!res.ok) return;
+        // An early late-join can legitimately be empty (404), or a resolver can
+        // be temporarily unavailable. Keep the bounded retries instead of
+        // permanently dropping slower sources after the first miss.
+        if (!res.ok) { void run(attempt + 1); return; }
         const raw = (await res.json()) as { s?: number; p?: string; sources?: SourceOption[]; pendingSources?: string[] };
         const payload = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
           ? await openSealedEnvelope<{ sources?: SourceOption[]; pendingSources?: string[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce))
@@ -646,6 +652,11 @@ export class ElfuraPlayer {
         }
         this.pendingSourceGroups = (payload.pendingSources ?? []).filter((id) => typeof id === 'string');
         if (added) {
+          // Late source versions can add languages as well as servers.
+          // Do not turn a previously inferred provider label into native proof.
+          const native = this.audioTracks.filter(t => t.kind === 'native' && typeof t.ref === 'number')
+            .map(t => ({ id: t.ref as number, lang: t.providerHint ? 'und' : t.lang, label: t.providerHint ? undefined : t.label, default: t.default }));
+          this.mergeNativeAudio(native);
           // Re-rank without emitting 'sources' — that event resets the control
           // surface, and playback must not be disturbed by a list refresh.
           this.sortSourcesForDisplay(this.desiredAudioLang ?? this.currentAudio?.lang ?? null);
@@ -946,7 +957,14 @@ export class ElfuraPlayer {
                 break;
               }
             }
-            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0) {
+            const hasTaggedAudio = audioMediaLines.some((line) => {
+              const lang = line.match(/\bLANGUAGE="([^"]*)"/i)?.[1] ?? '';
+              const name = line.match(/\bNAME="([^"]*)"/i)?.[1] ?? '';
+              return canonLang(lang) !== 'und' || canonLang(name) !== 'und';
+            });
+            const hint = providerVariantLanguage(opt);
+            const possibleHint = !hasTaggedAudio && hint && matchScore(targetLang, hint) >= 0;
+            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? 'und') < 0 && !possibleHint) {
               return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
           }
@@ -1154,8 +1172,11 @@ export class ElfuraPlayer {
       }
 
       if (!isCurrent()) return;
-      const storedLang = !cfg.lang ? loadPreferredAudio() : null;
-      const bootLang = cfg.lang ? String(cfg.lang) : storedLang;
+      // Once playback has started, a viewer's latest audio selection takes
+      // precedence over the original embed language for subsequent episodes.
+      const episodeLang = this.episodeGeneration > 0 ? this.desiredAudioLang : null;
+      const storedLang = !cfg.lang && !episodeLang ? loadPreferredAudio() : null;
+      const bootLang = episodeLang ?? (cfg.lang ? String(cfg.lang) : storedLang);
 
       apiUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
       apiUrl.searchParams.set('tmdb', String(cfg.tmdb));
@@ -1318,11 +1339,11 @@ export class ElfuraPlayer {
             (s.audioTracks ?? []).some((a) => matchScore(storedLang, a.lang) >= 0),
         );
 
-      const effectiveBootLang = cfg.lang
+      const effectiveBootLang = episodeLang ?? (cfg.lang
         ? String(cfg.lang)
         : storedMatchesAny
           ? storedLang
-          : null;
+          : null);
       this.reorderSourcesHierarchy(effectiveBootLang);
 
       // A slow provider can miss the initial bounded backend race. Fetch its
@@ -1371,6 +1392,13 @@ export class ElfuraPlayer {
                   existing.audioLang = undefined;
                   existing.label = candidate.label;
                   added = true;
+                } else if (existing && !existing.multiAudio && !existing.audioLang && candidate.audioLang && candidate.audioLang !== 'und') {
+                  // The first bounded probe may have returned this same stream
+                  // unlabelled. Merge later verified single-language evidence too.
+                  existing.audioLang = candidate.audioLang;
+                  existing.availableAudioLangs = candidate.availableAudioLangs;
+                  existing.label = candidate.label;
+                  added = true;
                 }
                 continue;
               }
@@ -1387,7 +1415,7 @@ export class ElfuraPlayer {
             }
             if (added) {
               const native = this.audioTracks.filter((t) => t.kind === 'native' && typeof t.ref === 'number')
-                .map((t) => ({ id: t.ref as number, lang: t.lang, label: t.label, default: t.default }));
+                .map((t) => ({ id: t.ref as number, lang: t.providerHint ? 'und' : t.lang, label: t.providerHint ? undefined : t.label, default: t.default }));
               this.mergeNativeAudio(native);
               this.emit('sourcesUpdated', this.sources);
               // If the user explicitly requested a language while the group
@@ -1403,7 +1431,8 @@ export class ElfuraPlayer {
                   matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
               if (wanted && wanted !== 'und' && !currentLanguageMatches &&
                   this.sources.some((s) => s.sourceId === recoveryId &&
-                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0))) {
+                    ((s.audioLang && matchScore(wanted, s.audioLang) >= 0) ||
+                    (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0)))) {
                 void this.setAudio(wanted);
               }
             }
@@ -1448,6 +1477,7 @@ export class ElfuraPlayer {
     manual = false,
   ): Promise<void> {
     const cfg = this.input.config;
+    const episodeGeneration = this.episodeGeneration;
     const prevTime = preservePosition && Number.isFinite(this.video.currentTime) ? this.video.currentTime : 0;
     const wasPlaying = preservePosition && !this.video.paused;
 
@@ -1458,10 +1488,13 @@ export class ElfuraPlayer {
     cfg.subsrc = opt.subtitles?.map((s) => ({ lang: s.lang, label: s.label, url: s.url })) ?? [];
 
     const engineHint = opt.type === 'mp4' ? 'native' : opt.type;
+    const loadSeq = this.engineLoadSeq + 1;
     await this.load(opt.url, engineHint);
+    if (this.destroyed || episodeGeneration !== this.episodeGeneration || loadSeq !== this.engineLoadSeq) return;
 
     if (prevTime > 0.5) {
       const restore = () => {
+        if (this.destroyed || episodeGeneration !== this.episodeGeneration || loadSeq !== this.engineLoadSeq) return;
         this.seek(prevTime);
         if (wasPlaying) void this.play();
       };
@@ -1678,6 +1711,8 @@ export class ElfuraPlayer {
         return !s.multiAudio && canonLang(s.audioLang) === 'und';
       }
       if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
+      const hint = providerVariantLanguage(s);
+      if (hint && matchScore(targetLang, hint) >= 0) return true;
       if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
       if ((s.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0)) return true;
       // Provider language summaries can be incomplete. Every multi-audio source
@@ -1692,6 +1727,7 @@ export class ElfuraPlayer {
       .sort(
         (a, b) =>
           Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
+          Number(Boolean(providerVariantLanguage(a))) - Number(Boolean(providerVariantLanguage(b))) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
           this.qualityRank(b) - this.qualityRank(a),
       );
@@ -1707,7 +1743,7 @@ export class ElfuraPlayer {
 
     const finalizeChosenCandidate = (cand: SourceOption): boolean => {
       this.shell.dataset.buffering = 'false';
-      if (targetLang && targetLang !== 'und') {
+      if (targetLang && targetLang !== 'und' && !providerVariantLanguage(cand)) {
         this.recordDiscoveredAudioLangs(cand, [targetLang]);
       }
       // Dynamically update server hierarchy so the fastest winning server (Multi-Audio OR Direct)
@@ -1715,7 +1751,9 @@ export class ElfuraPlayer {
       this.reorderSourcesHierarchy(targetLang);
 
       if (savedTime > 0.5) {
+        const loadSeq = this.engineLoadSeq;
         const restore = () => {
+          if (this.destroyed || this.audioSearchSeq !== seq || this.engineLoadSeq !== loadSeq) return;
           this.seek(savedTime);
           if (wasPlaying) void this.play();
         };
@@ -2246,6 +2284,7 @@ export class ElfuraPlayer {
     const target = this.nextEpisodeTarget;
     if (!target) return;
 
+    const generation = this.episodeGeneration;
     const key = `${cfg.tmdb}:${target.season}:${target.episode}`;
     if (this.prewarmedKeyTriggered === key) return;
     this.prewarmedKeyTriggered = key;
@@ -2301,9 +2340,15 @@ export class ElfuraPlayer {
             )
           : rawJson;
 
-      if (!data?.ok || !data.sources?.length || this.destroyed) return;
+      if (!data?.ok || !data.sources?.length || this.destroyed || generation !== this.episodeGeneration) return;
 
-      const topCandidate = data.primary ?? data.sources[0];
+      const resolveSource = (opt: SourceOption): SourceOption => ({
+        ...opt,
+        url: this.resolveBackendMediaUrl(opt.url),
+        audioTracks: opt.audioTracks?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+        subtitles: opt.subtitles?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+      });
+      const topCandidate = resolveSource(data.primary ?? data.sources[0]);
       // Warm manifest ticket in RAM so hls.js starts playback in ~0.2s when clicked
       if (this.canPreProbeViaFetch(topCandidate)) {
         const ctrl = new AbortController();
@@ -2318,7 +2363,7 @@ export class ElfuraPlayer {
         season: target.season,
         episode: target.episode,
         media: data.media,
-        sources: data.sources,
+        sources: data.sources.map(resolveSource),
         fastest: topCandidate,
         segments: data.segments,
       };
@@ -2328,10 +2373,45 @@ export class ElfuraPlayer {
   }
 
   async loadEpisode(seasonInput: number, episodeInput: number): Promise<void> {
+    if (this.destroyed) return;
     const cfg = this.input.config;
     const season = Math.max(1, Math.floor(Number(seasonInput) || 1));
     const episode = Math.max(1, Math.floor(Number(episodeInput) || 1));
+    const previous = { season: Number(cfg.season ?? 1), episode: Number(cfg.episode ?? 1) };
+    // Re-selecting the current episode is not an episode change and must not
+    // erase a deliberate resume point or emit a misleading host notification.
+    if (cfg.mediaType === 'tv' && previous.season === season && previous.episode === episode) return;
     const anilistEpisodeOffset = cfg.anilistEpisode === undefined ? null : cfg.anilistEpisode - Number(cfg.episode ?? 1);
+    const pre = this.prewarmedNext;
+    const generation = ++this.episodeGeneration;
+
+    // An episode is a new timeline. Stop the old source and invalidate every
+    // outstanding resolver, audio race, queued seek restore and prewarm before
+    // using the new title. Same-episode source/audio switches still preserve time.
+    this.resolveGeneration++;
+    this.resolveAbort?.abort();
+    this.resolveAbort = null;
+    this.lateHydrationToken++;
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: true });
+    this.activeProbe = null;
+    this.engineLoadSeq++;
+    this.teardownEngine();
+    this.video.pause();
+    this.video.onerror = null;
+    this.video.removeAttribute('src');
+    this.video.load();
+    this.currentSource = null;
+    this.sources = [];
+    this.pendingSourceGroups = [];
+    this.prewarmedNext = null;
+    this.skipLookupKey = '';
+    this.exhaustedRecoveryInFlight = false;
+    cfg.src = undefined;
+    cfg.server = undefined;
+    cfg.audioTracks = [];
+    cfg.subsrc = [];
+    cfg.t = undefined;
     cfg.mediaType = 'tv';
     cfg.season = season;
     cfg.episode = episode;
@@ -2339,13 +2419,24 @@ export class ElfuraPlayer {
     cfg.title = undefined;
     cfg.intro = undefined;
     cfg.outro = undefined;
+    if (this.mediaInfo) this.mediaInfo = { ...this.mediaInfo, type: 'tv', season, episode, episodeName: undefined };
     this.prewarmedKeyTriggered = '';
+    this.recomputeNextEpisodeTarget();
 
     // Update browser path seamlessly without dropping fullscreen if running on /embed/tv/:id/:s/:e
     try {
       const m = window.location.pathname.match(/^(\/embed\/tv\/[^/]+)\/\d+\/\d+(\/?)$/);
-      if (m) {
-        const nextUrl = new URL(`${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`, window.location.href);
+      const isQueryEmbed = /^\/embed(?:\.html)?\/?$/.test(window.location.pathname);
+      if (m || isQueryEmbed) {
+        const nextUrl = m
+          ? new URL(`${m[1]}/${season}/${episode}${m[2]}${window.location.search}${window.location.hash}`, window.location.href)
+          : new URL(window.location.href);
+        // Query aliases override path parameters at boot, so update any present
+        // aliases as well. Query-style embeds need explicit episode parameters.
+        for (const key of ['season', 's']) if ((isQueryEmbed && key === 's') || nextUrl.searchParams.has(key)) nextUrl.searchParams.set(key, String(season));
+        for (const key of ['episode', 'e', 'ep']) if ((isQueryEmbed && key === 'e') || nextUrl.searchParams.has(key)) nextUrl.searchParams.set(key, String(episode));
+        // A start offset belongs only to the episode for which it was supplied.
+        for (const key of ['t', 'start', 'starttime', 'seek']) nextUrl.searchParams.delete(key);
         if (cfg.anilistEpisode !== undefined) nextUrl.searchParams.set('anilistEpisode', String(cfg.anilistEpisode));
         window.history.replaceState(null, '', nextUrl);
       }
@@ -2353,10 +2444,13 @@ export class ElfuraPlayer {
       /* ignore sandboxed history restrictions */
     }
 
-    this.emit('episodeChange', { season, episode });
-
-    const pre = this.prewarmedNext;
-    this.prewarmedNext = null;
+    this.emit('episodeChange', {
+      mediaType: 'tv',
+      tmdbId: String(cfg.tmdb ?? this.mediaInfo?.tmdbId ?? ''),
+      season,
+      episode,
+      previous,
+    });
 
     if (pre && pre.season === season && pre.episode === episode && pre.sources.length > 0) {
       if (pre.media) {
@@ -2386,18 +2480,38 @@ export class ElfuraPlayer {
         this.desiredAudioLang ?? (cfg.lang ? canonLang(String(cfg.lang)) : null) ?? loadPreferredAudio();
       this.reorderSourcesHierarchy(keepLang);
 
+      // Activate an actual source for the new episode first. Calling setAudio
+      // while the old episode is active can short-circuit on its tracks or
+      // carry its ending timestamp into the new episode's language search.
+      const matches = (s: SourceOption) => Boolean(keepLang && (
+        (s.audioLang && matchScore(keepLang, s.audioLang) >= 0) ||
+        (s.availableAudioLangs ?? []).some(lang => matchScore(keepLang, lang) >= 0) ||
+        (s.audioTracks ?? []).some(track => matchScore(keepLang, track.lang) >= 0)
+      ));
+      const initial = (keepLang && keepLang !== 'und' ? this.sources.find(matches) : null) ?? pre.fastest;
       if (keepLang && keepLang !== 'und') {
         this.initialAudioApplied = true;
-        await this.setAudio(keepLang);
-      } else {
-        await this.activateSourceOption(pre.fastest, false);
+        this.desiredAudioLang = canonLang(keepLang);
       }
-      void this.play();
+      await this.activateSourceOption(initial, false);
+      if (this.destroyed || generation !== this.episodeGeneration) return;
+      this.playSelectedEpisode(generation);
       return;
     }
 
     await this.resolveFromBackend();
-    void this.play();
+    if (this.destroyed || generation !== this.episodeGeneration) return;
+    this.playSelectedEpisode(generation);
+  }
+
+  private playSelectedEpisode(generation: number): void {
+    const play = () => {
+      if (!this.destroyed && generation === this.episodeGeneration && this.video.paused) void this.play();
+    };
+    // HLS/DASH are lazy-loaded; an immediate play can run before the new
+    // engine attaches. Retry at metadata without letting an old episode retry.
+    if (this.video.readyState < 1) this.video.addEventListener('loadedmetadata', play, { once: true });
+    play();
   }
 
   async nextEpisode(): Promise<boolean> {
@@ -2519,9 +2633,12 @@ export class ElfuraPlayer {
     const claimsMulti =
       !!probe.opt.multiAudio || (probe.opt.availableAudioLangs?.length ?? 0) > 1;
     if (claimsMulti && !hasSidecarMatch) return false;
+    const hint = providerVariantLanguage(probe.opt);
+    const hasTaggedTrack = manifestAudioTracks.some(track => canonLang(track.lang) !== 'und' || canonLang(track.name) !== 'und');
     return (
       manifestAudioTracks.length <= 1 &&
-      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0)
+      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 ||
+        (!!hint && !hasTaggedTrack && matchScore(probe.targetLang, hint) >= 0))
     );
   }
 
@@ -3062,19 +3179,23 @@ export class ElfuraPlayer {
         : native;
 
     // Dynamically gather audio languages actually reported across resolved raw sources
-    const discoveredSourceLangs: { lang: string; label?: string; active?: boolean }[] = [];
+    const discoveredSourceLangs: { lang: string; label?: string; active?: boolean; providerHint?: boolean }[] = [];
     if (this.currentSource && !this.currentSource.multiAudio) {
+      const hint = providerVariantLanguage(this.currentSource);
       discoveredSourceLangs.push({
-        lang: this.currentSource.audioLang ?? 'und',
+        lang: hint ?? this.currentSource.audioLang ?? 'und',
         active: true,
+        ...(hint ? { providerHint: true } : {}),
       });
     }
     for (const s of this.sources) {
       if (this.isCandidateFailed(s)) continue;
-      if (!s.multiAudio && s.audioLang) {
+      const hint = providerVariantLanguage(s);
+      if (!s.multiAudio && (s.audioLang || hint)) {
         discoveredSourceLangs.push({
-          lang: s.audioLang,
+          lang: hint ?? s.audioLang!,
           active: s.id === this.currentSource?.id,
+          ...(hint ? { providerHint: true } : {}),
         });
       }
       for (const l of s.availableAudioLangs ?? []) {

@@ -49,6 +49,10 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         assert 'vendor/undici/index.js' in archive.namelist(), 'the undici fallback copy is missing'
         assert 'node_modules/undici/index.js' in archive.namelist(), 'the bundled undici is missing'
 
+    # Verify the extracted resolver can load its bundled native client without
+    # npm or access to the workspace's node_modules.
+    subprocess.run(['node', '--input-type=module', '-e', "const w = await import('wreq-js'); if (typeof w.fetch !== 'function') process.exit(1)"], cwd=tmp, check=True)
+
     env = dict(os.environ, HOST='127.0.0.1', SERVER_PORT=str(port))
     env.pop('ELFURA_SECRET', None); env.pop('ROXY_DATA_DIR', None)
     process = subprocess.Popen(['node', 'index.js'], cwd=tmp, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

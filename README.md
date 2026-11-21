@@ -188,6 +188,44 @@ Versioned envelope, origin-locked in both directions:
 Commands are acked, so a host can `await` them: `createHostClient(iframe).send('seek', { value: 90 })`.
 `pltoken` / `nonce` are redacted from every outbound message and log.
 
+### Detect an episode change on the host site
+
+The player sends an `episodeChange` event whenever an episode is selected,
+including the Next Episode button, automatic advance, episode selector, and the
+`loadEpisode` or `next` command. Re-selecting the current episode does not fire
+an event. It fires when the switch **starts**; it does not guarantee that a source
+loaded or playback succeeded. The iframe stays in
+place. A host can update its episode highlight or URL without reloading it:
+
+```html
+<iframe id="elfura" src="https://play.example.com/embed/tv/1399/1/1?origin=https%3A%2F%2Fwatch.example.com"
+        allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+<script>
+  const iframe = document.getElementById('elfura');
+  const playerOrigin = 'https://play.example.com'; // exact player origin
+
+  window.addEventListener('message', (event) => {
+    // Ignore messages from other origins and other iframes.
+    if (event.origin !== playerOrigin || event.source !== iframe.contentWindow) return;
+    const msg = event.data;
+    if (!msg || msg.__elfura !== 1 || msg.v !== 1 ||
+        msg.kind !== 'event' || msg.name !== 'episodeChange') return;
+    const { tmdbId, season, episode, previous } = msg.data;
+    console.log('Now selected:', tmdbId, season, episode, 'previous:', previous);
+    // Update your episode selector or use history.replaceState here.
+  });
+</script>
+```
+
+The payload is `{ mediaType: 'tv', tmdbId: '1399', season: 1, episode: 2,
+previous: { season: 1, episode: 1 } }`. It contains no playback tokens or
+stream URLs. `origin` in the iframe URL must be the **host page's** exact
+origin; omit it only when the host's origin is reliably available in the
+referrer. Keep `postMessage` enabled. The SDK alternative is
+`createHostClient(iframe, playerOrigin).on('episodeChange', callback)`.
+A new episode starts at zero even if the previous embed had a `t` start offset;
+switching sources or audio within the same episode still preserves position.
+
 ## 6. Uniform Backend & Pterodactyl Deployment (`backend/`)
 
 Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`backend/`)** (see [`RULES.md`](./RULES.md)):
@@ -409,3 +447,25 @@ Press **Test all** to check the list. Each reachable proxy shows the exit addres
 
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
 
+
+### Source 26 retired
+
+MovieBox (Source 26) is not registered, including when an older `.env` contains
+`ELFURA_MOVIEBOX_ENABLED=1`. Browser tests showed audio-only playback for the
+HEVC streams on browsers without HEVC decoding, and some reported resolutions
+were inaccurate. Research adapters remain unregistered until real video playback,
+audio switching and episode identity have been verified.
+
+Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree/b901738b56170c278b35468c32ade32b9de1890d/src/providers/moviebox)
+(MIT OR Apache-2.0). `.github/workflows/moviebox-direct.yml` checks the adapter
+with mocked responses and probes a movie and an episode on a GitHub runner.
+The ffprobe test checks media streams, not browser playback or audio switching.
+# Multi-audio anime source (Source 28)
+
+Source 28 resolves directly from the anime catalogue to a multi-audio HLS master. It runs only in the resolver and never sends catalogue or player URLs to the client. Audio languages and available quality levels are read from the actual HLS manifest, not assumed from a title or subtitle labels.
+
+The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each resolver and restart to disable it. A TMDB API key or configured TMDB mirror is required. To avoid wrong episodes, the source currently supports season 1 only and requires TMDB to identify Japanese animation and provide an episode title that matches the provider's title. Missing metadata, alternate title spellings or numbering differences can cause legitimate episodes to be skipped. Movies and other seasons are not supported by this lane.
+
+The browser audit exercises real discovery, the production registry and relay, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
+
+The deployment ZIP includes `wreq-js` and the native bindings available on the build host (the published bundle is Linux x64). On another architecture, install the optional runtime dependency on the resolver with `npm install --omit=dev` in the extracted application directory and restart it. If the native client is unavailable, this source is skipped; other sources continue to work.

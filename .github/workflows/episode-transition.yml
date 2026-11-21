@@ -1,0 +1,26 @@
+name: Episode transition and host event
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths:
+      - 'src/core/**'
+      - 'src/index.ts'
+      - 'src/ui/**'
+      - 'backend/test/episode-transition-browser.mjs'
+      - '.github/workflows/episode-transition.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
+      - run: node backend/test/episode-transition-browser.mjs
+      - run: node backend/test/skip-browser.mjs

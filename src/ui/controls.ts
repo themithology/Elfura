@@ -25,7 +25,7 @@
  * Strictly zero hardcoded audio tracks or static language lists.
  */
 
-import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, SourceOption, TitleMediaInfo } from '../core/player';
+import type { ElfuraPlayer, EpisodeItemInfo, SeasonSummaryInfo, TitleMediaInfo } from '../core/player';
 import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
@@ -2404,7 +2404,7 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
+        const row = this.row(t.label, selected ? (t.providerHint ? 'Selected · Provider label' : 'Selected') : t.providerHint ? 'Provider label' : '', selected, () => {
           this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
           this.renderPanelBody();
@@ -2416,31 +2416,6 @@ export class PlayerUI {
       listAudio.appendChild(this.row('Original', '', true, () => {}));
     }
     colAudio.appendChild(listAudio);
-
-    const animeVariantByMode = new Map<'sub' | 'dub', SourceOption>();
-    for (const source of this.player.getSources()) {
-      if (source.sourceId === 'source-16' && source.audioVariant && !animeVariantByMode.has(source.audioVariant)) {
-        animeVariantByMode.set(source.audioVariant, source);
-      }
-    }
-    if (animeVariantByMode.size > 0) {
-      colAudio.appendChild(el('div', 'elf-col-heading', 'Anime source version'));
-      colAudio.appendChild(el('div', 'elf-anime-variant-note', 'SUB/DUB are provider source labels; verified audio tracks are listed separately above.'));
-      const variantList = el('div', 'elf-col-list');
-      for (const variant of ['sub', 'dub'] as const) {
-        const source = animeVariantByMode.get(variant);
-        if (!source) continue;
-        const selected = st.source === source.id;
-        variantList.appendChild(this.row(
-          variant === 'sub' ? 'Japanese (SUB)' : 'English (DUB)',
-          'Switch stream',
-          selected,
-          () => { void this.player.setSource(source.id).then(() => this.renderPanelBody()); },
-          variant === 'sub' ? 'JA' : 'EN',
-        ));
-      }
-      colAudio.appendChild(variantList);
-    }
 
     const boostPct = this.player.getAudioBoost();
     const boostCard = el('div', 'elf-qol-card');
@@ -2583,17 +2558,19 @@ export class PlayerUI {
   private renderSources(): void {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
-      const qualityBadge = s.quality && s.quality !== 'auto' ? s.quality.toUpperCase() : '';
+      const qualityBadge = s.quality && s.quality !== 'auto' && !s.label.toUpperCase().includes(s.quality.toUpperCase()) ? s.quality.toUpperCase() : '';
+      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und' ? languageLabel(s.audioLang) : '';
+      const languageSuffix = audioBadge && !s.label.toLowerCase().includes(audioBadge.toLowerCase()) ? audioBadge : '';
       // Only the active engine knows which manifest representations the
       // current browser can actually select. Do not promise a ladder for an
       // unloaded source based solely on backend manifest metadata.
       const optionCount = s.id === st.source
         ? new Set(this.player.getQualityLevels().map((level) => level.height).filter((height) => height > 0)).size
         : 0;
-      const badge =
-        optionCount > 1
-          ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
-          : qualityBadge;
+      const quality = optionCount > 1
+        ? `${qualityBadge ? `${qualityBadge} · ` : ''}${optionCount} QUALITIES`
+        : qualityBadge;
+      const badge = [languageSuffix, quality].filter(Boolean).join(' · ');
       this.panelBody.appendChild(
         this.row(s.label, badge, s.id === st.source, () => {
           void this.player.setSource(s.id);
