@@ -26,12 +26,19 @@ const rows=await Promise.all(hosts.map(async host=>{
  return row;
 }));
 console.log('::notice title=Anime raw provider access::'+JSON.stringify(rows));
-const active=rows.filter(r=>r.status===200 && r.host.startsWith('animesalt.')).map(r=>r.host);
+const active=rows.filter(r=>['animesalt.cx','animesalt.ac'].includes(r.host) && (r.status===200 || r.browserTlsStatus===200));
 const reports=[];
-for(const host of active.slice(0,3)) for(const [title,slug] of [['Naruto','naruto'],['Jujutsu Kaisen','jujutsu-kaisen']]) for(const episode of [1,2]) {
+for(const access of active) for(const [title,slug] of [['Naruto','naruto'],['Jujutsu Kaisen','jujutsu-kaisen']]) for(const episode of [1,2]) {
+ const host=access.host;
  const row={host,title,episode};
  try {
-  const page=await get(`https://${host}/episode/${slug}-1x${episode}/`,{headers:{Referer:`https://${host}/`}});row.status=page.status;
+  const episodeUrl=`https://${host}/episode/${slug}-1x${episode}/`;
+  let page;
+  if(access.status!==200 && access.browserTlsStatus===200){
+   const wr=await wreqFetch(episodeUrl,{session:'audit-'+host,headers:{...headers,Referer:`https://${host}/`},signal:AbortSignal.timeout(12000)});
+   page={status:wr.status,text:await wr.text()};
+  } else page=await get(episodeUrl,{headers:{Referer:`https://${host}/`}});
+  row.status=page.status;
   if(page.status!==200){reports.push(row);continue;}
   const titleText=page.text.match(/<title[^>]*>([^<]+)/i)?.[1]??'';row.titleMatches=titleText.toLowerCase().includes(title.toLowerCase());
   const found=[...page.text.matchAll(/(?:src|data-src)\s*=\s*["']([^"']+)["']/gi)].map(m=>m[1].replace(/&amp;/g,'&'));
