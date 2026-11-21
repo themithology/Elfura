@@ -31,7 +31,11 @@ try{
    const metrics=await page.evaluate(async()=>{const p=window.__elfura.player,v=p.video,ctx=new AudioContext(),a=ctx.createAnalyser(),src=ctx.createMediaStreamSource(v.captureStream());src.connect(a);const x=new Float32Array(a.fftSize);let rms=0;for(let i=0;i<30;i++){a.getFloatTimeDomainData(x);rms=Math.max(rms,Math.sqrt(x.reduce((n,v)=>n+v*v,0)/x.length));await new Promise(r=>setTimeout(r,100))}src.disconnect();await ctx.close();return {rms:Math.round(rms*100000)/100000,current:p.currentSource?.id,video:v.videoWidth>0,duration:v.duration,subtitleTracks:p.getSubtitleTracks().length}});
    if(metrics.current!==id||metrics.rms<0.0001||metrics.duration<1000||metrics.duration>1900)throw Error('playback');
    const entry={mode,rms:metrics.rms,subtitleTracks:metrics.subtitleTracks};
-   if(mode==='sub'&&sample.ep===1){step='subtitle';const en=await page.evaluate(()=>window.__elfura.player.getSubtitleTracks().find(t=>t.lang==='en')?.id??null);if(!en)throw Error('subtitle-absent');const selected=await page.evaluate(id=>window.__elfura.player.setSubtitle(id),en);if(!selected)throw Error('subtitle-refused');await page.waitForFunction(()=>window.__elfura.player.cues?.length>0,null,{timeout:12000});entry.parsedSubtitle=true;}
+   if(mode==='sub'&&sample.ep===1){step='subtitle';const en=await page.evaluate(()=>window.__elfura.player.getSubtitleTracks().find(t=>t.lang==='en')?.id??null);if(!en)throw Error('subtitle-absent');const selected=await page.evaluate(id=>window.__elfura.player.setSubtitle(id),en);if(!selected)throw Error('subtitle-refused');await page.waitForFunction(()=>window.__elfura.player.getCues()?.length>0,null,{timeout:12000});entry.parsedSubtitle=true;
+    const cueTime=await page.evaluate(()=>{const p=window.__elfura.player;const cue=p.getCues().find(c=>c.start>420&&c.start<p.video.duration-5&&c.end-c.start>=2&&c.spans.some(s=>s.text.trim()));return cue?cue.start+0.4:null});if(cueTime===null)throw Error('subtitle-no-cue');
+    await page.evaluate(t=>{const v=window.__elfura.player.video;v.currentTime=t;v.pause()},cueTime);
+    await page.waitForFunction(()=>{const box=document.querySelector('.elf-sub-root[data-state="showing"] .elf-sub-box');const rect=box?.getBoundingClientRect();return !!(box?.textContent?.trim()&&rect?.width&&rect?.height)},null,{timeout:12000});entry.visibleSubtitle=true;
+   }
    row.lanes.push(entry);
   }
   row.ok=true;

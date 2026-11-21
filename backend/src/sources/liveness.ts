@@ -871,7 +871,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
     try {
       let url = startUrl;
       for (let redirect = 0; redirect <= 3; redirect++) {
-        if (!isSafeUpstreamUrl(url)) {
+        if ((!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin)))) {
           checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
           return null;
         }
@@ -909,7 +909,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
         }
         checks.push({ stage, status: 'ok', httpStatus: res.status, ms: Date.now() - t0 });
         const finalUrl = res.url || url;
-        if (!isSafeUpstreamUrl(finalUrl)) return null;
+        if ((!isSafeUpstreamUrl(finalUrl) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(finalUrl, candidate.restrictedOrigin)))) return null;
         return { text, url: finalUrl };
       }
     } catch (err) {
@@ -924,7 +924,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
   const rangeProbe = async (stage: string, url: string, redirectDepth = 0): Promise<{ url: string; ok: boolean } | null> => {
     const t0 = Date.now();
     try {
-      if (!isSafeUpstreamUrl(url)) {
+      if ((!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin)))) {
         checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
         return null;
       }
@@ -946,7 +946,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
           checks.push({ stage, status: 'blocked-auth-redirect', httpStatus: res.status, ms: Date.now() - t0 });
           return null;
         }
-        if (!isSafeUpstreamUrl(target)) {
+        if ((!isSafeUpstreamUrl(target) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(target, candidate.restrictedOrigin)))) {
           checks.push({ stage, status: 'blocked-unsafe-redirect', httpStatus: res.status, ms: Date.now() - t0 });
           return null;
         }
@@ -1095,7 +1095,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
   const firstSegmentUrl = mediaSegments[0]?.url;
   let delivery: Record<string, unknown> = { mode: 'unknown', segmentRelayChecked: false };
   if (firstSegmentUrl) {
-    if (relayMode === 'full') {
+    if (relayMode === 'full' || candidate.restrictedOrigin) {
       delivery = { mode: 'full', route: 'backend-relay', segmentRelayChecked: false };
     } else {
       const canDirect = await verifyDirectSegmentOffload(firstSegmentUrl);
@@ -1132,7 +1132,7 @@ export async function diagnoseMultiAudioCandidate(candidate: RawStreamCandidate)
     try {
       let url = startUrl;
       for (let i = 0; i <= 3; i++) {
-        if (!isSafeUpstreamUrl(url)) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
+        if (!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin))) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
         const res = await fetch(url, {headers, signal, redirect:'manual'});
         if (res.status >= 300 && res.status < 400) {
           const location = res.headers.get('location');
