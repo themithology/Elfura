@@ -42,11 +42,18 @@ try {
  // Reuse one page: closing a page/context can terminate the single-process
  // Chromium binary on Actions and invalidate the remaining samples.
  const page=await browser.newPage();
+ // Capture only structural playlist properties; never print body, URLs, or tickets.
+ let playlists=[];
+ page.on('response', async response=>{try{
+   const u=new URL(response.url());if(u.origin!==base||!u.pathname.startsWith('/api/v1/stream')||!(response.headers()['content-type']??'').includes('mpegurl'))return;
+   const text=await response.text();playlists.push({startsM3u:text.trimStart().startsWith('#EXTM3U'),bytes:Buffer.byteLength(text),streams:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,media:(text.match(/#EXTINF/g)??[]).length,headerLines:text.split('\n').filter(x=>x.startsWith('#EXT')).length});
+ }catch{}});
+ await page.addInitScript(()=>{window.__auditHlsErrors=[];let last=null;const timer=setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&h!==last){last=h;h.on('hlsError',(_event,d)=>window.__auditHlsErrors.push({type:d.type,details:d.details,fatal:d.fatal}));}if(window.__auditHlsErrors.length>30)clearInterval(timer)},25);});
  const deadline=(p,ms)=>Promise.race([p,new Promise((_,reject)=>{const t=setTimeout(()=>reject(Error('audit-deadline')),ms);t.unref();})]);
  const rows=[];
  const selectedSamples=process.env.AUDIT_SHORT==='1'?samples.filter(s=>['Fight Club','Game of Thrones E1','Naruto E1'].includes(s.label)):samples;
  for(const s of selectedSamples){
-  const row={source:id,sample:s.label,index};let step='resolve';counts={};
+  const row={source:id,sample:s.label,index};let step='resolve';counts={};playlists=[];
   try{
    const result=await deadline(registry.resolvePlayback({type:s.type,tmdbId:s.id,season:s.season,episode:s.episode,sourceId:id}),25000);
    row.options=result?.sources?.length??0;if(row.options<=index)throw Error('no candidate');
@@ -74,7 +81,7 @@ try {
    if(step==='frames')row.state=await deadline(page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video,h=p?.hls;return {time:v?.currentTime??0,width:v?.videoWidth??0,height:v?.videoHeight??0,ready:v?.readyState??0,network:v?.networkState??null,error:v?.error?.code??null,paused:v?.paused??null,srcType:v?.currentSrc?.startsWith('blob:')?'blob':v?.currentSrc?'other':'none',engine:p?.engineKind??null,hasHls:!!h,levels:h?.levels?.length??0,hlsState:h?.streamController?.state??null,sourceSelected:!!p?.currentSource,sourceCount:p?.sources?.length??0,loadSeq:p?.engineLoadSeq??0};}),3000).catch(()=>null);
   }
   finally{await deadline(page.unroute('**/api/v1/playback**'),4000).catch(()=>{});}
-  row.relayCounts=counts;rows.push(row);console.log('browser-sample '+JSON.stringify(row));
+  row.relayCounts=counts;row.playlists=playlists;row.hlsErrors=await page.evaluate(()=>window.__auditHlsErrors??[]).catch(()=>[]);rows.push(row);console.log('browser-sample '+JSON.stringify(row));
  }
  for(const name of ['Game of Thrones','Breaking Bad','Naruto']){
   const e1=rows.find(r=>r.sample===name+' E1'),e2=rows.find(r=>r.sample===name+' E2');
