@@ -16,7 +16,7 @@ for(const [title,id] of samples){
    const html=await readBoundedText(r,1500000);if(html){
     row.titlePresent=/<title/i.test(html);row.playerId=!!html.match(/data-id=["']\d+["']/i);row.m3u8InPage=/\.m3u8/i.test(html);
     row.embedOnly=/embedded playback only|works inside an embed/i.test(html);
-    const scripts=[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(x=>{try{return new URL(x[1],origin)}catch{return null}}).filter(u=>u&&u.origin===origin&&u.protocol==='https:'&&!u.search&&!u.hash).slice(0,8);
+    const scripts=[...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gi)].map(x=>{try{return new URL(x[1],origin)}catch{return null}}).filter(u=>u&&u.origin===origin&&u.protocol==='https:'&&!u.hash).slice(0,8);
     row.assets=scripts.map(x=>x.pathname.slice(0,120));row.scriptSummary=[];
     // Only first sample per lane needs script inspection.
     if(title==='Naruto')for(const script of scripts){
