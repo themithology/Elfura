@@ -1,0 +1,18 @@
+name: Novus and MegaPlay source discovery
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/novus-megaplay-discovery.mjs', '.github/workflows/novus-megaplay-discovery.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build:backend
+      - run: node backend/test/novus-megaplay-discovery.mjs
