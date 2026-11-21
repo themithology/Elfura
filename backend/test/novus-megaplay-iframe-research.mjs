@@ -12,10 +12,13 @@ try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
  for(const [title,aid] of cases){const rows=[];
-  for(const [host,origin,lane] of hosts){const row={title,host,lane,playlists:0,playlistOk:0,apiResponses:[],video:null};let step='load';
+  for(const [host,origin,lane] of hosts){const row={title,host,lane,playlists:0,playlistOk:0,apiResponses:[],video:null};let step='load';const pending=[];
    const response=res=>{try{const u=new URL(res.url()),status=res.status(),mime=(res.headers()['content-type']??'').toLowerCase();
     if(/\.m3u8(?:$|\?)/i.test(u.href)||/mpegurl/.test(mime)){row.playlists++;if(status>=200&&status<300)row.playlistOk++;}
-    if(u.origin===origin&&/getSources|\/api\/|\/proxy\//i.test(u.pathname)&&row.apiResponses.length<8)row.apiResponses.push({kind:/getSources/i.test(u.pathname)?'sources':/\/proxy\//i.test(u.pathname)?'proxy':'api',status});
+    if(u.origin===origin&&/getSources|\/api\/|\/proxy\//i.test(u.pathname)&&row.apiResponses.length<8){
+     const info={kind:/getSources/i.test(u.pathname)?'sources':/\/proxy\//i.test(u.pathname)?'proxy':'api',status,path:u.pathname.replace(/\d+/g,'#'),params:[...new Set(u.searchParams.keys())].slice(0,12)};row.apiResponses.push(info);
+     if(/json/.test(mime)&&status===200)pending.push(res.json().then(data=>{info.keys=Object.keys(data??{}).filter(k=>/^[a-zA-Z_]{1,32}$/.test(k)).slice(0,20);info.encrypted=typeof data?.enc==='string';info.hasSources=!!data?.sources;}).catch(()=>{}));
+    }
    }catch{}};
    page.on('response',response);
    try{
@@ -30,7 +33,7 @@ try{
     row.video=await frame.evaluate(()=>{const v=document.querySelector('video');return {width:v.videoWidth,height:v.videoHeight,duration:v.duration,textTracks:v.textTracks.length,time:Math.round(v.currentTime),frames:v.getVideoPlaybackQuality?.().totalVideoFrames??null}});
     row.ok=true;
    }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':e.message==='no-frame'?'no-frame':e.name;}
-   page.off('response',response);rows.push(row);await page.goto(base).catch(()=>{});
+   page.off('response',response);await Promise.allSettled(pending);rows.push(row);await page.goto(base).catch(()=>{});
   }
   all.push(...rows);console.log('::notice title=Requested anime iframe research::'+JSON.stringify(rows));
  }

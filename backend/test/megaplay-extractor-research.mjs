@@ -26,6 +26,6 @@ for(const [title,tmdb] of [['Naruto','46260'],['Jujutsu Kaisen','95479'],['Attac
   const data=await extractMegaPlayDetails(page,{fetchImpl:restricted,userAgent:ua,referer:'https://anikototv.to/'});
   row.count=data.sources.length;row.tracks=data.tracks.length;row.sources=[];
   for(const source of data.sources.slice(0,2)){const v={variant:source.variant};try{const u=new URL(source.url);if(u.protocol!=='https:'||u.username||u.password||!isSafeUpstreamUrl(u.href))throw Error('unsafe');v.fingerprint=createHash('sha256').update(u.href).digest('hex').slice(0,12);const res=await fetch(u,{redirect:'manual',signal:AbortSignal.timeout(8000),headers:{'User-Agent':ua,Referer:origin+'/'}});v.status=res.status;const text=await readBoundedText(res,256000);v.hls=!!text?.trimStart().startsWith('#EXTM3U');}catch(e){v.error=e.name;}row.sources.push(v);}
- }catch(e){row.error=/client script not found/.test(e.message)?'no-script':/file id not found/.test(e.message)?'no-id':/source routes not found/.test(e.message)?'no-routes':/response has no sources/.test(e.message)?'no-plaintext':e.name;}rows.push(row);}
+ }catch(e){row.error=/client script not found/.test(e.message)?'no-script':/file id not found/.test(e.message)?'no-id':/source routes not found/.test(e.message)?'no-routes':/response has no sources/.test(e.message)?'no-plaintext':e.name;if(e.name==='TypeError')row.detail=String(e.message).replace(/https?:\/\/\S+/g,'[url]').slice(0,140);}rows.push(row);}
  console.log('::notice title=MegaPlay safe extractor research::'+JSON.stringify(rows));
 }
