@@ -624,7 +624,10 @@ export class ElfuraPlayer {
           headers['X-Elfura-Envelope'] = '1';
         }
         const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(6_000) });
-        if (!res.ok) return;
+        // An early late-join can legitimately be empty (404), or a resolver can
+        // be temporarily unavailable. Keep the bounded retries instead of
+        // permanently dropping slower sources after the first miss.
+        if (!res.ok) { void run(attempt + 1); return; }
         const raw = (await res.json()) as { s?: number; p?: string; sources?: SourceOption[]; pendingSources?: string[] };
         const payload = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
           ? await openSealedEnvelope<{ sources?: SourceOption[]; pendingSources?: string[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce))

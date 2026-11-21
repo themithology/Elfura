@@ -716,7 +716,9 @@ export class SourceRegistry {
     // A fresh resolve owns a fresh stash. This has to run before any adapter
     // task can record into it — the tasks below start immediately — and never
     // on a late pass, which is the pass that reads it.
-    if (!lateOnly) this.finishedLate.delete(lateKey);
+    // A source-specific background recovery must not erase the results from
+    // the initial all-source request: those are still needed by late joins.
+    if (!lateOnly && !singleSource) this.finishedLate.delete(lateKey);
     if (lateOnly) {
       // Report what finished after the previous response was sealed. The
       // payload cache is not consulted: it may be disabled entirely, and using
@@ -741,7 +743,7 @@ export class SourceRegistry {
         // is not pending even if it answered early. The stash is cleared when a
         // fresh resolve of this title starts, so it never accumulates.
         if (result.candidates.length) {
-          const prior = this.finishedLate.get(lateKey) ?? [];
+          const prior = (this.finishedLate.get(lateKey) ?? []).filter(entry => entry.adapter.id !== adapter.id);
           prior.push({ adapter, result });
           this.finishedLate.set(lateKey, prior);
           this.pruneFinishedLate();

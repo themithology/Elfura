@@ -92,9 +92,11 @@ export class RemotePlaybackResolver implements PlaybackResolver {
 
   async resolve(request: PlaybackRequest, timeoutMs = RESOLVE_TIMEOUT_MS, failoverOnAccessError = false): Promise<PlaybackResolution | null> {
     try {
+      // This routing hint is internal to the media node, not part of the resolver API.
+      const { lateAffinityKey: _affinity, ...resolverRequest } = request;
       const body = await this.call<PlaybackResolution | { ok: false; error?: string }>(
         '/resolver/api/playback',
-        { method: 'POST', body: request, timeoutMs: Math.max(1, Math.min(RESOLVE_TIMEOUT_MS, timeoutMs)) },
+        { method: 'POST', body: resolverRequest, timeoutMs: Math.max(1, Math.min(RESOLVE_TIMEOUT_MS, timeoutMs)) },
       );
       if (!body || (body as { ok?: boolean }).ok !== true) return null;
       return body as PlaybackResolution;

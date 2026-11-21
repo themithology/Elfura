@@ -40,6 +40,8 @@ export interface PlaybackRequest {
   sourceId?: string;
   preferredLang?: string;
   late?: boolean;
+  /** Media-node-only session identifier for routing a late request to the same resolver. */
+  lateAffinityKey?: string;
   /** Base path the resolver should use when minting stream tickets. */
   streamPathPrefix?: string;
 }

@@ -7,13 +7,14 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',ep:1,episode:'Enter: Naruto Uzumaki!'},{id:'46260',title:'Naruto',year:'2002',ep:2,episode:'My Name is Konohamaru'},{id:'95479',title:'Jujutsu Kaisen',year:'2020',ep:1,episode:'Ryomen Sukuna'}];
 const orig=globalThis.fetch;
+const liveTmdb=process.env.ELFURA_TEST_LIVE_TMDB==='1';
 process.env.ELFURA_ANIME_RELAY_DEBUG='1';const relayErrors=[];const oldWarn=console.warn;console.warn=(...args)=>{if(args[0]==='[elfura-anime-relay]')relayErrors.push(args.slice(1).join(':'));else oldWarn(...args)};
-globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return orig(input,init);
+if(!liveTmdb) globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return orig(input,init);
  const p=u.pathname.split('/'),i=p.indexOf('tv'),e=p.indexOf('episode'),sample=samples.find(x=>x.id===p[i+1]&&(e<0||x.ep===Number(p[e+1])));if(!sample)return new Response(null,{status:404});
  if(e>=0)return Response.json({name:sample.episode,runtime:24});
  return Response.json({id:Number(sample.id),name:sample.title,original_name:sample.title,first_air_date:sample.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[24],images:{logos:[]}});
 };
-const cfg=loadBackendConfig({ELFURA_SECRET:'fixture-only-test-secret',TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
+const cfg=loadBackendConfig({ELFURA_SECRET:'fixture-only-test-secret',...(liveTmdb?{}:{TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture'}),OPENSUBTITLES_ENABLED:'0'});
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:true});registry.adapters=[createSource30Adapter()];
 let browser;const rows=[];
 try{
@@ -41,7 +42,7 @@ try{
    row.lanes.push(entry);
   }
   row.ok=true;
- }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});row.relayErrors=[...new Set(relayErrors)].slice(0,5);}rows.push(row);}
+ }catch(e){row.ok=false;row.step=step;row.error=e.name==='TimeoutError'?'timeout':['no-variant','playback','subtitle-absent','subtitle-refused'].includes(e.message)?e.message:e.name;row.responseSummary=streamResponses.reduce((a,r)=>{const k=r.status+':'+r.type;a[k]=(a[k]??0)+1;return a},{});row.relayErrors=[...new Set(relayErrors)].slice(0,5);row.playerState=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?.audioVariant,ready:v?.readyState,paused:v?.paused,seeking:v?.seeking,time:v?.currentTime,duration:v?.duration,error:v?.error?.code,levels:p?.hls?.levels?.length??0}}).catch(()=>null);}rows.push(row);}
  console.log('::notice title=MegaPlay actual adapter player test::'+JSON.stringify(rows));
  if(rows.some(row=>!row.ok)) process.exitCode=1;
 }finally{await browser?.close();await new Promise(r=>server.close(r));globalThis.fetch=orig;}

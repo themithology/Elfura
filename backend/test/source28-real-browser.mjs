@@ -8,7 +8,8 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',episodes:['Enter: Naruto Uzumaki!','My Name is Konohamaru']},{id:'95479',title:'Jujutsu Kaisen',year:'2020',episodes:['Ryomen Sukuna','For Myself']}];
 const orig=globalThis.fetch;
-globalThis.fetch=async(input,init)=>{
+const liveTmdb=process.env.ELFURA_TEST_LIVE_TMDB==='1';
+if(!liveTmdb) globalThis.fetch=async(input,init)=>{
  const u=new URL(typeof input==='string'?input:input.url ?? String(input));
  if(u.hostname==='tmdb-fixture.example'){
   const parts=u.pathname.split('/');const tv=parts.indexOf('tv');const s=samples.find(x=>x.id===parts[tv+1]);
@@ -18,7 +19,7 @@ globalThis.fetch=async(input,init)=>{
  }
  return orig(input,init);
 };
-const cfg=loadBackendConfig({ELFURA_SECRET:'test-only-secret',TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
+const cfg=loadBackendConfig({ELFURA_SECRET:'test-only-secret',...(liveTmdb?{}:{TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture'}),OPENSUBTITLES_ENABLED:'0'});
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});
 registry.adapters=registry.adapters.filter(a=>a.id==='source-28');
 assert.equal(registry.adapters.length,1,'production source registry must include the anime lane');

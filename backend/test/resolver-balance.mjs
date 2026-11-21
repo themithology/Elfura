@@ -79,6 +79,23 @@ try {
   a.state.mode='disconnect'; b.state.mode='disconnect';
   const bothDown = createResilientPlaybackResolver({remote:createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}})});
   await assert.rejects(bothDown.resolve(request),{name:'ResolverBackendDownError'});
+  // Late discovery is local to the node that served the initial request. Even
+  // with interleaved viewers, late calls must not follow round-robin to a node
+  // whose in-memory stash cannot contain that player's slow anime sources.
+  a.state.mode='ok'; b.state.mode='ok';
+  const sticky = createBalancedPlaybackResolver(client(a),client(b),{log:()=>{}});
+  const one = {...request, lateAffinityKey:'title|session-one'};
+  const two = {...request, lateAffinityKey:'title|session-two'};
+  assert.equal((await sticky.resolve(one)).node,'a');
+  assert.equal((await sticky.resolve(two)).node,'b');
+  assert.equal((await sticky.resolve({...one,late:true})).node,'a');
+  assert.equal((await sticky.resolve({...two,late:true})).node,'b');
+  // A source-specific recovery must not overwrite the main discovery route.
+  await sticky.resolve({...one,sourceId:'source-29'});
+  assert.equal((await sticky.resolve({...one,late:true})).node,'a');
+  // If the pinned node is unavailable, the ordinary failover path still works.
+  a.state.mode='fail';
+  assert.equal((await sticky.resolve({...one,late:true})).node,'b');
   // Slow failures cannot add two full independent timeout windows.
   a.state.mode='ok'; b.state.mode='ok'; a.state.delay=500; b.state.delay=500;
   const bounded = createBalancedPlaybackResolver(client(a),client(b),{budgetMs:180,log:()=>{}});

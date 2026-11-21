@@ -21,14 +21,26 @@ export function createBalancedPlaybackResolver(
   const budget = options.budgetMs ?? TOTAL_BUDGET_MS;
   const log = options.log ?? console.warn;
   const nodes: Node[] = [first, second].map(client => ({ client, retryAt: 0, attempts: 0, failures: 0 }));
+  // Late results live only on the resolver that did the initial discovery.
+  // Bound and expire the media-node routing hints; no candidates or tokens are
+  // stored here, and ordinary discovery stays round-robin.
+  const affinity = new Map<string, { node: Node; expires: number }>();
+  const remember = (key: string, node: Node) => {
+    affinity.delete(key);
+    affinity.set(key, { node, expires: now() + 60_000 });
+    while (affinity.size > 2048) affinity.delete(affinity.keys().next().value!);
+  };
   let turn = 0;
 
   return {
     kind: 'remote',
     label: `balanced (${first.label}, ${second.label})`,
     async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
-      const preferred = turn++ % nodes.length;
       const current = now();
+      const key = request.lateAffinityKey?.slice(0, 256);
+      let pinned = request.late && key ? affinity.get(key) : undefined;
+      if (pinned && pinned.expires <= current) { affinity.delete(key!); pinned = undefined; }
+      const preferred = pinned ? nodes.indexOf(pinned.node) : turn++ % nodes.length;
       let order = [nodes[preferred], nodes[1 - preferred]].filter(n => n.retryAt <= current);
       // If both are in cooldown, try the one due first rather than going dark.
       if (order.length === 0) order = [...nodes].sort((a, b) => a.retryAt - b.retryAt).slice(0, 1);
@@ -42,6 +54,7 @@ export function createBalancedPlaybackResolver(
           const result = await node.client.resolve(request, remaining, true);
           if (node.retryAt) log(`[elfura-resolver] ${node.client.label} recovered`);
           node.retryAt = 0;
+          if (result && key && !request.late && !request.sourceId) remember(key, node);
           // An empty result or a rejected request is an answer, not an outage.
           return result;
         } catch (error) {

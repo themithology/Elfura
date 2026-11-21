@@ -7,12 +7,13 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const samples=[{id:'46260',title:'Naruto',year:'2002',ep:1,episode:'Enter: Naruto Uzumaki!'},{id:'46260',title:'Naruto',year:'2002',ep:2,episode:'My Name is Konohamaru'},{id:'95479',title:'Jujutsu Kaisen',year:'2020',ep:1,episode:'Ryomen Sukuna'}];
 const orig=globalThis.fetch;
-globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return orig(input,init);
+const liveTmdb=process.env.ELFURA_TEST_LIVE_TMDB==='1';
+if(!liveTmdb) globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return orig(input,init);
  const p=u.pathname.split('/'),i=p.indexOf('tv'),e=p.indexOf('episode'),sample=samples.find(x=>x.id===p[i+1]&&(e<0||x.ep===Number(p[e+1])));if(!sample)return new Response(null,{status:404});
  if(e>=0)return Response.json({name:sample.episode,runtime:24});
  return Response.json({id:Number(sample.id),name:sample.title,original_name:sample.title,first_air_date:sample.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[24],images:{logos:[]}});
 };
-const cfg=loadBackendConfig({ELFURA_SECRET:'fixture-only-test-secret',TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
+const cfg=loadBackendConfig({ELFURA_SECRET:'fixture-only-test-secret',...(liveTmdb?{}:{TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture'}),OPENSUBTITLES_ENABLED:'0'});
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:true});registry.adapters=[createSource29Adapter()];
 let browser;const rows=[];
 try{
