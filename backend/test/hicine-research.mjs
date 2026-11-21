@@ -30,6 +30,28 @@ for(const query of ['Naruto','Jujutsu Kaisen','Reacher','Dune']){
    const text=[typeof d.links==='string'?d.links:'',...seasons.map(x=>x[1])].join('\n');
    const hosts=new Set();for(const match of text.matchAll(/https?:\/\/[^\s,<>"']+/gi)){try{hosts.add(new URL(match[0]).hostname)}catch{}}
    report.workerHosts=[...hosts].slice(0,8);
+   // Probe up to two episodes (or two movie variants); never print URLs or tokens.
+   const selected=seasons.length ? String(d.season_1??'').split(/\r?\n/).filter(line=>/\bepisode\s*[12]\b/i.test(line)).slice(0,2) : String(d.links??'').split(/\r?\n/).filter(line=>/https?:\/\//i.test(line)).slice(0,2);
+   report.workerProbe=[];
+   for(const [index,line] of selected.entries()){
+    const probe={index:index+1};
+    try{
+     const raw=line.match(/https?:\/\/[^\s,<>"']+/i)?.[0]?.replace(/&amp;/g,'&');
+     const worker=new URL(raw);if(worker.protocol!=='https:' || worker.hostname!=='wild-sun-9376.oriue.workers.dev')throw Error('unapproved-worker');
+     const value=worker.searchParams.get('vcloud');if(!value)throw Error('missing-vcloud');
+     const endpoint=new URL('/api/links',worker.origin);endpoint.searchParams.set('vcloud',value);
+     const data=await json(endpoint);probe.workerStatus=data.status;
+     const tokens=data.data?.tokens??{};probe.servers=Object.keys(tokens).filter(k=>/^[a-z0-9]{1,16}$/i.test(k)).slice(0,10);
+     const server=['fsl','server1','fsl2'].find(k=>tokens[k]?.ts&&tokens[k]?.sig);
+     if(server){
+      const go=new URL('/go',worker.origin);for(const [k,v] of Object.entries({type:server,vcloud:value,ts:tokens[server].ts,sig:tokens[server].sig}))go.searchParams.set(k,String(v));
+      const r=await fetch(go,{redirect:'manual',signal:AbortSignal.timeout(12000),headers:{'User-Agent':ua,Range:'bytes=0-2047'}});probe.goStatus=r.status;probe.contentType=(r.headers.get('content-type')??'').split(';')[0];
+      const loc=r.headers.get('location');if(loc){try{probe.redirectHost=new URL(loc,go).hostname}catch{probe.redirectHost='invalid'}}
+      await r.body?.cancel();
+     }
+    }catch(e){probe.error=e?.cause?.code??e.message;}
+    report.workerProbe.push(probe);
+   }
   }
  }catch(e){report.error=e?.cause?.code??e.name;}
  console.log('::notice title=HiCine discovery details::'+JSON.stringify(report));
