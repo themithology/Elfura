@@ -50,7 +50,7 @@ registry.adapters=[{id,label:'Source 28',enabled:()=>true,async resolve(q){
   const u=new URL(data.url);
   const exact=createHash('sha256').update(u.href).digest('hex').slice(0,10);
   const host=createHash('sha256').update(u.hostname).digest('hex').slice(0,10);
-  const other=await Promise.all(existing.map(async a=>{try{const raw=await a.resolve({...q,signal:AbortSignal.timeout(7000)});return {id:a.id,sameUrl:raw.candidates.some(c=>c.url===u.href),sameHost:raw.candidates.some(c=>{try{return new URL(c.url).hostname===u.hostname}catch{return false}})};}catch{return {id:a.id,error:true}}}));
+  const other=await Promise.all(existing.map(async a=>{try{const raw=await a.resolve({...q,signal:AbortSignal.timeout(7000)});return {id:a.id,candidates:raw.candidates.length,sameUrl:raw.candidates.some(c=>c.url===u.href),sameHost:raw.candidates.some(c=>{try{return new URL(c.url).hostname===u.hostname}catch{return false}})};}catch{return {id:a.id,error:true}}}));
   comparisons.push({id:q.tmdbId,type:q.type,season:q.season,episode:q.episode,exact,host,other});
   return {candidates:[{key:u.href,url:u.href,type:'hls',quality:'auto',rank:20,headers}]};
  }catch{return {candidates:[]};}
@@ -77,6 +77,8 @@ try {
    step='frames';
    await page.waitForFunction(()=>{const v=window.__elfura?.player?.video;return v?.videoWidth>0&&v.currentTime>1&&v.getVideoPlaybackQuality().totalVideoFrames>0},null,{timeout:25000});
    Object.assign(row,await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,height:v.videoHeight,duration:Number.isFinite(v.duration)?v.duration:null,frames:v.getVideoPlaybackQuality().totalVideoFrames}}));
+   const firstPixels=await page.evaluate(()=>{const v=window.__elfura.player.video,c=document.createElement('canvas');c.width=64;c.height=36;const x=c.getContext('2d');x.drawImage(v,0,0,64,36);return [...x.getImageData(0,0,64,36).data]});
+   row.firstFrameHash=createHash('sha256').update(Buffer.from(firstPixels)).digest('hex').slice(0,12);
    step='audio';
    row.audioRms=await deadline(page.evaluate(async()=>{
     const v=window.__elfura.player.video;const ctx=new AudioContext(),source=ctx.createMediaStreamSource(v.captureStream()),analyser=ctx.createAnalyser();source.connect(analyser);
