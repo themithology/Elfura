@@ -17,7 +17,7 @@ assert(path);const token=new URL(path,'http://localhost').searchParams.get('t');
 assert.equal(openStreamTicket(secret,sealStreamTicket(secret,{u:origin+'/file',ro:origin,k:'m',exp:Math.floor(Date.now()/1000)-2})),null);
 const calls=[];const original=globalThis.fetch;
 try {
- globalThis.fetch=async(input,init)=>{calls.push({url:String(input),redirect:init.redirect});if(String(input).endsWith('/master'))return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}})};
+ globalThis.fetch=async(input,init)=>{calls.push({url:String(input),redirect:init.redirect});if(String(input).endsWith('/master'))return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');if(String(input).endsWith('/slow')){await new Promise(r=>setTimeout(r,100));if(init.signal.aborted)throw new DOMException('aborted','AbortError');return new Response('media',{headers:{'content-type':'video/mp2t'}});}return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}})};
  const cand={key:'restricted',url:origin+'/master',restrictedOrigin:origin,type:'hls',quality:'auto',rank:1};
  const result=await verifyAndFilterCandidatesDetailed([cand]);
  assert.equal(result.verifiedAliveCount,0);assert(calls.every(c=>c.redirect==='manual'));assert(calls.every(c=>!c.url.includes('169.254')));
@@ -30,6 +30,7 @@ try {
   assert.notEqual(await get(redirect),200);assert.equal(calls.length,1);assert.equal(calls[0].redirect,'manual');
   calls.length=0;
   assert.equal(await get(sealStreamTicket(secret,{u:'http://169.254.169.254/',k:'s',ro:origin})),400);assert.equal(calls.length,0);
+  assert.equal(await get(sealStreamTicket(secret,{u:origin+'/slow',k:'a',ro:origin})),200,'normal request completion must not abort a slow upstream fetch');
  } finally {await new Promise(r=>server.close(r));}
 }finally{globalThis.fetch=original;}
 for(const ip of ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','100.64.0.1','::1','::ffff:127.0.0.1'])assert.equal(isPublicMediaAddress(ip),false,ip);
