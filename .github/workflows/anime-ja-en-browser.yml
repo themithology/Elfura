@@ -20,7 +20,7 @@ jobs:
       - name: Approximate spoken-language check (optional)
         run: |
           export AUDIT_AUDIO_DIR="$RUNNER_TEMP/elfura-anime-audio" HF_HOME="$RUNNER_TEMP/elfura-audio-model"
-          if python3 -m venv "$RUNNER_TEMP/anime-audio-venv" && "$RUNNER_TEMP/anime-audio-venv/bin/pip" install --quiet --disable-pip-version-check faster-whisper; then
+          if python3 -m venv "$RUNNER_TEMP/anime-audio-venv" && "$RUNNER_TEMP/anime-audio-venv/bin/pip" install --quiet --disable-pip-version-check faster-whisper imageio-ffmpeg; then
             "$RUNNER_TEMP/anime-audio-venv/bin/python" backend/test/anime-audio-language-research.py
           else
             echo '::notice title=Automatic audio language research::Dependency installation unavailable'

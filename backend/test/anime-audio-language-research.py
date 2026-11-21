@@ -12,13 +12,14 @@ from pathlib import Path
 
 result = []
 try:
+    import imageio_ffmpeg
     import numpy as np
     from faster_whisper import WhisperModel
     model = WhisperModel('tiny', device='cpu', compute_type='int8', cpu_threads=2)
     for path in sorted(Path(os.environ['AUDIT_AUDIO_DIR']).glob('*.webm')):
         try:
             # ffmpeg bypasses an incompatible faster-whisper / PyAV decoder API.
-            pcm = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(path), '-f', 'f32le',
+            pcm = subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-v', 'error', '-i', str(path), '-f', 'f32le',
                                   '-ac', '1', '-ar', '16000', 'pipe:1'],
                                  check=True, capture_output=True, timeout=30).stdout
             samples = np.frombuffer(pcm, dtype='<f4')
