@@ -23,6 +23,10 @@ async function restricted(input,init={}){
  // The upstream extractor checks for this literal before running downloaded JS.
  // Neutralise it everywhere; a failed unsigned playlist is an explicit result.
  const safe=text.replaceAll('token=','token_disabled=');
+ if(/\.js$/i.test(url.pathname)&&/AES-CBC/i.test(safe)&&/getSources/i.test(safe)){
+  const strings=[...safe.matchAll(/(["'])(?:\\.|(?!\1)[^\r\n])*?\1/g)].map(m=>m[0].slice(1,-1));
+  console.log('::notice title=MegaPlay script bounds::'+JSON.stringify({bytes:Buffer.byteLength(safe),strings:strings.length,short:strings.filter(s=>Buffer.byteLength(s)<=32).length,iv16:strings.filter(s=>Buffer.byteLength(s)===16).length}));
+ }
  return new Response(safe,{status:r.status,headers:{'content-type':r.headers.get('content-type')??''}});
 }
 for(const [title,tmdb,ep] of [['Naruto','46260',1],['Naruto','46260',2],['Jujutsu Kaisen','95479',1],['Attack on Titan','1429',1]]){
