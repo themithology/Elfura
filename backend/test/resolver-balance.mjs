@@ -96,6 +96,62 @@ try {
   // If the pinned node is unavailable, the ordinary failover path still works.
   a.state.mode='fail';
   assert.equal((await sticky.resolve({...one,late:true})).node,'b');
+  // Blackholed first node, healthy but non-instant second node. The old code
+  // spent almost the entire budget on A and left B too little time to resolve.
+  a.state.mode='ok'; b.state.mode='ok'; a.state.delay=2000; b.state.delay=300;
+  let hedgeNow=1000;
+  const hedged = createBalancedPlaybackResolver(client(a),client(b),{now:()=>hedgeNow,budgetMs:800,hedgeDelayMs:100,cooldownMs:30000,log:()=>{}});
+  const hedgeStarted=Date.now();
+  assert.equal((await hedged.resolve(request)).node,'b');
+  assert.ok(Date.now()-hedgeStarted<750,'healthy backup should have time to answer');
+  const aAfterHedge=a.state.calls;
+  assert.equal((await hedged.resolve(request)).node,'b');
+  assert.equal(a.state.calls,aAfterHedge,'do not pile more calls onto a stalled node');
+  await new Promise(r=>setTimeout(r,160));
+  const hedgeStatus=await hedged.probe();
+  assert.ok(hedgeStatus.nodes[0].failures>0 && hedgeStatus.nodes[0].cooldownMs>0,'a genuine timeout enters cooldown');
+  const aDuringCooldown=a.state.calls;
+  assert.equal((await hedged.resolve(request)).node,'b');
+  assert.equal(a.state.calls,aDuringCooldown,'a slow healthy scan must not hedge onto a cooling node');
+  a.state.delay=0; hedgeNow+=30001;
+  const recoveredAfterStall=[];
+  for(let i=0;i<4;i++) recoveredAfterStall.push((await hedged.resolve(request)).node);
+  assert.ok(recoveredAfterStall.includes('a'),'a recovered node should rejoin after cooldown');
+  assert.equal((await hedged.probe()).nodes[0].cooldownMs,0);
+  // Exercise the same timeout when the backup is the failed first choice.
+  a.state.delay=300; b.state.delay=2000;
+  const reversed=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:100,log:()=>{}});
+  assert.equal((await reversed.resolve(request)).node,'a');
+  assert.equal((await reversed.resolve(request)).node,'a');
+  // A slow but healthy node must not be marked down just because the other
+  // node answered the hedged request first.
+  a.state.delay=450; b.state.delay=20;
+  const healthySlow=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:900,hedgeDelayMs:50,log:()=>{}});
+  assert.equal((await healthySlow.resolve(request)).node,'b');
+  await new Promise(r=>setTimeout(r,500));
+  assert.equal((await healthySlow.probe()).nodes[0].failures,0);
+  // A quick empty answer from a hedged peer must not hide the first node's
+  // still-pending real result.
+  a.state.delay=160; b.state.delay=10; b.state.mode='empty';
+  const noFalseEmpty=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:40,log:()=>{}});
+  assert.equal((await noFalseEmpty.resolve(request)).node,'a');
+  // A late request must prefer its original stash owner, even when the peer
+  // could return an immediate successful but empty late payload.
+  a.state.delay=0; b.state.mode='ok'; b.state.delay=0;
+  const lateSlow=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:40,log:()=>{}});
+  const lateRequest={...request,lateAffinityKey:'slow-late'};
+  assert.equal((await lateSlow.resolve(lateRequest)).node,'a');
+  a.state.delay=160;
+  const beforeLate=b.state.calls;
+  assert.equal((await lateSlow.resolve({...lateRequest,late:true})).node,'a');
+  assert.equal(b.state.calls,beforeLate);
+  // If both were in cooldown, one recovery must still be tried rather than
+  // only rechecking the still-dead node.
+  a.state.delay=0; b.state.delay=0; a.state.mode='fail'; b.state.mode='fail';
+  const recovering=createBalancedPlaybackResolver(client(a),client(b),{budgetMs:800,hedgeDelayMs:50,log:()=>{}});
+  await assert.rejects(recovering.resolve(request));
+  b.state.mode='ok';
+  assert.equal((await recovering.resolve(request)).node,'b');
   // Slow failures cannot add two full independent timeout windows.
   a.state.mode='ok'; b.state.mode='ok'; a.state.delay=500; b.state.delay=500;
   const bounded = createBalancedPlaybackResolver(client(a),client(b),{budgetMs:180,log:()=>{}});

@@ -28,15 +28,23 @@ async function node(id, useHttps) {
   };
   const real=createResolverServer({cfg:{},registry,token:secret,log:()=>{}}).server;
   const resolverPort=await listen(real);
-  const state={blocked:false};
+  const state={blocked:false,hang:false,delay:0};
   const handler=(req,res)=>{
     if(state.blocked && req.url !== '/resolver/api/health') {res.writeHead(403,{'content-type':'text/html'});return res.end('Access denied');}
-    if(req.url==='/resolver/api/playback') requestCounts[id-1]++;
-    const upstream=http.request({host:'127.0.0.1',port:resolverPort,path:req.url,method:req.method,headers:req.headers},origin=>{
-      res.writeHead(origin.statusCode,origin.headers);origin.pipe(res);
-    });
-    upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});
-    req.pipe(upstream);
+    if(req.url==='/resolver/api/playback') {
+      requestCounts[id-1]++;
+      if(state.hang) { req.resume(); return; }
+    }
+    const forward=()=>{
+      if(res.destroyed) return;
+      const upstream=http.request({host:'127.0.0.1',port:resolverPort,path:req.url,method:req.method,headers:req.headers},origin=>{
+        res.writeHead(origin.statusCode,origin.headers);origin.pipe(res);
+      });
+      upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});
+      req.pipe(upstream);
+    };
+    if(req.url==='/resolver/api/playback' && state.delay) setTimeout(forward,state.delay);
+    else forward();
   };
   const proxy=useHttps ? https.createServer(tls,handler) : http.createServer(handler);
   const proxyPort=await listen(proxy);
@@ -105,7 +113,30 @@ try {
   assert.match(overrideLogs,/ELFURA_RESOLVER_BACKUP_URL.*overrides \.env/);
   assert.match(overrideLogs,/using 1 remote resolver/);
   assert(!overrideLogs.includes(secret),'override warning must not reveal secrets');
-  console.log('packaged .env + HTTPS primary and public HTTP backup: 50/50, failover, per-node diagnostics and env override warning OK');
+  // A fresh packaged media process, with the second node blackholed and the
+  // first taking a realistic four seconds to discover sources. The old serial
+  // failover waited ten seconds, leaving only two for the healthy node.
+  const thirdSocket=net.createServer();await new Promise(r=>thirdSocket.listen(0,'127.0.0.1',r));
+  const thirdPort=thirdSocket.address().port;await new Promise(r=>thirdSocket.close(r));
+  b.state.blocked=false; b.state.hang=true; a.state.delay=4000;
+  const stalled=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(thirdPort),SERVER_PORT:String(thirdPort)}});
+  children.push(stalled); let stalledLogs='';stalled.stdout.on('data',d=>stalledLogs+=d);stalled.stderr.on('data',d=>stalledLogs+=d);
+  const stalledBase=`http://127.0.0.1:${thirdPort}`;
+  let stalledReady=false;for(let i=0;i<100;i++){try{if((await fetch(stalledBase+'/api/v1/health')).ok){stalledReady=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
+  assert(stalledReady,`stalled test media node failed to start: ${stalledLogs}`);
+  async function slowPlayback(id) {
+    const response=await fetch(`${stalledBase}/api/v1/playback?type=movie&tmdb=${id}`,{headers:{origin:stalledBase,'user-agent':'Mozilla/5.0'},signal:AbortSignal.timeout(14000)});
+    assert.equal(response.status,200,`stalled failover: ${response.status} ${await response.clone().text()}\n${stalledLogs}`);
+    return response.json();
+  }
+  assert.equal((await slowPlayback(100)).node,1); // Make node 2 the next round-robin choice.
+  const start=Date.now();
+  assert.equal((await slowPlayback(101)).node,1,'blackhole must fail over to a slow healthy resolver');
+  assert.ok(Date.now()-start<11000,'healthy resolver needs enough of the overall budget');
+  const deadCalls=requestCounts[1];
+  assert.equal((await slowPlayback(102)).node,1);
+  assert.equal(requestCounts[1],deadCalls,'do not keep sending requests to the blackholed backend');
+  console.log('packaged .env + HTTPS primary and public HTTP backup: 50/50, 403 and stalled failover, diagnostics and override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
