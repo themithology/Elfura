@@ -1,6 +1,9 @@
 name: Anime sources with real TMDB and browser
 on:
   workflow_dispatch:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['.github/workflows/anime-live-tmdb.yml']
 permissions: {contents: read}
 jobs:
   live:
