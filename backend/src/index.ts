@@ -252,7 +252,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       remote: pool,
       onFallback: (detail) =>
         console.warn(
-          `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
+          `[elfura-resolver] resolver call failed (${detail}). Reporting resolver unavailable for this request; ` +
             'NOT scraping locally - this node only serves video. ' +
             'Check /api/v1/resolver-test if this repeats.',
         ),
@@ -1368,7 +1368,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   };
 
   server.on('close', () => roxy.close());
-  return { server, cfg, registry };
+  return { server, cfg, registry, selfTestLocal: resolver.kind === 'local' };
 }
 
 /** Compact memory readout: MB with one decimal, cheap enough for a health probe. */
@@ -1432,7 +1432,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
   // own lookups through public DNS so the adapters can work at all.
   void installDnsRescue().then(() => installEgressProfile());
-  const { server, cfg, registry } = createBackendServer(overrides);
+  const { server, cfg, registry, selfTestLocal } = createBackendServer(overrides);
   // A port that cannot be bound is not a survivable state: the guards below
   // deliberately keep the process alive through unexpected throws, which would
   // turn EADDRINUSE into a container that reports itself healthy while serving
@@ -1468,9 +1468,13 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         `(${state.enabled.length}/${state.enabled.length + state.disabled.length} sources${named}; roxy: enabled)`,
     );
     if (process.env.ELFURA_SELF_TEST !== '0') {
-      void import('./sources/self-test.js')
-        .then((mod) => mod.runSourceSelfTest(registry))
-        .catch(() => {});
+      if (selfTestLocal) {
+        void import('./sources/self-test.js')
+          .then((mod) => mod.runSourceSelfTest(registry))
+          .catch(() => {});
+      } else {
+        console.log('[elfura-selftest] skipped on streaming node: configured resolver handles discovery; local sources were not tested');
+      }
     }
     if (state.disabled.length) {
       console.warn(
@@ -1603,6 +1607,13 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
       console.log(`[elfura-resolver] verbose: http://${cfg.host}:${port} · ${registry.listPublicSources().length} sources`);
     }
     console.log(describeMemoryPolicy());
+    // Provider probing is opt-in on a resolver, so deploying an update does not
+    // unexpectedly create discovery traffic. This runs on the resolver itself.
+    if (process.env.ELFURA_SELF_TEST === '1') {
+      void import('./sources/self-test.js')
+        .then((mod) => mod.runSourceSelfTest(registry))
+        .catch(() => {});
+    }
     if (process.env.ELFURA_RESOLVER_VERBOSE === '1') {
       console.log(`[elfura-resolver] point the media server at it with ELFURA_RESOLVER_URL=http://127.0.0.1:${port}`);
     }

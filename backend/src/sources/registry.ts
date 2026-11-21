@@ -262,17 +262,25 @@ export class SourceRegistry {
    */
   async selfTestAll(
     params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
-  ): Promise<{ id: string; raw: number; ms: number; net: string }[]> {
+  ): Promise<{ id: string; raw: number; ms: number; net: string; skipped?: string }[]> {
+    // Share one lazy metadata lookup just as the playback resolver does. Anime
+    // adapters cannot correctly resolve an episode without TMDB metadata.
+    let metaPromise: ReturnType<typeof fetchTmdbMetadata> | undefined;
+    const resolveMetaFallback = () => (metaPromise ??= fetchTmdbMetadata(this.cfg.tmdb, params));
     return Promise.all(
       this.adapters
         .filter((adapter) => adapter.enabled())
         .map(async (adapter) => {
           const started = Date.now();
+          if (params.type === 'movie' && ['source-28', 'source-29', 'source-30'].includes(adapter.id)) {
+            return { id: adapter.id, raw: 0, ms: 0, net: '0 req', skipped: 'TV anime only' };
+          }
           const query: SourceQuery = {
             type: params.type,
             tmdbId: params.tmdbId,
             season: params.season,
             episode: params.episode,
+            resolveMetaFallback,
             signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
           };
           try {

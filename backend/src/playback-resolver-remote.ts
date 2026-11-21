@@ -51,7 +51,9 @@ export class RemotePlaybackResolver implements PlaybackResolver {
     init: { method?: string; body?: unknown; timeoutMs?: number } = {},
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? CONTROL_TIMEOUT_MS);
+    const timeoutMs = init.timeoutMs ?? CONTROL_TIMEOUT_MS;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: init.method ?? 'GET',
@@ -80,6 +82,9 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       }
       if (parsed === null) throw new Error('resolver returned a non-JSON body');
       return parsed as T;
+    } catch (error) {
+      if (timedOut) throw new Error(`request timed out after ${timeoutMs}ms before a complete response; check resolver logs and network`);
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -200,10 +205,10 @@ export function describeFetchFailure(error: unknown, baseUrl: string): string {
   if (
     code === 'ETIMEDOUT' ||
     code === 'UND_ERR_CONNECT_TIMEOUT' ||
-    /abort/i.test(message) ||
+    /abort|timed out/i.test(message) ||
     /abort/i.test(cause?.message ?? '')
   ) {
-    return `${baseUrl} timed out after the control timeout: no answer at all. That is a firewall dropping packets or a wrong address, not a wrong token`;
+    return `${baseUrl} control request timed out before a complete response; check network, proxy and resolver logs`;
   }
   if (code === 'ECONNRESET' || code === 'EPIPE') {
     return `${baseUrl} closed the connection mid-request: something between the nodes is terminating it (a reverse proxy or TLS terminator is the usual cause)`;
