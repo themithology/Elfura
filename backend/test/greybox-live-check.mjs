@@ -57,7 +57,23 @@ try {
       catch { row.network.browserTlsJson = false; row.network.browserTlsHtml = /^\s*<!?html/i.test(text); }
       row.network.browserTlsRows = Array.isArray(json?.sources) ? json.sources.length : 0;
       row.network.browserTlsFailures = Array.isArray(json?.failures) ? json.failures.length : null;
-    } catch(e) {row.network.browserTlsError = e.cause?.code || e.name;}
+    } catch(e) {
+      row.network.browserTlsError = e.cause?.code || e.name;
+      row.network.browserTlsErrorClass = /decompress|decod|encoding/i.test(String(e.message)) ? 'decode' : /reset|closed|incomplete|body|stream/i.test(String(e.message)) ? 'body-or-connection' : 'other';
+    }
+    // Some origins mishandle compression; probe identity without logging bodies.
+    const headers={'User-Agent':ua,Accept:'application/json, text/plain, */*',Referer:`${origin}/`,Origin:origin,'Accept-Encoding':'identity'};
+    for (const kind of ['nodeIdentity','browserIdentity']) {
+      const item = {};
+      try {
+        const request = kind === 'browserIdentity' ? (await import('wreq-js')).fetch : globalThis.fetch;
+        const response = await request(endpoint,{headers,signal:AbortSignal.timeout(12000),...(kind === 'browserIdentity' ? {browser:'chrome_149',os:'windows',timeout:11000} : {})});
+        item.status = response.status;
+        const json = await response.json();
+        item.rows = Array.isArray(json?.sources) ? json.sources.length : 0;
+      } catch(e) {item.error = e.cause?.code || e.name;}
+      row.network[kind] = item;
+    }
   }
   // Real resolver startup installs the egress profile; createBackendServer alone
   // does not. Install it explicitly so this test covers the production path.
