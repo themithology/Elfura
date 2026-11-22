@@ -15,3 +15,5 @@ jobs:
         with: {node-version: 22}
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/research-tgvidx-direct.mjs
+      - run: node backend/test/research-tgvidx-decoded.mjs
+      - run: node backend/test/research-tgvidx-65942-browser.mjs

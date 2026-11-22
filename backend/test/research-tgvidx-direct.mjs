@@ -6,7 +6,7 @@ const notice=(t,v)=>console.log(`::notice title=${t}::${JSON.stringify(v).replac
 const key='tGfL1x#9vQ'; // public client-side XOR obfuscation, not authorization
 function decode(p){const bytes=Buffer.from([...p].reverse().join(''),'base64');for(let i=0;i<bytes.length;i++)bytes[i]^=key.charCodeAt(i%key.length)^(i&255);return JSON.parse(bytes.toString('utf8'))}
 async function boundedRead(r,limit=8192){const reader=r.body?.getReader();if(!reader)return '';let parts=[],length=0;try{while(length<limit){const {done,value}=await reader.read();if(done)break;parts.push(value.subarray(0,limit-length));length+=value.length}}finally{await reader.cancel().catch(()=>{})}return Buffer.concat(parts).toString('utf8')}
-for(const [type,id,s,e] of [['movie','1303331'],['movie','550'],['tv','1396','1','1']]){
+for(const [type,id,s,e] of [['tv','65942','1','1']]){
  const path=type==='movie'?`/api/m/${id}`:`/api/tv/${id}/${s}/${e}`;
  const request={t:{t:10,i:0,p:{k:['data'],v:[{t:10,i:1,p:{k:['path'],v:[{t:1,s:path}]},o:0}]},o:0},f:127,m:[]};
  try{const r=await fetch(base+fn,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','x-tsr-serverfn':'true','Origin':base,'Referer':base+'/'},body:JSON.stringify(request),signal:AbortSignal.timeout(25000)});if(!r.ok){notice('TGVIDX direct '+path,{status:r.status});continue}const o=await r.json();const raw=o?.p?.v?.[0]?.p?.v?.[0]?.s;const data=decode(raw);const samples=[];

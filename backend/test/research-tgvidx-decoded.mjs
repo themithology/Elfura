@@ -3,7 +3,7 @@ import {chromium} from 'playwright-core';import binary from '@sparticuz/chromium
 const notice=(t,v)=>console.log(`::notice title=${t}::${JSON.stringify(v).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,9000)}`);
 const browser=await chromium.launch({executablePath:await binary.executablePath(),args:binary.args});
 const page=await browser.newPage();
-for(const route of ['/embed/movie/1303331','/embed/movie/550','/embed/tv/1396/1/1']){
+for(const route of ['/embed/tv/65942/1/1']){
  let rpc=null,scramble=null,requestBody=null;const tasks=[];
  page.on('response',r=>{try{const u=new URL(r.url());if(u.hostname!=='tgvidx.lovable.app')return;if(/\/scramble-[^/]+\.js$/.test(u.pathname))scramble=u.pathname;if(u.pathname.includes('ff183e1ad6d02c4c'))tasks.push((async()=>{try{const o=await r.json();rpc=o?.p?.v?.[0]?.p?.v?.[0]?.s;requestBody=r.request().postData()}catch{}})())}catch{}});
  try{
