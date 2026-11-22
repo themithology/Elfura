@@ -699,11 +699,11 @@ export class SourceRegistry {
 
     // TGVIDX aggregates upstreams before replying; its normal response now
     // takes roughly eight seconds and can exceed the shared discovery signal.
-    // Give only its background wave a longer, bounded signal. This does not
-    // extend the first-list deadline, change resolver routing, or detach a
-    // caller-supplied cancellation signal in the adapter itself.
+    // Give only its discovery task a longer, bounded signal. This does not
+    // extend the first-list or focused-request deadline, change resolver
+    // routing, or detach a caller-supplied cancellation signal in the adapter.
     const queryFor = (adapter: SourceAdapter): SourceQuery =>
-      adapter.id === 'source-17' && !singleSource
+      adapter.id === 'source-17'
         ? { ...query, signal: AbortSignal.timeout(Math.max(this.cfg.resolveTimeoutMs, TGVIDX_DISCOVERY_TIMEOUT_MS)) }
         : query;
 

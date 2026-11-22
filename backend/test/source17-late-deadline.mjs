@@ -20,5 +20,10 @@ try{
  assert(late?.sources.some(s=>s.sourceId==='source-17'),'slow TGVIDX must join original late wave');
  assert(!aborted,'TGVIDX was cut off by the shared 2s signal');assert(ordinaryAborted,'other adapters must retain the configured deadline');
  assert(attempts<=3,'in-flight TGVIDX must not be launched twice');
- console.log('TGVIDX background deadline and ordinary deadline: OK');
+ // A focused source request keeps the same overall HTTP deadline, but its
+ // discovery must not be aborted by the shorter per-adapter signal either.
+ const focused=new SourceRegistry(cfg);focused.adapters=[delayed('source-17',3300)];
+ const only=await focused.resolvePlayback({type:'movie',tmdbId:'50442',sourceId:'source-17'});
+ assert(only?.sources.some(s=>s.sourceId==='source-17'),'focused TGVIDX must survive the short shared signal');
+ console.log('TGVIDX background and focused discovery, ordinary deadline: OK');
 }finally{globalThis.fetch=original;clearInterval(keep)}

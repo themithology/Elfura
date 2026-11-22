@@ -59,6 +59,20 @@ try{
     }catch(e){lane.played=false;lane.error=e.name;lane.state=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {current:p?.currentSource?.sourceId,fp:p?.currentSource?.fingerprint,width:v?.videoWidth,time:v?.currentTime,ready:v?.readyState}}).catch(()=>null)}
     lane.errors=await page.evaluate(()=>{clearInterval(window.__hlsInterval);return window.__hlsErrors?.slice(0,10)||[]}).catch(()=>hlsErrors);page.off('response',onResponse);lane.responses=responses;row.lanes.push(lane);
    }
+   // A real manual click on a known-failed TGVIDX lane must stay within that
+   // group and reach a different playable upstream, rather than silently jump
+   // to an unrelated source. Only exercise when this run observed both.
+   if(sample.id==='65942'){
+    const failed=row.lanes.find(l=>l.name==='TG MAGPIE'&&!l.played),working=row.lanes.find(l=>l.name==='TG STREAMHG'&&l.played);
+    if(failed&&working){const target=state.options.find(o=>o.fingerprint===failed.fp);row.groupFallback={startedFrom:failed.name};
+     try{await page.evaluate(id=>window.__elfura.player.setSource(id),target.id);
+      await page.waitForFunction(fp=>{const p=window.__elfura.player,v=p.video;return p.currentSource?.sourceId==='source-17'&&p.currentSource.fingerprint!==fp&&v.videoWidth>0&&v.readyState>=2},failed.fp,{timeout:90000});
+      const before=await page.evaluate(()=>({fp:window.__elfura.player.currentSource.fingerprint,time:window.__elfura.player.video.currentTime}));
+      await page.waitForFunction(({fp,time})=>{const p=window.__elfura.player;return p.currentSource?.sourceId==='source-17'&&p.currentSource.fingerprint===fp&&p.video.currentTime>time+3},before,{timeout:20000});
+      row.groupFallback.played=true;row.groupFallback.to=byFingerprint.get(before.fp)?.name||'unknown';
+     }catch(e){row.groupFallback.played=false;row.groupFallback.error=e.name;row.groupFallback.state=await page.evaluate(()=>{const p=window.__elfura.player;return {source:p.currentSource?.sourceId,fp:p.currentSource?.fingerprint,width:p.video.videoWidth,time:p.video.currentTime}})}
+    }else row.groupFallback={skipped:'no confirmed failing MAGPIE and playable STREAMHG in this run'};
+   }
   }catch(e){row.error=e.name;row.errorMessage=String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,160)}
   notice('TGVIDX full flow '+sample.id,row);page.off('response',onPlaybackResponse);
  }

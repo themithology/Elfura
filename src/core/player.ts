@@ -204,6 +204,9 @@ export class ElfuraPlayer {
   private pendingSourceGroups: string[] = [];
   private lateHydrationToken = 0;
   private currentSource: SourceOption | null = null;
+  // Source 17 is an aggregator: its rows can be independent upstream servers.
+  // Honor a manual Source 17 selection through its other rows before leaving it.
+  private manualAggregatorGroup: string | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
   private measuredRttByFp = new Map<string, number>();
@@ -456,6 +459,7 @@ export class ElfuraPlayer {
     this.activeProbe = null;
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
+    this.manualAggregatorGroup = opt.sourceId === 'source-17' ? opt.sourceId : null;
     if (opt.audioLang && opt.audioLang !== 'und') {
       this.desiredAudioLang = canonLang(opt.audioLang);
     } else if (
@@ -1216,6 +1220,7 @@ export class ElfuraPlayer {
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
+    this.manualAggregatorGroup = null;
     this.resolveAbort?.abort();
     const controller = new AbortController();
     this.resolveAbort = controller;
@@ -3231,12 +3236,19 @@ export class ElfuraPlayer {
       const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
         (s) => !this.isCandidateFailed(s),
       );
-      // After a failure, prefer a different provider group over another
-      // rendition from the same failing upstream; latency breaks ties.
+      // Normally a different provider group is the safer fallback. Source 17
+      // is an aggregator of distinct upstreams, though: if the viewer manually
+      // chose it, try its remaining rows first rather than immediately switching
+      // away from the chosen group after one of its servers fails.
+      const selectedAggregator = this.currentSource?.sourceId === this.manualAggregatorGroup
+        ? this.manualAggregatorGroup : null;
       ordered.sort((a, b) =>
-        Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId) ||
+        (selectedAggregator
+          ? Number(b.sourceId === selectedAggregator) - Number(a.sourceId === selectedAggregator)
+          : Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId)) ||
         (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
+      if (selectedAggregator && next?.sourceId !== selectedAggregator) this.manualAggregatorGroup = null;
       if (!next) {
         this.recoverExhaustedSources();
         return;
