@@ -74,6 +74,29 @@ assert.equal(inline('{\\an8}plain')[0].bold, false, 'positioning tags alone chan
 assert.equal(inline('a{\\b1}b{\\b0}c').map((s) => s.bold).join(','), 'false,true,false', 'the toggle applies to what follows it');
 assert.equal(inline('no markup at all')[0].text, 'no markup at all');
 
+// SRT/VTT/ASS can contain HTML-style font tags, such as the actual caption
+// reported by the viewer. Apply safe styles rather than showing the tags.
+const styled = inline('<font face="Trebuchet MS" size="24" color="#ff8800">Mother?!</font>');
+assert.equal(styled.map(x => x.text).join(''), 'Mother?!');
+assert.equal(styled[0].fontFamily, 'Trebuchet MS');
+assert.equal(styled[0].fontSize, 24);
+assert.equal(styled[0].color, '#ff8800');
+const nested = inline('a <font face="Arial" size="24">one <font color="yellow"><i>two</i></font> three</font> end');
+assert.equal(nested.map(x => x.text).join(''), 'a one two three end', 'spaces and dialogue survive tag boundaries');
+assert.equal(nested.find(x => x.text === 'two')?.fontFamily, 'Arial');
+assert.equal(nested.find(x => x.text === 'two')?.fontSize, 24);
+assert.equal(nested.find(x => x.text === 'two')?.color, '#ffff00');
+assert.equal(nested.find(x => x.text === 'two')?.italic, true);
+assert.equal(nested.find(x => x.text === ' three')?.color, undefined, 'closing a nested font restores the parent');
+assert.equal(nested.find(x => x.text === ' end')?.fontFamily, undefined, 'closing the outer font restores the default');
+assert.equal(inline('<font SIZE=3 COLOR=red>legacy</font>')[0].fontSize, 16);
+assert.equal(inline('<font size=9999>bounded</font>')[0].fontSize, 120);
+const unsafe = inline('<font face="Arial; color:red" size="bad" color="url(evil)">safe</font>')[0];
+assert.equal(unsafe.text, 'safe');
+assert.equal(unsafe.fontFamily, undefined);
+assert.equal(unsafe.fontSize, undefined);
+assert.equal(unsafe.color, undefined);
+
 // ---- VTT and SRT must not regress ---------------------------------------
 const vtt = `WEBVTT
 
@@ -104,6 +127,10 @@ const s = parseCues(srt, 'a.srt');
 assert.equal(s.format, 'srt');
 assert.equal(s.cues.length, 2);
 assert.equal(s.cues[0].text, 'First line here');
+const taggedSrt = parseCues('1\n00:00:01,000 --> 00:00:02,500\n<font face="Trebuchet MS" size="24">Mother?!</font>', 'x.srt');
+assert.equal(taggedSrt.cues[0].text, 'Mother?!');
+assert.equal(taggedSrt.cues[0].spans[0].fontFamily, 'Trebuchet MS');
+assert.equal(taggedSrt.cues[0].spans[0].fontSize, 24);
 
 // ---- the default look ----------------------------------------------------
 // Bold white text, crisp black stroke, no box: the broadcast/anime style the
