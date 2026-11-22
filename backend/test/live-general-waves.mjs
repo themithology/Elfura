@@ -10,7 +10,7 @@ import {tapRequests} from '../../dist/backend/sources/net-tap.js';
 import {cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
 import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 const secret='fixture-only-live-general-secret-0123456789';
@@ -39,7 +39,7 @@ try {
     }
     observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,raw:tapped.value.candidates.length,network,candidates:tapped.value.candidates});
     return tapped.value;
-   } catch(error) {observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,error:error.name});throw error;}
+   } catch(error) {observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,error:['AbortError','TimeoutError','TypeError'].includes(error?.name)?error.name:'Error'});throw error;}
   }}));
   urls.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server));
  }
@@ -70,11 +70,22 @@ try {
   });
   rows.push(row);
  }
- // GitHub truncates annotations at 4096 bytes: report each sample and each
- // adapter separately so a large provider board cannot hide the TV results.
- for (const {discovery,...summary} of rows) {
-  console.log('::notice title=Live general discovery summary::'+JSON.stringify(summary));
-  for (const attempt of discovery ?? []) console.log('::notice title=Live source attempt::'+JSON.stringify(attempt));
+ // GitHub limits both annotation size and the number of notices per step.
+ // Reserve notices for both title summaries first, then compact aggregates.
+ // The optional artifact keeps the full sanitized per-attempt breakdown.
+ if(process.env.ELFURA_LIVE_REPORT) writeFileSync(process.env.ELFURA_LIVE_REPORT,JSON.stringify(rows,null,2));
+ for (const {discovery,...summary} of rows) console.log('::notice title=Live general discovery summary::'+JSON.stringify(summary));
+ for (const {title,discovery} of rows) {
+  const aggregated=new Map();
+  for(const r of discovery??[]) {
+   const a=aggregated.get(r.id)??{id:r.id,attempts:0,raw:0,alive:0,dead:0,unknown:0,shared:0,network:{},errors:0};
+   a.attempts++;a.raw+=r.raw??0;a.alive+=r.manifestAlive??0;a.dead+=r.manifestDead??0;a.unknown+=r.manifestUnknown??0;a.shared+=r.sharedWithOtherSources??0;
+   for(const [k,v] of Object.entries(r.network??{}))a.network[k]=(a.network[k]??0)+v;
+   if(r.error)a.errors++;
+   aggregated.set(r.id,a);
+  }
+  const entries=[...aggregated.values()].sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
+  for(let i=0;i<entries.length&&i<30;i+=10) console.log('::notice title=Live source attempts::'+JSON.stringify({title,entries:entries.slice(i,i+10)}));
  }
  if(rows.some(row=>!row.ok))process.exitCode=1;
 } finally {

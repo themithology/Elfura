@@ -17,3 +17,12 @@ jobs:
       - run: npm run build
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/live-general-waves.mjs
+        env:
+          ELFURA_LIVE_REPORT: live-general-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-general-report
+          path: live-general-report.json
+          if-no-files-found: ignore
+          retention-days: 7
