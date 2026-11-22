@@ -23,26 +23,30 @@ jobs:
           const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
           const page=await browser.newPage();
           const rows=[];const details=[];const pending=[];
-          const safe = value => {try{const x=new URL(value);return {host:x.hostname,path:x.pathname.slice(0,180)};}catch{return null;}};
+          const safe = value => {try{const x=new URL(value);return {host:x.hostname,path:x.pathname.slice(0,180),nested:[...x.searchParams.values()].map(v=>{try{const y=new URL(v);return {host:y.hostname,path:y.pathname.slice(0,120)}}catch{return null}}).filter(Boolean).slice(0,4)};}catch{return null;}};
           const isStatic = p => /\.(?:js|css|png|jpe?g|svg|webp|ico|woff2?|map)(?:$|\?)/i.test(p);
           page.on('response',r=>{
             const u=safe(r.url());if(!u || isStatic(u.path))return;
             const t=(r.headers()['content-type']||'').split(';')[0];
             const entry={...u,status:r.status(),type:t,method:r.request().method(),kind:r.request().resourceType()};rows.push(entry);
-            if(/json|text\/plain|text\/x-component/.test(t) && !/image\.tmdb\.org/.test(u.host)){
+            if(/json|text\/plain|text\/x-component|mpegurl/.test(t) && !/image\.tmdb\.org/.test(u.host)){
               pending.push((async()=>{try{const text=await r.text();if(text.length>600000)return;
                 const flat=text.replace(/\\\//g,'/').replace(/\\u0026/g,'&');
                 const hosts=[...new Set([...flat.matchAll(/https?:\/\/([\w.-]+)(?::\d+)?/gi)].map(m=>m[1]))].slice(0,30);
                 let keys=[];let sourceNames=[];
                 try{const obj=JSON.parse(text);if(obj && typeof obj==='object'){keys=Object.keys(obj).slice(0,30);const walk=(x,d=0)=>{if(!x||typeof x!=='object'||d>5)return;for(const [k,v] of Object.entries(x)){if(/^(provider|server|name|label|type)$/i.test(k)&&typeof v==='string'&&v.length<=60&&!/https?:/.test(v))sourceNames.push(`${k}:${v}`);if(typeof v==='object')walk(v,d+1);}};walk(obj);}}catch{}
-                details.push({...u,status:r.status(),bytes:text.length,keys,hosts,sourceNames:[...new Set(sourceNames)].slice(0,30)});
+                const hints=[...new Set((flat.match(/greybox|orion|vidsync|vidbolt|tg\s*hub|tghub|moviebox|citadel|hindi|english|netflix|dash-hls-bridge/gi)||[]).map(s=>s.toLowerCase()))];
+                const playlist=/#EXTM3U/.test(text)?{master:/#EXT-X-STREAM-INF/.test(text),audio:(text.match(/#EXT-X-MEDIA:TYPE=AUDIO/gi)||[]).length,lines:text.split('\n').filter(s=>s&&!s.startsWith('#')).slice(0,3).map(s=>safe(new URL(s,r.url()).href))}:null;
+                details.push({...u,status:r.status(),bytes:text.length,keys,hosts,hints,playlist,sourceNames:[...new Set(sourceNames)].slice(0,30)});
               }catch{}})());
             }
           });
           page.on('requestfailed',r=>{const u=safe(r.url());if(u&&!isStatic(u.path))rows.push({...u,method:r.method(),failed:true,error:r.failure()?.errorText?.slice(0,100)});});
           try{
             await page.goto('https://tgvidx.lovable.app/embed/movie/1303331',{waitUntil:'domcontentloaded',timeout:30000});
-            await page.waitForTimeout(35000);
+            await page.waitForTimeout(30000);
+            try { await page.getByRole('button',{name:'Servers',exact:true}).first().click({timeout:3000}); } catch {}
+            await page.waitForTimeout(3000);
             const ui=await page.evaluate(()=>({text:document.body?.innerText?.slice(0,2000),videos:[...document.querySelectorAll('video')].map(v=>({ready:v.readyState,time:v.currentTime,width:v.videoWidth,paused:v.paused})),buttons:[...document.querySelectorAll('button')].map(b=>({label:(b.innerText||b.getAttribute('aria-label')||b.title||'').slice(0,90)})).filter(x=>x.label).slice(0,35)}));
             await Promise.allSettled(pending);
             const uniq=[...new Map(rows.map(x=>[`${x.host}${x.path}:${x.status}:${x.failed}`,x])).values()].slice(0,80);
