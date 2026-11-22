@@ -1,0 +1,19 @@
+name: TGVIDX full-flow live analysis
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/tgvidx-full-flow-research.mjs', 'backend/src/sources/source17.ts', '.github/workflows/tgvidx-full-flow-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/tgvidx-full-flow-research.mjs
