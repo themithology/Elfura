@@ -29,6 +29,32 @@ unsupported rows. Subtitles stay attached to the row that supplied them; a
 Hindi label is recorded only as an unverified language claim. The adapter does
 not infer actual media quality or language from a server name.
 
+## Re:ZERO S1E1 additional lanes (TMDB 65942)
+
+The live [TGVIDX inventory](https://github.com/themithology/Elfura/actions/runs/45035801401)
+contained TG MAGPIE, TG STREAMHG, TG VIDSHARED and TG VIDARA, as well as
+up to four self-referential TG PIRATE entries. The existing dynamic Source 17
+already includes the first four without new adapter numbers; Pirate remains
+excluded. Inventories varied between runs. Regression fixtures now cover the
+new VIDSHARED and VIDARA names explicitly.
+
+The [actual Source 17 browser test](https://github.com/themithology/Elfura/actions/runs/45036054654)
+observed video for STREAMHG and VIDSHARED. Another run saw VIDSHARED time out
+on segments, so it is not guaranteed reliable. VIDSHARED's HLS manifest exposed
+Hindi and Japanese audio groups; that is manifest evidence, not verification of
+the spoken language or audio switching. The video duration was about 52:40,
+while TGVIDX's Pirate-selected video initially showed about 49:10; identity
+and content equivalence of the files have not been independently checked.
+
+VIDARA was discovered and its playlist and segment requests answered, but Elfura
+failed to start video with `fragParsingError` in the
+[diagnostic run](https://github.com/themithology/Elfura/actions/runs/45037145674).
+A separate [TGVIDX player test](https://github.com/themithology/Elfura/actions/runs/45037145675)
+selecting VIDARA also reached a "No playable source available" screen. The
+cause of the media format problem is not established; no speculative decoder
+or claim of VIDARA playback has been added. Magpie's HEVC limitation remains as
+above. These are GitHub runner observations, not the user's VPS.
+
 ## Evidence and limitations
 
 - [Inventory research](https://github.com/themithology/Elfura/actions/runs/45033838563)
