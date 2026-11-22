@@ -21,6 +21,14 @@ process.env.ROXY_DATA_DIR=tmp;
 const servers=[];let browser;
 const listen=async server=>{servers.push(server);await new Promise(r=>server.listen(0,'127.0.0.1',r));return `http://127.0.0.1:${server.address().port}`;};
 const rows=[];
+const fatalNotice = (event, error) => {
+ const name=typeof error?.name==='string'?error.name:'Error';
+ const message=String(error?.message??error??'unknown').replace(/https?:\/\/\S+/gi,'[url]').slice(0,300);
+ const frame=String(error?.stack??'').split('\n').find(line=>line.includes('live-general-waves.mjs'))?.trim()??'';
+ console.log('::error title=Live general '+event+'::'+JSON.stringify({name,message,frame}));
+};
+process.on('uncaughtExceptionMonitor', error=>fatalNotice('uncaught',error));
+process.on('unhandledRejection', error=>{fatalNotice('rejection',error);process.exitCode=1;});
 try {
  const cfg=loadBackendConfig({ELFURA_SECRET:secret,OPENSUBTITLES_ENABLED:'0'});
  // Match normal process startup rather than testing bare Node fetch only.
@@ -104,7 +112,9 @@ try {
  if(process.env.ELFURA_LIVE_REPORT) writeFileSync(process.env.ELFURA_LIVE_REPORT,JSON.stringify({rows,fatal:{name,message,frame}},null,2));
  process.exitCode=1;
 } finally {
- await browser?.close();
- for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
- rmSync(tmp,{recursive:true,force:true});
+ try {
+  await browser?.close();
+  for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
+  rmSync(tmp,{recursive:true,force:true});
+ } catch (error) { fatalNotice('cleanup',error);process.exitCode=1; }
 }

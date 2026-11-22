@@ -54,6 +54,7 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
     # Verify the extracted resolver can load its bundled native client without
     # npm or access to the workspace's node_modules.
     subprocess.run(['node', '--input-type=module', '-e', "const w = await import('wreq-js'); if (typeof w.fetch !== 'function') process.exit(1)"], cwd=tmp, check=True)
+    subprocess.run(['node', '--input-type=module', '-e', "const v = await import('./dist/backend/sources/source24.js'); if (!v.localVidlinkToken('550')) process.exit(1)"], cwd=tmp, check=True)
 
     env = dict(os.environ, HOST='127.0.0.1', SERVER_PORT=str(port))
     env.pop('ELFURA_SECRET', None); env.pop('ROXY_DATA_DIR', None)
