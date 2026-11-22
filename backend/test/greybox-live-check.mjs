@@ -43,6 +43,15 @@ try {
       socket.once('timeout',()=>finish('timeout'));
     });
     [row.network.tcp443,row.network.tls443] = await Promise.all([connect(false),connect(true)]);
+    // A raw handshake and a browser-shaped TLS request are different checks.
+    // Record only status/count, never the response or signed media URLs.
+    try {
+      const {fetch: browserFetch} = await import('wreq-js');
+      const response = await browserFetch(endpoint,{browser:'chrome_149',os:'windows',headers:{'User-Agent':ua,Accept:'application/json, text/plain, */*',Referer:`${origin}/`,Origin:origin},timeout:15000,signal:AbortSignal.timeout(16000)});
+      row.network.browserTlsStatus = response.status;
+      const json = await response.json().catch(()=>null);
+      row.network.browserTlsRows = Array.isArray(json?.sources) ? json.sources.length : 0;
+    } catch(e) {row.network.browserTlsError = e.cause?.code || e.name;}
   }
   // Real resolver startup installs the egress profile; createBackendServer alone
   // does not. Install it explicitly so this test covers the production path.
