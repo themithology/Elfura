@@ -2,7 +2,7 @@ name: Research TGVIDX discovery
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: [backend/test/research-tgvidx.mjs, backend/test/research-tgvidx-bundle.mjs, .github/workflows/research-tgvidx.yml]
+    paths: [backend/test/research-tgvidx*.mjs, .github/workflows/research-tgvidx.yml]
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -14,4 +14,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: {node-version: 22}
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
-      - run: node backend/test/research-tgvidx-bundle.mjs
+      - run: node backend/test/research-tgvidx-decoded.mjs
