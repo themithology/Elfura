@@ -34,6 +34,12 @@ try{
  assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:2,episode:4})).candidates.length,10);assert.equal(calls.at(-1).body.t.p.v[0].p.v[0].s,'/api/tv/1396/2/4');
  assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:2,episode:5})).candidates.length,0,'wrong episode rejected');
  globalThis.fetch=async()=>new Response('x',{status:429});assert.equal((await adapter.resolve({type:'movie',tmdbId:'550'})).candidates.length,0);
+ // Egress can return the first 403 when its retry is aborted. Diagnose the
+ // timeout instead of misleadingly attributing that final failure to HTTP 403.
+ const controller=new AbortController(),diag=[];
+ globalThis.fetch=async()=>{controller.abort();return new Response('Forbidden',{status:403})};
+ await adapter.resolve({type:'movie',tmdbId:'550',signal:controller.signal,diag});
+ assert.equal(diag[0].detail,'request timeout');
  globalThis.fetch=async()=>new Response('x'.repeat(1_000_001));assert.equal((await adapter.resolve({type:'movie',tmdbId:'550'})).candidates.length,0,'oversized response rejected');
  globalThis.fetch=async()=>{throw new TypeError('network')};assert.equal((await adapter.resolve({type:'movie',tmdbId:'550'})).candidates.length,0);
  const disabled=createSource17Adapter(()=>false);assert.equal((await disabled.resolve({type:'movie',tmdbId:'550'})).candidates.length,0);

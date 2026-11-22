@@ -23,10 +23,11 @@ globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?inp
 const servers=[],observations=[];let browser;
 const listen=async s=>{servers.push(s);await new Promise(r=>s.listen(0,'127.0.0.1',r));return `http://127.0.0.1:${s.address().port}`};
 const notice=(title,row)=>console.log(`::notice title=${title}::${JSON.stringify(row).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,10000)}`);
-const fingerprint=c=>crypto.createHmac('sha256',secret).update(c.fingerprint||c.url).digest('hex').slice(0,12);
+let fingerprintKey;
+const fingerprint=c=>crypto.createHmac('sha256',fingerprintKey).update(c.fingerprint||c.url).digest('hex').slice(0,12);
 process.on('uncaughtExceptionMonitor',e=>notice('Full-flow uncaught',{name:e?.name,message:String(e?.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,200)}));
 try{
- const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'}),nodes=[];
+ const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'}),nodes=[];fingerprintKey=cfg.secret;
  for(let i=0;i<4;i++){const registry=new SourceRegistry(cfg);registry.adapters=registry.adapters.map(a=>a.id!=='source-17'?a:{...a,async resolve(q){const started=Date.now(),diag=[];const r=await a.resolve({...q,diag});observations.push({node:i+1,title:q.tmdbId,started,ms:Date.now()-started,diag,candidates:r.candidates});return r}});nodes.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server))}
  [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
  const app=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(app.server);
@@ -37,7 +38,7 @@ try{
   const onPlaybackResponse=r=>{try{const u=new URL(r.url());if(u.pathname==='/api/v1/playback')requests.push({ms:Date.now()-begin,late:u.searchParams.get('late')==='1',status:r.status()})}catch{}};page.on('response',onPlaybackResponse);
   try{
    await page.goto(`${base}/embed/${sample.type}/${sample.id}${sample.type==='tv'?'/1/1':''}?autoplay=1&muted=1`,{waitUntil:'domcontentloaded',timeout:20000});
-   await page.waitForTimeout(23000);
+   await page.waitForTimeout(32000);
    const state=await page.evaluate(()=>({timing:window.__research,options:window.__elfura?.player?.getSources().filter(s=>s.sourceId==='source-17').map(s=>({id:s.id,fingerprint:s.fingerprint,type:s.type})),initialVideo:{source:window.__elfura?.player?.currentSource?.sourceId,width:window.__elfura?.player?.video?.videoWidth,time:window.__elfura?.player?.video?.currentTime}}));
    row.timing=state.timing;row.requests=requests;row.options=state.options;row.initialVideo=state.initialVideo;
    const discovered=observations.filter(o=>o.title===sample.id);const byFingerprint=new Map();

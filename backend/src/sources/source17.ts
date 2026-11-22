@@ -19,6 +19,11 @@ import type { RawSourceResult, RawStreamCandidate, RawTrackRef, SourceAdapter, S
 const ORIGIN = 'https://tgvidx.lovable.app';
 const RPC = '/_serverFn/ff183e1ad6d02c4c08e8e73151c60e5dcc23f8f4c9db53eac9d271b87a56e121';
 const PUBLIC_TRANSFORM = 'tGfL1x#9vQ';
+// TGVIDX currently waits for its own provider aggregation before responding;
+// live inventory calls routinely take over eight seconds, and an HTTP retry
+// can take longer. This is only a background discovery bound, not a delay to
+// the first source list. Callers may still supply a shorter cancellation signal.
+export const TGVIDX_DISCOVERY_TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_ROWS = 200;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -133,13 +138,13 @@ export function createSource17Adapter(enabled: () => boolean): SourceAdapter {
       if (query.type === 'tv' && (!Number.isInteger(query.season) || !Number.isInteger(query.episode) || (query.season ?? 0) < 0 || (query.episode ?? 0) < 1 || (query.season ?? 0) > 9999 || (query.episode ?? 0) > 9999)) return { candidates: [] };
       const start = Date.now();
       const diag = (ok: boolean, detail: string) => query.diag?.push({ adapter: 'source-17', lane: 'inventory', ok, ms: Date.now() - start, detail });
-      const timeout = AbortSignal.timeout(12_000);
+      const timeout = AbortSignal.timeout(TGVIDX_DISCOVERY_TIMEOUT_MS);
       const signal = query.signal ? AbortSignal.any([query.signal, timeout]) : timeout;
       const path = query.type === 'movie' ? `/api/m/${query.tmdbId}` : `/api/tv/${query.tmdbId}/${query.season}/${query.episode}`;
       const request = { t: { t: 10, i: 0, p: { k: ['data'], v: [{ t: 10, i: 1, p: { k: ['path'], v: [{ t: 1, s: path }] }, o: 0 }] }, o: 0 }, f: 127, m: [] };
       try {
         const res = await fetch(ORIGIN + RPC, { method: 'POST', redirect: 'manual', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'x-tsr-serverfn': 'true', 'User-Agent': USER_AGENT, Referer: `${ORIGIN}/`, Origin: ORIGIN }, body: JSON.stringify(request), signal });
-        if (!res.ok) { await res.body?.cancel().catch(() => {}); diag(false, `http=${res.status}`); return { candidates: [] }; }
+        if (!res.ok) { await res.body?.cancel().catch(() => {}); diag(false, signal.aborted ? 'request timeout' : `http=${res.status}`); return { candidates: [] }; }
         const data = decodeTgvidxResponse(await readBounded(res));
         if (!data || data.ok !== true || String(data.tmdb_id) !== query.tmdbId || data.type !== query.type || (data.season != null && Number(data.season) !== query.season) || (data.episode != null && Number(data.episode) !== query.episode) || !Array.isArray(data.links)) {
           diag(false, 'invalid inventory or identity'); return { candidates: [] };

@@ -22,7 +22,7 @@ import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import { createSource16Adapter } from './source16.js';
-import { createSource17Adapter } from './source17.js';
+import { createSource17Adapter, TGVIDX_DISCOVERY_TIMEOUT_MS } from './source17.js';
 import { createSource6Adapter } from './source6.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
@@ -697,6 +697,16 @@ export class SourceRegistry {
       signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
     };
 
+    // TGVIDX aggregates upstreams before replying; its normal response now
+    // takes roughly eight seconds and can exceed the shared discovery signal.
+    // Give only its background wave a longer, bounded signal. This does not
+    // extend the first-list deadline, change resolver routing, or detach a
+    // caller-supplied cancellation signal in the adapter itself.
+    const queryFor = (adapter: SourceAdapter): SourceQuery =>
+      adapter.id === 'source-17' && !singleSource
+        ? { ...query, signal: AbortSignal.timeout(Math.max(this.cfg.resolveTimeoutMs, TGVIDX_DISCOVERY_TIMEOUT_MS)) }
+        : query;
+
     // Launch all active adapters in parallel; if one adapter finishes quickly with candidates
     // while another is stuck in a multi-second upstream cold scan (>2.6s slower), proceed early
     // once fast candidates pass verification while letting the slower adapter warm `ramCache` in background!
@@ -748,7 +758,7 @@ export class SourceRegistry {
         const existing = currentWave.entries.get(adapter.id);
         if (!existing || existing.result.candidates.length || currentWave.retried.has(adapter.id) || this.inFlight.has(cacheKeys[idx])) return;
         currentWave.retried.add(adapter.id);
-        void this.resolveAdapterWithCache(adapter, cacheKeys[idx], query, result => {
+        void this.resolveAdapterWithCache(adapter, cacheKeys[idx], queryFor(adapter), result => {
           this.recordWaveResult(lateKey, currentWave, adapter, result);
         }).then(result => {
           this.recordWaveResult(lateKey, currentWave, adapter, result);
@@ -761,7 +771,7 @@ export class SourceRegistry {
       const startedAt = Date.now();
       let origin: 'cache' | 'shared' | 'fresh' = 'fresh';
       try {
-        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query, result => {
+        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, queryFor(adapter), result => {
           if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
         }, value => { origin = value; }));
         const result = tapped.value;
