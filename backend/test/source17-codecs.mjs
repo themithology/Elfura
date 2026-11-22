@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {dashIsHevcOnly} from '../../src/core/dash-codecs.ts';
+const adaptation=(attrs,reps)=>`<AdaptationSet ${attrs}>${reps.map(a=>`<Representation ${a}/>`).join('')}</AdaptationSet>`;
+const audio=adaptation('mimeType="audio/mp4" codecs="mp4a.40.2"',['id="audio"']);
+const hevc=adaptation('contentType="video" codecs="hev1.1.6.L93.90"',['id="1"','id="2"']);
+assert.equal(dashIsHevcOnly(`<MPD><Period>${hevc}${audio}</Period></MPD>`),true);
+assert.equal(dashIsHevcOnly(`<MPD>${adaptation('mimeType="video/mp4"',["codecs='hvc1.1.6.L120.90'",'codecs="avc1.640028"'])}</MPD>`),false,'mixed codecs stay eligible');
+assert.equal(dashIsHevcOnly(`<MPD>${adaptation('mimeType="video/mp4"',['codecs="hvc1.1.6.L120.90"','id="unknown"'])}</MPD>`),false,'unknown codec stays eligible');
+assert.equal(dashIsHevcOnly(`<MPD>${hevc}<AdaptationSet contentType="video"/></MPD>`),false,'unknown representation layout stays eligible');
+assert.equal(dashIsHevcOnly(`<MPD>${audio}</MPD>`),false);
+assert.equal(dashIsHevcOnly('<MPD/>'),false);
+console.log('TGVIDX DASH HEVC compatibility detection passed');

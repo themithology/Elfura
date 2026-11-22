@@ -21,6 +21,7 @@
  */
 import type Hls from 'hls.js';
 import type { MediaPlayerClass, MediaInfo } from 'dashjs';
+import { dashIsHevcOnly } from './dash-codecs';
 
 type HlsCtor = typeof Hls;
 
@@ -959,6 +960,7 @@ export class ElfuraPlayer {
 
       if (opt.type === 'dash' || lead.includes('<MPD')) {
         if (!lead.includes('<MPD')) return { ok: false, loadFailed: true, rttMs: rtt };
+        if (!this.supportsHevc() && dashIsHevcOnly(text)) return { ok: false, loadFailed: true, rttMs: rtt };
         this.recordMeasuredLatency(opt, rtt);
         return { ok: true, loadFailed: false, rttMs: rtt };
       }
@@ -2948,6 +2950,25 @@ export class ElfuraPlayer {
 
   private async loadDash(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
+    // TGVIDX can offer HEVC-only DASH that dash.js otherwise plays as audio
+    // with no picture. Preserve those streams on capable devices; on others,
+    // inspect the manifest before attaching the engine and fall back only when
+    // every advertised video representation is definitively HEVC. A timeout or
+    // unknown/mixed manifest remains eligible rather than being discarded.
+    if (this.currentSource?.sourceId === 'source-17' && !this.supportsHevc()) {
+      try {
+        const headers: Record<string, string> = {};
+        if (cfg.pltoken && this.isBackendOwnedUrl(url)) headers['X-Playback-Token'] = String(cfg.pltoken);
+        const response = await fetch(this.decorate(url), { headers, signal: AbortSignal.timeout(4000) });
+        if (response.ok) {
+          const text = await response.text();
+          if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
+          if (dashIsHevcOnly(text)) { this.handleFatal('unsupported-video-codec', url, true); return; }
+        } else {
+          await response.body?.cancel().catch(() => {});
+        }
+      } catch { /* inconclusive: let dash.js attempt the stream */ }
+    }
     const Dash = await getDash();
     if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
     const player = Dash().create();

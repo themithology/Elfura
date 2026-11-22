@@ -138,7 +138,7 @@ export function createSource17Adapter(enabled: () => boolean): SourceAdapter {
       const path = query.type === 'movie' ? `/api/m/${query.tmdbId}` : `/api/tv/${query.tmdbId}/${query.season}/${query.episode}`;
       const request = { t: { t: 10, i: 0, p: { k: ['data'], v: [{ t: 10, i: 1, p: { k: ['path'], v: [{ t: 1, s: path }] }, o: 0 }] }, o: 0 }, f: 127, m: [] };
       try {
-        const res = await fetch(ORIGIN + RPC, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'x-tsr-serverfn': 'true', 'User-Agent': USER_AGENT, Referer: `${ORIGIN}/`, Origin: ORIGIN }, body: JSON.stringify(request), signal });
+        const res = await fetch(ORIGIN + RPC, { method: 'POST', redirect: 'manual', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'x-tsr-serverfn': 'true', 'User-Agent': USER_AGENT, Referer: `${ORIGIN}/`, Origin: ORIGIN }, body: JSON.stringify(request), signal });
         if (!res.ok) { await res.body?.cancel().catch(() => {}); diag(false, `http=${res.status}`); return { candidates: [] }; }
         const data = decodeTgvidxResponse(await readBounded(res));
         if (!data || data.ok !== true || String(data.tmdb_id) !== query.tmdbId || data.type !== query.type || (data.season != null && Number(data.season) !== query.season) || (data.episode != null && Number(data.episode) !== query.episode) || !Array.isArray(data.links)) {

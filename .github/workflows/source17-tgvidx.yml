@@ -15,6 +15,6 @@ jobs:
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: npm run build
-      - run: node backend/test/source17-tgvidx.mjs
+      - run: node backend/test/source17-tgvidx.mjs && node --experimental-strip-types backend/test/source17-codecs.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/source17-real-browser.mjs
