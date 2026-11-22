@@ -22,7 +22,7 @@ jobs:
           const chromiumBinary=require('@sparticuz/chromium').default;
           const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
           const page=await browser.newPage();
-          const rows=[];const details=[];const pending=[];
+          const rows=[];const details=[];const pending=[];const perServer=[];
           const safe = value => {try{const x=new URL(value);return {host:x.hostname,path:x.pathname.slice(0,180),nested:[...x.searchParams.values()].map(v=>{try{const y=new URL(v);return {host:y.hostname,path:y.pathname.slice(0,120)}}catch{return null}}).filter(Boolean).slice(0,4)};}catch{return null;}};
           const isStatic = p => /\.(?:js|css|png|jpe?g|svg|webp|ico|woff2?|map)(?:$|\?)/i.test(p);
           page.on('response',r=>{
@@ -44,16 +44,33 @@ jobs:
           page.on('requestfailed',r=>{const u=safe(r.url());if(u&&!isStatic(u.path))rows.push({...u,method:r.method(),failed:true,error:r.failure()?.errorText?.slice(0,100)});});
           try{
             await page.goto('https://tgvidx.lovable.app/embed/movie/1303331',{waitUntil:'domcontentloaded',timeout:30000});
-            await page.waitForTimeout(30000);
+            await page.waitForTimeout(18000);
             try { await page.getByRole('button',{name:'Servers',exact:true}).first().click({timeout:3000}); } catch {}
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(1000);
+            const names=await page.evaluate(()=>[...document.querySelectorAll('button')].map(b=>(b.innerText||'').split('\n')[0].trim()).filter(s=>/^TG (?:GREY|STREAMHG)/.test(s)));
+            for(const name of names.slice(0,7)){
+              try {
+                const button=page.getByRole('button',{name,exact:false}).first();
+                if(!await button.isVisible()) await page.getByRole('button',{name:'Servers',exact:true}).first().click({timeout:3000});
+                const start=rows.length;
+                await button.click({timeout:3000});
+                await page.waitForTimeout(7000);
+                const net=rows.slice(start).filter(x=>!x.host.endsWith('lovable.app')&&!x.host.endsWith('googleapis.com'));
+                const unique=[...new Map(net.map(x=>[`${x.host}${x.path}:${x.status}:${x.failed}`,x])).values()].slice(0,10);
+                const video=await page.evaluate(()=>{const v=document.querySelector('video');return v?{ready:v.readyState,time:v.currentTime,width:v.videoWidth}:null});
+                perServer.push({name,network:unique,video});
+              }catch(e){perServer.push({name,error:e.name});}
+            }
+            try { const b=page.getByRole('button',{name:'Servers',exact:true}).first();if(await b.isVisible())await b.click({timeout:3000}); }catch{}
+            await page.waitForTimeout(1000);
             const ui=await page.evaluate(()=>({text:document.body?.innerText?.slice(0,2000),videos:[...document.querySelectorAll('video')].map(v=>({ready:v.readyState,time:v.currentTime,width:v.videoWidth,paused:v.paused})),buttons:[...document.querySelectorAll('button')].map(b=>({label:(b.innerText||b.getAttribute('aria-label')||b.title||'').slice(0,90)})).filter(x=>x.label).slice(0,35)}));
             await Promise.allSettled(pending);
             const uniq=[...new Map(rows.map(x=>[`${x.host}${x.path}:${x.status}:${x.failed}`,x])).values()].slice(0,80);
             console.log('::notice title=TGVIDX UI::'+JSON.stringify(ui).replace(/%/g,'%25').replace(/\n/g,'%0A'));
             console.log('::notice title=TGVIDX summary::'+JSON.stringify({count:rows.length,hosts:[...new Set(rows.map(x=>x.host))],media:rows.filter(x=>/m3u8|mpd|\.mp4|video\//i.test(x.path+' '+x.type)).slice(0,10)}).replace(/%/g,'%25'));
-            for(let i=0;i<Math.min(uniq.length,40);i+=10) console.log(`::notice title=TGVIDX requests::${JSON.stringify(uniq.slice(i,i+10)).replace(/%/g,'%25')}`);
-            for(let i=0;i<Math.min(details.length,12);i+=4)console.log(`::notice title=TGVIDX responses::${JSON.stringify(details.slice(i,i+4)).replace(/%/g,'%25')}`);
+            for(let i=0;i<perServer.length;i+=2) console.log(`::notice title=TGVIDX chosen servers::${JSON.stringify(perServer.slice(i,i+2)).replace(/%/g,'%25')}`);
+            for(let i=0;i<Math.min(uniq.length,20);i+=10) console.log(`::notice title=TGVIDX requests::${JSON.stringify(uniq.slice(i,i+10)).replace(/%/g,'%25')}`);
+            for(let i=0;i<Math.min(details.length,4);i+=4)console.log(`::notice title=TGVIDX responses::${JSON.stringify(details.slice(i,i+4)).replace(/%/g,'%25')}`);
           } finally {await browser.close();}
           JS
           node /tmp/tgvidx-audit.mjs > /tmp/tgvidx-result 2>&1 || { tail -8 /tmp/tgvidx-result | sed -E 's#https?://[^ ]+#[url]#g' | while IFS= read -r line; do echo "::error::$line"; done; exit 1; }
