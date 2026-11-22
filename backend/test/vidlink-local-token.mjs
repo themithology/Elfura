@@ -18,7 +18,9 @@ globalThis.fetch=async url=>{
  const u=new URL(url);calls.push(u);
  if(u.hostname==='enc-dec.app')return Response.json({result:'remote-token'});
  if(mode==='remote' && !u.pathname.includes('remote-token'))return Response.json(null);
+ if(mode==='unsafe' && !u.pathname.includes('remote-token'))return Response.json({stream:{playlist:'http://127.0.0.1/private.m3u8'}});
  if(mode==='throttle')return new Response('',{status:429});
+ if(mode==='outage')return new Response('',{status:503});
  return Response.json({stream:{playlist:'https://media.example/master.m3u8'}});
 };
 try{
@@ -30,8 +32,13 @@ try{
  r=await createSource24Adapter(cfg).resolve(q);
  assert.equal(r.candidates.length,1);
  assert.equal(calls.length,3);assert.equal(calls[1].hostname,'enc-dec.app');assert.match(calls[2].pathname,/\/tv\/remote-token\/2\/3$/);
- calls.length=0;mode='throttle';
+ calls.length=0;mode='unsafe';
  r=await createSource24Adapter(cfg).resolve(q);
- assert.equal(r.candidates.length,0);assert.equal(calls.length,1);
+ assert.equal(r.candidates.length,1);assert.equal(calls.length,3);assert.equal(calls[1].hostname,'enc-dec.app');
+ for(const failure of ['throttle','outage']) {
+  calls.length=0;mode=failure;
+  r=await createSource24Adapter(cfg).resolve(q);
+  assert.equal(r.candidates.length,0);assert.equal(calls.length,1);
+ }
 }finally{globalThis.fetch=original;}
 console.log('vidlink-local-token: ok');
