@@ -90,10 +90,33 @@ export function createSource29Adapter(enabled: () => boolean = () => true, optio
         } catch { /* fail closed */ }
         return null;
       };
-      const [hard, sub, dub] = await Promise.all([resolveLane('hsub'), resolveLane('sub'), resolveLane('dub')]);
+      // A slow or unavailable hard-sub lane must not hold back ready sub/dub
+      // streams. Publish the first successful lane to the normal registry race,
+      // then merge each later lane through its existing late-wave mechanism.
+      // Without a late-result consumer retain the complete-result contract.
+      const lanes: Lane[] = ['hsub', 'sub', 'dub'];
+      const found: (RawStreamCandidate | null)[] = [null, null, null];
+      let returned = false;
+      const snapshot = (): RawSourceResult => ({ candidates: found.filter((c): c is RawStreamCandidate => c !== null) });
+      const tasks = lanes.map((lane, i) => resolveLane(lane).then(candidate => {
+        found[i] = candidate;
+        // Defer publication until the initial promise has been cached; otherwise
+        // near-simultaneous lanes could overwrite a newer snapshot with an older one.
+        if (returned && candidate) setTimeout(() => query.onLateResult?.(snapshot()), 0);
+        return candidate;
+      }));
+      if (!query.onLateResult) {
+        await Promise.all(tasks);
+        return snapshot();
+      }
+      await Promise.any(tasks.map(task => task.then(candidate => {
+        if (!candidate) throw new Error('empty lane');
+        return candidate;
+      }))).catch(() => null);
+      returned = true;
       // Hardsub is a provider declaration, not a guarantee. Keep the soft-sub
       // fallback too: a hard-sub playlist can fail even when its page exists.
-      return { candidates: [hard, sub, dub].filter((c): c is RawStreamCandidate => c !== null) };
+      return snapshot();
     },
   };
 }

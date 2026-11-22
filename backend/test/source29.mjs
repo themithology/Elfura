@@ -49,6 +49,29 @@ const hardFetch=async(input,init)=>{
 };
 const hard=await createSource29Adapter(()=>true,{fetchImpl:hardFetch,mapEpisode:async()=>({anilistId:'20',episode:1})}).resolve(query);
 assert.equal(hard.candidates.length,3);assert.equal(hard.candidates[0].audioLabel,'Hard Sub');assert.ok(hard.candidates[0].url.endsWith('/hsub'));assert.ok(hard.candidates[1].url.endsWith('/sub'));
+// A slow hard-sub request must not hold back sub/dub in a registry call.
+// Once released it must join the same cumulative late snapshot, and the
+// non-streaming contract above must still return all lanes.
+let releaseHard, releaseDub;
+const hardGate=new Promise(r=>releaseHard=r), dubGate=new Promise(r=>releaseDub=r);
+const delayedFetch=async(input,init)=>{
+ const u=new URL(input);
+ if(u.pathname.startsWith('/embed/')) {
+  const mode=u.pathname.split('/').at(-1);
+  if(mode==='hsub') await hardGate;
+  if(mode==='dub') await dubGate;
+  return new Response(`var sourcesUrl = '/stream/getSources?t=${mode}';`);
+ }
+ return Response.json({sources:[{file:`https://novuscloud.buzz/proxy/${u.searchParams.get('t')}`}],tracks:[]});
+};
+const updates=[];
+const streaming=createSource29Adapter(()=>true,{fetchImpl:delayedFetch,mapEpisode:async()=>({anilistId:'20',episode:1})});
+const quick=await Promise.race([streaming.resolve({...query,onLateResult:r=>updates.push(r)}),new Promise((_,reject)=>setTimeout(()=>reject(Error('fast lane held back')),500))]);
+assert.deepEqual(quick.candidates.map(c=>c.audioLabel),['Sub']);
+releaseDub();await new Promise(r=>setTimeout(r,20));
+assert.deepEqual(updates.at(-1).candidates.map(c=>c.audioLabel),['Sub','Dub']);
+releaseHard();await new Promise(r=>setTimeout(r,20));
+assert.deepEqual(updates.at(-1).candidates.map(c=>c.audioLabel),['Hard Sub','Sub','Dub']);
 const disabled=await createSource29Adapter(()=>false,{fetchImpl:fakeFetch,mapEpisode:async()=>{throw Error('should not map')}}).resolve(query);
 assert.deepEqual(disabled.candidates,[]);
 // Verify that multiple live sub modes and dub survive alongside an older

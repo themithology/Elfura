@@ -2,7 +2,7 @@ name: Anime source live timing research
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['backend/test/anime-wave-timing-live.mjs', '.github/workflows/anime-wave-timing-live.yml']
+    paths: ['backend/src/sources/source29.ts', 'backend/test/source29.mjs', 'backend/test/anime-wave-timing-live.mjs', '.github/workflows/anime-wave-timing-live.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
