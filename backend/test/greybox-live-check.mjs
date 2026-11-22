@@ -49,8 +49,14 @@ try {
       const {fetch: browserFetch} = await import('wreq-js');
       const response = await browserFetch(endpoint,{browser:'chrome_149',os:'windows',headers:{'User-Agent':ua,Accept:'application/json, text/plain, */*',Referer:`${origin}/`,Origin:origin},timeout:15000,signal:AbortSignal.timeout(16000)});
       row.network.browserTlsStatus = response.status;
-      const json = await response.json().catch(()=>null);
+      row.network.browserTlsContentType = (response.headers.get('content-type') || '').split(';')[0];
+      const text = await response.text();
+      row.network.browserTlsBytes = Buffer.byteLength(text);
+      let json;
+      try { json = JSON.parse(text); row.network.browserTlsJson = true; }
+      catch { row.network.browserTlsJson = false; row.network.browserTlsHtml = /^\s*<!?html/i.test(text); }
       row.network.browserTlsRows = Array.isArray(json?.sources) ? json.sources.length : 0;
+      row.network.browserTlsFailures = Array.isArray(json?.failures) ? json.failures.length : null;
     } catch(e) {row.network.browserTlsError = e.cause?.code || e.name;}
   }
   // Real resolver startup installs the egress profile; createBackendServer alone
