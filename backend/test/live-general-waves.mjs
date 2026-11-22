@@ -96,6 +96,13 @@ try {
   console.log('::notice title=Live source attempts::'+JSON.stringify({title,fields:['id','attempts','raw','alive','dead','unknown','shared','errors','network'],entries:compact}));
  }
  if(rows.some(row=>!row.ok))process.exitCode=1;
+} catch (error) {
+ const name=typeof error?.name==='string'?error.name:'Error';
+ const message=String(error?.message??'unknown').replace(/https?:\/\/\S+/gi,'[url]').slice(0,300);
+ const frame=String(error?.stack??'').split('\n').find(line=>line.includes('live-general-waves.mjs'))?.trim()??'';
+ console.log('::error title=Live general fatal::'+JSON.stringify({name,message,frame}));
+ if(process.env.ELFURA_LIVE_REPORT) writeFileSync(process.env.ELFURA_LIVE_REPORT,JSON.stringify({rows,fatal:{name,message,frame}},null,2));
+ process.exitCode=1;
 } finally {
  await browser?.close();
  for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
