@@ -33,8 +33,8 @@ for(const x of samples){
    const data=await response.json();
    const urls=[data?.stream?.playlist,...Object.values(data?.stream?.qualities??{}).map(q=>q?.url),data?.url,...(Array.isArray(data?.streams)?data.streams.map(s=>s?.url):[])].filter(u=>typeof u==='string'&&/^https:\/\//.test(u));
    out.candidates=urls.length;
-   const hls=urls.find(u=>/\.m3u8(?:[?#]|$)/i.test(u));
-   if(hls){const c={key:'fixture',url:hls,type:'hls',quality:'auto',headers,rank:0};const p=await verifyAndFilterCandidatesDetailed([c],AbortSignal.timeout(7000));out.manifestAlive=p.verifiedAliveCount;out.manifestDead=p.probedDead.size;}
+   out.types=urls.map(u=>/\.m3u8(?:[?#]|$)/i.test(u)?'hls':/\.mpd(?:[?#]|$)/i.test(u)?'dash':/\.mp4(?:[?#]|$)/i.test(u)?'mp4':'other');
+   if(urls.length){const cs=urls.slice(0,3).map(u=>({key:u,url:u,type:/\.mpd(?:[?#]|$)/i.test(u)?'dash':/\.m3u8(?:[?#]|$)/i.test(u)?'hls':'mp4',quality:'auto',headers,rank:0}));const p=await verifyAndFilterCandidatesDetailed(cs,AbortSignal.timeout(7000));out.manifestAlive=p.verifiedAliveCount;out.manifestDead=p.probedDead.size;}
   }catch(e){out.error=e.name;}
  }
  console.log('::notice title=VidLink token experiment::'+JSON.stringify(row));
