@@ -122,9 +122,10 @@ export function selectPlaybackCandidates(
     if (item && !selected.includes(item)) animeVariants.push(item);
   }
   // Additional anime adapters must not displace one another's sub/dub lanes.
-  // Preserve their distinct, verified-live variants alongside the existing set.
+  // Preserve their distinct variants, including unproven (not confirmed-dead) lanes.
+  // They remain fallbacks and are never promoted as verified.
   for (const sourceId of ['source-29', 'source-30']) for (const variant of variantOrder) {
-    for (const item of single.filter(candidate => candidate.alive && candidate.adapter.id === sourceId && candidate.candidate.audioVariant === variant)) {
+    for (const item of single.filter(candidate => candidate.adapter.id === sourceId && candidate.candidate.audioVariant === variant)) {
       if (!selected.includes(item) && !animeVariants.includes(item)) animeVariants.push(item);
     }
   }

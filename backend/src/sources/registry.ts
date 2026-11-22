@@ -16,7 +16,7 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
@@ -793,6 +793,20 @@ export class SourceRegistry {
     }
     if (lagTimer) clearTimeout(lagTimer);
 
+    // Only confirmed Japanese animation gets the short additional join window.
+    // All adapters were already launched; never block the late-join mechanism or
+    // use this window for a source-specific recovery request.
+    const isPriorityAnime = () => params.type === 'tv' && (params.season ?? 1) === 1 &&
+      readyMedia?.originalLanguage === 'ja' &&
+      !!readyMedia.genres?.some(g => g.toLowerCase() === 'animation');
+    const priorityIds = new Set(['source-28', 'source-29', 'source-30']);
+    if (!lateOnly && !singleSource && isPriorityAnime() && remaining() > 1400) {
+      const priorityTasks = adapterTasks.filter((_, idx) => priorityIds.has(activeAdapters[idx].id));
+      if (priorityTasks.length) await Promise.race([
+        Promise.allSettled(priorityTasks), wait(Math.min(1600, Math.max(0, remaining() - 1400))),
+      ]);
+    }
+
     const verifyCurrentSlots = async (probeFloorMs = PROBE_MIN_WINDOW_MS) => {
       const ready = slots.filter(
         (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
@@ -807,6 +821,8 @@ export class SourceRegistry {
       // source was added for. Taking one lane per distinct language first means
       // a 21-lane source spends its probe budget across 8 languages instead of
       // 21 rows of the same one.
+      if (isPriorityAnime()) ready.sort((a, b) =>
+        Number(priorityIds.has(b.adapter.id)) - Number(priorityIds.has(a.adapter.id)));
       const perAdapter = ready.map((entry) => {
         const byLanguage = new Map<string, RawStreamCandidate[]>();
         for (const cand of entry.result.candidates) {
@@ -844,6 +860,10 @@ export class SourceRegistry {
               Math.min(lateOnly ? 1_300 : 2_000, remaining()),
             ),
           ),
+          isPriorityAnime() ? new Set(tagged.filter(c => {
+            const idx = Number(c.key.slice(0, c.key.indexOf('::')));
+            return priorityIds.has(ready[idx].adapter.id);
+          }).map(c => c.url)) : undefined,
         );
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
@@ -1101,7 +1121,13 @@ export class SourceRegistry {
       if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
       const seq = (sequences.get(adapter.id) ?? 0) + 1;
       sequences.set(adapter.id,seq);
-      uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
+      const option = this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase);
+      const evidence = candidateEvidence(candidate);
+      const duration = evidence?.durationSec ?? null;
+      if (isPriorityAnime() && !evidence?.alive) option.animeUnverified = true;
+      if (isPriorityAnime() && priorityIds.has(adapter.id) && evidence?.alive &&
+          durationFits(duration, expectedRuntimeSec, runtimeToleranceSec)) option.animePriority = true;
+      uniformOptions.push(option);
     }
 
     if (droppedByRuntime.length) {
@@ -1209,6 +1235,8 @@ export class SourceRegistry {
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
+          Number(!!a.animeUnverified) - Number(!!b.animeUnverified) ||
+          Number(!!b.animePriority) - Number(!!a.animePriority) ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
           qualityTierOf(a) - qualityTierOf(b) ||
           animeVariantTier(a) - animeVariantTier(b),
@@ -1239,6 +1267,8 @@ export class SourceRegistry {
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
+            Number(!!a.animeUnverified) - Number(!!b.animeUnverified) ||
+            Number(!!b.animePriority) - Number(!!a.animePriority) ||
             animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),

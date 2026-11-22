@@ -15,5 +15,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node --experimental-strip-types backend/test/anime-language-ui.mjs
+      - run: node backend/test/anime-priority.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: node backend/test/anime-language-browser.mjs

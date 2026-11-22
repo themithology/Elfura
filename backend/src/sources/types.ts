@@ -181,6 +181,10 @@ export interface UniformStreamOption {
   qualityLabelsUnreliable?: boolean;
   /** Opaque 12-char HMAC digest identifying shared upstream streams without leaking URLs */
   fingerprint?: string;
+  /** Confirmed anime priority lane with reachable manifest; not proof of full playback. */
+  animePriority?: boolean;
+  /** Anime lane not confirmed reachable by the liveness probe. */
+  animeUnverified?: boolean;
   /** Optional edge latency hint in ms for initial candidate ordering */
   latencyHintMs?: number;
   audioLang?: string;

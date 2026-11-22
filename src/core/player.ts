@@ -82,6 +82,10 @@ export interface SourceOption {
   qualityLabelsUnreliable?: boolean;
   fingerprint?: string;
   latencyHintMs?: number;
+  /** Backend-confirmed anime lane, with reachable manifest. */
+  animePriority?: boolean;
+  /** Anime lane not confirmed reachable by the liveness probe. */
+  animeUnverified?: boolean;
   audioLang?: string;
   /** Provider-declared source mode; separate from verified audioLang/audioTracks. */
   audioVariant?: 'sub' | 'dub';
@@ -532,7 +536,7 @@ export class ElfuraPlayer {
         if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
-      if (s.multiAudio) return 0;
+      if (s.multiAudio || s.animePriority) return 0;
       const c = canonLang(s.audioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
@@ -541,6 +545,10 @@ export class ElfuraPlayer {
     this.sources.sort((a, b) => {
       const tDiff = tierFor(a) - tierFor(b);
       if (tDiff !== 0) return tDiff;
+      const unverifiedDiff = Number(Boolean(a.animeUnverified)) - Number(Boolean(b.animeUnverified));
+      if (unverifiedDiff !== 0) return unverifiedDiff;
+      const animeDiff = Number(Boolean(b.animePriority)) - Number(Boolean(a.animePriority));
+      if (animeDiff !== 0) return animeDiff;
       const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
       if (multiDiff !== 0) return multiDiff;
       const qDiff = this.qualityTier(a) - this.qualityTier(b);
@@ -569,7 +577,7 @@ export class ElfuraPlayer {
         if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
-      if (s.multiAudio) return 0;
+      if (s.multiAudio || s.animePriority) return 0;
       const c = canonLang(s.audioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
@@ -577,6 +585,10 @@ export class ElfuraPlayer {
     this.sources.sort((a, b) => {
       const tDiff = tierFor(a) - tierFor(b);
       if (tDiff !== 0) return tDiff;
+      const unverifiedDiff = Number(Boolean(a.animeUnverified)) - Number(Boolean(b.animeUnverified));
+      if (unverifiedDiff !== 0) return unverifiedDiff;
+      const animeDiff = Number(Boolean(b.animePriority)) - Number(Boolean(a.animePriority));
+      if (animeDiff !== 0) return animeDiff;
       const multiDiff = Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio));
       if (multiDiff !== 0) return multiDiff;
       const qDiff = this.qualityTier(a) - this.qualityTier(b);
@@ -585,6 +597,14 @@ export class ElfuraPlayer {
       if (Math.abs(sDiff) > 4) return sDiff;
       return this.qualityRank(b) - this.qualityRank(a);
     });
+  }
+
+  /** Upgrade a previously unverified lane only with new evidence for that same source. */
+  private promoteAnimeEvidence(existing: SourceOption, candidate: SourceOption): boolean {
+    if (existing.sourceId !== candidate.sourceId || !candidate.animePriority || existing.animePriority) return false;
+    existing.animePriority = true;
+    delete existing.animeUnverified;
+    return true;
   }
 
   /**
@@ -639,7 +659,12 @@ export class ElfuraPlayer {
         let added = 0;
         for (const candidate of payload.sources ?? []) {
           if (!candidate?.url) continue;
-          if (candidate.fingerprint && (fingerprints.has(candidate.fingerprint) || this.failedFingerprints.has(candidate.fingerprint))) continue;
+          if (candidate.fingerprint && this.failedFingerprints.has(candidate.fingerprint)) continue;
+          if (candidate.fingerprint && fingerprints.has(candidate.fingerprint)) {
+            const existing = this.sources.find(source => source.fingerprint === candidate.fingerprint);
+            if (existing && this.promoteAnimeEvidence(existing, candidate)) added += 1;
+            continue;
+          }
           if (this.failedSourceIds.has(candidate.id)) continue;
           let id = candidate.id;
           let n = 0;
@@ -1386,6 +1411,7 @@ export class ElfuraPlayer {
                 // as an unknown single fallback. Upgrade it in place once the
                 // independently checked manifest is available.
                 const existing = this.sources.find(s => s.fingerprint === candidate.fingerprint);
+                if (existing && this.promoteAnimeEvidence(existing, candidate)) added = true;
                 if (existing && candidate.multiAudio && !existing.multiAudio) {
                   existing.multiAudio = true;
                   existing.availableAudioLangs = candidate.availableAudioLangs;
@@ -1417,6 +1443,7 @@ export class ElfuraPlayer {
               const native = this.audioTracks.filter((t) => t.kind === 'native' && typeof t.ref === 'number')
                 .map((t) => ({ id: t.ref as number, lang: t.providerHint ? 'und' : t.lang, label: t.providerHint ? undefined : t.label, default: t.default }));
               this.mergeNativeAudio(native);
+              this.sortSourcesForDisplay(this.desiredAudioLang ?? this.currentAudio?.lang ?? null);
               this.emit('sourcesUpdated', this.sources);
               // If the user explicitly requested a language while the group
               // was unavailable, retry it only when the newly visible list

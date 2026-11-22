@@ -618,6 +618,7 @@ export async function verifyAndFilterCandidates(
 export async function verifyAndFilterCandidatesDetailed(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
+  priorityUrls?: ReadonlySet<string>,
 ): Promise<{
   candidates: RawStreamCandidate[];
   verifiedAliveCount: number;
@@ -638,7 +639,7 @@ export async function verifyAndFilterCandidatesDetailed(
   >();
   for (const c of candidates) {
     const pKey = cacheKeyFor(c.url, c.headers, c.restrictedOrigin);
-    const candPrio = (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
+    const candPrio = (priorityUrls?.has(c.url) ? -2000 : 0) + (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
     const prev = uniqueTargets.get(pKey);
     if (!prev || candPrio < prev.priority) {
       uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, probeMp4Audio: c.probeMp4Audio, restrictedOrigin: c.restrictedOrigin, priority: candPrio });
