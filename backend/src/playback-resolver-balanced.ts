@@ -1,4 +1,4 @@
-/** Round-robin source discovery across two or three remote resolvers. */
+/** Round-robin source discovery across two to four remote resolvers. */
 import type { PlaybackRequest, PlaybackResolution, PlaybackResolver } from './playback-resolver.js';
 import { RemotePlaybackResolver, ResolverUnavailableError } from './playback-resolver-remote.js';
 

@@ -238,7 +238,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
     const configs = [remote];
-    for (const which of ['backup', 'third'] as const) {
+    for (const which of ['backup', 'third', 'fourth'] as const) {
       const extra = resolverBackupConfig(process.env, which);
       if (!extra) continue;
       const normalized = (url: string) => { try { return new URL(url).href.replace(/\/+$/, ''); } catch { return url; } };

@@ -45,7 +45,7 @@ at least 24 characters; do not use credentials published in this repository.
    the separate resolver. A reachable health endpoint alone does not prove
    matching tokens or successful playback.
 
-## Optional: balance two or three resolver VPSes
+## Optional: balance two to four resolver VPSes
 
 Install a resolver and a separate tunnel hostname on each VPS. All resolvers
 and the streaming node must use the **same** `ELFURA_SECRET` and
@@ -56,11 +56,12 @@ configuration. On the Pterodactyl streaming node set:
 ELFURA_RESOLVER_URL=https://resolver-one.example.com
 ELFURA_RESOLVER_BACKUP_URL=https://resolver-two.example.com
 ELFURA_RESOLVER_THIRD_URL=https://resolver-three.example.com
+ELFURA_RESOLVER_FOURTH_URL=https://resolver-four.example.com
 ELFURA_RESOLVER_ALLOW_PUBLIC=1
 ELFURA_RESOLVER_ALLOW_LOCAL=0
 ```
 
-The third URL is optional. Duplicate URLs are ignored. One configured resolver
+The third and fourth URLs are optional. Duplicate URLs are ignored. One configured resolver
 retains the original single-resolver behavior. Public URLs require opt-in;
 public HTTP exposes tokens and requests in transit, so prefer HTTPS or a
 private VPN and restrict access. A resolver must listen on an accessible port.

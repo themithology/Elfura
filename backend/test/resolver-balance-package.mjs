@@ -12,7 +12,7 @@ import {mkdtempSync,rmSync,writeFileSync,readFileSync} from 'node:fs';
 import { createResolverServer } from '../../dist/backend/resolver-server.js';
 
 const secret='test-package-secret-0123456789-abcdef';
-const requestCounts=[0,0,0];
+const requestCounts=[0,0,0,0];
 const servers=[];
 const children=[];
 const tmp=mkdtempSync(path.join(os.tmpdir(),'elfura-pool-package-'));
@@ -53,13 +53,13 @@ async function node(id, useHttps) {
   return {state,url:useHttps ? `https://127.0.0.1:${proxyPort}` : `http://resolver-public.test:${proxyPort}`};
 }
 try {
-  const a=await node(1,true),b=await node(2,false),c=await node(3,true);
+  const a=await node(1,true),b=await node(2,false),c=await node(3,true),d=await node(4,true);
   execFileSync('unzip',['-oq',path.resolve('elfura-pterodactyl.zip'),'-d',tmp]);
   const portSocket=net.createServer();await new Promise(r=>portSocket.listen(0,'127.0.0.1',r));
   const port=portSocket.address().port;await new Promise(r=>portSocket.close(r));
   writeFileSync(path.join(tmp,'.env'),[
     `ELFURA_SECRET=${secret}`,`ELFURA_RESOLVER_TOKEN=${secret}`,
-    `ELFURA_RESOLVER_URL=${a.url}`,`ELFURA_RESOLVER_BACKUP_URL=${b.url}`,`ELFURA_RESOLVER_THIRD_URL=${c.url}`,
+    `ELFURA_RESOLVER_URL=${a.url}`,`ELFURA_RESOLVER_BACKUP_URL=${b.url}`,`ELFURA_RESOLVER_THIRD_URL=${c.url}`,`ELFURA_RESOLVER_FOURTH_URL=${d.url}`,
     'ELFURA_RESOLVER_ALLOW_PUBLIC=1','ELFURA_RESOLVER_ALLOW_LOCAL=0',
     'REQUIRE_PLAYBACK_TOKEN=0','ALLOWED_ORIGINS=*','ELFURA_SELF_TEST=0',
   ].join('\n')+'\n');
@@ -68,27 +68,27 @@ try {
   const env={...process.env,HOST:'127.0.0.1',PORT:String(port),SERVER_PORT:String(port),NODE_ENV:'test',ELFURA_SUPERVISE:'0',NODE_EXTRA_CA_CERTS:certPath,NODE_OPTIONS:`--require=${dnsHook}`};
   // The test must actually load these values from the installed .env, not a
   // convenient parent environment that hides a launcher or Pterodactyl bug.
-  for(const key of ['ELFURA_SECRET','ELFURA_RESOLVER_TOKEN','ELFURA_RESOLVER_URL','ELFURA_RESOLVER_BACKUP_URL','ELFURA_RESOLVER_THIRD_URL','ELFURA_RESOLVER_ALLOW_PUBLIC','ELFURA_RESOLVER_ALLOW_LOCAL','REQUIRE_PLAYBACK_TOKEN','ALLOWED_ORIGINS','ELFURA_SELF_TEST']) delete env[key];
+  for(const key of ['ELFURA_SECRET','ELFURA_RESOLVER_TOKEN','ELFURA_RESOLVER_URL','ELFURA_RESOLVER_BACKUP_URL','ELFURA_RESOLVER_THIRD_URL','ELFURA_RESOLVER_FOURTH_URL','ELFURA_RESOLVER_ALLOW_PUBLIC','ELFURA_RESOLVER_ALLOW_LOCAL','REQUIRE_PLAYBACK_TOKEN','ALLOWED_ORIGINS','ELFURA_SELF_TEST']) delete env[key];
   const child=spawn(process.execPath,['index.js'],{cwd:tmp,env,detached:true,stdio:['ignore','pipe','pipe']});children.push(child);
   let logs='';child.stdout.on('data',d=>logs+=d);child.stderr.on('data',d=>logs+=d);
   const base=`http://127.0.0.1:${port}`;
   let ready=false;for(let i=0;i<100;i++){try{if((await fetch(base+'/api/v1/health')).ok){ready=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(ready,`packaged media failed to start: ${logs}`);
-  assert.match(logs,/3 resolver URLs configured/,'startup must confirm balancing');
+  assert.match(logs,/4 resolver URLs configured/,'startup must confirm balancing');
   assert.match(logs,/periodic health checks enabled; no speculative hedges/);
   assert.match(logs,/public HTTP backup is unencrypted/,'insecure transport must be clearly reported');
   async function playback(id,extra=''){
     const response=await fetch(`${base}/api/v1/playback?type=movie&tmdb=${id}${extra}`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
     assert.equal(response.status,200,`playback failed: ${await response.clone().text()}\n${logs}`);return response.json();
   }
-  const got=[];for(let i=1;i<=9;i++)got.push((await playback(i)).node);
-  assert.deepEqual(got,[1,2,3,1,2,3,1,2,3]);assert.deepEqual(requestCounts,[3,3,3]);
+  const got=[];for(let i=1;i<=8;i++)got.push((await playback(i)).node);
+  assert.deepEqual(got,[1,2,3,4,1,2,3,4]);assert.deepEqual(requestCounts,[2,2,2,2]);
   const login=await fetch(base+'/roxy/api/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({password:secret})});
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
   async function panel(){return (await fetch(base+'/roxy/api/sources',{headers:{origin:base,cookie}})).json();}
   let status=await panel();
-  assert.equal(status.resolver.nodes.length,3);
-  assert.deepEqual(status.resolver.nodes.map(n=>n.attempts),[3,3,3]);
+  assert.equal(status.resolver.nodes.length,4);
+  assert.deepEqual(status.resolver.nodes.map(n=>n.attempts),[2,2,2,2]);
   assert.ok(status.resolver.nodes.every(n=>n.authenticated));
   // Simulate Cloudflare Access/WAF denying only the second tunnel's private API
   // while its public health URL remains up. The first node must serve playback.
@@ -113,14 +113,14 @@ try {
   // package emits a useful warning instead of silently running only one node.
   const nextSocket=net.createServer();await new Promise(r=>nextSocket.listen(0,'127.0.0.1',r));
   const nextPort=nextSocket.address().port;await new Promise(r=>nextSocket.close(r));
-  const overridden=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(nextPort),SERVER_PORT:String(nextPort),ELFURA_RESOLVER_BACKUP_URL:a.url}});
+  const overridden=spawn(process.execPath,['index.js'],{cwd:tmp,detached:true,stdio:['ignore','pipe','pipe'],env:{...env,PORT:String(nextPort),SERVER_PORT:String(nextPort),ELFURA_RESOLVER_FOURTH_URL:a.url}});
   children.push(overridden);let overrideLogs='';overridden.stdout.on('data',d=>overrideLogs+=d);overridden.stderr.on('data',d=>overrideLogs+=d);
   let secondReady=false;for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${nextPort}/api/v1/health`)).ok){secondReady=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}
   assert(secondReady,`overridden media node failed to start: ${overrideLogs}`);
-  assert.match(overrideLogs,/ELFURA_RESOLVER_BACKUP_URL.*overrides \.env/);
-  assert.match(overrideLogs,/2 resolver URLs configured/);
+  assert.match(overrideLogs,/ELFURA_RESOLVER_FOURTH_URL.*overrides \.env/);
+  assert.match(overrideLogs,/3 resolver URLs configured/);
   assert(!overrideLogs.includes(secret),'override warning must not reveal secrets');
-  console.log('packaged .env: three-node balancing, 403 failover, diagnostics and override warning OK');
+  console.log('packaged .env: four-node balancing, 403 failover, diagnostics and override warning OK');
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}

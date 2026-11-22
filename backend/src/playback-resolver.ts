@@ -179,10 +179,11 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
   return { url: clean, token };
 }
 
-/** Optional second or third resolver. Apply the primary's public-network policy.
+/** Optional second, third or fourth resolver, with the primary's network policy.
  * Validation of an optional node must not overwrite primary diagnostics. */
-export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env, which: 'backup' | 'third' = 'backup'): { url: string; token: string } | null {
-  const raw = ((which === 'third' ? env.ELFURA_RESOLVER_THIRD_URL : env.ELFURA_RESOLVER_BACKUP_URL) ?? '').trim();
+export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env, which: 'backup' | 'third' | 'fourth' = 'backup'): { url: string; token: string } | null {
+  const key = { backup: 'ELFURA_RESOLVER_BACKUP_URL', third: 'ELFURA_RESOLVER_THIRD_URL', fourth: 'ELFURA_RESOLVER_FOURTH_URL' } as const;
+  const raw = (env[key[which]] ?? '').trim();
   if (!raw) return null;
   try {
     const parsed = new URL(raw);

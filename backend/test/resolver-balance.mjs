@@ -54,6 +54,41 @@ try {
   assert.deepEqual([a,c].map(n=>n.state.calls),[counts[0],counts[2]]);
 } finally {pool.close();}
 
+// Four nodes retain equal routing, skip each failed node, and recover solely
+// through periodic checks even after the whole pool went down.
+const four=[mock('one'),mock('two'),mock('three'),mock('four')];
+const pool4=createBalancedPlaybackResolver(four[0],four[1],{additionalClients:four.slice(2),healthIntervalMs:30,log:()=>{}});
+try {
+  const first=[];for(let i=0;i<8;i++)first.push((await pool4.resolve(request)).node);
+  assert.deepEqual(first,['one','two','three','four','one','two','three','four']);
+  for(let i=0;i<3;i++)await pool4.resolve({...request,lateAffinityKey:`other-${i}`});
+  const fourthSession={...request,lateAffinityKey:'fourth-session'};
+  assert.equal((await pool4.resolve(fourthSession)).node,'four');
+  assert.equal((await pool4.resolve({...fourthSession,late:true})).node,'four');
+  assert.equal((await pool4.resolve({...fourthSession,sourceId:'source-1'})).node,'four');
+  four[3].state.fail=true;four[3].state.healthy=false;
+  for(let i=0;i<4;i++)await pool4.resolve(request);
+  const stopped=four[3].state.calls;
+  const survivors=[];for(let i=0;i<6;i++)survivors.push((await pool4.resolve(request)).node);
+  assert.equal(four[3].state.calls,stopped);
+  for(const name of ['one','two','three'])assert.equal(survivors.filter(n=>n===name).length,2);
+  four[2].state.fail=true;four[2].state.healthy=false;
+  for(let i=0;i<3;i++)await pool4.resolve(request);
+  const two=[];for(let i=0;i<6;i++)two.push((await pool4.resolve(request)).node);
+  assert.equal(two.filter(n=>n==='one').length,3);assert.equal(two.filter(n=>n==='two').length,3);
+  four[1].state.fail=true;four[1].state.healthy=false;
+  for(let i=0;i<2;i++)assert.equal((await pool4.resolve(request)).node,'one');
+  four[0].state.fail=true;four[0].state.healthy=false;
+  await assert.rejects(pool4.resolve(request),{name:'ResolverUnavailableError'});
+  const counts=four.map(n=>n.state.calls);
+  await assert.rejects(pool4.resolve(request),{name:'ResolverUnavailableError'});
+  assert.deepEqual(four.map(n=>n.state.calls),counts,'all-down requests must not hit any resolver');
+  four[3].state.healthy=true;four[3].state.fail=false;
+  await until(async()=> (await pool4.probe()).nodes[3].available,'fourth resolver recovery');
+  assert.equal((await pool4.resolve(request)).node,'four');
+  assert.deepEqual(four.slice(0,3).map(n=>n.state.calls),counts.slice(0,3));
+} finally {pool4.close();}
+
 // Source-specific enrichment belongs to the same owner as the initial
 // discovery, so it can reuse that resolver's in-flight work and cache.
 const r1=mock('r1'),r2=mock('r2'),r3=mock('r3');
@@ -163,6 +198,9 @@ try {
   assert.equal((await stale.probe()).nodes[0].available,false);
 } finally {stale.close();}
 
+assert.ok(resolverBackupConfig({ELFURA_RESOLVER_FOURTH_URL:'https://four.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'fourth'));
+assert.equal(resolverBackupConfig({ELFURA_RESOLVER_FOURTH_URL:'https://four.example'},'fourth'),null);
+assert.equal(resolverBackupConfig({ELFURA_RESOLVER_FOURTH_URL:'https://user:pass@four.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'fourth'),null);
 assert.ok(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'third'));
 assert.equal(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://three.example'},'third'),null);
 assert.equal(resolverBackupConfig({ELFURA_RESOLVER_THIRD_URL:'https://user:pass@three.example',ELFURA_RESOLVER_ALLOW_PUBLIC:'1'},'third'),null);
