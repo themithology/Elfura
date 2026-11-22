@@ -29,15 +29,16 @@ try{await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.
    else {step='playback';await page.waitForFunction(()=>{const v=window.__elfura?.player?.video;return v&&v.videoWidth>0&&v.currentTime>1&&v.readyState>=2},null,{timeout:35000});row.video=await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,height:v.videoHeight,time:v.currentTime,ready:v.readyState}})}
    row.ok=true;
   }catch(e){
-   // Provider inventory is dynamic: do not assert that a specific title still
-   // supplies DASH. Skip only if a successful fresh inventory confirms its
-   // absence; an error, timeout, or unavailable HLS remains a real failure.
+   // Skip only an explicitly absent type in a successful inventory, never a
+   // discovery error or a failure of a candidate that was actually present.
    const inventoryOk=lastInventory?.diag?.some(d=>d.ok);
-   const missingDash=inventoryOk&&!lastInventory.types.includes('dash');
-   if(missingDash&&((sample.kind==='dash'&&step==='options')||(sample.kind==='mixed'&&e.message==='both-types-required'))){row.ok=null;row.skipped='DASH not present in current upstream inventory';row.inventory=lastInventory.types}
+   const missingType=inventoryOk&&(sample.kind==='mixed'
+    ? ['hls','dash'].find(t=>!lastInventory.types.includes(t))
+    : !lastInventory.types.includes(sample.kind)?sample.kind:null);
+   if(missingType&&((sample.kind!=='mixed'&&step==='options')||(sample.kind==='mixed'&&e.message==='both-types-required'))){row.ok=null;row.skipped=`${missingType} not present in current upstream inventory`;row.inventory=lastInventory.types}
    else {row.ok=false;row.step=step;row.error=e.message==='wrong-type'||e.message==='both-types-required'||e.message==='audio-only-playback'?e.message:e.name;row.inventory=lastInventory;row.state=await page.evaluate(()=>{const v=window.__elfura?.player?.video;return v?{time:v.currentTime,width:v.videoWidth,ready:v.readyState}:null}).catch(()=>null)}
   }results.push(row);
  }
 
- console.log('::notice title=TGVIDX actual adapter and browser::'+JSON.stringify(results).replace(/%/g,'%25'));if(results.some(r=>r.ok===false))process.exitCode=1;
+ console.log('::notice title=TGVIDX actual adapter and browser::'+JSON.stringify(results).replace(/%/g,'%25'));if(results.some(r=>r.ok===false)||!results.some(r=>r.kind==='hls'&&r.ok===true))process.exitCode=1;
 }finally{await browser?.close().catch(()=>{});server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=original;}

@@ -84,6 +84,17 @@ checks the exact advertised profiles, retaining the stream when capability is
 uncertain or any advertised profile is supported. Runner playback after selecting
 MAGPIE in the upstream player is not evidence of MAGPIE playback unless the
 active stream is also identified, because upstream can switch to another server.
+The [follow-up with request identity](https://github.com/themithology/Elfura/actions/runs/45054075120)
+confirmed that selecting MAGPIE in that runner led to STREAMHG requests and
+video, so that video cannot be credited to MAGPIE. VIDSHARED played past five
+seconds in Elfura and VIDARA and MAGPIE did not start there in this runner.
+This does not reproduce the user's browser or establish outcomes on it.
+
+The separate [adapter browser workflow](https://github.com/themithology/Elfura/actions/runs/45054075045)
+failed because its movie HLS test expected a lane even though the successful
+current inventory contained only DASH; other HLS and DASH cases passed. The
+harness now skips an explicitly absent type, while still requiring at least one
+actual HLS playback and failing discovery or present-lane playback errors.
 
 ## Full-flow follow-up: slow inventory and grouped failover
 
