@@ -25,6 +25,8 @@ const adminSourceList = roxySourceWebsites(loadBackendConfig({
 }));
 assert(adminSourceList.some(site => site.id === 'citadel' && site.source === 'Source 14'));
 assert(adminSourceList.some(site => site.id === 'mapple' && site.source === 'Source 15'));
+assert(adminSourceList.some(site => site.id === 'tgvidx' && site.source === 'Source 17'));
+assert(!roxySourceWebsites(loadBackendConfig({ELFURA_SECRET: 'test', ELFURA_TGVIDX_ENABLED: '0'})).some(site => site.id === 'tgvidx'));
 assert(!adminSourceList.some(site => site.id === 'desidub' || site.id === 'anikoto' || site.id === 'anivexa'), 'operator website checks do not claim playback verification for bundled aggregators');
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';

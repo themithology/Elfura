@@ -13,6 +13,7 @@ export function roxySourceWebsites(cfg: BackendConfig) {
     { id: 'vidsync', name: 'VidSync', source: 'Source 3', url: cfg.source3.origin || 'https://vidsync.pro', enabled: cfg.source3.enabled },
     { id: 'bingr', name: 'Bingr', source: 'Source 4', url: 'https://bingr.st', enabled: cfg.source4?.enabled ?? true },
     { id: 'nxsha', name: 'Nxsha', source: 'Source 5', url: 'https://nxsha.space', enabled: cfg.source5?.enabled ?? true },
+    ...(cfg.source17?.enabled ?? true ? [{ id: 'tgvidx', name: 'TGVIDX', source: 'Source 17', url: 'https://tgvidx.lovable.app', enabled: true }] : []),
     ...(cfg.source7?.enabled ? [{ id: 'screenscape', name: 'ScreenScape', source: 'Source 7', url: 'https://screenscape.me', enabled: true }] : []),
     ...(cfg.source8?.enabled ? [{ id: 'vidzee', name: 'VidZee', source: 'Source 8', url: 'https://vidzee.wtf', enabled: true }] : []),
     ...(cfg.source9?.enabled ? [{ id: 'vixsrc', name: 'VixSrc', source: 'Source 9', url: 'https://vixsrc.to', enabled: true }] : []),

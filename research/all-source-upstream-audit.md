@@ -1,5 +1,8 @@
 # Registered-source upstream audit (2026-11-20)
 
+This is a historical snapshot before TGVIDX was added as Source 17. See
+[tgvidx-source17.md](tgvidx-source17.md) for the later registry change.
+
 ## Scope and evidence
 
 The actual registry contains **23 adapters**: 22 enabled under the standard
