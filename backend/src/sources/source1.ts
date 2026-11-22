@@ -240,6 +240,50 @@ export async function fetchFromVidBolt(
     return [];
   }
 }
+/** Optional direct Orion API, alongside (never replacing) the existing lanes.
+ * Credentials are operator supplied and are never logged. Provider responses
+ * and all subsequent media still go through normal safety/liveness checks. */
+export async function fetchFromDirectOrion(cfg: BackendConfig['source1'], query: SourceQuery): Promise<RawStreamCandidate[]> {
+  const key = query.type === 'tv' ? cfg.orionTvKey : cfg.orionMovieKey;
+  if (!key || !/^\d{1,12}$/.test(query.tmdbId)) return [];
+  const season = query.season ?? 1, episode = query.episode ?? 1;
+  if (query.type === 'tv' && (!Number.isSafeInteger(season) || season < 0 || !Number.isSafeInteger(episode) || episode < 1)) return [];
+  const api = query.type === 'tv'
+    ? `https://img.animecurx.tech/api/tv/${query.tmdbId}/${season}/${episode}`
+    : `https://api.movy.lol/api/source/${query.tmdbId}`;
+  const endpoint = new URL(api);
+  endpoint.searchParams.set('api_key', key);
+  endpoint.searchParams.set('apikey', key);
+  const origin = (cfg.vidboltOrigin || 'https://vidbolt.xyz').replace(/\/+$/, '');
+  const headers = { 'User-Agent': BROWSER_UA, Referer: `${origin}/`, Origin: origin, Accept: 'application/json, */*' };
+  try {
+    const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000);
+    const res = await fetch(endpoint, { headers, signal, redirect: 'error' });
+    if (!res.ok) { await res.body?.cancel().catch(() => {}); return []; }
+    const data = await res.json() as { sources?: { url?: unknown; file?: unknown; type?: string; master?: unknown }[]; m3u8_path?: unknown } | null;
+    if (!data || typeof data !== 'object') return [];
+    const rows = Array.isArray(data.sources) ? data.sources.slice(0, 20) : [];
+    if (!rows.length && typeof data.m3u8_path === 'string' && /^[a-zA-Z0-9_./-]{1,2048}$/.test(data.m3u8_path) && !data.m3u8_path.split('/').includes('..')) {
+      const url = new URL('/' + data.m3u8_path.replace(/^\/+/, ''), 'https://img.rousav.tech');
+      url.searchParams.set('api_key', key);
+      rows.push({ url: url.href });
+    }
+    const out: RawStreamCandidate[] = [];
+    for (const row of rows) {
+      const url = typeof row?.url === 'string' ? row.url : typeof row?.file === 'string' ? row.file : '';
+      if (!isSafeUpstreamUrl(url) || inferStreamType(row?.type, url) !== 'hls') continue;
+      const host = new URL(url).hostname.toLowerCase();
+      const mediaHeaders: Record<string, string> = { 'User-Agent': BROWSER_UA };
+      if (VIDBOLT_GATED_HOST.test(host)) { mediaHeaders.Referer = `${origin}/`; mediaHeaders.Origin = origin; }
+      const hintedLangs = typeof row.master === 'string' && row.master.length <= 512 * 1024 ? extractManifestAudioLangs(row.master) : [];
+      out.push({ key: url, url, type: 'hls', quality: 'auto', rank: 3, headers: mediaHeaders,
+        ...(new Set(hintedLangs).size > 1 ? { multiAudio: true, availableAudioLangs: hintedLangs } : {}),
+        ...(host === 'img.rousav.tech' ? { qualityLabelsUnreliable: true } : {}) });
+    }
+    return out;
+  } catch { return []; }
+}
+
 async function fetchFromRiftBoot(
   cfg: BackendConfig['source1'],
   query: SourceQuery,
@@ -550,13 +594,16 @@ export function createSource1Adapter(
         rift: { val: RawStreamCandidate[]; ms: number } | null;
         sync: { val: RawStreamCandidate[]; ms: number } | null;
         rock: { val: RawStreamCandidate[]; ms: number } | null;
+        orion: { val: RawStreamCandidate[]; ms: number } | null;
       } = {
         rift: null,
         sync: null,
         rock: null,
+        orion: null,
       };
 
-      const totalPipelines = 3;
+      const useOrion = group === 2 && !!(query.type === 'tv' ? cfg.orionTvKey : cfg.orionMovieKey);
+      const totalPipelines = useOrion ? 4 : 3;
       let settledCount = 0;
       let liveSourcePipelines = 0;
       let releaseEarly: (() => void) | null = null;
@@ -593,7 +640,13 @@ export function createSource1Adapter(
         if (r.val.length) liveSourcePipelines++;
         checkFastSettle();
       });
-      const allLanes = Promise.allSettled([pRift, pSync, pRock]);
+      const pOrion = useOrion ? timed(fetchFromDirectOrion(cfg, query)).then((r) => {
+        slots.orion = r;
+        settledCount++;
+        if (r.val.length) liveSourcePipelines++;
+        checkFastSettle();
+      }) : null;
+      const allLanes = Promise.allSettled([pRift, pSync, pRock, ...(pOrion ? [pOrion] : [])]);
       // A diagnostic must measure every lane, even those skipped by the fast
       // playback race. Normal playback retains its short grace window.
       if (query.diag) await allLanes;
@@ -617,9 +670,11 @@ export function createSource1Adapter(
       const riftCandidates = slots.rift ? withTiming(slots.rift.val, slots.rift.ms).map(c => query.diag ? { ...c, diagnosticLane: 'C' } : c) : [];
       const syncCandidates = slots.sync ? withTiming(slots.sync.val, slots.sync.ms).map(c => query.diag ? { ...c, diagnosticLane: 'D' } : c) : [];
       const rockCandidates = slots.rock ? withTiming(slots.rock.val, slots.rock.ms).map(c => query.diag ? { ...c, diagnosticLane: 'E' } : c) : [];
+      const orionCandidates = slots.orion ? withTiming(slots.orion.val, slots.orion.ms).map(c => query.diag ? { ...c, diagnosticLane: 'O' } : c) : [];
 
       const byUrl = new Map<string, RawStreamCandidate>();
       for (const c of [
+        ...orionCandidates,
         ...syncCandidates,
         ...rockCandidates,
         ...riftCandidates,
@@ -696,6 +751,7 @@ export function createSource1Adapter(
           lane('C', slots.rift, riftCandidates.length);
           if (options.includeVidBolt !== false) lane('D', slots.sync, syncCandidates.length);
           lane('E', slots.rock, rockCandidates.length);
+          if (useOrion) lane('O', slots.orion, orionCandidates.length);
         }
       }
 

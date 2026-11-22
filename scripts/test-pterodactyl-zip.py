@@ -48,6 +48,8 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
                 assert not manifest.get('scripts'), f'{name} still declares lifecycle scripts: {manifest["scripts"]}'
         assert 'vendor/undici/index.js' in archive.namelist(), 'the undici fallback copy is missing'
         assert 'node_modules/undici/index.js' in archive.namelist(), 'the bundled undici is missing'
+        assert 'vendor/tweetnacl/nacl-fast.js' in archive.namelist(), 'the tweetnacl fallback copy is missing'
+        assert 'node_modules/tweetnacl/nacl-fast.js' in archive.namelist(), 'the bundled tweetnacl is missing'
 
     # Verify the extracted resolver can load its bundled native client without
     # npm or access to the workspace's node_modules.

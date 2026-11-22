@@ -68,6 +68,7 @@ RUNTIME_PACKAGE_JSON = json.dumps(
             # loader falls back to if node_modules is wiped anyway.
             "typescript": "file:./vendor/ts-shim",
             "undici": "file:./vendor/undici",
+            "tweetnacl": "file:./vendor/tweetnacl",
         },
         # wreq-js is only used by one AniVortex provider and needs a native
         # build, so a panel where that build fails must not abort the install
@@ -361,6 +362,26 @@ def main() -> None:
                     # `npm install` can prune or recreate that directory, and
                     # the proxy, egress profile and DNS rescue all need undici.
                     write_entry(zf, f"vendor/undici/{rel}", content)
+
+        # VidLink token generation uses TweetNaCl. Keep both the initial
+        # node_modules copy and the file: dependency so panel npm installs do
+        # not remove it. Strip lifecycle scripts as for undici.
+        nacl_dir = ROOT / "node_modules" / "tweetnacl"
+        if not nacl_dir.is_dir():
+            raise SystemExit("tweetnacl is required to build the bundle; run npm ci")
+        for file_path in sorted(nacl_dir.rglob("*")):
+            if not file_path.is_file():
+                continue
+            rel = file_path.relative_to(nacl_dir).as_posix()
+            if rel == "package.json":
+                manifest = json.loads(file_path.read_text("utf-8"))
+                manifest.pop("scripts", None)
+                manifest.pop("devDependencies", None)
+                content = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+            else:
+                content = file_path.read_bytes()
+            write_entry(zf, f"node_modules/tweetnacl/{rel}", content)
+            write_entry(zf, f"vendor/tweetnacl/{rel}", content)
 
         # Ship the native client and the bindings installed for the build host.
         # Without this, the resolver-only installer (which deliberately does not

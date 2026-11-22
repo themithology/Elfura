@@ -51,6 +51,9 @@ export interface BackendConfig {
     enabled: boolean;
     riftOrigin: string;
     vidboltOrigin?: string;
+    /** Optional provider-issued Orion keys; never embedded in builds. */
+    orionMovieKey?: string;
+    orionTvKey?: string;
     riftRelay: string;
     syncOrigin: string;
     vidrockOrigin?: string;
@@ -287,6 +290,8 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       enabled: env.SOURCE1_ENABLED !== '0',
       riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
       vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
+      orionMovieKey: (env.SOURCE1_ORION_MOVIE_KEY || '').trim(),
+      orionTvKey: (env.SOURCE1_ORION_TV_KEY || '').trim(),
       riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
       syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
       vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
