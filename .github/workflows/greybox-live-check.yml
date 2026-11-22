@@ -2,7 +2,7 @@ name: Greybox Source 25 live check
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['backend/test/greybox-live-check.mjs', '.github/workflows/greybox-live-check.yml']
+    paths: ['backend/src/sources/source25.ts', 'backend/test/greybox-live-check.mjs', '.github/workflows/greybox-live-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:

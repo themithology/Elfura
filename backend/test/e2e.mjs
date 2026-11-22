@@ -290,6 +290,27 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     };
     const tv = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 2, episode: 7, diag: [] });
     assert.equal(tv.candidates.length, 1, 'TV resolves with season and episode');
+
+    let attempts = 0;
+    globalThis.fetch = async () => {
+      attempts++;
+      if (attempts === 1) throw new TypeError('network reset');
+      return new Response(JSON.stringify({ sources: [{ url: 'https://cdn.example.com/b/tv.m3u8', type: 'hls' }] }));
+    };
+    const recovered = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 1, episode: 1 });
+    assert.equal(attempts, 2, 'a network reset gets one sequential retry');
+    assert.equal(recovered.candidates.length, 1, 'a successful retry returns the streams');
+
+    attempts = 0;
+    const controller = new AbortController();
+    globalThis.fetch = async () => { attempts++; controller.abort(); throw new TypeError('aborted'); };
+    await adapter.resolve({ type: 'tv', tmdbId: '71446', signal: controller.signal });
+    assert.equal(attempts, 1, 'a cancelled lookup is never retried');
+
+    attempts = 0;
+    globalThis.fetch = async () => { attempts++; return new Response('not json', { status: 200 }); };
+    await adapter.resolve({ type: 'tv', tmdbId: '71446' });
+    assert.equal(attempts, 1, 'malformed JSON is not retried');
   } finally {
     globalThis.fetch = originalFetch;
   }

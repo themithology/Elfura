@@ -155,16 +155,30 @@ export function createSource25Adapter(cfg: BackendConfig['source25']): SourceAda
           params.set('episode', String(query.episode ?? 1));
         }
 
-        const res = await fetch(`${origin}/api/player/sources?${params.toString()}`, {
-          headers: { Accept: 'application/json, text/plain, */*', ...mediaHeaders },
-          signal,
-        });
-        if (!res.ok) {
-          diag(false, `greybox http=${res.status}`);
-          return { candidates: [] };
+        const apiUrl = `${origin}/api/player/sources?${params.toString()}`;
+        // Greybox occasionally resets an API request or its response body even
+        // though another request succeeds. Retry one network/body TypeError,
+        // sequentially and within the original shared deadline. Never retry a
+        // cancelled request, an HTTP response, or malformed JSON.
+        let payload: { sources?: GreyboxStream[] } | undefined;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const res = await fetch(apiUrl, {
+              headers: { Accept: 'application/json, text/plain, */*', ...mediaHeaders },
+              signal,
+            });
+            if (!res.ok) {
+              await res.body?.cancel().catch(() => {});
+              diag(false, `greybox http=${res.status}`);
+              return { candidates: [] };
+            }
+            payload = (await res.json()) as { sources?: GreyboxStream[] };
+            break;
+          } catch (error) {
+            if (attempt !== 0 || signal.aborted || !(error instanceof TypeError)) throw error;
+          }
         }
-
-        const payload = (await res.json()) as { sources?: GreyboxStream[] };
+        if (!payload) return { candidates: [] };
         const rows = Array.isArray(payload?.sources) ? payload.sources : [];
         if (rows.length === 0) {
           diag(false, 'greybox empty');
