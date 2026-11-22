@@ -8,11 +8,11 @@ const samples=[{type:'movie',id:'1303331',title:'Dhamaal 4',runtime:141,kind:'hl
 const original=globalThis.fetch;
 globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input.url??String(input));if(u.hostname!=='tmdb-fixture.example')return original(input,init);const sample=samples.find(s=>u.pathname.split('/').includes(s.id));if(!sample)return new Response(null,{status:404});if(u.pathname.includes('/episode/'))return Response.json({name:'Episode 1',runtime:sample.runtime});return Response.json({id:Number(sample.id),title:sample.title,name:sample.title,original_name:sample.title,release_date:'2020-01-01',first_air_date:'2020-01-01',original_language:'en',runtime:sample.runtime,episode_run_time:[sample.runtime],genres:[],images:{logos:[]}})};
 const cfg=loadBackendConfig({ELFURA_SECRET:'fixture-only-source17-secret',TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
-const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});const actual=createSource17Adapter(()=>true);let filter='hls';registry.adapters=[{...actual,async resolve(q){const r=await actual.resolve(q);return {...r,candidates:r.candidates.filter(c=>(filter==='mixed'||c.type===filter)&&new URL(c.url).hostname==='tgvidx.lovable.app')}}}];
+const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});const actual=createSource17Adapter(()=>true);let filter='hls',lastInventory=null;registry.adapters=[{...actual,async resolve(q){const diag=[];const r=await actual.resolve({...q,diag});lastInventory={diag,types:r.candidates.filter(c=>new URL(c.url).hostname==='tgvidx.lovable.app').map(c=>c.type)};return {...r,candidates:r.candidates.filter(c=>(filter==='mixed'||c.type===filter)&&new URL(c.url).hostname==='tgvidx.lovable.app')}}}];
 let browser;const results=[];
 try{await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;browser=await chromium.launch({executablePath:await binary.executablePath(),args:[...binary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
  for(const sample of samples){
-  filter=sample.kind;registry.ramCache.clear();registry.finishedLate.clear();let step='page';const row={type:sample.type,id:sample.id,kind:sample.kind};
+  filter=sample.kind;lastInventory=null;registry.ramCache.clear();registry.finishedLate.clear();let step='page';const row={type:sample.type,id:sample.id,kind:sample.kind};
   try{
    const route=sample.type==='movie'?`movie/${sample.id}`:`tv/${sample.id}/1/1`;
    await page.goto(`${base}/embed/${route}?autoplay=1&muted=1&source=source-17`,{waitUntil:'domcontentloaded',timeout:20000});
@@ -28,8 +28,16 @@ try{await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.
    if(sample.kind==='dash'&&!hevc){step='unsupported-codec';await page.waitForTimeout(9000);row.video=await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,time:v.currentTime,ready:v.readyState}});if(row.video.width||row.video.time>0.5)throw Error('audio-only-playback');row.unsupportedRejected=true;}
    else {step='playback';await page.waitForFunction(()=>{const v=window.__elfura?.player?.video;return v&&v.videoWidth>0&&v.currentTime>1&&v.readyState>=2},null,{timeout:35000});row.video=await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,height:v.videoHeight,time:v.currentTime,ready:v.readyState}})}
    row.ok=true;
-  }catch(e){row.ok=false;row.step=step;row.error=e.message==='wrong-type'||e.message==='both-types-required'||e.message==='audio-only-playback'?e.message:e.name;row.state=await page.evaluate(()=>{const v=window.__elfura?.player?.video;return v?{time:v.currentTime,width:v.videoWidth,ready:v.readyState}:null}).catch(()=>null)}results.push(row);
+  }catch(e){
+   // Provider inventory is dynamic: do not assert that a specific title still
+   // supplies DASH. Skip only if a successful fresh inventory confirms its
+   // absence; an error, timeout, or unavailable HLS remains a real failure.
+   const inventoryOk=lastInventory?.diag?.some(d=>d.ok);
+   const missingDash=inventoryOk&&!lastInventory.types.includes('dash');
+   if(missingDash&&((sample.kind==='dash'&&step==='options')||(sample.kind==='mixed'&&e.message==='both-types-required'))){row.ok=null;row.skipped='DASH not present in current upstream inventory';row.inventory=lastInventory.types}
+   else {row.ok=false;row.step=step;row.error=e.message==='wrong-type'||e.message==='both-types-required'||e.message==='audio-only-playback'?e.message:e.name;row.inventory=lastInventory;row.state=await page.evaluate(()=>{const v=window.__elfura?.player?.video;return v?{time:v.currentTime,width:v.videoWidth,ready:v.readyState}:null}).catch(()=>null)}
+  }results.push(row);
  }
 
- console.log('::notice title=TGVIDX actual adapter and browser::'+JSON.stringify(results).replace(/%/g,'%25'));if(results.some(r=>!r.ok))process.exitCode=1;
+ console.log('::notice title=TGVIDX actual adapter and browser::'+JSON.stringify(results).replace(/%/g,'%25'));if(results.some(r=>r.ok===false))process.exitCode=1;
 }finally{await browser?.close().catch(()=>{});server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=original;}
