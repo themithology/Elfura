@@ -31,9 +31,10 @@ try{
  [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
  const app=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(app.server);
  browser=await chromium.launch({executablePath:await binary.executablePath(),args:[...binary.args,'--autoplay-policy=no-user-gesture-required']});
- for(const sample of samples){const page=await browser.newPage(),begin=Date.now(),row={title:`${sample.type}/${sample.id}`,lanes:[]},requests=[];
-  await page.addInitScript(()=>{const state=window.__research={start:Date.now(),first:null,first17:null};setInterval(()=>{const p=window.__elfura?.player;if(!p)return;const opts=p.getSources();const t=Date.now()-state.start;if(opts.length&&!state.first)state.first={ms:t,source17:opts.filter(s=>s.sourceId==='source-17').map(s=>s.fingerprint)};if(opts.some(s=>s.sourceId==='source-17')&&state.first17===null)state.first17=t},50)});
-  page.on('response',r=>{try{const u=new URL(r.url());if(u.pathname==='/api/v1/playback')requests.push({ms:Date.now()-begin,late:u.searchParams.get('late')==='1',status:r.status()})}catch{}});
+ const page=await browser.newPage();
+ await page.addInitScript(()=>{const state=window.__research={start:Date.now(),first:null,first17:null};setInterval(()=>{const p=window.__elfura?.player;if(!p)return;const opts=p.getSources();const t=Date.now()-state.start;if(opts.length&&!state.first)state.first={ms:t,source17:opts.filter(s=>s.sourceId==='source-17').map(s=>s.fingerprint)};if(opts.some(s=>s.sourceId==='source-17')&&state.first17===null)state.first17=t},50)});
+ for(const sample of samples){const begin=Date.now(),row={title:`${sample.type}/${sample.id}`,lanes:[]},requests=[];
+  const onPlaybackResponse=r=>{try{const u=new URL(r.url());if(u.pathname==='/api/v1/playback')requests.push({ms:Date.now()-begin,late:u.searchParams.get('late')==='1',status:r.status()})}catch{}};page.on('response',onPlaybackResponse);
   try{
    await page.goto(`${base}/embed/${sample.type}/${sample.id}${sample.type==='tv'?'/1/1':''}?autoplay=1&muted=1`,{waitUntil:'domcontentloaded',timeout:20000});
    await page.waitForTimeout(23000);
@@ -55,7 +56,7 @@ try{
     lane.errors=await page.evaluate(()=>{clearInterval(window.__hlsInterval);return window.__hlsErrors?.slice(0,10)||[]}).catch(()=>hlsErrors);page.off('response',onResponse);lane.responses=responses;row.lanes.push(lane);
    }
   }catch(e){row.error=e.name;row.errorMessage=String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,160)}
-  notice('TGVIDX full flow '+sample.id,row);await page.close();
+  notice('TGVIDX full flow '+sample.id,row);page.off('response',onPlaybackResponse);
  }
 }catch(e){notice('TGVIDX test fatal',{name:e.name,message:String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,180)});process.exitCode=1}
 finally{await browser?.close().catch(()=>{});for(const s of servers.reverse()){s.closeAllConnections();await new Promise(r=>s.close(r))}globalThis.fetch=original;rmSync(tmp,{recursive:true,force:true})}
