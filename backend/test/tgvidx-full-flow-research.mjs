@@ -1,7 +1,7 @@
 // Live TGVIDX analysis: real adapters, all-source registry, balanced resolver
 // HTTP, real media relay and Chromium player. TMDB metadata is a fixture.
 // A source/manifest response is not counted as successful browser playback.
-import {createBackendServer} from '../../dist/backend/index.js';
+import {createBackendServer,installProcessGuards} from '../../dist/backend/index.js';
 import {createResolverServer} from '../../dist/backend/resolver-server.js';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
@@ -25,10 +25,13 @@ const listen=async s=>{servers.push(s);await new Promise(r=>s.listen(0,'127.0.0.
 const notice=(title,row)=>console.log(`::notice title=${title}::${JSON.stringify(row).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,10000)}`);
 let fingerprintKey;
 const fingerprint=c=>crypto.createHmac('sha256',fingerprintKey).update(c.fingerprint||c.url).digest('hex').slice(0,12);
-process.on('uncaughtExceptionMonitor',e=>notice('Full-flow uncaught',{name:e?.name,message:String(e?.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,200)}));
+process.on('uncaughtExceptionMonitor',e=>notice('Full-flow uncaught',{name:e?.name,stack:String(e?.stack||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,1000)}));
+// Production entrypoints install these guards; preserve that behavior here and
+// emit the exception separately so a guarded failure is never hidden.
+installProcessGuards();
 try{
- const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'}),nodes=[];fingerprintKey=cfg.secret;
- for(let i=0;i<4;i++){const registry=new SourceRegistry(cfg);registry.adapters=registry.adapters.map(a=>a.id!=='source-17'?a:{...a,async resolve(q){const started=Date.now(),diag=[];const r=await a.resolve({...q,diag});observations.push({node:i+1,title:q.tmdbId,started,ms:Date.now()-started,diag,candidates:r.candidates});return r}});nodes.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server))}
+ const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'}),nodes=[],registries=[];fingerprintKey=cfg.secret;
+ for(let i=0;i<4;i++){const registry=new SourceRegistry(cfg);registries.push(registry);registry.adapters=registry.adapters.map(a=>a.id!=='source-17'?a:{...a,async resolve(q){const started=Date.now(),diag=[];const r=await a.resolve({...q,diag});observations.push({node:i+1,title:q.tmdbId,started,ms:Date.now()-started,diag,candidates:r.candidates});return r}});nodes.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server))}
  [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
  const app=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(app.server);
  browser=await chromium.launch({executablePath:await binary.executablePath(),args:[...binary.args,'--autoplay-policy=no-user-gesture-required']});
@@ -59,5 +62,15 @@ try{
   }catch(e){row.error=e.name;row.errorMessage=String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,160)}
   notice('TGVIDX full flow '+sample.id,row);page.off('response',onPlaybackResponse);
  }
+ // Explicit source-only embed is a different, bounded path; test it cold rather
+ // than mistaking an all-source late wave or a warmed cache for success.
+ for(const registry of registries){registry.ramCache.clear();registry.finishedLate.clear()}
+ const focused={responses:[]},focusStart=Date.now();
+ const onFocused=r=>{try{const u=new URL(r.url());if(u.pathname==='/api/v1/playback')focused.responses.push({ms:Date.now()-focusStart,status:r.status(),late:u.searchParams.get('late')==='1'})}catch{}};
+ page.on('response',onFocused);
+ try{await page.goto(`${base}/embed/tv/65942/1/1?autoplay=1&muted=1&source=source-17`,{waitUntil:'domcontentloaded',timeout:20000});await page.waitForTimeout(20000);
+  focused.state=await page.evaluate(()=>{const p=window.__elfura?.player,v=p?.video;return {sources:p?.getSources().map(x=>({source:x.sourceId,type:x.type})),current:p?.currentSource?.sourceId,width:v?.videoWidth,time:v?.currentTime}});
+ }catch(e){focused.error=e.name}
+ page.off('response',onFocused);notice('TGVIDX focused cold embed',focused);
 }catch(e){notice('TGVIDX test fatal',{name:e.name,message:String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,180)});process.exitCode=1}
 finally{await browser?.close().catch(()=>{});for(const s of servers.reverse()){s.closeAllConnections();await new Promise(r=>s.close(r))}globalThis.fetch=original;rmSync(tmp,{recursive:true,force:true})}
