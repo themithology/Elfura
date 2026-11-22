@@ -3,13 +3,17 @@
 import {createBackendServer} from '../../dist/backend/index.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
+import {installEgressProfile} from '../../dist/backend/egress.js';
+import {lookup} from 'node:dns/promises';
+import net from 'node:net';
+import tls from 'node:tls';
 import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 
 const origin='https://greyboxtv.duckdns.org';
 const endpoint=`${origin}/api/player/sources?media=tv&id=71446&season=1&episode=1`;
 const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
-const row={api:{},adapter:{},liveness:{},registry:{},browser:{tested:0,played:false}};
+const row={api:{},network:{},adapter:{},liveness:{},registry:{},browser:{tested:0,played:false}};
 const cfg=loadBackendConfig({ELFURA_SECRET:'test-only-greybox-secret',TMDB_API_KEY:'',OPENSUBTITLES_ENABLED:'0'});
 const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:false});
 const source=registry.adapters.find(a=>a.id==='source-25');
@@ -26,6 +30,23 @@ try {
     row.api.absolute=sources.filter(x=>typeof x.url==='string'&&/^https?:\/\//i.test(x.url)).length;
   } catch(e) {row.api.ms=Date.now()-start;row.api.error=e.cause?.code||e.name;}
 
+  // Distinguish network/TLS failure from a rejected API request, without
+  // printing IP addresses, provider payloads or signed URLs.
+  if (row.api.error) {
+    row.network.dnsFamilies = await lookup('greyboxtv.duckdns.org',{all:true}).then(xs=>[...new Set(xs.map(x=>x.family))]).catch(e=>e.code||e.name);
+    const connect = (secure) => new Promise(resolve => {
+      const socket = secure ? tls.connect({host:'greyboxtv.duckdns.org',port:443,servername:'greyboxtv.duckdns.org'}) : net.connect({host:'greyboxtv.duckdns.org',port:443});
+      socket.setTimeout(5000);
+      const finish = value => { socket.destroy(); resolve(value); };
+      socket.once(secure?'secureConnect':'connect',()=>finish('connected'));
+      socket.once('error',e=>finish(e.code||e.name));
+      socket.once('timeout',()=>finish('timeout'));
+    });
+    [row.network.tcp443,row.network.tls443] = await Promise.all([connect(false),connect(true)]);
+  }
+  // Real resolver startup installs the egress profile; createBackendServer alone
+  // does not. Install it explicitly so this test covers the production path.
+  row.network.egressProfile = await installEgressProfile(()=>{});
   if (!source) throw Error('source-25 not registered');
   const wrapped={...source,async resolve(q){
     const start=Date.now();const diag=[];

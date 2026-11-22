@@ -280,15 +280,9 @@ export async function installEgressProfile(log: (line: string) => void = console
    * 302 ourselves: the Worker has already resolved the chain, so a 3xx reaching
    * this point is the target's real answer.
    */
-  /**
-   * Loop guard. In production the Worker is a separate service, but when the relay
-   * is reachable from this same process — a test harness, or an operator pointing
-   * it at their own server — the hop to the Worker goes through this patched
-   * global fetch, which relays again, forever. While the relay hop is in flight the
-   * flag makes the wrapper pass everything straight to undici.
-   */
-  let relayInFlight = 0;
-
+  // The relay hop uses the imported undici fetch directly, never the patched
+  // global fetch. A process-wide in-flight guard would make unrelated concurrent
+  // discovery requests silently bypass the relay while that hop is pending.
   const relayFetch = async (base: string, url: string, init: unknown, timeoutMs = 20_000): Promise<FetchResult> => {
     const options = (init ?? {}) as {
       method?: string;
@@ -315,17 +309,11 @@ export async function installEgressProfile(log: (line: string) => void = console
       // the relay the body has to survive, and it is small enough to inline.
       headers['x-elfura-body'] = Buffer.from(options.body as string).toString('base64').slice(0, 8192);
     }
-    relayInFlight += 1;
-    let response: FetchResult;
-    try {
-      response = (await fetch(base, {
-        headers,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
-      } as never)) as FetchResult;
-    } finally {
-      relayInFlight -= 1;
-    }
+    const response = (await fetch(base, {
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    } as never)) as FetchResult;
     // The Worker answers its own failures with a JSON body and this header. It is
     // the difference between "the provider refused the Worker" (a 403 with no
     // marker: try the next egress) and "this Worker rejected us" (a bad token:
@@ -342,7 +330,6 @@ export async function installEgressProfile(log: (line: string) => void = console
 
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
-    if (relayInFlight > 0) return previousFetch(input as never, init as never);
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
 

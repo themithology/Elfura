@@ -60,7 +60,7 @@ globalThis.fetch = (input, init) => {
   } catch {
     return realFetch(input, init);
   }
-  if (url.hostname === 'provider.test') return realFetch(`http://127.0.0.1:${providerPort}${url.pathname}${url.search}`, init);
+  if (url.hostname === 'provider.test' || url.hostname === 'greyboxtv.duckdns.org') return realFetch(`http://127.0.0.1:${providerPort}${url.pathname}${url.search}`, init);
   if (url.hostname === 'ip.test') return realFetch(`http://127.0.0.1:${echoPort}/`, init);
   return realFetch(input, init);
 };
@@ -127,6 +127,18 @@ try {
   // path rather than the hostname.
   const settled = decodeURIComponent(redirected.headers.get('x-elfura-url') || '');
   assert.match(settled, /\/final$/, 'the settled URL is reported so the adapters can read res.url');
+
+  // Source 25 works with a default Worker, without opening all of DuckDNS.
+  const greybox = await call({
+    'x-elfura-target': 'https://greyboxtv.duckdns.org/api/player/sources?media=tv&id=71446&season=1&episode=1',
+    'x-elfura-token': 'good-token',
+  }, { TOKEN: 'good-token' });
+  assert.equal(greybox.status, 200, 'the default relay allows the Source 25 API');
+  assert.match(asJson(greybox.body).path, /^\/api\/player\/sources\?/);
+  for (const hostname of ['other.duckdns.org', 'greyboxtv.duckdns.org.evil.example']) {
+    const denied = await call({ 'x-elfura-target': `https://${hostname}/`, 'x-elfura-token': 'good-token' }, { TOKEN: 'good-token' });
+    assert.equal(denied.status, 403, 'the Greybox exception must not allow other hosts');
+  }
 
   // ---- the address guard, whatever ALLOWED_HOSTS says ----------------------
   const blocked = await call({ 'x-elfura-target': 'https://evil.example/x', 'x-elfura-token': 'good-token' });
