@@ -15,13 +15,14 @@ const mock={ok:true,type:'movie',tmdb_id:'1303331',links:[
  row('TG GREY CARBON','https://worker.example/?url=manifest'),row('TG GREY MOON','https://greyboxtv.duckdns.org/api/media?u=moon'),
  row('TG GREY PULSE','https://greyboxtv.duckdns.org/api/player/river/media?u=abc'),row('TG GREY VALIANT','https://greyboxtv.duckdns.org/api/player/river/media?u=def'),
  row('TG STREAMHG',base+'/api/public/stream-proxy?u=abc'),row('TG MAGPIE',base+'/api/public/stream-proxy?u=dash','dash'),row('TG NEST 2',base+'/api/public/stream-proxy?u=nest'),
+ row('TG VIDSHARED',base+'/api/public/stream-proxy?u=vidshared'),row('TG VIDARA',base+'/api/public/stream-proxy?u=vidara'),
  row('TG PIRATE','https://external.example/anything'),row('other','https://embed.theogpiratebot.to/api/v1/stream?t=abc'),row('other','https://stream.example/?url='+encodeURIComponent('https://embed.theogpiratebot.online/api/v1/stream?t=x')),
  row('other','http://127.0.0.1/bad.m3u8'),row('other','javascript:alert(1)'),row('other','https://external.example/embed','html'),row('TG STREAMHG',base+'/api/public/stream-proxy?u=abc')
 ]};
 try{
  let calls=[];globalThis.fetch=async (url,opts)=>{calls.push({url,opts,body:JSON.parse(opts.body)});return Response.json(envelope(mock))};
  const adapter=createSource17Adapter(()=>true);const movie=await adapter.resolve({type:'movie',tmdbId:'1303331'});
- assert.equal(movie.candidates.length,8);assert.equal(calls[0].body.t.p.v[0].p.v[0].s,'/api/m/1303331');assert.equal(calls[0].opts.headers['x-tsr-serverfn'],'true');
+ assert.equal(movie.candidates.length,10);assert(movie.candidates.some(c=>c.url.includes('u=vidshared')));assert(movie.candidates.some(c=>c.url.includes('u=vidara')));assert.equal(calls[0].body.t.p.v[0].p.v[0].s,'/api/m/1303331');assert.equal(calls[0].opts.headers['x-tsr-serverfn'],'true');
  assert.equal(movie.candidates[0].claimedAudioLang,'hi');assert.equal(movie.candidates[0].audioLang,undefined);assert.equal(movie.candidates[0].subtitles[0].lang,'en');assert.equal(movie.candidates[0].headers.Origin,'https://greyboxtv.duckdns.org');assert.equal(movie.candidates[6].type,'dash');
  assert(!movie.candidates.some(x=>/theogpiratebot/.test(x.url)));
  assert.deepEqual(decodeTgvidxResponse(JSON.stringify(envelope(mock))),mock);
@@ -30,7 +31,7 @@ try{
  assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:1,episode:0})).candidates.length,0);
  const before=calls.length;await adapter.resolve({type:'movie',tmdbId:'x/1'});assert.equal(calls.length,before);
  const tv={...mock,type:'tv',tmdb_id:'1396',season:2,episode:4};globalThis.fetch=async(url,opts)=>{calls.push({url,opts,body:JSON.parse(opts.body)});return Response.json(envelope(tv))};
- assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:2,episode:4})).candidates.length,8);assert.equal(calls.at(-1).body.t.p.v[0].p.v[0].s,'/api/tv/1396/2/4');
+ assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:2,episode:4})).candidates.length,10);assert.equal(calls.at(-1).body.t.p.v[0].p.v[0].s,'/api/tv/1396/2/4');
  assert.equal((await adapter.resolve({type:'tv',tmdbId:'1396',season:2,episode:5})).candidates.length,0,'wrong episode rejected');
  globalThis.fetch=async()=>new Response('x',{status:429});assert.equal((await adapter.resolve({type:'movie',tmdbId:'550'})).candidates.length,0);
  globalThis.fetch=async()=>new Response('x'.repeat(1_000_001));assert.equal((await adapter.resolve({type:'movie',tmdbId:'550'})).candidates.length,0,'oversized response rejected');

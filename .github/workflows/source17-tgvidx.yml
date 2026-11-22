@@ -2,7 +2,7 @@ name: TGVIDX adapter and browser
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: [backend/src/sources/source17.ts, backend/test/source17-tgvidx.mjs, backend/test/source17-real-browser.mjs, .github/workflows/source17-tgvidx.yml]
+    paths: [backend/src/sources/source17.ts, backend/test/source17-tgvidx.mjs, backend/test/source17-real-browser.mjs, backend/test/source17-rezero-browser.mjs, .github/workflows/source17-tgvidx.yml]
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -18,3 +18,4 @@ jobs:
       - run: node backend/test/source17-tgvidx.mjs && node --experimental-strip-types backend/test/source17-codecs.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/source17-real-browser.mjs
+      - run: node backend/test/source17-rezero-browser.mjs
