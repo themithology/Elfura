@@ -118,11 +118,9 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   } finally { globalThis.fetch = originalFetch; }
 }
 
-// VidLink (source-24): a real JSON API, and the one trap in it. `/api/b` does
-// NOT take a TMDB id — it takes a token from enc-dec.app, and with a raw id it
-// answers `null` rather than an error. That silent null is what makes a working
-// provider look dead, so the test asserts the request that matters: the id is
-// encrypted first, and only the token reaches the API.
+// VidLink (source-24): `/api/b` takes an encrypted token, not the raw id.
+// The local token path avoids the external service on a successful response;
+// the dedicated local-token test also covers the remote compatibility fallback.
 {
   const { createSource24Adapter } = await import('../../dist/backend/sources/source24.js');
   const originalFetch = globalThis.fetch;
@@ -138,8 +136,9 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // The API must be called with the token, never the raw tmdb id.
-      assert.equal(parsed.pathname, '/api/b/movie/TOKEN123', 'the API takes the encrypted token, not the raw id');
+      // The API must be called with an encrypted token, never the raw tmdb id.
+      assert.match(parsed.pathname, /^\/api\/b\/movie\/[A-Za-z0-9_-]{40,}$/);
+      assert.notEqual(parsed.pathname, '/api/b/movie/550');
       assert.equal(init?.headers?.Referer, 'https://vidlink.pro/');
       assert.equal(init?.headers?.Origin, 'https://vidlink.pro');
       return new Response(
@@ -162,7 +161,7 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     };
     const adapter = createSource24Adapter({ enabled: true, origin: 'https://vidlink.pro/api/b', timeoutMs: 5000, rank: 55 });
     const out = await adapter.resolve({ type: 'movie', tmdbId: '550', diag: [] });
-    assert.equal(calls.length, 2, 'one encrypt call, one API call');
+    assert.equal(calls.length, 1, 'local encryption needs only the API call');
     assert.equal(out.candidates.length, 3, 'two qualities plus the playlist, deduped');
     const urls = out.candidates.map((c) => c.url);
     assert(urls.includes('https://bcdn.hakunaymatata.com/a/master.m3u8'), 'the adaptive playlist is carried');

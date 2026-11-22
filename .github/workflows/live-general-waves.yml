@@ -2,7 +2,7 @@ name: Live general source waves
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['.github/workflows/live-general-waves.yml', 'backend/test/live-general-waves.mjs', 'backend/src/sources/registry.ts']
+    paths: ['.github/workflows/live-general-waves.yml', 'backend/test/live-general-waves.mjs', 'backend/src/sources/registry.ts', 'backend/src/sources/source1.ts', 'backend/src/sources/source24.ts']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:

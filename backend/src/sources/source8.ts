@@ -1,5 +1,5 @@
-/** Experimental direct VidZee HLS discovery. Only manifest-proven
- * multilingual streams and reachable language-labelled dubs leave this adapter. No subtitle or embed proxy. */
+/** Experimental direct VidZee HLS discovery. Reachable single-audio streams
+ * remain available; multilingual claims require manifest evidence. No subtitle or embed proxy. */
 import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';

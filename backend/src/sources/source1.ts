@@ -14,6 +14,7 @@ import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
 import { extractManifestAudioLangs } from '../relay.js';
+import { readBoundedText } from './upstream-fetch.js';
 import type {
   RawSourceResult,
   RawStreamCandidate,
@@ -260,7 +261,9 @@ export async function fetchFromDirectOrion(cfg: BackendConfig['source1'], query:
     const signal = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000);
     const res = await fetch(endpoint, { headers, signal, redirect: 'error' });
     if (!res.ok) { await res.body?.cancel().catch(() => {}); return []; }
-    const data = await res.json() as { sources?: { url?: unknown; file?: unknown; type?: string; master?: unknown }[]; m3u8_path?: unknown } | null;
+    const text = await readBoundedText(res, 1_048_576);
+    if (!text) return [];
+    const data = JSON.parse(text) as { sources?: { url?: unknown; file?: unknown; type?: string; master?: unknown }[]; m3u8_path?: unknown } | null;
     if (!data || typeof data !== 'object') return [];
     const rows = Array.isArray(data.sources) ? data.sources.slice(0, 20) : [];
     if (!rows.length && typeof data.m3u8_path === 'string' && /^[a-zA-Z0-9_./-]{1,2048}$/.test(data.m3u8_path) && !data.m3u8_path.split('/').includes('..')) {
@@ -602,7 +605,7 @@ export function createSource1Adapter(
         orion: null,
       };
 
-      const useOrion = group === 2 && !!(query.type === 'tv' ? cfg.orionTvKey : cfg.orionMovieKey);
+      const useOrion = group === 2 && options.includeVidBolt !== false && !!(query.type === 'tv' ? cfg.orionTvKey : cfg.orionMovieKey);
       const totalPipelines = useOrion ? 4 : 3;
       let settledCount = 0;
       let liveSourcePipelines = 0;

@@ -2,7 +2,7 @@ name: Research current direct Orion
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: [.github/workflows/research-current-orion.yml]
+    paths: [.github/workflows/research-current-orion.yml, backend/src/sources/source1.ts, backend/test/research-orion-adapter.mjs]
   workflow_dispatch:
 permissions:
   contents: read

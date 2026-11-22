@@ -144,10 +144,11 @@ export function createSource24Adapter(
           const payload = await res.json() as Payload | null;
           return { payload: payload && typeof payload === 'object' ? payload : undefined, status: res.status };
         };
+        const safeUrl = (value: unknown): boolean => typeof value === 'string' && !!value && isSafeUpstreamUrl(value);
         const containsUrls = (payload?: Payload): boolean => !!payload && (
-          typeof payload.stream?.playlist === 'string' || typeof payload.url === 'string' ||
-          Object.values(payload.stream?.qualities ?? {}).some(value => typeof value === 'string' || typeof value?.url === 'string') ||
-          (Array.isArray(payload.streams) && payload.streams.some(row => typeof row?.url === 'string'))
+          safeUrl(payload.stream?.playlist) || safeUrl(payload.url) ||
+          Object.values(payload.stream?.qualities ?? {}).some(value => safeUrl(typeof value === 'string' ? value : value?.url)) ||
+          (Array.isArray(payload.streams) && payload.streams.some(row => safeUrl(row?.url)))
         );
         const local = localVidlinkToken(query.tmdbId);
         let response: { payload?: Payload; status?: number } = {};
