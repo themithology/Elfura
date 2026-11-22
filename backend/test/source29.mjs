@@ -3,6 +3,8 @@ import {resolveDirectAnimeEpisode} from '../../dist/backend/sources/anime-direct
 import {createSource29Adapter,novusSourceReference} from '../../dist/backend/sources/source29.js';
 import {selectPlaybackCandidates} from '../../dist/backend/sources/selection.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
+import {SourceRegistry} from '../../dist/backend/sources/registry.js';
+import {loadBackendConfig} from '../../dist/backend/config.js';
 
 const metadata={originalLanguage:'ja',genres:['Animation'],episodeName:'Enter: Naruto Uzumaki!'};
 const query={type:'tv',tmdbId:'46260',season:1,episode:1,resolveMetaFallback:async()=>metadata};
@@ -90,4 +92,37 @@ try {
   assert.equal(picked.filter(x=>x.adapter.id==='source-29'&&x.candidate.audioVariant==='sub').length,2);
   assert.equal(picked.filter(x=>x.adapter.id==='source-29'&&x.candidate.audioVariant==='dub').length,1);
 } finally {globalThis.fetch=oldFetch;}
+// Exercise the real registry cache and late-wave merge, not only the adapter.
+let lateDub, lateHard;
+const dubPending=new Promise(r=>lateDub=r),hardPending=new Promise(r=>lateHard=r);
+const waveFetch=async(input)=>{
+ const u=new URL(input);
+ if(u.pathname.startsWith('/embed/')) {
+  const mode=u.pathname.split('/').at(-1);
+  if(mode==='dub')await dubPending;
+  if(mode==='hsub')await hardPending;
+  return new Response(`var sourcesUrl = '/stream/getSources?t=${mode}';`);
+ }
+ return Response.json({sources:[{file:`https://novuscloud.buzz/proxy/${u.searchParams.get('t')}`}],tracks:[]});
+};
+const savedFetch=globalThis.fetch;
+try {
+ globalThis.fetch=async input=>{
+  const u=new URL(String(input));
+  if(u.hostname==='localhost')return Response.json(u.pathname.includes('/episode/')?{name:metadata.episodeName}:{name:'Naruto',original_language:'ja',genres:[{name:'Animation'}],images:{logos:[]}});
+  return new Response('#EXTM3U\n#EXTINF:10,\nsegment.ts\n#EXT-X-ENDLIST');
+ };
+ const cfg=loadBackendConfig({ELFURA_SECRET:'test',TMDB_API_BASE:'http://localhost:42424',OPENSUBTITLES_ENABLED:'0'});
+ const registry=new SourceRegistry(cfg);
+ registry.adapters=[createSource29Adapter(()=>true,{fetchImpl:waveFetch,mapEpisode:async()=>({anilistId:'20',episode:1})})];
+ const first=await registry.resolvePlayback({type:'tv',tmdbId:'46260',season:1,episode:1});
+ assert(first?.sources.some(s=>s.sourceId==='source-29'&&s.audioVariant==='sub'),'ready lane must be in first wave');
+ assert(!first.sources.some(s=>s.audioVariant==='dub'));
+ lateDub();await new Promise(r=>setTimeout(r,30));
+ const late=await registry.resolvePlayback({type:'tv',tmdbId:'46260',season:1,episode:1,late:true});
+ assert(late?.sources.some(s=>s.audioVariant==='sub')&&late.sources.some(s=>s.audioVariant==='dub'),'late wave preserves both variants');
+ lateHard();await new Promise(r=>setTimeout(r,30));
+ const later=await registry.resolvePlayback({type:'tv',tmdbId:'46260',season:1,episode:1,late:true});
+ assert.equal(later.sources.filter(s=>s.sourceId==='source-29').length,3,'hard-sub joins without replacing earlier variants');
+} finally {globalThis.fetch=savedFetch;}
 console.log('source29 fixture tests passed');

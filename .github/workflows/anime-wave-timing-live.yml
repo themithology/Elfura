@@ -16,4 +16,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
-      - run: node backend/test/anime-wave-timing-live.mjs
+      - name: Measure live sources
+        run: |
+          set +e
+          node backend/test/anime-wave-timing-live.mjs 2>anime-errors.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            node -e "const fs=require('fs');const t=fs.readFileSync('anime-errors.log','utf8').slice(-3000).replace(/https?:\\/\\/[^\\s)]+/g,'[url]').replace(/%/g,'%25').replace(/\\n/g,'%0A');console.log('::error title=Research stderr::'+t)"
+          fi
+          exit "$status"
