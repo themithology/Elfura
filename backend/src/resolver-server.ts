@@ -124,6 +124,7 @@ function parsePlaybackRequest(body: Record<string, unknown>): PlaybackRequest | 
     sourceId: str(body.sourceId, 40),
     preferredLang: str(body.preferredLang, 16),
     late: body.late === true,
+    retryMissing: body.late === true && body.retryMissing === true,
     streamPathPrefix: str(body.streamPathPrefix, 200),
   };
 }

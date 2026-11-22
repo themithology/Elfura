@@ -1064,6 +1064,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
+          retryMissing: url.searchParams.get('late') === '1' && url.searchParams.get('retryMissing') === '1',
           // Only used locally to keep this player's late-join requests on the
           // resolver that owns its in-memory results; never sent to the VPS.
           lateAffinityKey: `${mediaType}|${tmdbId}|${season ?? ''}|${episode ?? ''}|${anilistId ?? ''}|${anilistEpisode ?? ''}|${(nonce ?? '').slice(0, 128)}`,

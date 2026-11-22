@@ -120,7 +120,7 @@ export function createBalancedPlaybackResolver(
         try {
           const result = await node.client.resolve(request, remaining, true);
           node.lastSuccess = Math.max(node.lastSuccess, attempt);
-          if (result && key && !request.late && !request.sourceId) remember(key, node);
+          if (key && !request.late && (!request.sourceId || !pinned || !pinned.node.available)) remember(key, node);
           return result; // A valid empty answer is not an outage.
         } catch (error) {
           if (!(error instanceof ResolverUnavailableError)) throw error;

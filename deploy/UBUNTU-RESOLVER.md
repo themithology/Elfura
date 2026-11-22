@@ -92,6 +92,16 @@ cluster totals. Source enable/disable changes are sent only to available nodes;
 if one is offline the operation reports failure, so retry after it recovers.
 Settings and caches are independent on each resolver.
 
+For late source updates, deploy the same current package to **every resolver
+and the player server**. The player polls the original resolver's short-lived
+wave, including later lanes from sources already listed. Empty providers get one
+shared retry per active title and source, rather than repeated per-viewer source
+scans. Wave data is bounded to 256 titles and 32 MiB per resolver, and expires
+after 60 seconds. If a wave has been evicted or its owner is unavailable, the
+player can attempt one fresh discovery on an available resolver. These bounds
+and retries do not guarantee upstream availability or capacity under every load;
+source episode mapping and provider reachability still matter.
+
 **Security:** A Tunnel hostname is publicly reachable unless you separately
 restrict it; `.env` itself is not a network access control. The resolver has
 unauthenticated health and network-info endpoints, even though sensitive API

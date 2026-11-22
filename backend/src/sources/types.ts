@@ -201,6 +201,8 @@ export interface UniformPlaybackResponse {
   media: MediaMetadata;
   primary: UniformStreamOption;
   sources: UniformStreamOption[];
+  /** Late snapshots include partial updates; clients may avoid per-source rediscovery storms. */
+  waveUpdates?: boolean;
   /** Enabled generic source ids for asynchronous recovery, never provider details. */
   sourceGroups?: string[];
   /** Source ids that had not produced anything when this response was sealed. */

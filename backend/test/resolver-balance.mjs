@@ -106,7 +106,29 @@ try {
   await recoveryPool.resolve({...title,sourceId:'source-29'});
   await recoveryPool.resolve({...title,late:true});
   assert.equal(r1.state.calls,failedCalls,'neither recovery nor late requests may hit an unavailable owner');
+  assert.equal((await recoveryPool.resolve({...title,late:true})).node,'r2','successful source recovery repins the healthy owner');
 } finally {recoveryPool.close();}
+
+// An initial explicit-source playback also establishes late-wave affinity.
+const explicitA=mock('explicit-a'),explicitB=mock('explicit-b');
+const explicitPool=createBalancedPlaybackResolver(explicitA,explicitB,{healthIntervalMs:10000,log:()=>{}});
+try {
+  const only={...request,lateAffinityKey:'explicit-source',sourceId:'source-29'};
+  assert.equal((await explicitPool.resolve(only)).node,'explicit-a');
+  await explicitPool.resolve({...request,lateAffinityKey:'another-viewer'});
+  assert.equal((await explicitPool.resolve({...only,late:true})).node,'explicit-a');
+} finally {explicitPool.close();}
+
+// Even an empty initial answer owns ongoing discoveries and must pin late reads.
+const emptyA=mock('empty-a'),emptyB=mock('empty-b');emptyA.state.empty=true;
+const emptyPool=createBalancedPlaybackResolver(emptyA,emptyB,{healthIntervalMs:10000,log:()=>{}});
+try {
+  const title={...request,lateAffinityKey:'empty-initial'};
+  assert.equal(await emptyPool.resolve(title),null);
+  await emptyPool.resolve({...request,lateAffinityKey:'different-viewer'});
+  emptyA.state.empty=false;
+  assert.equal((await emptyPool.resolve({...title,late:true})).node,'empty-a');
+} finally {emptyPool.close();}
 
 // A health endpoint can be healthy while playback fails: no immediate repeat,
 // and recovery checks cannot guarantee that the next playback will work.

@@ -40,6 +40,14 @@ try {
   assert(['source-28','source-30'].includes(result.primary.sourceId));
   assert(result.sources.some(x=>x.sourceId==='source-1'),'other providers remain fallbacks');
 
+  // The anime first-wave grace allows all three already-running priority
+  // adapters to join rather than cutting them at the first fast response.
+  const broad=new SourceRegistry(cfg);
+  broad.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async()=>({candidates:[cand(`broad-${id}`)]}))),
+    ...['source-28','source-29','source-30'].map((id,i)=>adapter(id,async()=>{await wait(2800+i*350);return {candidates:[cand(`broad-${id}`)]};}))];
+  const broadFirst=await broad.resolvePlayback({type:'tv',tmdbId:'13577',season:1,episode:1});
+  for(const id of ['source-28','source-29','source-30'])assert(broadFirst.sources.some(s=>s.sourceId===id),`${id} should join the anime first wave`);
+
   // Language matching beats anime source priority.
   const langReg=new SourceRegistry(cfg);
   langReg.adapters=[adapter('source-1',async()=>({candidates:[cand('hi',{audioLang:'hi'})]})),adapter('source-28',async()=>({candidates:[cand('anime-ja',{audioLang:'ja'})]}))];
@@ -94,9 +102,9 @@ try {
   p.sources=[opt('fallback',{audioLang:'en'}),opt('preferred',{animePriority:true,audioLang:'ja'})];
   p.reorderSourcesHierarchy();assert.equal(p.sources[0].id,'preferred');
   const prior=opt('source-29',{animeUnverified:true});
-  assert(p.promoteAnimeEvidence(prior,opt('source-29',{animePriority:true})));
+  assert(p.mergeSourceEvidence(prior,opt('source-29',{animePriority:true})));
   assert(prior.animePriority&&!prior.animeUnverified);
-  assert(!p.promoteAnimeEvidence(opt('source-1'),opt('source-29',{animePriority:true})));
+  assert(!p.mergeSourceEvidence(opt('source-1'),opt('source-29',{animePriority:true})));
   p.currentSource=p.sources.find(s=>s.id==='fallback');p.desiredAudioLang='en';
   p.sortSourcesForDisplay('en');assert.equal(p.sources[0].id,'fallback','current language stays selected on refresh');
   p.currentSource=null;p.desiredAudioLang=null;

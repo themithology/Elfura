@@ -6,6 +6,8 @@ on:
       - 'backend/src/playback-resolver*.ts'
       - 'backend/src/sources/registry.ts'
       - 'backend/test/late-wave-race.mjs'
+      - 'backend/test/wave-*.mjs'
+      - 'src/core/player.ts'
       - 'backend/src/index.ts'
       - 'backend/src/roxy-page.ts'
       - 'index.js'
@@ -30,6 +32,8 @@ jobs:
       - run: node backend/test/resolver-balance-integration.mjs
       - run: node backend/test/resolver-late-waves.mjs
       - run: node backend/test/late-wave-race.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/wave-pressure.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/wave-http-pressure.mjs
       - run: node backend/test/resolver-balance-package.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
       - run: ELFURA_TEST_BROWSER=1 node backend/test/resolver-late-waves.mjs

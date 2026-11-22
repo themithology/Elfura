@@ -231,6 +231,9 @@ export class ElfuraPlayer {
     media?: TitleMediaInfo;
     sources: SourceOption[];
     fastest: SourceOption;
+    sourceGroups?: string[];
+    pendingSources?: string[];
+    waveUpdates?: boolean;
     segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
   } | null = null;
 
@@ -599,31 +602,46 @@ export class ElfuraPlayer {
     });
   }
 
-  /** Upgrade a previously unverified lane only with new evidence for that same source. */
-  private promoteAnimeEvidence(existing: SourceOption, candidate: SourceOption): boolean {
-    if (existing.sourceId !== candidate.sourceId || !candidate.animePriority || existing.animePriority) return false;
-    existing.animePriority = true;
-    delete existing.animeUnverified;
-    return true;
+  /** Merge later verified evidence for the same provider and fingerprint. */
+  private mergeSourceEvidence(existing: SourceOption, candidate: SourceOption): boolean {
+    if (existing.sourceId !== candidate.sourceId) return false;
+    let changed = false;
+    if (candidate.animePriority && !existing.animePriority) {
+      existing.animePriority = true;
+      delete existing.animeUnverified;
+      changed = true;
+    }
+    if (candidate.multiAudio && !existing.multiAudio) {
+      existing.multiAudio = true;
+      existing.availableAudioLangs = candidate.availableAudioLangs;
+      existing.audioLang = undefined;
+      existing.label = candidate.label;
+      changed = true;
+    } else if (!existing.multiAudio && !existing.audioLang && candidate.audioLang && candidate.audioLang !== 'und') {
+      existing.audioLang = candidate.audioLang;
+      existing.availableAudioLangs = candidate.availableAudioLangs;
+      existing.label = candidate.label;
+      changed = true;
+    }
+    return changed;
   }
 
-  /**
-   * Late-join pass. Sources that were still resolving when the first response
-   * was sealed keep working on the server and land in its RAM cache; a follow-up
-   * request with `late=1` returns just those, without starting or waiting for
-   * anything. Three attempts at 1.2 s / 2.6 s / 5 s cover every lane that can
-   * possibly finish inside the server's own 9 s resolve window.
-   */
-  private scheduleLateSourceHydration(resolveOption: (opt: SourceOption) => SourceOption): void {
+  /** Poll bounded wave snapshots without interrupting the current stream. Modern
+   * resolvers also expose partial additions from sources already in the list.
+   * A single coalesced retry covers providers that finished empty; if the wave
+   * becomes unavailable, at most one fresh discovery is attempted. */
+  private scheduleLateSourceHydration(resolveOption: (opt: SourceOption) => SourceOption, partialUpdates = false, allowFallback = true): void {
     const token = ++this.lateHydrationToken;
     const cfg = this.input.config;
-    const delays = [1_200, 2_600, 5_000];
+    const delays = partialUpdates ? [1_200, 2_600, 5_000, 4_500, 5_000] : [1_200, 2_600, 5_000];
+    let lastFailed = false;
     const run = async (attempt: number): Promise<void> => {
       if (token !== this.lateHydrationToken || this.destroyed) return;
       const known = new Set(this.sources.map((source) => source.sourceId).filter(Boolean));
       const missing = this.pendingSourceGroups.filter((id) => !known.has(id));
-      if (!missing.length || attempt >= delays.length) return;
-      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      const fallback = attempt >= delays.length;
+      if ((!partialUpdates && !missing.length) || (fallback && (!partialUpdates || !allowFallback || !lastFailed))) return;
+      if (!fallback) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
       if (token !== this.lateHydrationToken || this.destroyed) return;
       try {
         const url = new URL(cfg.api || '/api/v1/playback', window.location.href);
@@ -636,7 +654,12 @@ export class ElfuraPlayer {
           url.searchParams.set('s', String(cfg.season ?? 1));
           url.searchParams.set('e', String(cfg.episode ?? 1));
         }
-        url.searchParams.set('late', '1');
+        if (!fallback) {
+          url.searchParams.set('late', '1');
+          if (partialUpdates && attempt >= 2) url.searchParams.set('retryMissing', '1');
+        }
+        else url.searchParams.delete('late');
+        if (cfg.source) url.searchParams.set('source', String(cfg.source));
         if (this.desiredAudioLang) url.searchParams.set('lang', this.desiredAudioLang);
         if (cfg.nonce) url.searchParams.set('nonce', String(cfg.nonce));
         const headers: Record<string, string> = { Accept: 'application/json' };
@@ -644,16 +667,18 @@ export class ElfuraPlayer {
         if (cfg.pltoken && cfg.nonce && typeof globalThis.crypto?.subtle?.decrypt === 'function') {
           headers['X-Elfura-Envelope'] = '1';
         }
-        const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(6_000) });
+        const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(fallback ? 15_000 : 10_000) });
         // An early late-join can legitimately be empty (404), or a resolver can
         // be temporarily unavailable. Keep the bounded retries instead of
         // permanently dropping slower sources after the first miss.
-        if (!res.ok) { void run(attempt + 1); return; }
-        const raw = (await res.json()) as { s?: number; p?: string; sources?: SourceOption[]; pendingSources?: string[] };
+        if (!res.ok) { lastFailed = true; if (!fallback) void run(attempt + 1); return; }
+        lastFailed = false;
+        const raw = (await res.json()) as { s?: number; p?: string; sources?: SourceOption[]; pendingSources?: string[]; waveUpdates?: boolean };
         const payload = raw?.s === 1 && typeof raw.p === 'string' && cfg.pltoken && cfg.nonce
-          ? await openSealedEnvelope<{ sources?: SourceOption[]; pendingSources?: string[] }>(raw.p, String(cfg.pltoken), String(cfg.nonce))
+          ? await openSealedEnvelope<{ sources?: SourceOption[]; pendingSources?: string[]; waveUpdates?: boolean }>(raw.p, String(cfg.pltoken), String(cfg.nonce))
           : raw;
         if (token !== this.lateHydrationToken || this.destroyed) return;
+        if (!payload || !Array.isArray(payload.sources)) throw new Error('invalid late wave');
         const ids = new Set(this.sources.map((source) => source.id));
         const fingerprints = new Set(this.sources.map((source) => source.fingerprint).filter(Boolean));
         let added = 0;
@@ -662,10 +687,10 @@ export class ElfuraPlayer {
           if (candidate.fingerprint && this.failedFingerprints.has(candidate.fingerprint)) continue;
           if (candidate.fingerprint && fingerprints.has(candidate.fingerprint)) {
             const existing = this.sources.find(source => source.fingerprint === candidate.fingerprint);
-            if (existing && this.promoteAnimeEvidence(existing, candidate)) added += 1;
+            if (existing && this.mergeSourceEvidence(existing, candidate)) added += 1;
             continue;
           }
-          if (this.failedSourceIds.has(candidate.id)) continue;
+          if (!candidate.fingerprint && this.failedSourceIds.has(candidate.id)) continue;
           let id = candidate.id;
           let n = 0;
           while (ids.has(id)) id = `${candidate.id}:late-${++n}`;
@@ -686,10 +711,25 @@ export class ElfuraPlayer {
           // surface, and playback must not be disturbed by a list refresh.
           this.sortSourcesForDisplay(this.desiredAudioLang ?? this.currentAudio?.lang ?? null);
           this.emit('sourcesUpdated', this.sources);
+          // Match the existing recovery behavior: only a confirmed language
+          // can satisfy an explicit preference, never a provider SUB/DUB hint.
+          const wanted = this.desiredAudioLang;
+          const currentMatches = !!wanted && (
+            (this.currentAudio?.kind === 'native' && matchScore(wanted, this.currentAudio.lang) >= 0) ||
+            (!!this.currentSource && !this.currentSource.multiAudio &&
+              matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
+          if (wanted && wanted !== 'und' && !currentMatches && this.sources.some(s =>
+              (s.audioLang && matchScore(wanted, s.audioLang) >= 0) ||
+              (s.availableAudioLangs ?? []).some(lang => matchScore(wanted, lang) >= 0))) {
+            void this.setAudio(wanted);
+          }
         }
-        if (this.pendingSourceGroups.length) void run(attempt + 1);
+        if (fallback) {
+          if (payload.waveUpdates) this.scheduleLateSourceHydration(resolveOption, true, false);
+        } else if (partialUpdates || this.pendingSourceGroups.length) void run(attempt + 1);
       } catch {
-        void run(attempt + 1);
+        lastFailed = true;
+        if (!fallback) void run(attempt + 1);
       }
     };
     void run(0);
@@ -1150,6 +1190,27 @@ export class ElfuraPlayer {
     });
   }
 
+  /** When the initial wave is empty, its adapters may still be running. Check
+   * their existing wave briefly before declaring the title unavailable. */
+  private async retryEmptyWave(apiUrl: URL, headers: Record<string, string>, signal: AbortSignal): Promise<Response | null> {
+    const lateUrl = new URL(apiUrl);
+    lateUrl.searchParams.set('late', '1');
+    for (const delay of [700, 1_600, 2_200]) {
+      await new Promise<void>(resolve => setTimeout(resolve, delay));
+      if (signal.aborted || this.destroyed) return null;
+      try {
+        const response = await fetch(lateUrl.toString(), {
+          headers, signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
+        });
+        if (response.ok) return response;
+        if (response.status !== 404) return null;
+      } catch {
+        if (signal.aborted || this.destroyed) return null;
+      }
+    }
+    return null;
+  }
+
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
@@ -1239,6 +1300,7 @@ export class ElfuraPlayer {
         if (fresh) {
           const retryHeaders: Record<string, string> = { Accept: 'application/json' };
           retryHeaders['X-Playback-Token'] = String(cfg.pltoken);
+          headers['X-Playback-Token'] = String(cfg.pltoken);
           if (canOpenEnvelope) retryHeaders['X-Elfura-Envelope'] = '1';
           res = await fetch(apiUrl.toString(), {
             headers: retryHeaders,
@@ -1248,6 +1310,14 @@ export class ElfuraPlayer {
         }
       }
 
+      if (res.status === 404) {
+        const reason = await res.clone().json().catch(() => null) as { error?: string } | null;
+        if (reason?.error === 'no playable streams available for this title') {
+          const late = await this.retryEmptyWave(apiUrl, headers, controller.signal);
+          if (!isCurrent()) return;
+          if (late) res = late;
+        }
+      }
       if (!res.ok) {
         this.shell.dataset.buffering = 'false';
         const errBody = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1268,6 +1338,7 @@ export class ElfuraPlayer {
         sources?: SourceOption[];
         sourceGroups?: string[];
         pendingSources?: string[];
+        waveUpdates?: boolean;
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
@@ -1335,9 +1406,9 @@ export class ElfuraPlayer {
       // Slow sources keep resolving server-side after this response is sealed.
       // Ask for them a moment later and append whatever finished, so the list
       // fills in instead of being frozen at whatever answered first.
-      if (Array.isArray(data.pendingSources) && data.pendingSources.length) {
-        this.pendingSourceGroups = data.pendingSources.filter((id): id is string => typeof id === 'string');
-        this.scheduleLateSourceHydration(resolveSource);
+      if (data.waveUpdates || (Array.isArray(data.pendingSources) && data.pendingSources.length)) {
+        this.pendingSourceGroups = (data.pendingSources ?? []).filter((id): id is string => typeof id === 'string');
+        this.scheduleLateSourceHydration(resolveSource, data.waveUpdates === true);
       } else {
         this.pendingSourceGroups = [];
       }
@@ -1378,7 +1449,7 @@ export class ElfuraPlayer {
         (!cfg.source || cfg.source === id) &&
         !this.sources.some((s) => s.sourceId === id && s.multiAudio),
       );
-      for (const recoveryId of lateGroups) {
+      for (const recoveryId of data.waveUpdates ? [] : lateGroups) {
         const snapshot = `${cfg.tmdb}:${cfg.anilist ?? ''}:${cfg.anilistEpisode ?? ''}:${cfg.mediaType}:${cfg.season}:${cfg.episode}`;
         const recoveryUrl = new URL(apiUrl);
         recoveryUrl.searchParams.set('source', recoveryId);
@@ -1411,21 +1482,7 @@ export class ElfuraPlayer {
                 // as an unknown single fallback. Upgrade it in place once the
                 // independently checked manifest is available.
                 const existing = this.sources.find(s => s.fingerprint === candidate.fingerprint);
-                if (existing && this.promoteAnimeEvidence(existing, candidate)) added = true;
-                if (existing && candidate.multiAudio && !existing.multiAudio) {
-                  existing.multiAudio = true;
-                  existing.availableAudioLangs = candidate.availableAudioLangs;
-                  existing.audioLang = undefined;
-                  existing.label = candidate.label;
-                  added = true;
-                } else if (existing && !existing.multiAudio && !existing.audioLang && candidate.audioLang && candidate.audioLang !== 'und') {
-                  // The first bounded probe may have returned this same stream
-                  // unlabelled. Merge later verified single-language evidence too.
-                  existing.audioLang = candidate.audioLang;
-                  existing.availableAudioLangs = candidate.availableAudioLangs;
-                  existing.label = candidate.label;
-                  added = true;
-                }
+                if (existing && this.mergeSourceEvidence(existing, candidate)) added = true;
                 continue;
               }
               const option = resolveSource(candidate);
@@ -2355,6 +2412,9 @@ export class ElfuraPlayer {
         media?: TitleMediaInfo;
         primary?: SourceOption;
         sources?: SourceOption[];
+        sourceGroups?: string[];
+        pendingSources?: string[];
+        waveUpdates?: boolean;
         segments?: { intro?: [number, number]; outro?: [number, number]; recap?: [number, number] };
       };
       const rawJson = (await res.json()) as PlaybackPayloadShape;
@@ -2392,6 +2452,9 @@ export class ElfuraPlayer {
         media: data.media,
         sources: data.sources.map(resolveSource),
         fastest: topCandidate,
+        sourceGroups: data.sourceGroups,
+        pendingSources: data.pendingSources,
+        waveUpdates: data.waveUpdates,
         segments: data.segments,
       };
     } catch {
@@ -2497,6 +2560,16 @@ export class ElfuraPlayer {
       this.emit('segments:invalidate', {});
 
       this.sources = pre.sources;
+      if (Array.isArray(pre.sourceGroups)) this.sourceGroups = [...new Set(pre.sourceGroups.filter(id => /^source-[1-9]\d{0,3}$/.test(id)))].slice(0, 32);
+      this.pendingSourceGroups = (pre.pendingSources ?? []).filter(id => typeof id === 'string');
+      if (pre.waveUpdates || this.pendingSourceGroups.length) {
+        this.scheduleLateSourceHydration(opt => ({
+          ...opt,
+          url: this.resolveBackendMediaUrl(opt.url),
+          audioTracks: opt.audioTracks?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+          subtitles: opt.subtitles?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
+        }), pre.waveUpdates === true);
+      }
       this.failedSourceIds.clear();
       this.failedFingerprints.clear();
       this.initialAudioApplied = false;

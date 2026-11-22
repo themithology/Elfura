@@ -76,8 +76,8 @@ try {
       assert(!initial.includes('source-29'),'slow fixture should not be in browser first wave');
       await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-29'),null,{timeout:16000});
       assert(playbackRequests.some(url=>new URL(url).searchParams.get('late')==='1'),'player must request the late wave');
-      assert(playbackRequests.some(url=>new URL(url).searchParams.get('source')==='source-29'),'player must request source enrichment');
-      assert.deepEqual(counts.map(c=>c['source-29']??0),[1,1,0],'browser enrichment must reuse its discovery owner');
+      assert(!playbackRequests.some(url=>new URL(url).searchParams.has('source')),'modern wave polling must not launch a per-source recovery storm');
+      assert.deepEqual(counts.map(c=>c['source-29']??0),[1,1,0],'browser late wave must reuse its discovery owner');
       console.log('browser: real player adds the late fixture source through the three-node pool');
     } finally {await browser.close();}
   }

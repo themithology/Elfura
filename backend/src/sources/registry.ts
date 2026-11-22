@@ -132,6 +132,11 @@ const VERIFY_BREADTH_TARGET = 84;
  */
 const MAX_LANES_PER_SOURCE = 200;
 
+type WaveEntry = { adapter: SourceAdapter; result: RawSourceResult; bytes: number };
+type DiscoveryWave = { expiresAt: number; entries: Map<string, WaveEntry>; retried: Set<string>; bytes: number };
+const MAX_WAVE_TITLES = 256;
+const MAX_WAVE_BYTES = 32 * 1024 * 1024;
+
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
@@ -149,16 +154,10 @@ export class SourceRegistry {
     MAX_ADAPTER_CACHE_ENTRIES,
   );
   private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
-  /**
-   * Lanes that finished AFTER the first response was sealed.
-   *
-   * This is the one piece of retained state that is not a cache: without it a
-   * slow source's result is simply lost, and the player's follow-up `late=1`
-   * passes would never see it. It is bounded by lane name, holds only the
-   * per-lane candidate list, and drops the payload when a newer resolve of the
-   * same title starts — so a hundred titles viewed once cannot pile up.
-   */
-  private readonly finishedLate = new Map<string, { adapter: SourceAdapter; result: RawSourceResult }[]>();
+  /** Short-lived discovery-wave state, independent of optional payload caches. */
+  private readonly finishedLate = new Map<string, DiscoveryWave>();
+  private finishedLateBytes = 0;
+
   /**
    * Why the last resolve came back empty, when it was us and not the title.
    * The resolver reports this so "no streams" never silently means "every
@@ -527,6 +526,7 @@ export class SourceRegistry {
     adapter: SourceAdapter,
     baseKey: string,
     query: SourceQuery,
+    onLateResult?: (result: RawSourceResult) => void,
   ): Promise<RawSourceResult> {
     const cached = this.getCachedAdapterResult(baseKey);
     if (cached) return Promise.resolve(cached);
@@ -535,7 +535,10 @@ export class SourceRegistry {
     if (existing) return existing;
 
     const p = adapter
-      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => this.setCachedAdapterResult(baseKey, result) })
+      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => {
+        this.setCachedAdapterResult(baseKey, result);
+        onLateResult?.(result);
+      } })
       .then((res) => {
         this.setCachedAdapterResult(baseKey, res);
         return res;
@@ -604,6 +607,7 @@ export class SourceRegistry {
      * arrived after the first response.
      */
     late?: boolean;
+    retryMissing?: boolean;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
@@ -646,7 +650,7 @@ export class SourceRegistry {
 
     // Identity of this title for the late-join stash. Deliberately excludes
     // headers/tokens: it is only a bucket name.
-    const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}`;
+    const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}|${params.anilistId ?? ''}|${params.anilistEpisode ?? ''}`;
     // Launch TMDB metadata AND all source adapters concurrently (zero serial wait!)
     const mediaPromise = fetchTmdbMetadata(this.cfg.tmdb, {
       type: params.type,
@@ -713,41 +717,50 @@ export class SourceRegistry {
     // sources, "which one failed and why" must be readable from the log.
     const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
     const adapterNet = new Map<string, NetRecord[]>();
-    // A fresh resolve owns a fresh stash. This has to run before any adapter
-    // task can record into it — the tasks below start immediately — and never
-    // on a late pass, which is the pass that reads it.
-    // A source-specific background recovery must not erase the results from
-    // the initial all-source request: those are still needed by late joins.
-    if (!lateOnly && !singleSource) this.finishedLate.delete(lateKey);
-    if (lateOnly) {
-      // Report what finished after the previous response was sealed. The
-      // payload cache is not consulted: it may be disabled entirely, and using
-      // it here is what made late joins look like a caching feature.
-      const finished = this.finishedLate.get(lateKey) ?? [];
+    // Concurrent viewers of the same title share the same active wave. A new
+    // request must not erase a previous viewer's in-flight discoveries. State
+    // expires independently of the optional payload cache and is size-bounded.
+    this.pruneFinishedLate();
+    let wave = this.finishedLate.get(lateKey);
+    if (!lateOnly && !wave) {
+      wave = { expiresAt: Date.now() + 60_000, entries: new Map(), retried: new Set(), bytes: 0 };
+      this.finishedLate.set(lateKey, wave);
+      this.pruneFinishedLate();
+    }
+    const currentWave = wave;
+    if (lateOnly && currentWave) {
       activeAdapters.forEach((adapter, idx) => {
-        const hit = finished.find((entry) => entry.adapter.id === adapter.id);
+        const hit = currentWave.entries.get(adapter.id);
         if (hit) slots[idx] = { adapter, result: hit.result };
+      });
+    }
+    // One shared retry for adapters that explicitly finished empty. This is
+    // asynchronous and coalesced per title/source, not N rediscovery requests
+    // per viewer. In-flight and nonempty providers are never restarted here.
+    if (lateOnly && params.retryMissing && currentWave) {
+      activeAdapters.forEach((adapter, idx) => {
+        const existing = currentWave.entries.get(adapter.id);
+        if (!existing || existing.result.candidates.length || currentWave.retried.has(adapter.id) || this.inFlight.has(cacheKeys[idx])) return;
+        currentWave.retried.add(adapter.id);
+        void this.resolveAdapterWithCache(adapter, cacheKeys[idx], query, result => {
+          this.recordWaveResult(lateKey, currentWave, adapter, result);
+        }).then(result => {
+          this.recordWaveResult(lateKey, currentWave, adapter, result);
+          if (result.candidates.length) this.health.recordSuccess(adapter.id);
+        }).catch(() => { /* optional recovery, never an unhandled rejection */ });
       });
     }
     const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
       const startedAt = Date.now();
       try {
-        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query));
+        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query, result => {
+          if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
+        }));
         const result = tapped.value;
         adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
-        // Keep this lane for the player's follow-up late passes. Every lane is
-        // recorded, not only the ones that missed the seal: a late pass has to
-        // report `pendingSources` correctly, and a lane that already answered
-        // is not pending even if it answered early. The stash is cleared when a
-        // fresh resolve of this title starts, so it never accumulates.
-        if (result.candidates.length) {
-          const prior = (this.finishedLate.get(lateKey) ?? []).filter(entry => entry.adapter.id !== adapter.id);
-          prior.push({ adapter, result });
-          this.finishedLate.set(lateKey, prior);
-          this.pruneFinishedLate();
-        }
+        if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
         adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
         // Learn from what actually happened. "No candidates" is not a failure —
         // that provider may simply not carry this title — so only a throw or an
@@ -803,7 +816,7 @@ export class SourceRegistry {
     if (!lateOnly && !singleSource && isPriorityAnime() && remaining() > 1400) {
       const priorityTasks = adapterTasks.filter((_, idx) => priorityIds.has(activeAdapters[idx].id));
       if (priorityTasks.length) await Promise.race([
-        Promise.allSettled(priorityTasks), wait(Math.min(1600, Math.max(0, remaining() - 1400))),
+        Promise.allSettled(priorityTasks), wait(Math.min(2300, Math.max(0, remaining() - 1400))),
       ]);
     }
 
@@ -892,11 +905,9 @@ export class SourceRegistry {
     // that are still working instead of shipping what happened to arrive first.
     const readySources = () =>
       slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
-    // A late pass used to assume every lane had already finished, so it never
-    // reported anything pending. Lanes discovered empty (nothing stashed, not
-    // currently resolving) still are pending, and saying so is what lets the
-    // player schedule its remaining retries.
-    const lateStash = lateOnly ? this.finishedLate.get(lateKey) ?? [] : [];
+    // A late pass snapshots the completed wave entries; empty results are
+    // recorded too, while adapters not yet settled remain pending.
+    const lateStash = lateOnly ? [...(currentWave?.entries.values() ?? [])] : [];
     const stillPending = lateOnly
       ? activeAdapters.filter((adapter) => !lateStash.some((entry) => entry.adapter.id === adapter.id)).length
       : activeAdapters.length - doneCount;
@@ -905,6 +916,14 @@ export class SourceRegistry {
         Promise.allSettled(adapterTasks),
         wait(Math.min(1300, Math.max(0, remaining() - 1400))),
       ]);
+    }
+
+    // With a large provider board, three fast answers are not a full first
+    // wave. Give the other already-running adapters a small bounded chance to
+    // join, while retaining time for verification and fast two-source starts.
+    if (!lateOnly && !singleSource && activeAdapters.length >= 5 &&
+        readySources() >= 3 && readySources() < Math.min(8, Math.ceil(activeAdapters.length / 2)) && remaining() > 1500) {
+      await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(700, remaining() - 1400))]);
     }
 
     let verifiedBatch = await verifyCurrentSlots();
@@ -1054,7 +1073,10 @@ export class SourceRegistry {
     // Freeze the slots used for this response. A source completing after this
     // point must remain pending even if the live slots or stash change before
     // the reply is sent. The same applies to late-only responses.
-    const coverageSlots = slots.slice();
+    const coverageSlots = lateOnly ? slots.slice() : slots.map((slot, idx) => {
+      const latest = currentWave?.entries.get(activeAdapters[idx].id);
+      return latest ?? slot;
+    });
     // Coverage pass: every adapter that answered contributes its usable lanes,
     // not only the ones whose probe finished inside the budget. Verified lanes
     // are already in `candidateEntries` and sort first downstream; these fill in
@@ -1289,6 +1311,7 @@ export class SourceRegistry {
       primary: uniformOptions[0],
       sources: uniformOptions,
       sourceGroups: activeAdapters.map(adapter => adapter.id),
+      waveUpdates: true,
       // Sources that have not produced anything yet. The client uses this to
       // decide whether a late-join pass is worth making.
       pendingSources: activeAdapters
@@ -1298,18 +1321,44 @@ export class SourceRegistry {
     };
   }
 
-  /**
-   * Keep the late-join stash small. It only ever needs to hold the handful of
-   * titles a viewer currently has open, so a hard cap with oldest-first
-   * eviction is enough — and unlike a payload cache it never holds a manifest
-   * body, only per-lane candidate descriptors.
-   */
+  /** Merge partial provider callbacks without losing already returned lanes. */
+  private recordWaveResult(
+    key: string,
+    wave: DiscoveryWave,
+    adapter: SourceAdapter,
+    result: RawSourceResult,
+  ): void {
+    // Do not resurrect an evicted or expired wave from a stale async completion.
+    if (this.finishedLate.get(key) !== wave || Date.now() >= wave.expiresAt) return;
+    const previous = wave.entries.get(adapter.id);
+    const old = previous?.result;
+    const candidates = new Map((old?.candidates ?? []).map(c => [c.url, c]));
+    for (const candidate of result.candidates) candidates.set(candidate.url, candidate);
+    const merged = { ...old, ...result, candidates: [...candidates.values()].slice(0, MAX_LANES_PER_SOURCE) };
+    // Account for retained payloads as well as title count; enormous provider
+    // responses must not pin the heap during a burst of distinct titles.
+    let bytes: number;
+    try { bytes = Buffer.byteLength(JSON.stringify(merged)); } catch { return; }
+    const delta = bytes - (previous?.bytes ?? 0);
+    wave.bytes += delta;
+    this.finishedLateBytes += delta;
+    wave.entries.set(adapter.id, { adapter, result: merged, bytes });
+    this.pruneFinishedLate();
+  }
+
   private pruneFinishedLate(): void {
-    const MAX_TITLES = 8;
-    while (this.finishedLate.size > MAX_TITLES) {
-      const oldest = this.finishedLate.keys().next().value;
-      if (oldest === undefined) break;
-      this.finishedLate.delete(oldest);
+    const now = Date.now();
+    const remove = (key: string, wave: DiscoveryWave) => {
+      this.finishedLate.delete(key);
+      this.finishedLateBytes -= wave.bytes;
+    };
+    for (const [key, wave] of this.finishedLate) if (wave.expiresAt <= now) remove(key, wave);
+    // Bounded by both count and payload bytes. An evicted wave falls back to
+    // one fresh lookup rather than permanently losing the viewer's sources.
+    while (this.finishedLate.size > MAX_WAVE_TITLES || this.finishedLateBytes > MAX_WAVE_BYTES) {
+      const oldest = this.finishedLate.entries().next().value;
+      if (!oldest) break;
+      remove(oldest[0], oldest[1]);
     }
   }
 

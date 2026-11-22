@@ -53,6 +53,7 @@ export function selectPlaybackCandidates(
     // this request measured over what an earlier one remembered. With payload
     // caching off nothing is remembered, and ranking must still work.
     const evidence = candidateEvidence(c);
+    if (evidence?.confirmedDead) continue;
     // Manifest truth about the audio layout beats provider metadata: a measured
     // single-language probe means single-language, however the source labelled
     // itself. Only when nothing was measured may the provider claim stand.
@@ -113,20 +114,15 @@ export function selectPlaybackCandidates(
     selected.push(item); languages.add(lang);
     if (++dubsAdded >= MAX_SEPARATE_DUBS) break;
   }
-  // Keep one verified live source for each Anivexa SUB/DUB mode even when the
-  // generic unlabelled fallback cap would otherwise drop one side. These are
-  // provider source variants, not claims about manifest audio tracks.
+  // Variant-labelled streams are separate lanes, not manufactured manifest
+  // audio. Preserve all sources' verified and unproven variants, not just one
+  // sub/dub pair across the whole board. Never reinstate confirmed-dead lanes.
   const animeVariants: typeof single = [];
-  for (const variant of variantOrder) {
-    const item = single.find(candidate => candidate.alive && !['source-29','source-30'].includes(candidate.adapter.id) && candidate.candidate.audioVariant === variant);
-    if (item && !selected.includes(item)) animeVariants.push(item);
-  }
-  // Additional anime adapters must not displace one another's sub/dub lanes.
-  // Preserve their distinct variants, including unproven (not confirmed-dead) lanes.
-  // They remain fallbacks and are never promoted as verified.
-  for (const sourceId of ['source-29', 'source-30']) for (const variant of variantOrder) {
-    for (const item of single.filter(candidate => candidate.adapter.id === sourceId && candidate.candidate.audioVariant === variant)) {
-      if (!selected.includes(item) && !animeVariants.includes(item)) animeVariants.push(item);
+  for (const alive of [true, false]) for (const variant of variantOrder) {
+    for (const item of single) {
+      if (item.alive !== alive || item.candidate.audioVariant !== variant) continue;
+      if (animeVariants.length >= MAX_LISTED_SOURCES) break;
+      animeVariants.push(item);
     }
   }
   return [...multi,...selected,...animeVariants].map(({adapter,candidate})=>({adapter,candidate}));
