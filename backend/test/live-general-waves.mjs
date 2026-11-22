@@ -47,7 +47,12 @@ try {
  const media=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(media.server);
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage();
- for(const sample of [{type:'movie',id:'550',path:'movie/550'},{type:'tv',id:'1396',path:'tv/1396/1/1'}]){
+ for(const sample of [
+  {type:'movie',id:'550',path:'movie/550'},
+  {type:'tv',id:'1396',path:'tv/1396/1/1'},
+  {type:'movie',id:'936622',path:'movie/936622'},
+  {type:'tv',id:'44006',path:'tv/44006/1/1'},
+ ]){
   const row={title:sample.path};let step='first';let lateRequests=0,recoveryRequests=0;
   const onRequest=req=>{if(!req.url().includes('/api/v1/playback?'))return;const u=new URL(req.url());if(u.searchParams.get('late')==='1')lateRequests++;if(u.searchParams.has('source'))recoveryRequests++;};
   page.on('request',onRequest);
@@ -84,8 +89,11 @@ try {
    if(r.error)a.errors++;
    aggregated.set(r.id,a);
   }
+  // One compact notice per title, leaving room for all title summaries under
+  // GitHub's 10-notice limit. The artifact has the verbose breakdown.
   const entries=[...aggregated.values()].sort((a,b)=>a.id.localeCompare(b.id,undefined,{numeric:true}));
-  for(let i=0;i<entries.length&&i<30;i+=10) console.log('::notice title=Live source attempts::'+JSON.stringify({title,entries:entries.slice(i,i+10)}));
+  const compact=entries.map(a=>[a.id,a.attempts,a.raw,a.alive,a.dead,a.unknown,a.shared,a.errors,a.network]);
+  console.log('::notice title=Live source attempts::'+JSON.stringify({title,fields:['id','attempts','raw','alive','dead','unknown','shared','errors','network'],entries:compact}));
  }
  if(rows.some(row=>!row.ok))process.exitCode=1;
 } finally {

@@ -13,6 +13,8 @@ globalThis.fetch = async (input, options) => {
   }
   if (u.hostname === 'vix-fixture.example') {
     if (u.pathname === '/child.m3u8') return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
+    if (u.pathname === '/single.m3u8') return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
+    if (u.pathname === '/gone.m3u8') return new Response('gone',{status:404});
     assert.equal(u.searchParams.get('token'),'secret+token'); assert.equal(u.searchParams.get('b'),'1');
     return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="it",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="x"\n/child.m3u8');
   }
@@ -24,6 +26,13 @@ try {
   const diag = []; const res = await createSource9Adapter(()=>true).resolve({...q,diag});
   assert.equal(res.candidates.length,1); assert.deepEqual(res.candidates[0].availableAudioLangs,['it','en']);
   assert.equal(res.candidates[0].diagnosticLane,'V');
+  playlist='https://vix-fixture.example/single.m3u8';
+  const single=await createSource9Adapter(()=>true).resolve(q);
+  assert.equal(single.candidates.length,1,'reachable single-audio source remains available');
+  assert.notEqual(single.candidates[0].multiAudio,true);
+  assert.equal(single.candidates[0].audioLang,undefined,'no language inferred for an unlabelled manifest');
+  playlist='https://vix-fixture.example/gone.m3u8';
+  assert.equal((await createSource9Adapter(()=>true).resolve(q)).candidates.length,0,'confirmed 404 remains excluded');
   apiResult={src:'//evil.example/embed/1'}; assert.deepEqual(await fetchFromVixSrc(q),[]);
   apiResult={src:'/embed/221474'}; playlist='http://127.0.0.1/master.m3u8'; assert.deepEqual(await fetchFromVixSrc(q),[]);
   assert.deepEqual(await fetchFromVixSrc({...q,tmdbId:'bad'}),[]);

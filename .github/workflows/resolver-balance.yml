@@ -11,6 +11,11 @@ on:
       - 'backend/src/egress.ts'
       - 'backend/src/dns-rescue.ts'
       - 'backend/test/source-request-diagnostics.mjs'
+      - 'backend/test/general-single-audio-coverage.mjs'
+      - 'backend/src/sources/source8.ts'
+      - 'backend/src/sources/source9.ts'
+      - 'backend/src/sources/source10.ts'
+      - 'backend/src/sources/source11.ts'
       - 'backend/test/duration-guard.mjs'
       - 'backend/test/egress-profile.mjs'
       - 'backend/test/dns-rescue.mjs'
@@ -46,6 +51,8 @@ jobs:
       - run: node backend/test/egress-profile.mjs
       - run: node backend/test/source-request-diagnostics.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/source-request-diagnostics.mjs
+      - run: node backend/test/general-single-audio-coverage.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/general-single-audio-coverage.mjs
       - run: node backend/test/duration-guard.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/duration-guard.mjs
       - run: node backend/test/mp4-transient-coverage.mjs

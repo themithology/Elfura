@@ -24,27 +24,29 @@ globalThis.fetch=async(input,opts)=>{
   assert.equal(type,'movie');assert.equal(id,'693134');lanes.push(lane);
   let payload={streams:[]};
   if(lane==='moviebox')payload={url:[{link:'https://vn-fixture.example/hindi.m3u8',lang:'Hindi',type:'hls'}, {link:'https://vn-fixture.example/tamil.mp4',lang:'Tamil',type:'mp4'}, {link:'/relay/private.m3u8',lang:'Hindi'}, {link:'http://127.0.0.1/x.m3u8',lang:'English'}, {link:'https://vidara.example/x.m3u8',lang:'English'}],headers:{Referer:'https://safe.example/',Authorization:'secret'}};
-  if(lane==='allmovies')payload={streams:[{url:'https://vn-fixture.example/multi.m3u8',language:'Multi',type:'hls'}]};
+  if(lane==='allmovies')payload={streams:[{url:'https://vn-fixture.example/multi.m3u8',language:'Multi',type:'hls'},{url:'https://vn-fixture.example/unlabelled.m3u8',type:'hls'}]};
   if(lane==='onehd')return Response.json({v:2,n:u.searchParams.get('_n'),d:'bad'});
   return Response.json(encode(u.searchParams.get('_n'),payload));
  }
  if(u.hostname==='vn-fixture.example') {
   if(u.pathname==='/tamil.mp4')return new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}});
   if(u.pathname==='/child.m3u8')return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
-  if(u.pathname==='/hindi.m3u8')return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
+  if(u.pathname==='/hindi.m3u8'||u.pathname==='/unlabelled.m3u8')return new Response('#EXTM3U\n#EXTINF:10,\nseg.ts\n#EXT-X-ENDLIST');
   return new Response('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="hi",URI="/child.m3u8"\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="x",LANGUAGE="en",URI="/child.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="x"\n/child.m3u8');
  }
  throw new Error('unexpected host');
 };
 try {
  const q={type:'movie',tmdbId:'693134'};
- const raw=await fetchFromVidNest(q);assert.equal(raw.length,3);assert.equal(raw[0].audioLang,'hi');
+ const raw=await fetchFromVidNest(q);assert.equal(raw.length,4);assert.equal(raw[0].audioLang,'hi');
  assert.equal(raw[0].headers.Referer,'https://safe.example/');assert(!('Authorization' in raw[0].headers));
  assert.deepEqual(lanes.sort(),['allmovies','moviebox','nextgencloudfabric','onehd','vidlink','vidzee']);
  const diag=[];const result=await createSource10Adapter(()=>true).resolve({...q,diag});
- assert.equal(result.candidates.length,3);assert.equal(result.candidates[0].audioLang,'hi');
+ assert.equal(result.candidates.length,4);assert.equal(result.candidates[0].audioLang,'hi');
  assert.equal(result.candidates[1].audioLang,'ta');assert.equal(result.candidates[1].type,'mp4');
  assert.deepEqual(result.candidates[2].availableAudioLangs,['hi','en']);assert.equal(result.candidates[2].multiAudio,true);
+ assert.equal(result.candidates[3].audioLang,undefined,'ordinary reachable stream makes no language claim');
+ assert.notEqual(result.candidates[3].multiAudio,true);
  assert.deepEqual(await fetchFromVidNest({...q,tmdbId:'bad'}),[]);
  assert(new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test'})).listPublicSources().some(s=>s.id==='source-10'));
  assert(!new SourceRegistry(loadBackendConfig({ELFURA_SECRET:'test',ELFURA_VIDNEST_ENABLED:'0'})).listPublicSources().some(s=>s.id==='source-10'));

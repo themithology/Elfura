@@ -43,11 +43,10 @@ export function createSource9Adapter(enabled: () => boolean): SourceAdapter {
   return {id:'source-9',label:'Source 9',enabled,async resolve(query) {
     const start = Date.now(); const raw = await fetchFromVixSrc(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
-    const candidates = verified.candidates.filter(c => {
-      const evidence = candidateEvidence(c);
-      return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
-    });
-    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
+    // Keep reachable single-audio manifests as ordinary streams too; the
+    // liveness probe alone establishes whether a manifest is multi-audio.
+    const candidates = verified.candidates.filter(c => !!candidateEvidence(c)?.alive);
+    query.diag?.push({adapter:'source-9',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},reachable=${candidates.length}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }

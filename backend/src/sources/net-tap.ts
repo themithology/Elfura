@@ -84,7 +84,10 @@ export function describeFailure(err: unknown): string {
     current = current.cause as typeof current;
   }
   for (const link of chain) {
-    const code = link?.code || '';
+    // DOMException exposes numeric legacy codes (20/23); those are not HTTP
+    // statuses and should not be printed as mysterious provider responses.
+    if (link?.name === 'AbortError' || link?.name === 'TimeoutError') return 'timeout';
+    const code = typeof link?.code === 'string' ? link.code : '';
     if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns-fail';
     if (code === 'ECONNREFUSED') return 'refused';
     if (code === 'ECONNRESET' || code === 'EPIPE') return 'tls-reset';

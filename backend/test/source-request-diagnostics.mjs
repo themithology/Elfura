@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
+import {describeFailure} from '../../dist/backend/sources/net-tap.js';
+
+assert.equal(describeFailure(new DOMException('timed out','TimeoutError')),'timeout');
+assert.equal(describeFailure(new DOMException('aborted','AbortError')),'timeout');
+assert.equal(describeFailure(new TypeError('fetch failed',{cause:{code:'ECONNRESET'}})),'tls-reset');
 
 const oldFetch=globalThis.fetch, oldWarn=console.warn;
 const keepAlive=setInterval(()=>{},1000);
