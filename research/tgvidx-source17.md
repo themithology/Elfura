@@ -55,6 +55,54 @@ cause of the media format problem is not established; no speculative decoder
 or claim of VIDARA playback has been added. Magpie's HEVC limitation remains as
 above. These are GitHub runner observations, not the user's VPS.
 
+## Full-flow follow-up: slow inventory and grouped failover
+
+The [transport comparison](https://github.com/themithology/Elfura/actions/runs/45048992544)
+on a GitHub runner observed TGVIDX's current inventory call taking 8.2–8.6 s
+for both Re:ZERO S1E1 and Fight Club. The actual TGVIDX browser made the same
+call and successfully played Re:ZERO. The TLS-impersonating wreq alternative
+received an immediate HTTP 403 in this sample, so it was not adopted.
+
+An [initial full-board run](https://github.com/themithology/Elfura/actions/runs/45049007267)
+showed a Re:ZERO discovery returning an apparent 403 at the 9 s shared abort;
+a later retry succeeded at 8.1 s. The egress wrapper can return its original
+403 when a retry is aborted, so that observation does **not** establish that
+TGVIDX itself returned the final 403. The old deadline gave the call almost no
+margin. Source 17 now gets up to 20 s for its discovery task, while the first
+response and all other adapters keep their existing bounded deadlines; its
+result joins through the existing late wave. Diagnostics distinguish an aborted
+retry from a final 403. No resolver routing or health-balancing behavior changed.
+
+In the [post-change full-flow test](https://github.com/themithology/Elfura/actions/runs/45049769316),
+real adapters, four resolver HTTP nodes, the real relay and Chromium were used
+with fixture TMDB metadata. Source 17's STREAMHG played for Re:ZERO S1E1,
+Fight Club, Breaking Bad S1E1 and Dhamaal 4. Re:ZERO inventory returned in
+8.95 s and Source 17 appeared in the player around 11.25 s; those times vary.
+A cold source-only Re:ZERO embed returned at 9.31 s and played. Several other
+TGVIDX lanes failed during that run: VIDARA had HLS demux errors, VIDSHARED
+had fragment timeouts, and MAGPIE did not play on that Chromium. A manifest
+probe is not evidence that video will play.
+
+Another issue was visible in that full-board test: the UI groups TGVIDX's
+independent upstreams as Source 17, but after a manually selected row failed,
+the player preferred a different provider group over the other Source 17 rows.
+Manual Source 17 failover now tries the group's remaining rows first; if a
+language is selected it only prioritizes rows with matching language evidence,
+and otherwise retains the existing cross-provider language search. All other
+groups retain their prior automatic fallback order. A later [real-browser
+full-flow run](https://github.com/themithology/Elfura/actions/runs/45051630097)
+forced Re:ZERO MAGPIE and observed the player remain in Source 17 and reach
+STREAMHG with video progressing. Its Source 17 inventory completed in 5.2 s
+and appeared around 10.4 s. This is one sample, not a speed guarantee.
+
+The same run recorded a guarded uncaught `TypeError` in Undici 6.29.1's HTTP/2
+abort/queue code (`client.js` / `client-h2.js`). The test continued under the
+same process guards used in production. Its frequency and effect on real VPSes
+are unknown; it is not established as the TGVIDX failure, and a global transport
+replacement has not been made without a reproducible regression test. Upstream
+servers can still be down or incompatible, and the runner cannot prove the
+user's VPS can reach them. TG PIRATE remains excluded to prevent recursion.
+
 ## Evidence and limitations
 
 - [Inventory research](https://github.com/themithology/Elfura/actions/runs/45033838563)
