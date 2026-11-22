@@ -44,7 +44,8 @@ import assert from 'node:assert/strict';
 // Source 26 was removed after real-browser audio-only playback failures.
 // Source 28 adds verified multi-audio anime: 19 -> 20. The two additional
 // direct anime providers add independent source boards: 20 -> 22.
-const MIN_LISTED_SOURCES = 22;
+// Source 17 adds the dynamic TGVIDX server inventory.
+const MIN_LISTED_SOURCES = 23;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

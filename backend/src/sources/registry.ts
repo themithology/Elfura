@@ -22,6 +22,7 @@ import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import { createSource16Adapter } from './source16.js';
+import { createSource17Adapter } from './source17.js';
 import { createSource6Adapter } from './source6.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
@@ -83,6 +84,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-6': 'ELFURA_TELUGU_ENABLED',
   'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
   'source-16': 'ELFURA_HINDI_DUB_ENABLED',
+  'source-17': 'ELFURA_TGVIDX_ENABLED',
   'source-8': 'ELFURA_VIDZEE_ENABLED',
   'source-9': 'ELFURA_VIXSRC_ENABLED',
   'source-10': 'ELFURA_VIDNEST_ENABLED',
@@ -214,6 +216,8 @@ export class SourceRegistry {
       // server (./anime-db.ts) so the embed URL stays `/embed/tv/<tmdbId>`. On by
       // default: it needs no credentials and answered 5/5 titles in testing.
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_HINDI_DUB_ENABLED !== '0'),
+      // Dynamic TGVIDX inventory; own-player rows are excluded to avoid recursion.
+      createSource17Adapter(() => cfg.source17?.enabled ?? process.env.ELFURA_TGVIDX_ENABLED !== '0'),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),
