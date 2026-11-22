@@ -131,6 +131,11 @@ const taggedSrt = parseCues('1\n00:00:01,000 --> 00:00:02,500\n<font face="Trebu
 assert.equal(taggedSrt.cues[0].text, 'Mother?!');
 assert.equal(taggedSrt.cues[0].spans[0].fontFamily, 'Trebuchet MS');
 assert.equal(taggedSrt.cues[0].spans[0].fontSize, 24);
+const taggedVtt = parseCues('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<font color="cyan">VTT</font>', 'x.vtt');
+assert.equal(taggedVtt.cues[0].spans[0].color, '#00ffff');
+const taggedAss = parseCues('[Script Info]\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,<font face="Trebuchet MS" size="24">ASS</font>', 'x.ass');
+assert.equal(taggedAss.cues[0].text, 'ASS');
+assert.equal(taggedAss.cues[0].spans[0].fontSize, 24);
 
 // ---- the default look ----------------------------------------------------
 // Bold white text, crisp black stroke, no box: the broadcast/anime style the
