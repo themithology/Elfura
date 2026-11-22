@@ -5,6 +5,8 @@ on:
     paths:
       - 'backend/src/playback-resolver*.ts'
       - 'backend/src/sources/registry.ts'
+      - 'backend/src/sources/liveness.ts'
+      - 'backend/test/mp4-transient-coverage.mjs'
       - 'backend/test/late-wave-race.mjs'
       - 'backend/test/wave-*.mjs'
       - 'src/core/player.ts'
@@ -32,6 +34,8 @@ jobs:
       - run: node backend/test/resolver-balance-integration.mjs
       - run: node backend/test/resolver-late-waves.mjs
       - run: node backend/test/late-wave-race.mjs
+      - run: node backend/test/mp4-transient-coverage.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/mp4-transient-coverage.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/wave-pressure.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/wave-http-pressure.mjs
       - run: node backend/test/resolver-balance-package.mjs

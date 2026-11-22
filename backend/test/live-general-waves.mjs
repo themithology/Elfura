@@ -1,4 +1,4 @@
-// Live, general-source research: real registry/provider discovery, three real
+// Live, general-source research: real registry/provider discovery, four local
 // resolver HTTP servers, media server and Chromium player. Never log upstream
 // URLs, credentials, tickets or response bodies. Results are not production proof.
 import {createBackendServer} from '../../dist/backend/index.js';
@@ -7,6 +7,7 @@ import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
 import {installEgressProfile} from '../../dist/backend/egress.js';
 import {tapRequests} from '../../dist/backend/sources/net-tap.js';
+import {cachedCandidateEvidence} from '../../dist/backend/sources/liveness.js';
 import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -36,7 +37,7 @@ try {
      const key=item.status ? `http-${item.status}` : ['dns-fail','tls-reset','timeout','refused','tls-cert'].includes(item.error) ? item.error : 'other-error';
      network[key]=(network[key]??0)+1;
     }
-    observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,raw:tapped.value.candidates.length,network});
+    observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,raw:tapped.value.candidates.length,network,candidates:tapped.value.candidates});
     return tapped.value;
    } catch(error) {observations.push({node:i+1,title:`${q.type}/${q.tmdbId}`,id:adapter.id,ms:Date.now()-start,error:error.name});throw error;}
   }}));
@@ -61,10 +62,20 @@ try {
    row.ok=row.first.options>0 && row.later.options>=row.first.options && row.playbackObserved;
   }catch(error){row.ok=false;row.step=step;row.error=error.name;row.lateRequests=lateRequests;row.recoveryRequests=recoveryRequests;}
   finally{page.off('request',onRequest);}
-  row.discovery=observations.filter(r=>r.title===`${sample.type}/${sample.id}`);
+  const matching=observations.filter(r=>r.title===`${sample.type}/${sample.id}`);
+  row.discovery=matching.map(({candidates,...record})=>{
+   const evidence=(candidates??[]).map(c=>cachedCandidateEvidence(c));
+   const duplicate=(candidates??[]).filter(c=>matching.some(other=>other.id!==record.id&&(other.candidates??[]).some(x=>x.url===c.url))).length;
+   return {...record,manifestAlive:evidence.filter(e=>e?.alive).length,manifestDead:evidence.filter(e=>e?.confirmedDead).length,manifestUnknown:evidence.filter(e=>!e).length,sharedWithOtherSources:duplicate};
+  });
   rows.push(row);
  }
- console.log('::notice title=Live general discovery waves::'+JSON.stringify(rows));
+ // GitHub truncates annotations at 4096 bytes: report each sample and each
+ // adapter separately so a large provider board cannot hide the TV results.
+ for (const {discovery,...summary} of rows) {
+  console.log('::notice title=Live general discovery summary::'+JSON.stringify(summary));
+  for (const attempt of discovery ?? []) console.log('::notice title=Live source attempt::'+JSON.stringify(attempt));
+ }
  if(rows.some(row=>!row.ok))process.exitCode=1;
 } finally {
  await browser?.close();

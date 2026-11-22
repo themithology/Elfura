@@ -400,6 +400,14 @@ async function runSingleProbe(
           setCachedLiveness(key, dead);
           return dead;
         }
+        // MP4 needs the same uncertainty policy as HLS/DASH. A temporary
+        // refusal or a rejected range is not evidence that the video is gone;
+        // do not cache it as dead or hide it from the player's fallback list.
+        // In particular, a CDN may reject our metadata range while accepting
+        // the browser's own request. Only a successful probe is verified alive.
+        if (isTransientHttpStatus(res.status) || res.status === 416) {
+          return { alive: false, confirmedDead: false };
+        }
         if (
           (!res.ok && res.status !== 206) ||
           ct.includes('text/html') ||
