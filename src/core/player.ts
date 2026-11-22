@@ -21,7 +21,8 @@
  */
 import type Hls from 'hls.js';
 import type { MediaPlayerClass, MediaInfo } from 'dashjs';
-import { dashIsHevcOnly } from './dash-codecs';
+import { dashHevcDefinitelyUnsupported } from './dash-codecs';
+import { playbackTimeouts } from './source17-timing';
 
 type HlsCtor = typeof Hls;
 
@@ -881,6 +882,15 @@ export class ElfuraPlayer {
     return true;
   }
 
+  private dashHasDefinitelyUnsupportedHevc(manifest: string): boolean {
+    if (this.supportsHevc()) return false;
+    const ms = (globalThis as unknown as { MediaSource?: { isTypeSupported?: (t: string) => boolean } }).MediaSource;
+    if (!ms || typeof ms.isTypeSupported !== 'function' || typeof this.video.canPlayType !== 'function') return false;
+    return dashHevcDefinitelyUnsupported(manifest, mime =>
+      ms.isTypeSupported!(mime) || Boolean(this.video.canPlayType(mime)),
+    );
+  }
+
   /** 0 = multi-quality ABR ladder, 1 = known single quality, 2 = unknown quality. */
   private qualityTier(opt: SourceOption): number {
     // A declared ladder's real height count wins over any options counter.
@@ -964,7 +974,7 @@ export class ElfuraPlayer {
 
       if (opt.type === 'dash' || lead.includes('<MPD')) {
         if (!lead.includes('<MPD')) return { ok: false, loadFailed: true, rttMs: rtt };
-        if (!this.supportsHevc() && dashIsHevcOnly(text)) return { ok: false, loadFailed: true, rttMs: rtt };
+        if (this.dashHasDefinitelyUnsupportedHevc(text)) return { ok: false, loadFailed: true, rttMs: rtt };
         this.recordMeasuredLatency(opt, rtt);
         return { ok: true, loadFailed: false, rttMs: rtt };
       }
@@ -2681,7 +2691,7 @@ export class ElfuraPlayer {
         return;
       }
       this.failover();
-    }, 10000);
+    }, playbackTimeouts(this.currentSource?.sourceId).startup);
   }
 
   private teardownEngine(): void {
@@ -2766,6 +2776,7 @@ export class ElfuraPlayer {
       return;
     }
 
+    const timeouts = playbackTimeouts(this.currentSource?.sourceId);
     const hls = new Hls({
       enableWorker: true,
       capLevelToPlayerSize: true,
@@ -2774,9 +2785,9 @@ export class ElfuraPlayer {
       maxBufferLength: 18,
       maxMaxBufferLength: 45,
       startFragPrefetch: true,
-      manifestLoadingTimeOut: 5500,
-      levelLoadingTimeOut: 5500,
-      fragLoadingTimeOut: 7000,
+      manifestLoadingTimeOut: timeouts.manifest,
+      levelLoadingTimeOut: timeouts.level,
+      fragLoadingTimeOut: timeouts.fragment,
       xhrSetup: (xhr, reqUrl) => {
         // Only send X-Playback-Token to Elfura's own backend — never trigger CORS preflight
         // or expose session tokens to offloaded external anonymous segment CDNs.
@@ -2968,7 +2979,7 @@ export class ElfuraPlayer {
         if (response.ok) {
           const text = await response.text();
           if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
-          if (dashIsHevcOnly(text)) { this.handleFatal('unsupported-video-codec', url, true); return; }
+          if (this.dashHasDefinitelyUnsupportedHevc(text)) { this.handleFatal('unsupported-video-codec', url, true); return; }
         } else {
           await response.body?.cancel().catch(() => {});
         }

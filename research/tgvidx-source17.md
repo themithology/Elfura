@@ -19,7 +19,7 @@ retired AniVortex integration previously used the same number.
 | --- | --- |
 | TG GREY ORION, ORION · HINDI, CARBON, MOON, PULSE, VALIANT | Included as separate dynamically discovered rows. Some go to Greybox `/api/media` or `/api/player/river/media`, others to provider/bridge URLs. Source 25 independently queries Greybox, so coverage may overlap. HTTP 429, 403, timeouts and HEVC-only streams were also observed. |
 | TG STREAMHG | Included. TGVIDX `/api/public/stream-proxy` returned HLS manifests. Browser playback through the actual Source 17/Elfura relay was observed on movie 1303331, movie 550 and TV 1396 S1E1 on a GitHub runner. |
-| TG MAGPIE | Included. The TGVIDX proxy returned DASH on movie 550 and TV 1396 S1E1. Samples advertised only HEVC video; Chromium on the test runner played audio without video. Source 17's player path now detects definitively HEVC-only DASH on unsupported devices and fails over; it remains available to devices that support HEVC. No successful HEVC browser playback is claimed. |
+| TG MAGPIE | Included. Samples on the runner advertised HEVC-only DASH; the runner's Chromium could not play one sample. The user reports successful upstream playback in their browser. The player now checks the actual advertised codec strings before rejecting a HEVC-only DASH stream, rather than relying on a generic HEVC profile probe. This avoids one possible false rejection, but does not prove playback on every device. |
 | TG NEST 2 | Included when returned, rather than being hardcoded to one title. Discovery was observed on TV 1396 S1E1 in one run; actual playback was not independently verified. |
 | TG PIRATE / TG PIRATE 2 / 3 / 4 | Excluded because the user confirmed it is their own Elfura deployment. Feeding it into Elfura would create recursive discovery/relay paths, not a new provider. |
 
@@ -51,9 +51,39 @@ failed to start video with `fragParsingError` in the
 [diagnostic run](https://github.com/themithology/Elfura/actions/runs/45037145674).
 A separate [TGVIDX player test](https://github.com/themithology/Elfura/actions/runs/45037145675)
 selecting VIDARA also reached a "No playable source available" screen. The
-cause of the media format problem is not established; no speculative decoder
-or claim of VIDARA playback has been added. Magpie's HEVC limitation remains as
-above. These are GitHub runner observations, not the user's VPS.
+user reports all three lanes work in their browser on TGVIDX. The failed headless
+run does not establish that they are dead or universally broken. See the matched
+wire follow-up below; these are runner observations, not the user's VPS.
+
+## Matched player and wire follow-up
+
+The user reports VIDARA, VIDSHARED and MAGPIE playing on TGVIDX in their browser;
+their browser, device and tested title were not yet specified. All three were
+already dynamically included, not excluded as dead. A new [runner comparison](https://github.com/themithology/Elfura/actions/runs/45053207424)
+examined Re:ZERO S1E1. VIDSHARED played in Elfura; direct and relayed video and
+audio fragments were byte-identical in that sample. Past timeouts remain
+intermittent, not a definitive diagnosis. Source 17 now has bounded longer HLS
+and startup waits to reduce premature failure; this does not guarantee reliability.
+
+For VIDARA, the video fragment sampled directly from TGVIDX's public proxy was
+valid-looking MPEG-TS, and Elfura relayed it byte-for-byte. But the sampled audio
+fragment began `47 40 11 10 00 42 ef bf bd 25 ...`: the UTF-8 replacement bytes
+`ef bf bd` appear inside a transport packet, disrupting 188-byte packet framing.
+The exact same damaged bytes came from TGVIDX's public proxy and Elfura's relay;
+that runner's upstream and Elfura players both failed to start VIDARA. This is
+consistent with a lossy binary-to-text conversion somewhere before the response,
+but the responsible component and behavior for other titles/devices are unknown.
+Replacement characters do not encode the original byte, so blindly reversing
+them cannot restore the media. No speculative binary repair is applied, and the
+user's successful upstream playback remains valid evidence of a different result.
+
+MAGPIE's runner manifest advertised `hev1.1.6.L120.90`, `hev1.1.6.L93.90` and
+`hev1.1.6.L90.90`; the previous generic capability check tested different profile
+strings. That could reject an actually supported representation. The player now
+checks the exact advertised profiles, retaining the stream when capability is
+uncertain or any advertised profile is supported. Runner playback after selecting
+MAGPIE in the upstream player is not evidence of MAGPIE playback unless the
+active stream is also identified, because upstream can switch to another server.
 
 ## Full-flow follow-up: slow inventory and grouped failover
 
