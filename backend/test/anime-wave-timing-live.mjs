@@ -14,12 +14,13 @@ process.env.ELFURA_SECRET=secret;process.env.ELFURA_RESOLVER_TOKEN=secret;proces
 const tmp=mkdtempSync(path.join(os.tmpdir(),'elfura-anime-waves-'));process.env.ROXY_DATA_DIR=tmp;
 const samples=[{id:'46260',title:'Naruto',episode:'Enter: Naruto Uzumaki!',year:'2002',runtime:24},{id:'95479',title:'Jujutsu Kaisen',episode:'Ryomen Sukuna',year:'2020',runtime:24},{id:'65942',title:'Re:ZERO -Starting Life in Another World-',episode:'The End of the Beginning and the Beginning of the End',year:'2016',runtime:49}];
 const original=globalThis.fetch;
-globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url);if(u.hostname!=='tmdb-fixture.example')return original(input,init);const parts=u.pathname.split('/'),i=parts.indexOf('tv'),sample=samples.find(s=>s.id===parts[i+1]);if(!sample)return new Response(null,{status:404});if(parts.includes('episode'))return Response.json({name:sample.episode,runtime:sample.runtime});return Response.json({id:Number(sample.id),name:sample.title,original_name:sample.title,first_air_date:sample.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[sample.runtime],images:{logos:[]},external_ids:{}})};
+await installEgressProfile(()=>{});
+const profiledFetch=globalThis.fetch;
+globalThis.fetch=async(input,init)=>{const u=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url);if(u.hostname!=='tmdb-fixture.example')return profiledFetch(input,init);const parts=u.pathname.split('/'),i=parts.indexOf('tv'),sample=samples.find(s=>s.id===parts[i+1]);if(!sample)return new Response(null,{status:404});if(parts.includes('episode'))return Response.json({name:sample.episode,runtime:sample.runtime});return Response.json({id:Number(sample.id),name:sample.title,original_name:sample.title,first_air_date:sample.year+'-01-01',original_language:'ja',genres:[{name:'Animation'}],episode_run_time:[sample.runtime],images:{logos:[]},external_ids:{}})};
 const servers=[],observations=[];let browser;const now=()=>Date.now();
 const listen=async server=>{servers.push(server);await new Promise(r=>server.listen(0,'127.0.0.1',r));return `http://127.0.0.1:${server.address().port}`};
 const notice=(title,x)=>console.log(`::notice title=${title}::${JSON.stringify(x).replace(/%/g,'%25').replace(/\n/g,'%0A').slice(0,9000)}`);
 try{
- await installEgressProfile(()=>{});
  const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
  const urls=[];
  for(let i=0;i<4;i++){
@@ -41,7 +42,7 @@ try{
   try{
    await page.goto(`${base}/embed/tv/${sample.id}/1/1?autoplay=1&muted=1`,{waitUntil:'domcontentloaded',timeout:20000});
    await page.waitForTimeout(26000);
-   row.observed=await page.evaluate(()=>{const p=window.__elfura?.player;const v=p?.video;return {timing:window.__timing,options:p?.getSources().map(s=>({source:s.sourceId,type:s.type,variant:s.audioVariant??null,priority:!!s.animePriority})),video:{source:p?.currentSource?.sourceId,time:v?.currentTime,width:v?.videoWidth,ready:v?.readyState}}});
+   row.observed=await page.evaluate(()=>{const p=window.__elfura?.player;const v=p?.video;return {timing:window.__timing,groups:[...new Set((p?.getSources()||[]).map(s=>s.sourceId))],options:p?.getSources().filter(s=>['source-28','source-29','source-30'].includes(s.sourceId)).map(s=>({source:s.sourceId,type:s.type,variant:s.audioVariant??null,priority:!!s.animePriority})),video:{source:p?.currentSource?.sourceId,time:v?.currentTime,width:v?.videoWidth,ready:v?.readyState}}});
    for(const id of ['source-28','source-29','source-30']){
     const opt=await page.evaluate(id=>window.__elfura?.player?.getSources().find(x=>x.sourceId===id)?.id??null,id);const result={id,available:!!opt};
     if(opt)try{await page.evaluate(id=>window.__elfura.player.setSource(id),opt);const t0=await page.evaluate(()=>window.__elfura.player.video.currentTime);await page.waitForFunction(({id,t0})=>{const p=window.__elfura.player,v=p.video;return p.currentSource?.sourceId===id&&v.videoWidth>0&&v.readyState>=2&&v.currentTime>t0+1},{id,t0},{timeout:20000});result.played=true;result.video=await page.evaluate(()=>{const v=window.__elfura.player.video;return {width:v.videoWidth,height:v.videoHeight,time:v.currentTime,duration:v.duration}})}catch(e){result.played=false;result.error=e.name}
