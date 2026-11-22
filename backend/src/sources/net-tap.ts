@@ -4,7 +4,7 @@
  * When twenty adapters all report `raw=0`, the console says nothing about *why*:
  * a 403 from a challenge page, a DNS failure and a six-second timeout look
  * identical from the outside. This module records every outgoing request an
- * adapter makes, scoped with AsyncLocalStorage, so the resolve log can say
+ * adapter makes through global fetch, scoped with AsyncLocalStorage, so the resolve log can say
  * "source-7: 4 req, cdn.example 403 ×3, api.site timeout ×1".
  *
  * It is diagnostic only: the wrapped fetch behaves exactly like the original,
@@ -21,20 +21,20 @@ export interface NetRecord {
 }
 
 const storage = new AsyncLocalStorage<NetRecord[]>();
-const INSTALLED = Symbol.for('elfura.netTap');
+// A later fetch layer can delegate to an earlier tap (e.g. media requests).
+// Only the outermost invocation should record that logical fetch.
+const recording = new AsyncLocalStorage<boolean>();
+const INSTALLED = Symbol.for('elfura.netTap.wrapper');
+type MarkedFetch = typeof fetch & { [INSTALLED]?: boolean };
 
-type GlobalWithTap = typeof globalThis & { [INSTALLED]?: boolean };
-
-/** Install the wrapper once; safe to call on every boot and in tests. */
+/** Reattach if another startup layer has replaced global fetch. */
 export function installNetTap(): void {
-  const g = globalThis as GlobalWithTap;
-  if (g[INSTALLED]) return;
-  const original = globalThis.fetch;
-  if (typeof original !== 'function') return;
+  const original = globalThis.fetch as MarkedFetch;
+  if (typeof original !== 'function' || original[INSTALLED]) return;
 
   const wrapped: typeof fetch = async (input, init) => {
     const bucket = storage.getStore();
-    if (!bucket) return original(input, init);
+    if (!bucket || recording.getStore()) return original(input, init);
     let host = 'unknown';
     try {
       host = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).host;
@@ -43,7 +43,7 @@ export function installNetTap(): void {
     }
     const started = Date.now();
     try {
-      const response = await original(input, init);
+      const response = await recording.run(true, () => original(input, init));
       bucket.push({ host, status: response.status, ms: Date.now() - started });
       return response;
     } catch (err) {
@@ -56,8 +56,8 @@ export function installNetTap(): void {
     }
   };
 
+  (wrapped as MarkedFetch)[INSTALLED] = true;
   globalThis.fetch = wrapped;
-  g[INSTALLED] = true;
 }
 
 /** Run `fn` with its own request log. Returns the log alongside the result. */

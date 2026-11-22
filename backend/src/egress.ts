@@ -23,6 +23,7 @@
  *       it, but a metered provider bills every request, and discovery is bursty.
  */
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
+import { installNetTap } from './sources/net-tap.js';
 import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
@@ -433,6 +434,9 @@ export async function installEgressProfile(log: (line: string) => void = console
   }) as typeof fetch;
 
   globalThis.fetch = profiledFetch;
+  // This layer uses undici directly, so a tap installed before it cannot see
+  // discovery requests. Reattach outside it after the asynchronous install.
+  installNetTap();
   installed = true;
   const bootRelay = currentRelayUrl();
   log(

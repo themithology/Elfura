@@ -59,6 +59,8 @@ process.env.ELFURA_DNS_SERVERS = `127.0.0.1:${dnsPort}`;
 process.env.ELFURA_DNS_RESCUE = 'always';
 
 const { installDnsRescue } = await import('../../dist/backend/dns-rescue.js');
+const { installNetTap, tapRequests } = await import('../../dist/backend/sources/net-tap.js');
+installNetTap();
 
 const lines = [];
 const installed = await installDnsRescue((line) => lines.push(line));
@@ -70,7 +72,10 @@ assert.ok(
 
 try {
   // The name does not exist anywhere: only the stub can answer it.
-  const res = await fetch(`http://provider.elfura-test.invalid:${sitePort}/`);
+  const tapped = await tapRequests(() => fetch(`http://provider.elfura-test.invalid:${sitePort}/`));
+  const res = tapped.value;
+  assert.equal(tapped.net.length, 1, 'tap still sees fetch after rescue replaces the global function');
+  assert.equal(tapped.net[0].status, 200);
   assert.equal(res.status, 200, 'a request to an otherwise unresolvable name succeeds');
   assert.equal(await res.text(), 'reached-through-rescue', 'and reaches the real server');
 

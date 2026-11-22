@@ -6,6 +6,14 @@ on:
       - 'backend/src/playback-resolver*.ts'
       - 'backend/src/sources/registry.ts'
       - 'backend/src/sources/liveness.ts'
+      - 'backend/src/sources/net-tap.ts'
+      - 'backend/src/sources/duration.ts'
+      - 'backend/src/egress.ts'
+      - 'backend/src/dns-rescue.ts'
+      - 'backend/test/source-request-diagnostics.mjs'
+      - 'backend/test/duration-guard.mjs'
+      - 'backend/test/egress-profile.mjs'
+      - 'backend/test/dns-rescue.mjs'
       - 'backend/test/mp4-transient-coverage.mjs'
       - 'backend/test/late-wave-race.mjs'
       - 'backend/test/wave-*.mjs'
@@ -34,6 +42,12 @@ jobs:
       - run: node backend/test/resolver-balance-integration.mjs
       - run: node backend/test/resolver-late-waves.mjs
       - run: node backend/test/late-wave-race.mjs
+      - run: node backend/test/dns-rescue.mjs
+      - run: node backend/test/egress-profile.mjs
+      - run: node backend/test/source-request-diagnostics.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/source-request-diagnostics.mjs
+      - run: node backend/test/duration-guard.mjs
+      - run: ELFURA_RAM_CACHE=off node backend/test/duration-guard.mjs
       - run: node backend/test/mp4-transient-coverage.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/mp4-transient-coverage.mjs
       - run: ELFURA_RAM_CACHE=off node backend/test/wave-pressure.mjs

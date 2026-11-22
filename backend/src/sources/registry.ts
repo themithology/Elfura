@@ -527,13 +527,15 @@ export class SourceRegistry {
     baseKey: string,
     query: SourceQuery,
     onLateResult?: (result: RawSourceResult) => void,
+    onOrigin?: (origin: 'cache' | 'shared' | 'fresh') => void,
   ): Promise<RawSourceResult> {
     const cached = this.getCachedAdapterResult(baseKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached) { onOrigin?.('cache'); return Promise.resolve(cached); }
 
     const existing = this.inFlight.get(baseKey);
-    if (existing) return existing;
+    if (existing) { onOrigin?.('shared'); return existing; }
 
+    onOrigin?.('fresh');
     const p = adapter
       .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => {
         this.setCachedAdapterResult(baseKey, result);
@@ -753,10 +755,11 @@ export class SourceRegistry {
     const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
       const startedAt = Date.now();
+      let origin: 'cache' | 'shared' | 'fresh' = 'fresh';
       try {
         const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query, result => {
           if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
-        }));
+        }, value => { origin = value; }));
         const result = tapped.value;
         adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
@@ -769,7 +772,7 @@ export class SourceRegistry {
         if (!result.candidates.length) {
           console.warn(
             `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
-              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)}`,
+              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)} (observed global fetch; lookup=${origin})`,
           );
         }
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
@@ -999,8 +1002,8 @@ export class SourceRegistry {
     let mergedSegments: SkipSegments | undefined;
     for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
     const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
-    // Wrong-cut guard: a stream that plays but is a trailer, a recap or a double
-    // episode is worse than no stream, because it looks like a working source.
+    // A runtime mismatch may mean a trailer or wrong episode, but metadata and
+    // playlist measurements are not conclusive. Treat it as a fallback.
     const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
     const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
     const droppedByRuntime: { id: string; measuredSec: number }[] = [];
@@ -1101,7 +1104,7 @@ export class SourceRegistry {
           const measured = cand.measuredThisRequest;
           const durationHere = measured?.durationSec ?? evidence?.durationSec ?? null;
           const aliveHere = measured?.alive || !!evidence?.alive;
-          if (aliveHere && !durationFits(durationHere, expectedRuntimeSec, runtimeToleranceSec)) continue;
+          if (runtimeGuardEnabled && aliveHere && !durationFits(durationHere, expectedRuntimeSec, runtimeToleranceSec)) continue;
           seenUrls.add(cand.url);
           candidateEntries.push({ adapter: slot.adapter, candidate: cand });
           added += 1;
@@ -1154,7 +1157,7 @@ export class SourceRegistry {
 
     if (droppedByRuntime.length) {
       console.warn(
-        `[elfura-resolve] runtime guard dropped ${droppedByRuntime.length} stream(s) for ` +
+        `[elfura-resolve] runtime mismatch: ${droppedByRuntime.length} stream(s) considered as fallback before deduplication/selection for ` +
           `${params.type}/${params.tmdbId} (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ±` +
           `${Math.round(runtimeToleranceSec / 60)}min) :: ` +
           droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
