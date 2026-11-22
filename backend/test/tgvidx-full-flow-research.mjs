@@ -47,7 +47,8 @@ try{
    const discovered=observations.filter(o=>o.title===sample.id);const byFingerprint=new Map();
    row.discovery=discovered.map(o=>({node:o.node,start:o.started-begin,ms:o.ms,diag:o.diag,candidates:o.candidates.map(c=>{const entry={name:names.get(c.url)||'unknown',type:c.type,fp:fingerprint(c),evidence:cachedCandidateEvidence(c)?{alive:cachedCandidateEvidence(c).alive,dead:cachedCandidateEvidence(c).confirmedDead,duration:cachedCandidateEvidence(c).durationSec}:null};byFingerprint.set(entry.fp,entry);return entry})}));
    row.inventory=inventory.filter(i=>i.tmdb===sample.id).map(i=>i.rows);
-   for(const option of (state.options||[]).slice(0,6)){const info=byFingerprint.get(option.fingerprint)||{name:'unknown'};const lane={name:info.name,type:option.type,fp:option.fingerprint};
+   const options=[...(state.options||[])].sort((a,b)=>Number(['TG STREAMHG','TG MAGPIE'].includes(byFingerprint.get(b.fingerprint)?.name))-Number(['TG STREAMHG','TG MAGPIE'].includes(byFingerprint.get(a.fingerprint)?.name)));
+   for(const option of options.slice(0,6)){const info=byFingerprint.get(option.fingerprint)||{name:'unknown'};const lane={name:info.name,type:option.type,fp:option.fingerprint};
     const responses={},hlsErrors=[];const onResponse=r=>{try{const u=new URL(r.url());if(u.hostname==='127.0.0.1'&&u.pathname==='/api/v1/stream'){const key=`${r.status()}:${(r.headers()['content-type']||'').split(';')[0]}`;responses[key]=(responses[key]||0)+1}}catch{}};page.on('response',onResponse);
     try{
      await page.evaluate(()=>{window.__hlsErrors=[];window.__seenHls=new WeakSet();window.__hlsInterval=setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&!window.__seenHls.has(h)){window.__seenHls.add(h);h.on('hlsError',(_,x)=>window.__hlsErrors.push({type:x?.type,details:x?.details,fatal:x?.fatal}))}},40)});
@@ -74,6 +75,7 @@ try{
     }else row.groupFallback={skipped:'no confirmed failing MAGPIE and playable STREAMHG in this run'};
    }
   }catch(e){row.error=e.name;row.errorMessage=String(e.message||'').replace(/https?:\/\/\S+/g,'[url]').slice(0,160)}
+  if(row.groupFallback){notice('TGVIDX manual group fallback',row.groupFallback);if(row.groupFallback.played===false)process.exitCode=1}
   notice('TGVIDX full flow '+sample.id,row);page.off('response',onPlaybackResponse);
  }
  // Explicit source-only embed is a different, bounded path; test it cold rather

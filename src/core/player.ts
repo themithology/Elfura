@@ -3228,6 +3228,24 @@ export class ElfuraPlayer {
 
       if (this.desiredAudioLang) {
         const lang = this.desiredAudioLang;
+        if (this.manualAggregatorGroup && this.currentSource?.sourceId === this.manualAggregatorGroup) {
+          // Do not claim that unknown rows carry the requested language. Only
+          // try the selected aggregator's remaining language-matched rows;
+          // otherwise retain the existing cross-provider language search.
+          const sameGroup = this.sources.filter(s => s.sourceId === this.manualAggregatorGroup &&
+            !this.isCandidateFailed(s) &&
+            ((s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+             (s.availableAudioLangs ?? []).some(code => matchScore(lang, code) >= 0) ||
+             (s.audioTracks ?? []).some(track => matchScore(lang, track.lang) >= 0)))
+            .sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
+          const next = sameGroup[0];
+          if (next) {
+            this.emit('server:switch', { from: this.currentSource?.label ?? null, to: next.label, reason: 'fatal-error' });
+            void this.activateSourceOption(next, true);
+            return;
+          }
+          this.manualAggregatorGroup = null;
+        }
         void this.searchRawSourcesForLanguage(lang, languageLabel(lang), new Set(this.failedSourceIds));
         return;
       }
