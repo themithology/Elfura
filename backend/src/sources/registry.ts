@@ -73,7 +73,7 @@ const RESCUE_CEILING_MS = 5200;
 /** Upper bound for the adapter race when nothing has candidates yet. */
 const ADAPTER_RACE_MS = 3600;
 /** Window for a single-adapter recovery call (`?source=source-N`). */
-const SINGLE_SOURCE_BUDGET_MS = 9000;
+const SINGLE_SOURCE_BUDGET_MS = 6500;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 /** Diagnostics only: the environment variable that can switch each source off. */
 const SOURCE_ENV_FLAGS: Record<string, string> = {
@@ -625,7 +625,7 @@ export class SourceRegistry {
     const singleSource = typeof params.sourceId === 'string' && params.sourceId.length > 0;
     const deadline =
       resolveStartedAt +
-      (lateOnly ? 2_200 : params.anilistId ? 12_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
+      (lateOnly ? 2_200 : params.anilistId ? 7_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));

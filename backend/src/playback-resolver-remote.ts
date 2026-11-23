@@ -30,7 +30,7 @@ import {
  * nobody would read. The client must be strictly faster than the viewer's
  * patience. 10 s leaves room for a 5-9 s scan plus the rescue extension.
  */
-const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 10_000);
+const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 14_000);
 /** Control-plane calls (status, toggles) should be instant. */
 const CONTROL_TIMEOUT_MS = 5_000;
 
