@@ -1,12 +1,12 @@
 const out = [];
-for (const path of ['/api/v1/resolver-test', '/api/v1/playback?type=movie&tmdb=550']) {
+for (const path of ['/health', '/resolver/api/sources']) {
   const started = Date.now();
   try {
-    const res = await fetch('https://embed.theogpiratebot.to' + path, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch('http://opal.coffaie.online:4010' + path, { signal: AbortSignal.timeout(8000) });
     const body = await res.text();
-    out.push(`${path}: status=${res.status} (${Date.now() - started}ms) ${body.slice(0, 250)}`);
+    out.push(`${path}: status=${res.status} (${Date.now() - started}ms) ${body.slice(0, 180)}`);
   } catch (err) {
-    out.push(`${path}: error=${(err)?.message || err}`);
+    out.push(`${path}: error=${(err)?.message || err} (${Date.now() - started}ms)`);
   }
 }
 console.log(`::notice::${out.join(' || ')}`);
