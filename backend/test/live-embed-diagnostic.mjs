@@ -13,10 +13,14 @@ page.on('console', msg => {
     log(`[console.${msg.type()}] ${msg.text()}`);
   }
 });
-page.on('response', res => {
+page.on('response', async res => {
   const s = res.status();
   if (s >= 400 || res.url().includes('/api/v1/')) {
-    log(`[http ${s}] ${res.url().slice(0, 140)}`);
+    let extra = '';
+    if (s >= 500) {
+      extra = ' :: ' + (await res.text().catch(() => '')).slice(0, 160);
+    }
+    log(`[http ${s}] ${res.url().slice(0, 140)}${extra}`);
   }
 });
 page.on('requestfailed', req => {
