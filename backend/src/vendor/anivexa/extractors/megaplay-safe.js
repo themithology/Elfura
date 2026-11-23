@@ -81,16 +81,25 @@ function getMegaPlayRoutes(script) {
   return { legacy, modern };
 }
 
-function decryptMegaPlaySource(value, script) {
+async function decryptMegaPlaySource(value, script, signal) {
   if (typeof value !== "string" || !value || value.length > 3000) return null;
   const encrypted = Buffer.from(value, "base64url");
   if (!encrypted.length || encrypted.length > 2048 || encrypted.length % 16) return null;
   const values = getScriptStrings(script).filter((item) => Buffer.byteLength(item) > 0 && Buffer.byteLength(item) <= 32).slice(0, 400);
   const ivs = values.filter((item) => Buffer.byteLength(item) === 16).slice(0, 32);
+  let attempts = 0;
   for (const keyValue of values) {
     const key = Buffer.alloc(32);
     Buffer.from(keyValue).copy(key);
     for (const ivValue of ivs) {
+      // A provider can supply hundreds of strings. AES trial decryption used to
+      // run thousands of synchronous attempts without allowing timers, HTTP
+      // health checks or cancellation to run on a busy resolver.
+      if ((attempts++ & 63) === 0) {
+        if (signal?.aborted) return null;
+        await new Promise(resolve => setImmediate(resolve));
+        if (signal?.aborted) return null;
+      }
       try {
         const decipher = crypto.createDecipheriv("aes-256-cbc", key, Buffer.from(ivValue));
         const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
@@ -126,7 +135,7 @@ export function canExtractMegaPlay(url) {
   return /megaplay\.[^/]+\/stream\//i.test(String(url));
 }
 
-export async function extractMegaPlayDetails(embedUrl, { fetchImpl = fetch, userAgent = DEFAULT_USER_AGENT, referer } = {}) {
+export async function extractMegaPlayDetails(embedUrl, { fetchImpl = fetch, userAgent = DEFAULT_USER_AGENT, referer, signal } = {}) {
   const pageUrl = new URL(String(embedUrl));
   const pageHeaders = {
     "User-Agent": userAgent,
@@ -155,8 +164,10 @@ export async function extractMegaPlayDetails(embedUrl, { fetchImpl = fetch, user
     modern ? fetchJson(fetchImpl, buildSourceUrl(pageUrl.origin, modern, fileId), sourceHeaders).catch(() => null) : null,
     legacy ? fetchJson(fetchImpl, buildSourceUrl(pageUrl.origin, legacy, fileId), sourceHeaders).catch(() => null) : null,
   ]);
-  const modernUrl = modernData?.sources?.file ?? decryptMegaPlaySource(modernData?.enc, script);
-  const legacyUrl = legacyData?.sources?.file ?? decryptMegaPlaySource(legacyData?.enc, script);
+  const [modernUrl, legacyUrl] = await Promise.all([
+    modernData?.sources?.file ?? decryptMegaPlaySource(modernData?.enc, script, signal),
+    legacyData?.sources?.file ?? decryptMegaPlaySource(legacyData?.enc, script, signal),
+  ]);
   const sources = [
     modernUrl ? { url: modernUrl, variant: "modern" } : null,
     legacyUrl ? { url: legacyUrl, variant: "legacy" } : null,

@@ -34,7 +34,7 @@ try {
  }
  [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
  const base=await listen(createBackendServer({...cfg,requireToken:false}).server);
- const titles=Array.from({length:48},(_,i)=>String(70000+i)).concat(Array(12).fill('90000'));
+ const titles=Array.from({length:48},(_,i)=>String(70000+i)).concat(Array(102).fill('90000'));
  async function get(i,late=false,retry=false){
   const url=`${base}/api/v1/playback?type=movie&tmdb=${titles[i]}&nonce=load-${i}${late?'&late=1':''}${retry?'&retryMissing=1':''}`;
   const res=await original(url,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
@@ -42,11 +42,15 @@ try {
  }
  const started=Date.now();const first=await Promise.all(titles.map((_,i)=>get(i)));
  assert(first.every(x=>x.sources.some(s=>s.sourceId==='source-1')&&x.pendingSources.includes('source-29')));
- assert.deepEqual(scans.map(s=>s.filter(r=>!r.late).length),[15,15,15,15],'new discovery is equal round robin');
+ assert.deepEqual(scans.map(s=>s.filter(r=>!r.late).length),[13,13,13,13],'102 shared-title requests coalesce into one computation per node');
+ const workload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
+ assert.deepEqual(workload.map(x=>x.playback.started+x.playback.shared),[38,38,37,37],'all 150 viewer requests still distribute evenly');
+ assert.deepEqual(workload.map(x=>x.playback.shared),[25,25,24,24]);
  await wait(3800);
  const late=await Promise.all(titles.map((_,i)=>get(i,true)));
  assert(late.every(x=>x.sources.some(s=>s.sourceId==='source-29')),'every viewer receives its second wave');
- assert.deepEqual(scans.map(s=>s.filter(r=>r.late).length),[15,15,15,15],'late requests return to the discovery owner');
+ const lateWorkload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
+ assert.deepEqual(lateWorkload.map(x=>x.playback.started+x.playback.shared),[76,76,74,74],'late requests still reach the discovery owner');
  for(let n=0;n<4;n++)assert.equal(discoveries[n].get('source-29:90000'),1,'same-title concurrent discoveries coalesce per node');
  await Promise.all(titles.map((t,i)=>t==='90000'?get(i,true,true):null));
  await wait(500);
@@ -65,7 +69,7 @@ try {
  assert((await emptyLate.json()).sources.some(s=>s.sourceId==='source-29'));
  assert(scans[owner].some(row=>row.title==='88888'&&row.late),'empty first wave retains affinity');
 
- console.log(`wave HTTP pressure: ${titles.length} concurrent viewers, 48 titles + 12 shared-title requests, 4 nodes, all second waves; ${(Date.now()-started)}ms`);
+ console.log(`wave HTTP pressure: ${titles.length} concurrent viewers, 48 unique titles + 102 shared-title requests, 4 nodes, all second waves; ${(Date.now()-started)}ms`);
 } finally {
  for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
  globalThis.fetch=original;clearInterval(keep);rmSync(tmp,{recursive:true,force:true});

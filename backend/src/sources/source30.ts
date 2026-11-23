@@ -57,7 +57,7 @@ export function createSource30Adapter(enabled:()=>boolean=()=>true, options:{fet
           return new Response(text,{status:response.status,headers:{'content-type':response.headers.get('content-type')??''}});
         };
         try {
-          const data=await extractMegaPlayDetails(page,{fetchImpl:guarded,userAgent:UA,referer:ORIGIN+'/'});
+          const data=await extractMegaPlayDetails(page,{fetchImpl:guarded,userAgent:UA,referer:ORIGIN+'/',signal});
           const tracks=subtitles(data.tracks);
           return data.sources.slice(0,2).flatMap((source):RawStreamCandidate[]=>{
             if(typeof source.url!=='string'||!isPublicMediaUrl(source.url))return [];

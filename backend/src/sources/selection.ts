@@ -88,6 +88,7 @@ export function selectPlaybackCandidates(
   single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.tier-b.tier||a.latency-b.latency||a.order-b.order);
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const ordered: typeof single = [];
+  const orderedSet = new Set<typeof single[number]>();
   const hosts = new Set<string>();
   // A verified candidate always beats an unknown one. Within each confidence
   // class, independent hosts come first — but nothing is thrown away for being
@@ -96,10 +97,10 @@ export function selectPlaybackCandidates(
     const tier = ordinarySingle.filter(item => item.alive === alive);
     for (const item of tier) {
       if (hosts.has(item.host)) continue;
-      ordered.push(item); hosts.add(item.host);
+      ordered.push(item); orderedSet.add(item); hosts.add(item.host);
     }
     for (const item of tier) {
-      if (!ordered.includes(item)) ordered.push(item);
+      if (!orderedSet.has(item)) { ordered.push(item); orderedSet.add(item); }
     }
   }
   const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);

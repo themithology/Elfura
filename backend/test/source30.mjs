@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {createSource30Adapter} from '../../dist/backend/sources/source30.js';
+import {extractMegaPlayDetails} from '../../dist/backend/vendor/anivexa/extractors/megaplay-safe.js';
 import {SourceRegistry} from '../../dist/backend/sources/registry.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';

@@ -27,6 +27,8 @@ import os from 'node:os';
 import type { BackendConfig } from './config.js';
 import { RESOLVER_AUTH_HEADER, isPrivateResolverUrl, type PlaybackRequest } from './playback-resolver.js';
 import { SourceRegistry } from './sources/registry.js';
+import { ResolverCoalescer } from './resolver-coalescer.js';
+import { livenessWorkload } from './sources/liveness.js';
 
 /** Body cap: a playback request is a small JSON object, never a file. */
 const MAX_BODY_BYTES = 16 * 1024;
@@ -135,6 +137,7 @@ export function createResolverServer(options: ResolverServerOptions): {
 } {
   const { registry, token } = options;
   const log = options.log ?? console.log;
+  const coalescer = new ResolverCoalescer(request => registry.resolvePlayback(request));
 
   const server = http.createServer((req, res) => {
     void (async () => {
@@ -184,6 +187,14 @@ export function createResolverServer(options: ResolverServerOptions): {
         return;
       }
 
+      if (method(req) === 'GET' && pathname === '/resolver/api/workload') {
+        // Authenticated only; aggregate counts contain no titles, URLs or tokens.
+        sendJson(res, 200, { ok: true, uptimeSeconds: Math.round(process.uptime()),
+          memory: { rssBytes: process.memoryUsage().rss, heapUsedBytes: process.memoryUsage().heapUsed },
+          cpuMicros: process.cpuUsage(), playback: coalescer.snapshot(), probes: livenessWorkload() });
+        return;
+      }
+
       if (method(req) === 'GET' && pathname === '/resolver/api/sources') {
         sendJson(res, 200, { ok: true, sources: registry.health.snapshot(registry.listPublicSources()) });
         return;
@@ -203,6 +214,7 @@ export function createResolverServer(options: ResolverServerOptions): {
             return;
           }
           registry.health.setEnabled(id, body.enabled);
+          coalescer.invalidate();
           log(`[elfura-resolver] source ${id} ${body.enabled ? 'enabled' : 'disabled'} by operator`);
           sendJson(res, 200, { ok: true });
         } catch (error) {
@@ -224,7 +236,8 @@ export function createResolverServer(options: ResolverServerOptions): {
           return;
         }
         try {
-          const resolution = await registry.resolvePlayback(request);
+          const resolution = await coalescer.run(request);
+          if (res.destroyed || res.writableEnded) return;
           if (!resolution) {
             // Deliberately 200 with ok:false. This is the resolver's *answer*,
             // not a failure of the resolver: the caller must not confuse "this

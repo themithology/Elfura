@@ -24,6 +24,12 @@ import { extractMp4SingleAudioLanguage, extractMp4AudioByRanges } from './mp4-au
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
 import { PolicyCache } from '../memory-policy.js';
+import { ProbeGate } from './probe-gate.js';
+
+// Per-request worker pools used to multiply by the number of viewers. Bound
+// actual simultaneous upstream probes across all resolves in this process.
+const probeGate = new ProbeGate(40);
+export function livenessWorkload(): { active: number; waiting: number; limit: number } { return probeGate.snapshot(); }
 
 const DEFAULT_PROBE_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -358,6 +364,9 @@ async function runSingleProbe(
     // shared 3s network probe. Successful late results warm the liveness cache
     // for background recovery; no new request extends initial playback.
     const sig = AbortSignal.timeout(3000);
+    const release = await probeGate.acquire(sig);
+    // A saturated queue or expired budget is uncertain, never proof of death.
+    if (!release) return { alive: false, confirmedDead: false };
 
     try {
       if (cand.type === 'mp4') {
@@ -596,9 +605,10 @@ async function runSingleProbe(
       setCachedLiveness(key, ok);
       return ok;
     } catch {
-      // Timeout or transient abort is not proof of death. The filter below retains
-      // it only when no other candidate verifies healthy.
+      // Timeout or transient abort is not proof of death; keep it unverified.
       return { alive: false, confirmedDead: false };
+    } finally {
+      release();
     }
   })();
 
