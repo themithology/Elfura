@@ -57,6 +57,7 @@ import {
   createRefusingPlaybackResolver,
   createResilientPlaybackResolver,
   ResolverBackendDownError,
+  resolverBackupConfig,
   resolverConfig,
   resolverFallbackReason,
   resolverIntended,
@@ -64,6 +65,7 @@ import {
   type PlaybackResolution,
   type PlaybackResolver,
 } from './playback-resolver.js';
+import { createBalancedPlaybackResolver } from './playback-resolver-balanced.js';
 import {
   InvalidRequestError,
   RemotePlaybackResolver,
@@ -232,8 +234,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
+    const primaryRemote = new RemotePlaybackResolver(remote.url, remote.token);
+    const extras = (['backup', 'third', 'fourth'] as const)
+      .map(slot => resolverBackupConfig(process.env, slot))
+      .filter((x): x is { url: string; token: string } => Boolean(x))
+      .map(x => new RemotePlaybackResolver(x.url, x.token));
+    const remoteResolver = extras.length
+      ? createBalancedPlaybackResolver(primaryRemote, extras[0], { additionalClients: extras.slice(1) })
+      : primaryRemote;
     resolver = createResilientPlaybackResolver({
-      remote: new RemotePlaybackResolver(remote.url, remote.token),
+      remote: remoteResolver,
       onFallback: (detail) =>
         console.warn(
           `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
