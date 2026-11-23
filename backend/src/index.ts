@@ -588,8 +588,10 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       if (pathname === '/roxy/api/proxies' && method === 'POST') {
         const body = await readJsonBody(req);
         const created = proxyPool.add({
+          kind: body?.kind === 'fetch-api' ? 'fetch-api' : 'connect',
           label: typeof body?.label === 'string' ? body.label : undefined,
           url: typeof body?.url === 'string' ? body.url : '',
+          apiKey: typeof body?.apiKey === 'string' ? body.apiKey : undefined,
           weight: typeof body?.weight === 'number' ? body.weight : undefined,
         });
         if (!created) { reply(400, { error: 'Invalid proxy URL (must be http:// or https://)' }); return; }
@@ -627,7 +629,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         const id = typeof body?.id === 'string' ? body.id : '';
         const entry = proxyPool.getById(id);
         if (!entry) { reply(404, { error: 'Proxy not found' }); return; }
-        const result = await testProxyConnection(entry.url);
+        const result = await testProxyConnection(entry.url, entry.kind, entry.apiKey);
         entry.stats.lastCheckedAt = Date.now();
         entry.stats.lastLatencyMs = result.latencyMs;
         entry.stats.lastEgressIp = result.egressIp;

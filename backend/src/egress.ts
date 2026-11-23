@@ -28,7 +28,7 @@ import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
 import { proxyPool } from './proxy-pool.js';
 
-export async function testProxyConnection(proxyUrl: string): Promise<{
+export async function testProxyConnection(proxyUrl: string, kind: 'connect' | 'fetch-api' = 'connect', apiKey?: string): Promise<{
   ok: boolean;
   latencyMs: number;
   egressIp: string | null;
@@ -41,11 +41,21 @@ export async function testProxyConnection(proxyUrl: string): Promise<{
   }
   let agent: import('undici').Dispatcher | undefined;
   try {
-    agent = new undici.ProxyAgent(proxyUrl);
-    const res = await undici.fetch('https://api.ipify.org?format=json', {
-      dispatcher: agent,
-      signal: AbortSignal.timeout(8000),
-    });
+    let res: Awaited<ReturnType<typeof undici.fetch>>;
+    if (kind === 'fetch-api') {
+      const endpoint = new URL(proxyUrl);
+      endpoint.searchParams.set('url', 'https://api.ipify.org?format=json');
+      res = await undici.fetch(endpoint.toString(), {
+        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
+        signal: AbortSignal.timeout(8000),
+      });
+    } else {
+      agent = new undici.ProxyAgent(proxyUrl);
+      res = await undici.fetch('https://api.ipify.org?format=json', {
+        dispatcher: agent,
+        signal: AbortSignal.timeout(8000),
+      });
+    }
     const latencyMs = Math.max(1, Date.now() - started);
     if (!res.ok) {
       return { ok: false, latencyMs, egressIp: null, error: `HTTP ${res.status}` };
@@ -458,14 +468,28 @@ export async function installEgressProfile(log: (line: string) => void = console
     }
 
     const pickedProxy = proxyPool.pick();
-    let dispatcher: import('undici').Dispatcher = pickedProxy ? getProxyDispatcher(pickedProxy.url) : directAgent;
+    const method = (firstInit as { method?: string }).method;
+    const isFetchApi = pickedProxy?.kind === 'fetch-api' && (!method || String(method).toUpperCase() === 'GET');
+    let dispatcher: import('undici').Dispatcher = (pickedProxy && !isFetchApi) ? getProxyDispatcher(pickedProxy.url) : directAgent;
     const proxyStart = pickedProxy ? Date.now() : 0;
     let response: FetchResult | null = null;
     try {
-      response = await fetch(normalized.url, {
-        ...firstInit,
-        dispatcher,
-      } as never);
+      if (isFetchApi && pickedProxy) {
+        const endpoint = new URL(pickedProxy.url);
+        endpoint.searchParams.set('url', normalized.url);
+        const apiHeaders: Record<string, string> = {};
+        if (pickedProxy.apiKey) apiHeaders['x-api-key'] = pickedProxy.apiKey;
+        response = await fetch(endpoint.toString(), {
+          ...firstInit,
+          headers: apiHeaders,
+          dispatcher: directAgent,
+        } as never);
+      } else {
+        response = await fetch(normalized.url, {
+          ...firstInit,
+          dispatcher,
+        } as never);
+      }
       if (pickedProxy) {
         proxyPool.recordOutcome(pickedProxy.id, {
           ok: response.status < 400,

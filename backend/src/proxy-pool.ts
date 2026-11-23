@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export type ProxyMode = 'direct' | 'proxy-pool' | 'hybrid';
+export type ProxyKind = 'connect' | 'fetch-api';
 
 export interface ProxyStats {
   requests: number;
@@ -20,8 +21,10 @@ export interface ProxyStats {
 
 export interface ProxyEntry {
   id: string;
+  kind: ProxyKind;
   label: string;
   url: string;
+  apiKey?: string;
   enabled: boolean;
   weight: number;
   createdAt: number;
@@ -30,6 +33,7 @@ export interface ProxyEntry {
 
 export interface PublicProxyEntry {
   id: string;
+  kind: ProxyKind;
   label: string;
   maskedUrl: string;
   enabled: boolean;
@@ -42,8 +46,10 @@ interface PersistedProxyPool {
   mode: ProxyMode;
   proxies: Array<{
     id: string;
+    kind?: ProxyKind;
     label: string;
     url: string;
+    apiKey?: string;
     enabled: boolean;
     weight: number;
     createdAt: number;
@@ -111,8 +117,10 @@ class ProxyPoolManager {
           .filter((p) => p && typeof p.url === 'string' && validateProxyUrl(p.url))
           .map((p) => ({
             id: typeof p.id === 'string' && p.id ? p.id : crypto.randomBytes(6).toString('hex'),
+            kind: p.kind === 'fetch-api' ? 'fetch-api' : 'connect',
             label: typeof p.label === 'string' && p.label.trim() ? p.label.trim().slice(0, 48) : 'Proxy',
             url: validateProxyUrl(p.url)!,
+            ...(typeof p.apiKey === 'string' && p.apiKey ? { apiKey: p.apiKey } : {}),
             enabled: p.enabled !== false,
             weight: Number.isFinite(p.weight) && p.weight > 0 ? Math.min(10, Math.round(p.weight)) : 1,
             createdAt: typeof p.createdAt === 'number' ? p.createdAt : Date.now(),
@@ -131,8 +139,10 @@ class ProxyPoolManager {
         mode: this.mode,
         proxies: this.entries.map((e) => ({
           id: e.id,
+          kind: e.kind,
           label: e.label,
           url: e.url,
+          ...(e.apiKey ? { apiKey: e.apiKey } : {}),
           enabled: e.enabled,
           weight: e.weight,
           createdAt: e.createdAt,
@@ -172,6 +182,7 @@ class ProxyPoolManager {
       status429 += e.stats.status429;
       return {
         id: e.id,
+        kind: e.kind,
         label: e.label,
         maskedUrl: maskProxyUrl(e.url),
         enabled: e.enabled,
@@ -187,13 +198,17 @@ class ProxyPoolManager {
     };
   }
 
-  add(input: { label?: string; url: string; weight?: number }): PublicProxyEntry | null {
+  add(input: { kind?: ProxyKind; label?: string; url: string; apiKey?: string; weight?: number }): PublicProxyEntry | null {
     const validUrl = validateProxyUrl(input.url);
     if (!validUrl) return null;
+    const kind: ProxyKind = input.kind === 'fetch-api' ? 'fetch-api' : 'connect';
+    const apiKey = typeof input.apiKey === 'string' && input.apiKey.trim() ? input.apiKey.trim() : undefined;
     const entry: ProxyEntry = {
       id: crypto.randomBytes(6).toString('hex'),
+      kind,
       label: (input.label || '').trim().slice(0, 48) || `Proxy ${this.entries.length + 1}`,
       url: validUrl,
+      ...(apiKey ? { apiKey } : {}),
       enabled: true,
       weight: Number.isFinite(input.weight) && (input.weight ?? 1) > 0 ? Math.min(10, Math.round(input.weight!)) : 1,
       createdAt: Date.now(),
@@ -203,6 +218,7 @@ class ProxyPoolManager {
     this.save();
     return {
       id: entry.id,
+      kind: entry.kind,
       label: entry.label,
       maskedUrl: maskProxyUrl(entry.url),
       enabled: entry.enabled,
@@ -228,6 +244,7 @@ class ProxyPoolManager {
     this.save();
     return {
       id: entry.id,
+      kind: entry.kind,
       label: entry.label,
       maskedUrl: maskProxyUrl(entry.url),
       enabled: entry.enabled,
