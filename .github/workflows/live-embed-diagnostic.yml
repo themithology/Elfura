@@ -1,0 +1,18 @@
+name: Live embed diagnostic
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: [backend/test/live-embed-diagnostic.mjs, .github/workflows/live-embed-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/live-embed-diagnostic.mjs
