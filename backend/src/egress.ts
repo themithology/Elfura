@@ -23,10 +23,51 @@
  *       it, but a metered provider bills every request, and discovery is bursty.
  */
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
-import { installNetTap } from './sources/net-tap.js';
 import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
+import { proxyPool } from './proxy-pool.js';
+
+export async function testProxyConnection(proxyUrl: string): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  egressIp: string | null;
+  error: string | null;
+}> {
+  const started = Date.now();
+  const undici = await loadUndici();
+  if (!undici) {
+    return { ok: false, latencyMs: Date.now() - started, egressIp: null, error: 'undici unavailable' };
+  }
+  let agent: import('undici').Dispatcher | undefined;
+  try {
+    agent = new undici.ProxyAgent(proxyUrl);
+    const res = await undici.fetch('https://api.ipify.org?format=json', {
+      dispatcher: agent,
+      signal: AbortSignal.timeout(8000),
+    });
+    const latencyMs = Math.max(1, Date.now() - started);
+    if (!res.ok) {
+      return { ok: false, latencyMs, egressIp: null, error: `HTTP ${res.status}` };
+    }
+    const data = (await res.json().catch(() => null)) as { ip?: string } | null;
+    return {
+      ok: true,
+      latencyMs,
+      egressIp: typeof data?.ip === 'string' ? data.ip : null,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      latencyMs: Math.max(1, Date.now() - started),
+      egressIp: null,
+      error: (err as Error)?.message?.slice(0, 120) || 'connection failed',
+    };
+  } finally {
+    await (agent as { close?: () => Promise<void> } | undefined)?.close?.().catch(() => {});
+  }
+}
 
 /** A ranged request is media, not discovery: never buffered, never retried. */
 function isMediaRequest(url: string, init: Record<string, unknown>): boolean {
@@ -269,6 +310,16 @@ export async function installEgressProfile(log: (line: string) => void = console
     return false;
   }
 
+  const dynamicAgents = new Map<string, import('undici').Dispatcher>();
+  const getProxyDispatcher = (proxyUrl: string): import('undici').Dispatcher => {
+    let agent = dynamicAgents.get(proxyUrl);
+    if (!agent) {
+      agent = new undici.ProxyAgent(proxyUrl);
+      dynamicAgents.set(proxyUrl, agent);
+    }
+    return agent;
+  };
+
   const fetch = undici.fetch;
   type FetchResult = Awaited<ReturnType<typeof fetch>>;
 
@@ -281,9 +332,15 @@ export async function installEgressProfile(log: (line: string) => void = console
    * 302 ourselves: the Worker has already resolved the chain, so a 3xx reaching
    * this point is the target's real answer.
    */
-  // The relay hop uses the imported undici fetch directly, never the patched
-  // global fetch. A process-wide in-flight guard would make unrelated concurrent
-  // discovery requests silently bypass the relay while that hop is pending.
+  /**
+   * Loop guard. In production the Worker is a separate service, but when the relay
+   * is reachable from this same process — a test harness, or an operator pointing
+   * it at their own server — the hop to the Worker goes through this patched
+   * global fetch, which relays again, forever. While the relay hop is in flight the
+   * flag makes the wrapper pass everything straight to undici.
+   */
+  let relayInFlight = 0;
+
   const relayFetch = async (base: string, url: string, init: unknown, timeoutMs = 20_000): Promise<FetchResult> => {
     const options = (init ?? {}) as {
       method?: string;
@@ -310,11 +367,17 @@ export async function installEgressProfile(log: (line: string) => void = console
       // the relay the body has to survive, and it is small enough to inline.
       headers['x-elfura-body'] = Buffer.from(options.body as string).toString('base64').slice(0, 8192);
     }
-    const response = (await fetch(base, {
-      headers,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
-    } as never)) as FetchResult;
+    relayInFlight += 1;
+    let response: FetchResult;
+    try {
+      response = (await fetch(base, {
+        headers,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
+      } as never)) as FetchResult;
+    } finally {
+      relayInFlight -= 1;
+    }
     // The Worker answers its own failures with a JSON body and this header. It is
     // the difference between "the provider refused the Worker" (a 403 with no
     // marker: try the next egress) and "this Worker rejected us" (a bad token:
@@ -331,12 +394,9 @@ export async function installEgressProfile(log: (line: string) => void = console
 
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
+    if (relayInFlight > 0) return previousFetch(input as never, init as never);
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
-
-    // A request with an explicit guarded dispatcher must resolve and connect
-    // locally through that dispatcher, not a remote Worker or proxy.
-    if (normalized.init.dispatcher) return fetch(normalized.url, normalized.init as never);
 
     if (isMediaRequest(normalized.url, normalized.init)) {
       return previousFetch(input as never, init as never);
@@ -397,15 +457,33 @@ export async function installEgressProfile(log: (line: string) => void = console
       }
     }
 
-    // The Worker relay is the only proxying mechanism. If it is unset or paused
-    // the request goes direct over the browser profile; there is no local proxy
-    // list to rotate through, because rotating one caused a metered provider to
-    // flag this server for a request burst it never actually issued.
-    let dispatcher: import('undici').Dispatcher = directAgent;
-    let response: FetchResult | null = await fetch(normalized.url, {
-      ...firstInit,
-      dispatcher: directAgent,
-    } as never);
+    const pickedProxy = proxyPool.pick();
+    let dispatcher: import('undici').Dispatcher = pickedProxy ? getProxyDispatcher(pickedProxy.url) : directAgent;
+    const proxyStart = pickedProxy ? Date.now() : 0;
+    let response: FetchResult | null = null;
+    try {
+      response = await fetch(normalized.url, {
+        ...firstInit,
+        dispatcher,
+      } as never);
+      if (pickedProxy) {
+        proxyPool.recordOutcome(pickedProxy.id, {
+          ok: response.status < 400,
+          status: response.status,
+          latencyMs: Date.now() - proxyStart,
+          error: response.status >= 400 ? `HTTP ${response.status}` : undefined,
+        });
+      }
+    } catch (err) {
+      if (pickedProxy) {
+        proxyPool.recordOutcome(pickedProxy.id, {
+          ok: false,
+          latencyMs: Date.now() - proxyStart,
+          error: (err as Error)?.message || 'fetch failed',
+        });
+      }
+      throw err;
+    }
 
     // 403 is what Cloudflare answers to a request it dislikes. One retry with a
     // plainer fingerprint costs nothing when it fails and is a source back when
@@ -434,9 +512,6 @@ export async function installEgressProfile(log: (line: string) => void = console
   }) as typeof fetch;
 
   globalThis.fetch = profiledFetch;
-  // This layer uses undici directly, so a tap installed before it cannot see
-  // discovery requests. Reattach outside it after the asynchronous install.
-  installNetTap();
   installed = true;
   const bootRelay = currentRelayUrl();
   log(

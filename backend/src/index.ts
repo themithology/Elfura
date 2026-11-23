@@ -36,7 +36,8 @@ import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests
 import { checkRelay, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
-import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
+import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe, testProxyConnection } from './egress.js';
+import { proxyPool, type ProxyMode } from './proxy-pool.js';
 import { clearRelayUrl, currentRelayUrl, readRelayToken, relaySource, saveRelayUrl } from './relay-config.js';
 import { runtimeSummary } from './compat.js';
 import {
@@ -57,7 +58,6 @@ import {
   createResilientPlaybackResolver,
   ResolverBackendDownError,
   resolverConfig,
-  resolverBackupConfig,
   resolverFallbackReason,
   resolverIntended,
   ResolverRefusedError,
@@ -69,7 +69,6 @@ import {
   RemotePlaybackResolver,
   ResolverUnavailableError,
 } from './playback-resolver-remote.js';
-import { createBalancedPlaybackResolver } from './playback-resolver-balanced.js';
 import { createResolverServer, resolverPort } from './resolver-server.js';
 import { buildDiagnoseBundle } from './diagnose-bundle.js';
 import { handleStreamRelay } from './relay.js';
@@ -199,10 +198,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   if (dotEnv.applied.length > 0 && process.env.ELFURA_QUIET_ENV !== '1') {
     console.log(`[elfura-backend] .env published to the process: ${dotEnv.applied.join(', ')}`);
   }
-  const overriddenResolverSettings = dotEnv.skipped.filter(key => key.startsWith('ELFURA_RESOLVER_') || key === 'ELFURA_SECRET');
-  if (overriddenResolverSettings.length) {
-    console.warn(`[elfura-env] hosting environment overrides .env for: ${overriddenResolverSettings.join(', ')}. Check Pterodactyl startup variables.`);
-  }
 
   // May set ELFURA_RESOLVER_URL, so it runs before the resolver is chosen below.
   startAutostartResolver(overrides);
@@ -237,30 +232,12 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
-    const configs = [remote];
-    for (const which of ['backup', 'third', 'fourth'] as const) {
-      const extra = resolverBackupConfig(process.env, which);
-      if (!extra) continue;
-      const normalized = (url: string) => { try { return new URL(url).href.replace(/\/+$/, ''); } catch { return url; } };
-      if (configs.some(config => normalized(config.url) === normalized(extra.url))) {
-        console.warn(`[elfura-resolver] ${which} URL duplicates another resolver; ignoring it.`);
-      } else configs.push(extra);
-    }
-    const clients = configs.map(config => new RemotePlaybackResolver(config.url, config.token));
-    const pool = clients.length > 1
-      ? createBalancedPlaybackResolver(clients[0], clients[1], { additionalClients: clients.slice(2) })
-      : clients[0];
-    if (clients.length > 1) {
-      console.log(`[elfura-resolver] ${clients.length} resolver URLs configured: round-robin and periodic health checks enabled; no speculative hedges. Check Source health in /roxy.`);
-    } else {
-      console.log('[elfura-resolver] using 1 remote resolver; no load balancing. Set ELFURA_RESOLVER_BACKUP_URL and restart to enable it.');
-    }
     resolver = createResilientPlaybackResolver({
-      remote: pool,
+      remote: new RemotePlaybackResolver(remote.url, remote.token),
       onFallback: (detail) =>
         console.warn(
-          `[elfura-resolver] resolver call failed (${detail}). Reporting resolver unavailable for this request; ` +
-            'NOT scraping locally - this node only serves video. ' +
+          `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
+            'NOT retrying and NOT scraping locally - this node only serves video. ' +
             'Check /api/v1/resolver-test if this repeats.',
         ),
       onRecovered: () => console.log('[elfura-resolver] resolver is answering again.'),
@@ -602,6 +579,61 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           const report = await reportEgress();
           reply(200, report);
         } catch { reply(500, { error: 'Egress check failed' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/proxies' && method === 'GET') {
+        reply(200, proxyPool.listPublic());
+        return;
+      }
+      if (pathname === '/roxy/api/proxies' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const created = proxyPool.add({
+          label: typeof body?.label === 'string' ? body.label : undefined,
+          url: typeof body?.url === 'string' ? body.url : '',
+          weight: typeof body?.weight === 'number' ? body.weight : undefined,
+        });
+        if (!created) { reply(400, { error: 'Invalid proxy URL (must be http:// or https://)' }); return; }
+        reply(200, { ok: true, proxy: created, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/mode' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const mode = body?.mode as ProxyMode;
+        if (mode !== 'direct' && mode !== 'proxy-pool' && mode !== 'hybrid') {
+          reply(400, { error: 'Invalid mode' }); return;
+        }
+        proxyPool.setMode(mode);
+        reply(200, { ok: true, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/toggle' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        const enabled = typeof body?.enabled === 'boolean' ? body.enabled : undefined;
+        const updated = proxyPool.update(id, { enabled });
+        if (!updated) { reply(404, { error: 'Proxy not found' }); return; }
+        reply(200, { ok: true, proxy: updated, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/delete' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        if (!proxyPool.remove(id)) { reply(404, { error: 'Proxy not found' }); return; }
+        reply(200, { ok: true, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        const entry = proxyPool.getById(id);
+        if (!entry) { reply(404, { error: 'Proxy not found' }); return; }
+        const result = await testProxyConnection(entry.url);
+        entry.stats.lastCheckedAt = Date.now();
+        entry.stats.lastLatencyMs = result.latencyMs;
+        entry.stats.lastEgressIp = result.egressIp;
+        entry.stats.lastError = result.error;
+        entry.stats.healthy = result.ok;
+        reply(200, { ok: result.ok, result, pool: proxyPool.listPublic() });
         return;
       }
       if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }
@@ -1064,10 +1096,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
-          retryMissing: url.searchParams.get('late') === '1' && url.searchParams.get('retryMissing') === '1',
-          // Only used locally to keep this player's late-join requests on the
-          // resolver that owns its in-memory results; never sent to the VPS.
-          lateAffinityKey: `${mediaType}|${tmdbId}|${season ?? ''}|${episode ?? ''}|${anilistId ?? ''}|${anilistEpisode ?? ''}|${(nonce ?? '').slice(0, 128)}`,
         });
       } catch (error) {
         // A resolver that cannot be reached is an outage, not an answer. Saying
@@ -1378,8 +1406,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     sendJson(res, 404, { ok: false, error: 'not found' });
   };
 
-  server.on('close', () => { roxy.close(); resolver.close?.(); });
-  return { server, cfg, registry, selfTestLocal: resolver.kind === 'local' };
+  server.on('close', () => roxy.close());
+  return { server, cfg, registry };
 }
 
 /** Compact memory readout: MB with one decimal, cheap enough for a health probe. */
@@ -1443,7 +1471,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
   // own lookups through public DNS so the adapters can work at all.
   void installDnsRescue().then(() => installEgressProfile());
-  const { server, cfg, registry, selfTestLocal } = createBackendServer(overrides);
+  const { server, cfg, registry } = createBackendServer(overrides);
   // A port that cannot be bound is not a survivable state: the guards below
   // deliberately keep the process alive through unexpected throws, which would
   // turn EADDRINUSE into a container that reports itself healthy while serving
@@ -1479,13 +1507,9 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
         `(${state.enabled.length}/${state.enabled.length + state.disabled.length} sources${named}; roxy: enabled)`,
     );
     if (process.env.ELFURA_SELF_TEST !== '0') {
-      if (selfTestLocal) {
-        void import('./sources/self-test.js')
-          .then((mod) => mod.runSourceSelfTest(registry))
-          .catch(() => {});
-      } else {
-        console.log('[elfura-selftest] skipped on streaming node: configured resolver handles discovery; local sources were not tested');
-      }
+      void import('./sources/self-test.js')
+        .then((mod) => mod.runSourceSelfTest(registry))
+        .catch(() => {});
     }
     if (state.disabled.length) {
       console.warn(
@@ -1618,13 +1642,6 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
       console.log(`[elfura-resolver] verbose: http://${cfg.host}:${port} · ${registry.listPublicSources().length} sources`);
     }
     console.log(describeMemoryPolicy());
-    // Provider probing is opt-in on a resolver, so deploying an update does not
-    // unexpectedly create discovery traffic. This runs on the resolver itself.
-    if (process.env.ELFURA_SELF_TEST === '1') {
-      void import('./sources/self-test.js')
-        .then((mod) => mod.runSourceSelfTest(registry))
-        .catch(() => {});
-    }
     if (process.env.ELFURA_RESOLVER_VERBOSE === '1') {
       console.log(`[elfura-resolver] point the media server at it with ELFURA_RESOLVER_URL=http://127.0.0.1:${port}`);
     }
