@@ -1,35 +1,13 @@
-import { chromium } from 'playwright-core';
-import chromiumPkg from '@sparticuz/chromium';
-
-const url = 'https://embed.theogpiratebot.to/embed/movie/1368337';
-const executablePath = await chromiumPkg.executablePath();
-const browser = await chromium.launch({ executablePath, args: chromiumPkg.args, headless: true });
-const page = await browser.newPage();
-
-const events = [];
-const log = line => { console.log(line); events.push(line); };
-page.on('console', msg => {
-  if (msg.type() === 'error' || /fatal|error|fail|503|403|404|hls|dash/i.test(msg.text())) {
-    log(`[console.${msg.type()}] ${msg.text()}`);
-  }
-});
-page.on('response', async res => {
-  const s = res.status();
-  if (s >= 400 || res.url().includes('/api/v1/')) {
-    let extra = '';
-    if (s >= 500) {
-      extra = ' :: ' + (await res.text().catch(() => '')).slice(0, 160);
-    }
-    log(`[http ${s}] ${res.url().slice(0, 140)}${extra}`);
-  }
-});
-page.on('requestfailed', req => {
-  log(`[req-failed] ${req.url().slice(0, 140)} :: ${req.failure()?.errorText}`);
-});
-
-log(`Navigating to ${url}`);
-await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-await page.waitForTimeout(20000);
-log(`Title=${await page.title()} BodyLen=${(await page.evaluate(() => document.body?.innerText || '')).length}`);
-await browser.close();
-console.log(`::notice::${events.slice(0, 25).join(' | ')}`);
+const endpoint = new URL('/fetch', 'http://opal.coffaie.online:4011');
+endpoint.searchParams.set('url', 'https://api.ipify.org?format=json');
+const started = Date.now();
+try {
+  const res = await fetch(endpoint, {
+    headers: { 'x-api-key': 'pussymaxxing' },
+    signal: AbortSignal.timeout(15000),
+  });
+  const body = await res.text();
+  console.log(`::notice::status=${res.status} latency=${Date.now() - started}ms body=${body.slice(0, 200)}`);
+} catch (err) {
+  console.log(`::notice::error=${(err)?.message || err} latency=${Date.now() - started}ms`);
+}
