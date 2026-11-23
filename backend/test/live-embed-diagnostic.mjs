@@ -1,18 +1,12 @@
-const endpoint = new URL('/fetch', 'http://opal.coffaie.online:4011');
-endpoint.searchParams.set('url', 'https://api.ipify.org?format=json');
-const results = [];
-for (let attempt = 1; attempt <= 3; attempt++) {
+const out = [];
+for (const path of ['/api/v1/resolver-test', '/api/v1/playback?type=movie&tmdb=550']) {
   const started = Date.now();
   try {
-    const res = await fetch(endpoint, {
-      headers: { 'x-api-key': 'pussymaxxing' },
-      signal: AbortSignal.timeout(15000),
-    });
+    const res = await fetch('https://embed.theogpiratebot.to' + path, { signal: AbortSignal.timeout(15000) });
     const body = await res.text();
-    results.push(`#${attempt}: status=${res.status} ${Date.now() - started}ms ${body.slice(0, 120)}`);
-    if (res.ok) break;
+    out.push(`${path}: status=${res.status} (${Date.now() - started}ms) ${body.slice(0, 250)}`);
   } catch (err) {
-    results.push(`#${attempt}: error=${(err)?.message || err} ${Date.now() - started}ms`);
+    out.push(`${path}: error=${(err)?.message || err}`);
   }
 }
-console.log(`::notice::${results.join(' | ')}`);
+console.log(`::notice::${out.join(' || ')}`);
