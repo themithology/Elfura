@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-core';
 import chromiumPkg from '@sparticuz/chromium';
 
-const url = 'https://embed.theogpiratebot.to/embed/movie/550';
+const url = 'https://embed.theogpiratebot.to/embed/movie/1368337';
 const executablePath = await chromiumPkg.executablePath();
 const browser = await chromium.launch({ executablePath, args: chromiumPkg.args, headless: true });
 const page = await browser.newPage();
