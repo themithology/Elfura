@@ -63,6 +63,29 @@ const RELAY_SHAPED =
 
 const relayShaped = (host) => RELAY_SHAPED.test(host);
 
+/**
+ * The registrable domain a host belongs to — the unit a CDN actually shares.
+ *
+ * `sacdn.hakunaymatata.com`, `bcdn.hakunaymatata.com` and
+ * `sbcdnw.hakunaymatata.com` are three front-ends for one network. Comparing
+ * exact hostnames calls them three independent sources, which is how a candidate
+ * "passes" by choosing a subdomain nobody has used yet. The comparison is made
+ * on what survives the CDN prefix.
+ *
+ * A two-label public suffix (`co.uk`, `com.br`) is handled by keeping three
+ * labels when the last two are short, which is crude but is the honest direction
+ * to be wrong in: it errs toward calling two hosts related.
+ */
+function registrableDomain(host) {
+  const labels = String(host).toLowerCase().split('.').filter(Boolean);
+  if (labels.length <= 2) return labels.join('.');
+  const tld = labels[labels.length - 1];
+  const sld = labels[labels.length - 2];
+  // country-code second level such as co.uk / com.au / co.jp
+  const compound = tld.length === 2 && /^(?:co|com|net|org|gov|edu|ac)$/.test(sld);
+  return labels.slice(compound ? -3 : -2).join('.');
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Lanes under test.
  *
@@ -321,6 +344,37 @@ async function walkPlaylist(mediaUrl, headers, depth = 0, seen = new Set()) {
   return { hosts, bytes, segments: segments.length, error, keyHosts };
 }
 
+/**
+ * Media families this repo has already identified, whether or not they are on
+ * the board right now.
+ *
+ * The board alone is not enough: greybox serves its relative rows through its
+ * own origin, so `hakunaymatata` does not appear in its media hosts — and a
+ * candidate on that family would then look independent. This list is the memory
+ * the probe needs, and every entry here is backed by a measurement recorded in
+ * research/.
+ */
+const KNOWN_FAMILIES = [
+  {
+    domain: 'hakunaymatata.com',
+    hosts: ['sacdn.hakunaymatata.com', 'bcdn.hakunaymatata.com', 'bcdnt.hakunaymatata.com', 'sbcdnw.hakunaymatata.com'],
+    behind: ['greybox (absolute rows)', 'vidora', 'vidlink', 'AniVortex'],
+    evidence: 'research/measurements.md, research/anivortex-audit.md, research/independence.md',
+  },
+  {
+    domain: 'hscow.com',
+    hosts: ['img1.hscow.com', 'img.hscow.com'],
+    behind: ['citadel (source-1, on the board)'],
+    evidence: 'research/measurements.md',
+  },
+  {
+    domain: 'fcxmb.com',
+    hosts: ['img1.fcxmb.com', 'img.fcxmb.com'],
+    behind: ['citadel (source-1, on the board)'],
+    evidence: 'research/measurements.md',
+  },
+];
+
 /* ────────────────────────────────────────────────────────────────────────────
  * The board: what the approved sources actually resolve to, today.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -372,11 +426,21 @@ const board = await boardHosts();
 for (const source of board) {
   console.log(`  ${source.id}: ${source.hosts.length} media host(s) :: ${source.hosts.join(', ') || 'none'}`);
 }
-const boardByHost = new Map();
+// Indexed by REGISTRABLE DOMAIN, because that is the unit a CDN shares.
+const boardByDomain = new Map();
+// Known families first: they count as "already spoken for" even when nothing on
+// the board currently resolves to them.
+for (const family of KNOWN_FAMILIES) {
+  const entry = { sources: family.behind, hosts: family.hosts, knownFamily: true, evidence: family.evidence };
+  boardByDomain.set(family.domain, entry);
+}
 for (const source of board) {
   for (const host of source.hosts) {
-    if (!boardByHost.has(host)) boardByHost.set(host, []);
-    boardByHost.get(host).push(source.id);
+    const domain = registrableDomain(host);
+    if (!boardByDomain.has(domain)) boardByDomain.set(domain, { sources: [], hosts: [] });
+    const entry = boardByDomain.get(domain);
+    if (!entry.sources.includes(source.id)) entry.sources.push(source.id);
+    if (!entry.hosts.includes(host)) entry.hosts.push(host);
   }
 }
 
@@ -428,9 +492,21 @@ for (const lane of CANDIDATES) {
   record.hosts = [...laneHosts];
   record.bytes = record.titles.reduce((sum, t) => sum + t.bytes, 0);
   record.playable = record.bytes > 0;
+  // A DOMAIN match is the real finding. A hostname-only match is reported too,
+  // so an exact collision is never hidden by the coarser check.
   record.shared = record.hosts
-    .filter((host) => boardByHost.has(host))
-    .map((host) => ({ host, withSources: boardByHost.get(host) }));
+    .filter((host) => boardByDomain.has(registrableDomain(host)))
+    .map((host) => {
+      const entry = boardByDomain.get(registrableDomain(host));
+      return {
+        host,
+        domain: registrableDomain(host),
+        exactHostMatch: entry.hosts.includes(host),
+        knownFamily: entry.knownFamily === true,
+        withSources: entry.sources,
+        boardHosts: entry.hosts,
+      };
+    });
   record.independent = record.hosts.length > 0 && record.shared.length === 0;
   candidateVerdict(record);
   candidates.push(record);
@@ -460,7 +536,13 @@ function candidateVerdict(record) {
   const parts = [];
   if (record.shared.length > 0) {
     const names = [...new Set(record.shared.flatMap((s) => s.withSources))].join(', ');
-    parts.push(`NOT independent — shares ${record.shared.length} host(s) with ${names}`);
+    const domains = [...new Set(record.shared.map((s) => s.domain))].join(', ');
+    const exact = record.shared.some((s) => s.exactHostMatch);
+    const known = record.shared.some((s) => s.knownFamily);
+    parts.push(
+      `NOT independent — its media sits on ${domains}, the same CDN ${known ? 'family' : 'domain'} as ${names}` +
+        (exact ? ' (exact host match)' : ' (different subdomain, same network)'),
+    );
   } else {
     parts.push('independent of the board');
   }
@@ -491,6 +573,20 @@ const report = {
   discoveryNotes: Object.fromEntries(DISCOVERY_NOTES),
 };
 
+// Refuse to publish a report that measured nothing. A sandbox with no egress
+// produces exactly that, and writing it would overwrite the last good verdict
+// with a file that says every source has no media hosts.
+const measuredSomething =
+  board.some((source) => source.hosts.length > 0) ||
+  candidates.some((candidate) => candidate.hosts.length > 0);
+if (!measuredSomething) {
+  console.error(
+    '\nrefusing to write a report: nothing was reachable. This machine has no egress, ' +
+      'or every lane is down. The last committed verdict is left untouched.',
+  );
+  process.exit(2);
+}
+
 await fs.writeFile(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 console.log(`\nwrote ${OUT}`);
 
@@ -517,7 +613,7 @@ lines.push('', '## Candidates', '', '| candidate | playable | hosts | shared wit
 for (const candidate of candidates) {
   lines.push(
     `| ${candidate.id} | ${candidate.playable ? `yes, ${candidate.bytes}B` : 'no'} | ${candidate.hosts.length} | ` +
-      `${candidate.shared.map((s) => `\`${s.host}\` (${s.withSources.join(',')})`).join('<br>') || '—'} | ${candidate.verdict} |`,
+      `${candidate.shared.map((s) => `\`${s.host}\` → \`${s.domain}\` (${s.withSources.join(',')})`).join('<br>') || '—'} | ${candidate.verdict} |`,
   );
 }
 const missing = asked.filter((id) => !candidates.some((c) => c.id === id));
