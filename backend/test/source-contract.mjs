@@ -41,7 +41,11 @@ for (const source of APPROVED_SOURCES) {
 
     let resolved = null;
     let lastError = null;
+    // "No candidate" is not a diagnosis. Record what each probe actually did, so
+    // a red gate says which step failed instead of leaving the reader to guess.
+    const attempts = [];
     for (const probe of source.probes) {
+      const startedAt = Date.now();
       try {
         const result = await adapter.resolve({
           type: probe.type,
@@ -50,16 +54,23 @@ for (const source of APPROVED_SOURCES) {
           episode: probe.episode,
           signal: AbortSignal.timeout(20_000),
         });
-        if (result?.candidates?.length) {
+        const count = result?.candidates?.length ?? 0;
+        attempts.push(`${probe.type}/${probe.tmdbId}: ${count} row(s) in ${Date.now() - startedAt}ms`);
+        if (count) {
           resolved = { probe, result };
           break;
         }
       } catch (error) {
         lastError = error;
+        attempts.push(`${probe.type}/${probe.tmdbId}: ${error?.name ?? 'error'} ${error?.message ?? ''}`.trim());
       }
     }
 
-    assert(resolved, `${source.id}: resolved no candidate for any probe${lastError ? ` (${lastError.message})` : ''}`);
+    assert(
+      resolved,
+      `${source.id}: resolved no candidate for any probe${lastError ? ` (${lastError.message})` : ''}\n    ` +
+        attempts.join('\n    '),
+    );
     const { result } = resolved;
     assert(result.candidates.length > 0, `${source.id}: empty candidate list`);
 

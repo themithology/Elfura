@@ -216,6 +216,9 @@ export function citadelUrl(query: Pick<SourceQuery, 'type' | 'tmdbId'>, apiBase 
     url.searchParams.set('season', String(season));
     url.searchParams.set('episode', String(episode));
   }
+  // Time-bucketed cache buster, as the measured lane used. A CDN-cached empty
+  // body must not become "this title has no streams" for the next few minutes.
+  url.searchParams.set('cb', String(Math.floor(Date.now() / 3_000_000)));
   return url.href;
 }
 
@@ -243,7 +246,9 @@ export function createCitadelAdapter(options: CitadelOptions = {}): SourceAdapte
             Accept: 'application/json, text/plain, */*',
             Referer: referer,
           },
-          redirect: 'error',
+          // `manual`, as measured: a redirect from the provider is an answer we
+          // want to see (and refuse), not a network error to swallow.
+          redirect: 'manual',
           signal,
         });
         const body = await readJson(response, MAX_BODY_BYTES);
