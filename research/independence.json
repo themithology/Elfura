@@ -1,0 +1,154 @@
+{
+  "measuredAt": "2026-11-24T18:00:16.796Z",
+  "titles": [
+    "fight-club",
+    "inception",
+    "got-s1e1",
+    "naruto-s1e1"
+  ],
+  "board": [
+    {
+      "id": "source-1",
+      "hosts": [
+        "img1.hscow.com",
+        "img.hscow.com"
+      ],
+      "rows": [
+        {
+          "title": "fight-club",
+          "candidates": 2
+        },
+        {
+          "title": "inception",
+          "candidates": 3
+        },
+        {
+          "title": "got-s1e1",
+          "candidates": 1
+        },
+        {
+          "title": "naruto-s1e1",
+          "candidates": 1
+        }
+      ]
+    },
+    {
+      "id": "source-2",
+      "hosts": [
+        "greyboxtv.duckdns.org"
+      ],
+      "rows": [
+        {
+          "title": "fight-club",
+          "candidates": 3
+        },
+        {
+          "title": "inception",
+          "candidates": 3
+        },
+        {
+          "title": "got-s1e1",
+          "candidates": 3
+        },
+        {
+          "title": "naruto-s1e1",
+          "candidates": 3
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "id": "atlantic-vidbox",
+      "label": "Atlantic · vidbox",
+      "note": "stream.hls.lol/vidbox -> sources.Vidbox.url (fmhy-atlantic-research.mjs)",
+      "titles": [
+        {
+          "title": "fight-club",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "inception",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "got-s1e1",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        }
+      ],
+      "hosts": [],
+      "bytes": 0,
+      "playable": false,
+      "shared": [],
+      "independent": false,
+      "verdict": "no media at all — not a source yet"
+    },
+    {
+      "id": "atlantic-q62",
+      "label": "Atlantic · q62",
+      "note": "stream.hls.lol/q62 -> releases[0].master (fmhy-atlantic-research.mjs)",
+      "titles": [
+        {
+          "title": "fight-club",
+          "mediaUrls": 1,
+          "bytes": 131072,
+          "segments": 1392,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "inception",
+          "mediaUrls": 1,
+          "bytes": 131072,
+          "segments": 1481,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "got-s1e1",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "mediaUrls": 0,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [],
+          "error": null
+        }
+      ],
+      "hosts": [
+        "proxy.7movie.ws"
+      ],
+      "bytes": 262144,
+      "playable": true,
+      "shared": [],
+      "independent": true,
+      "verdict": "INDEPENDENT — no media host shared with any approved source"
+    }
+  ]
+}
