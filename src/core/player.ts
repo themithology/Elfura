@@ -62,6 +62,22 @@ export interface SubtitleTrack {
   url?: string;
 }
 
+/**
+ * A measured stream size as the viewer should read it.
+ *
+ * "1376MB" is a number from a vendor dashboard; "1.4 GB" is what a person
+ * compares against their data plan. Returns '' when the stream was never
+ * measured — an unknown size is not a size of zero, and printing "0 MB" would
+ * be a lie the viewer cannot check.
+ */
+export function formatStreamSize(bytes?: number): string {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '';
+  const gb = bytes / 1024 ** 3;
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / 1024 ** 2;
+  return mb >= 1 ? `${Math.round(mb)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
 export interface QualityLevel {
   id: number;
   height: number;
@@ -89,6 +105,18 @@ export interface SourceOption {
   /** Anime lane not confirmed reachable by the liveness probe. */
   animeUnverified?: boolean;
   audioLang?: string;
+  /**
+   * The language the provider labelled this stream with. Shown in the source
+   * picker, never treated as verified audio: only `audioLang` carries a
+   * measurement.
+   */
+  claimedAudioLang?: string;
+  /**
+   * Whole-stream size measured by the backend, in bytes. Present when the
+   * backend reached a real segment; absent means nobody measured this stream,
+   * which is not the same as a small stream.
+   */
+  measuredBytes?: number;
   /** Provider-declared source mode; separate from verified audioLang/audioTracks. */
   audioVariant?: 'sub' | 'dub';
   availableAudioLangs?: string[];
