@@ -60,3 +60,30 @@ jobs:
         run: |
           echo "The gate is red; the verdict above is committed to research/contract-last.txt."
           exit 1
+
+      # The contract proves bytes flow; this proves the board reasons about them.
+      - name: Size ranking, live
+        id: ranking
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node backend/test/citadel-live.mjs 2>&1 | tee research/ranking-last.txt
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: contract-test-only-not-a-production-secret
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+
+      - name: Record the ranking verdict
+        if: always()
+        run: |
+          git config user.name "source contract"
+          git config user.email "contract@example.invalid"
+          git add research/ranking-last.txt
+          git diff --cached --quiet || git commit -m "Size ranking verdict for $(git rev-parse --short HEAD)"
+          git push
+
+      - name: Enforce the ranking verdict
+        if: steps.ranking.outcome == 'failure'
+        run: |
+          echo "Size ranking is red; see research/ranking-last.txt."
+          exit 1
