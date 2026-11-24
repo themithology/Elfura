@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-24T18:19:40.487Z",
+  "measuredAt": "2026-11-24T18:23:46.654Z",
   "titles": [
     "fight-club",
     "inception",
@@ -32,11 +32,11 @@
         },
         {
           "title": "inception",
-          "candidates": 0
+          "candidates": 3
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 2
         },
         {
           "title": "naruto-s1e1",
@@ -166,8 +166,27 @@
       ],
       "bytes": 0,
       "playable": false,
-      "shared": [],
-      "independent": true,
+      "shared": [
+        {
+          "host": "bcdn.hakunaymatata.com",
+          "domain": "hakunaymatata.com",
+          "exactHostMatch": true,
+          "knownFamily": true,
+          "withSources": [
+            "greybox (absolute rows)",
+            "vidora",
+            "vidlink",
+            "AniVortex"
+          ],
+          "boardHosts": [
+            "sacdn.hakunaymatata.com",
+            "bcdn.hakunaymatata.com",
+            "bcdnt.hakunaymatata.com",
+            "sbcdnw.hakunaymatata.com"
+          ]
+        }
+      ],
+      "independent": false,
       "verdict": "media found but no bytes (http=429, http=429)"
     },
     {
