@@ -1,0 +1,69 @@
+name: source independence
+
+# Answers one question per candidate: is this a NEW source, or a third name for
+# a pipe already on the board?
+#
+# It exists because greybox and vidora both played and both resolved through
+# hakunaymatata CDNs and workers.dev bridges — two names, one upstream. Measuring
+# playability alone could never have told us that.
+#
+# The probe follows each candidate's playlists one hop (a relay hides its true
+# CDN one level down), collects every host involved, and compares them against
+# the hosts behind the approved sources. It never registers anything.
+#
+# Runs on a runner because the editing sandbox answers ECONNRESET from every
+# provider host.
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/38aa0193-elfura]
+    paths:
+      - 'scripts/research/independence.mjs'
+      - '.github/workflows/source-independence.yml'
+
+# The verdict is committed back to the branch; logs cannot be downloaded from
+# the sandbox that reads this repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: source-independence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: does the candidate share its media hosts with the board
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run build:backend
+
+      - name: Probe
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/independence.mjs 2>&1 | tee research/independence-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      - name: Record the verdict on the branch
+        if: always()
+        run: |
+          git config user.name "source research"
+          git config user.email "research@example.invalid"
+          git add research/independence.json research/independence.md research/independence-last.txt
+          git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "::notice title=Independence probe::see research/independence.md and research/independence-last.txt"
