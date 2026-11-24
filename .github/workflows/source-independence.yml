@@ -54,6 +54,10 @@ jobs:
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
+      # A plain `git push` here loses a race against a human push that lands
+      # while the job is running: the result is computed, then thrown away with
+      # a non-fast-forward. Rebase and retry instead — the probe result is the
+      # only evidence this job produces, so losing it wastes the whole run.
       - name: Record the verdict on the branch
         if: always()
         run: |
@@ -61,7 +65,17 @@ jobs:
           git config user.email "research@example.invalid"
           git add research/independence.json research/independence.md research/independence-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push
+          for attempt in 1 2 3 4; do
+            if git push; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push rejected (attempt $attempt); rebasing onto the branch and retrying"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $((attempt * 5))
+          done
+          echo "could not push the verdict after 4 attempts"
+          exit 1
 
       - name: Summary
         if: always()

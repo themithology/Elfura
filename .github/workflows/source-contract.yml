@@ -54,7 +54,14 @@ jobs:
           git config user.email "contract@example.invalid"
           git add research/contract-last.txt
           git diff --cached --quiet || git commit -m "Source contract verdict for $(git rev-parse --short HEAD)"
-          git push
+          for attempt in 1 2 3 4; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt $attempt); rebasing and retrying"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $((attempt * 5))
+          done
+          echo "could not push the verdict after 4 attempts"
+          exit 1
 
       - name: Enforce the verdict
         if: steps.contract.outcome == 'failure'
@@ -81,7 +88,14 @@ jobs:
           git config user.email "contract@example.invalid"
           git add research/ranking-last.txt
           git diff --cached --quiet || git commit -m "Size ranking verdict for $(git rev-parse --short HEAD)"
-          git push
+          for attempt in 1 2 3 4; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt $attempt); rebasing and retrying"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $((attempt * 5))
+          done
+          echo "could not push the verdict after 4 attempts"
+          exit 1
 
       - name: Enforce the ranking verdict
         if: steps.ranking.outcome == 'failure'

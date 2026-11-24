@@ -382,9 +382,12 @@ for (const source of board) {
 
 console.log('\n— probing candidates');
 const candidates = [];
+const asked = [];
 for (const lane of CANDIDATES) {
   if (LANE_FILTER && LANE_FILTER !== lane.id) continue;
+  asked.push(lane.id);
   const record = { id: lane.id, label: lane.label, note: lane.note, titles: [] };
+  try {
   const laneHosts = new Set();
   for (const title of TITLES) {
     const entry = { title: title.key, mediaUrls: 0, bytes: 0, segments: 0, hosts: [], error: null };
@@ -435,6 +438,14 @@ for (const lane of CANDIDATES) {
     `  ${record.id}: ${record.playable ? `${record.bytes}B proven` : 'no bytes'}, ` +
       `${record.hosts.length} host(s), ${record.shared.length} shared -> ${record.verdict}`,
   );
+  } catch (error) {
+    // One candidate crashing must not lose every other candidate's result, and
+    // it must not look like "no media". It is a defect in the probe.
+    record.verdict = `probe error: ${error?.message ?? error}`;
+    record.probeError = String(error?.stack ?? error).slice(0, 800);
+    candidates.push(record);
+    console.log(`  ${record.id}: PROBE ERROR -> ${record.verdict}`);
+  }
 }
 
 function candidateVerdict(record) {
@@ -469,6 +480,10 @@ function candidateVerdict(record) {
 const report = {
   measuredAt: startedAt,
   titles: TITLES.map((t) => t.key),
+  // A candidate silently missing from `candidates` is how the first vidlink run
+  // appeared to have "no result" when it had simply never been recorded.
+  asked,
+  answered: candidates.map((c) => c.id),
   board,
   candidates,
   // Why a lane produced nothing, per title. Shapes and status codes only; never
@@ -504,6 +519,10 @@ for (const candidate of candidates) {
     `| ${candidate.id} | ${candidate.playable ? `yes, ${candidate.bytes}B` : 'no'} | ${candidate.hosts.length} | ` +
       `${candidate.shared.map((s) => `\`${s.host}\` (${s.withSources.join(',')})`).join('<br>') || '—'} | ${candidate.verdict} |`,
   );
+}
+const missing = asked.filter((id) => !candidates.some((c) => c.id === id));
+if (missing.length > 0) {
+  lines.push('', `**WARNING: ${missing.join(', ')} was asked for and produced no record at all.**`);
 }
 if (DISCOVERY_NOTES.size > 0) {
   lines.push('', '## Why a lane produced nothing', '', '| lane / title | what arrived |', '| --- | --- |');
