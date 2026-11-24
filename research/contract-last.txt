@@ -1,4 +1,4 @@
 [elfura-citadel] movie/550: 2 row(s)
-✗ source-1: source-1: candidate url must be a proxy path, got https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expir
+✗ source-1: Failed to parse URL from http://127.0.0.1:38247https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795547951&KeyName=Signature&Signature=-epAe9V5KJpis1CJbBEqj-7dmrTJvXGZnXndvKcchSUqr5X54ldFthufAYXX2KyGwxPCzp_2JLzM1_MaoXxLAQ==
 
 1 source(s) failed the contract: source-1. Remove them from APPROVED_SOURCES or fix the adapter — a lane that cannot produce bytes is not a source.
