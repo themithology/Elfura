@@ -1,4 +1,4 @@
 [elfura-citadel] movie/550: 2 row(s)
-✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2010ms
+✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2540ms
 
 ✓ source contract: 1/1 approved source(s) produced real bytes
