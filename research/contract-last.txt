@@ -1,4 +1,9 @@
 [elfura-citadel] movie/550: 2 row(s)
-✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2200ms
+✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2368ms
+[elfura-greybox] movie/550: TimeoutError
+[elfura-greybox] tv/1399: TimeoutError
+✗ source-2: source-2: resolved no candidate for any probe
+    movie/550: 0 row(s) in 3801ms
+    tv/1399: 0 row(s) in 3801ms
 
-✓ source contract: 1/1 approved source(s) produced real bytes
+1 source(s) failed the contract: source-2. Remove them from APPROVED_SOURCES or fix the adapter — a lane that cannot produce bytes is not a source.
