@@ -36,7 +36,8 @@ import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests
 import { checkRelay, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
-import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
+import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe, testProxyConnection } from './egress.js';
+import { proxyPool, type ProxyMode } from './proxy-pool.js';
 import { clearRelayUrl, currentRelayUrl, readRelayToken, relaySource, saveRelayUrl } from './relay-config.js';
 import { runtimeSummary } from './compat.js';
 import {
@@ -56,6 +57,7 @@ import {
   createRefusingPlaybackResolver,
   createResilientPlaybackResolver,
   ResolverBackendDownError,
+  resolverBackupConfig,
   resolverConfig,
   resolverFallbackReason,
   resolverIntended,
@@ -63,6 +65,7 @@ import {
   type PlaybackResolution,
   type PlaybackResolver,
 } from './playback-resolver.js';
+import { createBalancedPlaybackResolver } from './playback-resolver-balanced.js';
 import {
   InvalidRequestError,
   RemotePlaybackResolver,
@@ -231,8 +234,16 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
+    const primaryRemote = new RemotePlaybackResolver(remote.url, remote.token);
+    const extras = (['backup', 'third', 'fourth'] as const)
+      .map(slot => resolverBackupConfig(process.env, slot))
+      .filter((x): x is { url: string; token: string } => Boolean(x))
+      .map(x => new RemotePlaybackResolver(x.url, x.token));
+    const remoteResolver = extras.length
+      ? createBalancedPlaybackResolver(primaryRemote, extras[0], { additionalClients: extras.slice(1) })
+      : primaryRemote;
     resolver = createResilientPlaybackResolver({
-      remote: new RemotePlaybackResolver(remote.url, remote.token),
+      remote: remoteResolver,
       onFallback: (detail) =>
         console.warn(
           `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
@@ -578,6 +589,63 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           const report = await reportEgress();
           reply(200, report);
         } catch { reply(500, { error: 'Egress check failed' }); }
+        return;
+      }
+      if (pathname === '/roxy/api/proxies' && method === 'GET') {
+        reply(200, proxyPool.listPublic());
+        return;
+      }
+      if (pathname === '/roxy/api/proxies' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const created = proxyPool.add({
+          kind: body?.kind === 'fetch-api' ? 'fetch-api' : 'connect',
+          label: typeof body?.label === 'string' ? body.label : undefined,
+          url: typeof body?.url === 'string' ? body.url : '',
+          apiKey: typeof body?.apiKey === 'string' ? body.apiKey : undefined,
+          weight: typeof body?.weight === 'number' ? body.weight : undefined,
+        });
+        if (!created) { reply(400, { error: 'Invalid proxy URL (must be http:// or https://)' }); return; }
+        reply(200, { ok: true, proxy: created, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/mode' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const mode = body?.mode as ProxyMode;
+        if (mode !== 'direct' && mode !== 'proxy-pool' && mode !== 'hybrid') {
+          reply(400, { error: 'Invalid mode' }); return;
+        }
+        proxyPool.setMode(mode);
+        reply(200, { ok: true, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/toggle' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        const enabled = typeof body?.enabled === 'boolean' ? body.enabled : undefined;
+        const updated = proxyPool.update(id, { enabled });
+        if (!updated) { reply(404, { error: 'Proxy not found' }); return; }
+        reply(200, { ok: true, proxy: updated, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/delete' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        if (!proxyPool.remove(id)) { reply(404, { error: 'Proxy not found' }); return; }
+        reply(200, { ok: true, pool: proxyPool.listPublic() });
+        return;
+      }
+      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === 'string' ? body.id : '';
+        const entry = proxyPool.getById(id);
+        if (!entry) { reply(404, { error: 'Proxy not found' }); return; }
+        const result = await testProxyConnection(entry.url, entry.kind, entry.apiKey);
+        entry.stats.lastCheckedAt = Date.now();
+        entry.stats.lastLatencyMs = result.latencyMs;
+        entry.stats.lastEgressIp = result.egressIp;
+        entry.stats.lastError = result.error;
+        entry.stats.healthy = result.ok;
+        reply(200, { ok: result.ok, result, pool: proxyPool.listPublic() });
         return;
       }
       if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }

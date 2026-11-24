@@ -1,0 +1,26 @@
+name: Additional anime provider research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/anime-extra-providers-research.py', '.github/workflows/anime-extra-providers-research.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned MIT research reference
+        run: |
+          git clone --quiet https://github.com/aryaniiil/anime-api.git "$RUNNER_TEMP/kuhi-reference"
+          git -C "$RUNNER_TEMP/kuhi-reference" checkout --quiet d9a785ad030d6fc6a8ad709291be9612c864449e
+      - name: Install research-only dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/kuhi-venv"
+          "$RUNNER_TEMP/kuhi-venv/bin/pip" install --quiet --disable-pip-version-check httpx fastapi uvicorn
+      - name: Survey separate sub and dub candidates
+        run: '"$RUNNER_TEMP/kuhi-venv/bin/python" backend/test/anime-extra-providers-research.py "$RUNNER_TEMP/kuhi-reference"'
+      - name: Remove temporary reference and dependencies
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/kuhi-reference" "$RUNNER_TEMP/kuhi-venv"

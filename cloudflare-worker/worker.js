@@ -107,6 +107,9 @@ function isAllowed(target, allowed) {
   } catch {
     return false;
   }
+  // Source 25's API uses this DuckDNS hostname. Allow only this exact host,
+  // not arbitrary DuckDNS names or lookalikes containing "greyboxtv".
+  if (host === 'greyboxtv.duckdns.org') return true;
   return allowed.some((entry) => host === entry || host.endsWith('.' + entry) || host.includes(entry));
 }
 

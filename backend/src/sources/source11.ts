@@ -1,5 +1,5 @@
 /** Direct VAPlayer HLS discovery. Upstream 'original' is not evidence of a
- * language: only manifest-proven multi-audio results are returned. */
+ * language; reachable single-audio streams are kept without inventing labels. */
 import { isSafeUpstreamUrl } from '../security.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
@@ -41,11 +41,8 @@ export function createSource11Adapter(enabled: () => boolean): SourceAdapter {
   return {id:'source-11',label:'Source 11',enabled,async resolve(query) {
     const start = Date.now(), raw = await fetchFromVAPlayer(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
-    const candidates = verified.candidates.filter(c => {
-      const evidence = candidateEvidence(c);
-      return !!evidence?.alive && new Set(evidence.discoveredAudioLangs ?? []).size > 1;
-    });
-    query.diag?.push({adapter:'source-11',lane:'A',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},multi=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
+    const candidates = verified.candidates.filter(c => !!candidateEvidence(c)?.alive);
+    query.diag?.push({adapter:'source-11',lane:'A',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},reachable=${candidates.length}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'A'} : c)};
   }};
 }

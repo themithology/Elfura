@@ -26,6 +26,58 @@ import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.
 import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
+import { proxyPool } from './proxy-pool.js';
+
+export async function testProxyConnection(proxyUrl: string, kind: 'connect' | 'fetch-api' = 'connect', apiKey?: string): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  egressIp: string | null;
+  error: string | null;
+}> {
+  const started = Date.now();
+  const undici = await loadUndici();
+  if (!undici) {
+    return { ok: false, latencyMs: Date.now() - started, egressIp: null, error: 'undici unavailable' };
+  }
+  let agent: import('undici').Dispatcher | undefined;
+  try {
+    let res: Awaited<ReturnType<typeof undici.fetch>>;
+    if (kind === 'fetch-api') {
+      const endpoint = new URL(proxyUrl);
+      endpoint.searchParams.set('url', 'https://api.ipify.org?format=json');
+      res = await undici.fetch(endpoint.toString(), {
+        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
+        signal: AbortSignal.timeout(8000),
+      });
+    } else {
+      agent = new undici.ProxyAgent(proxyUrl);
+      res = await undici.fetch('https://api.ipify.org?format=json', {
+        dispatcher: agent,
+        signal: AbortSignal.timeout(8000),
+      });
+    }
+    const latencyMs = Math.max(1, Date.now() - started);
+    if (!res.ok) {
+      return { ok: false, latencyMs, egressIp: null, error: `HTTP ${res.status}` };
+    }
+    const data = (await res.json().catch(() => null)) as { ip?: string } | null;
+    return {
+      ok: true,
+      latencyMs,
+      egressIp: typeof data?.ip === 'string' ? data.ip : null,
+      error: null,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      latencyMs: Math.max(1, Date.now() - started),
+      egressIp: null,
+      error: (err as Error)?.message?.slice(0, 120) || 'connection failed',
+    };
+  } finally {
+    await (agent as { close?: () => Promise<void> } | undefined)?.close?.().catch(() => {});
+  }
+}
 
 /** A ranged request is media, not discovery: never buffered, never retried. */
 function isMediaRequest(url: string, init: Record<string, unknown>): boolean {
@@ -268,6 +320,16 @@ export async function installEgressProfile(log: (line: string) => void = console
     return false;
   }
 
+  const dynamicAgents = new Map<string, import('undici').Dispatcher>();
+  const getProxyDispatcher = (proxyUrl: string): import('undici').Dispatcher => {
+    let agent = dynamicAgents.get(proxyUrl);
+    if (!agent) {
+      agent = new undici.ProxyAgent(proxyUrl);
+      dynamicAgents.set(proxyUrl, agent);
+    }
+    return agent;
+  };
+
   const fetch = undici.fetch;
   type FetchResult = Awaited<ReturnType<typeof fetch>>;
 
@@ -405,15 +467,47 @@ export async function installEgressProfile(log: (line: string) => void = console
       }
     }
 
-    // The Worker relay is the only proxying mechanism. If it is unset or paused
-    // the request goes direct over the browser profile; there is no local proxy
-    // list to rotate through, because rotating one caused a metered provider to
-    // flag this server for a request burst it never actually issued.
-    let dispatcher: import('undici').Dispatcher = directAgent;
-    let response: FetchResult | null = await fetch(normalized.url, {
-      ...firstInit,
-      dispatcher: directAgent,
-    } as never);
+    const pickedProxy = proxyPool.pick();
+    const method = (firstInit as { method?: string }).method;
+    const isFetchApi = pickedProxy?.kind === 'fetch-api' && (!method || String(method).toUpperCase() === 'GET');
+    let dispatcher: import('undici').Dispatcher = (pickedProxy && !isFetchApi) ? getProxyDispatcher(pickedProxy.url) : directAgent;
+    const proxyStart = pickedProxy ? Date.now() : 0;
+    let response: FetchResult | null = null;
+    try {
+      if (isFetchApi && pickedProxy) {
+        const endpoint = new URL(pickedProxy.url);
+        endpoint.searchParams.set('url', normalized.url);
+        const apiHeaders: Record<string, string> = {};
+        if (pickedProxy.apiKey) apiHeaders['x-api-key'] = pickedProxy.apiKey;
+        response = await fetch(endpoint.toString(), {
+          ...firstInit,
+          headers: apiHeaders,
+          dispatcher: directAgent,
+        } as never);
+      } else {
+        response = await fetch(normalized.url, {
+          ...firstInit,
+          dispatcher,
+        } as never);
+      }
+      if (pickedProxy) {
+        proxyPool.recordOutcome(pickedProxy.id, {
+          ok: response.status < 400,
+          status: response.status,
+          latencyMs: Date.now() - proxyStart,
+          error: response.status >= 400 ? `HTTP ${response.status}` : undefined,
+        });
+      }
+    } catch (err) {
+      if (pickedProxy) {
+        proxyPool.recordOutcome(pickedProxy.id, {
+          ok: false,
+          latencyMs: Date.now() - proxyStart,
+          error: (err as Error)?.message || 'fetch failed',
+        });
+      }
+      throw err;
+    }
 
     // 403 is what Cloudflare answers to a request it dislikes. One retry with a
     // plainer fingerprint costs nothing when it fails and is a source back when

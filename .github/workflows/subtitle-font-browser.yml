@@ -1,0 +1,24 @@
+name: Subtitle font rendering
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths:
+      - 'src/subs/**'
+      - 'src/ui/styles.css'
+      - 'backend/test/ass-subtitles.mjs'
+      - 'backend/test/subtitle-font-browser.mjs'
+      - '.github/workflows/subtitle-font-browser.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: node --experimental-strip-types backend/test/ass-subtitles.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/subtitle-font-browser.mjs

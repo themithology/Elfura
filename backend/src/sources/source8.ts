@@ -1,5 +1,5 @@
-/** Experimental direct VidZee HLS discovery. Only manifest-proven
- * multilingual streams and reachable language-labelled dubs leave this adapter. No subtitle or embed proxy. */
+/** Experimental direct VidZee HLS discovery. Reachable single-audio streams
+ * remain available; multilingual claims require manifest evidence. No subtitle or embed proxy. */
 import { normalizeLang } from './lang.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { candidateEvidence, verifyAndFilterCandidatesDetailed } from './liveness.js';
@@ -71,11 +71,11 @@ export function createSource8Adapter(enabled: () => boolean): SourceAdapter {
     const start = Date.now();
     const raw = await fetchFromVidZee(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw, query.signal);
-    const usable = verified.candidates.filter(c => {
-      const evidence = candidateEvidence(c);
-      return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
-    });
-    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},usable=${usable.length}${raw.length && !usable.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}` });
+    // An ordinary single-audio stream is still a source. Only the manifest may
+    // establish multi-audio; absence of that evidence is not a reason to hide a
+    // reachable, episode-specific result.
+    const usable = verified.candidates.filter(c => !!candidateEvidence(c)?.alive);
+    query.diag?.push({ adapter: 'source-8', lane: 'Z', ok: usable.length > 0, ms: Date.now() - start, detail: `candidates=${raw.length},reachable=${usable.length}` });
     return { candidates: usable.map(c => query.diag ? { ...c, diagnosticLane: 'Z' } : c) };
   } };
 }

@@ -1,0 +1,21 @@
+name: MegaPlay actual adapter player test
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/src/sources/source30.ts', 'backend/src/vendor/anivexa/extractors/megaplay-safe.js', 'backend/src/restricted-fetch.ts', 'backend/src/sources/anime-direct-mapping.ts', 'backend/src/sources/liveness.ts', 'backend/src/relay.ts', 'backend/src/security.ts', 'backend/test/source30.mjs', 'backend/test/anime-restricted-relay.mjs', 'backend/test/source30-real-browser.mjs', 'backend/test/source30-segment-research.mjs', '.github/workflows/source30-real-browser.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: node backend/test/source30.mjs && node backend/test/anime-restricted-relay.mjs
+      - run: node backend/test/source30-subtitle-research.mjs && node backend/test/source30-segment-research.mjs && node backend/test/source30-segment-format-research.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/source30-real-browser.mjs

@@ -21,16 +21,13 @@ try {
   /* older runtimes */
 }
 
-import { loadBackendConfig } from '../dist/backend/config.js';
+import { hydrateProcessEnvFromDotEnv, loadBackendConfig } from '../dist/backend/config.js';
 import { SourceRegistry } from '../dist/backend/sources/registry.js';
 
 const [type = 'movie', tmdbId = '550', season, episode] = process.argv.slice(2);
-const cfg = loadBackendConfig({
-  ELFURA_SECRET: process.env.ELFURA_SECRET || 'selftest-local-secret',
-  TMDB_API_KEY: process.env.TMDB_API_KEY || '',
-  TMDB_BEARER_TOKEN: process.env.TMDB_BEARER_TOKEN || '',
-  OPENSUBTITLES_ENABLED: '0',
-});
+if (!['movie', 'tv'].includes(type)) throw new Error('type must be movie or tv');
+hydrateProcessEnvFromDotEnv();
+const cfg = loadBackendConfig();
 
 if (!cfg.tmdb.apiKey && !cfg.tmdb.bearerToken && !cfg.tmdb.apiBase) {
   console.log('[selftest] TMDB_API_KEY is not set: adapters that need title/year fallback will report 0.');
@@ -44,14 +41,15 @@ const rows = await registry.selfTestAll({
   episode: episode ? Number(episode) : undefined,
 });
 
-const alive = rows.filter((r) => r.raw > 0);
-console.log(`\n[selftest] ${type}/${tmdbId}: ${alive.length}/${rows.length} sources returned candidates\n`);
+const tested = rows.filter((r) => !r.skipped);
+const alive = tested.filter((r) => r.raw > 0);
+console.log(`\n[selftest] ${type}/${tmdbId}: ${alive.length}/${tested.length} tested sources returned candidates; ${rows.length - tested.length} skipped. Candidates are not playback verification.\n`);
 for (const row of rows.sort((a, b) => b.raw - a.raw || a.id.localeCompare(b.id))) {
-  console.log(`${row.id.padEnd(10)} raw=${String(row.raw).padEnd(3)} ${String(row.ms).padStart(5)}ms :: ${row.net}`);
+  console.log(row.skipped ? `${row.id.padEnd(10)} skipped: ${row.skipped}` : `${row.id.padEnd(10)} raw=${String(row.raw).padEnd(3)} ${String(row.ms).padStart(5)}ms :: ${row.net}`);
 }
 if (!alive.length) {
   console.log(
-    '\n[selftest] nothing returned candidates. Read the host lines above: 403/challenge = IP blocked, ' +
-      'timeout/DNS = host unreachable, 200 with raw=0 = source has no row for this title.',
+    '\n[selftest] no tested source returned candidates. A refusal, timeout, missing metadata, ' +
+      'identity mismatch or unavailable title can all cause this; raw counts do not verify playback.',
   );
 }

@@ -22,12 +22,14 @@ import type { StreamTicketPayload } from './security.js';
 import {
   applyCorsHeaders,
   isSafeUpstreamUrl,
+  matchesRestrictedOrigin,
   openStreamTicket,
   sealStreamTicket,
   setCloudflareCache,
 } from './security.js';
+import { restrictedFetchWithRedirects } from './restricted-fetch.js';
 import { normalizeLang } from './sources/lang.js';
-import { isImageContentType, unwrapPngTransportStream } from './sources/media-sniff.js';
+import { isImageContentType, isPng, unwrapPngTransportStream } from './sources/media-sniff.js';
 import { PolicyCache } from './memory-policy.js';
 
 const DEFAULT_RELAY_UA =
@@ -443,9 +445,20 @@ export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
   return child.toString();
 }
 
+/** Do not forward signed CDN credentials to a different manifest origin. */
+function headersForManifestChild(headers: Record<string, string> | undefined, manifestUrl: string, childUrl: string): Record<string, string> | undefined {
+  if (!headers || new URL(manifestUrl).origin === new URL(childUrl).origin) return headers;
+  const safe = Object.fromEntries(Object.entries(headers).filter(([name]) => !['cookie', 'authorization', 'proxy-authorization', 'x-api-key'].includes(name.toLowerCase())));
+  return Object.keys(safe).length ? safe : undefined;
+}
+
 export interface RewriteManifestOptions {
   /** Force 100% backend segment relay and propagate `fp: 1` to child manifests. */
   forceProxy?: boolean;
+  /** Confine all child resources and issued tickets to a single HTTPS origin. */
+  restrictedOrigin?: string;
+  /** Do not extend the lifetime of restricted child tickets. */
+  restrictedExpiry?: number;
   /** Private signed-ticket context for refreshing this provider's HLS paths. */
   /** Optional predicate returning true when a binary segment (`kind === 'a'`) may be served direct. */
   canOffloadSegment?: (absUrl: string) => boolean;
@@ -477,16 +490,18 @@ export function rewriteHlsManifest(
     try {
       abs = resolveHlsChildUrl(trimmed, baseUrl);
     } catch {
-      return rawRef;
+      return options?.restrictedOrigin ? '' : rawRef;
     }
-    if (!isSafeUpstreamUrl(abs)) return '';
+    if (!isSafeUpstreamUrl(abs) || (options?.restrictedOrigin && !matchesRestrictedOrigin(abs, options.restrictedOrigin))) return '';
     if (kind === 'a' && !options?.forceProxy && options?.canOffloadSegment?.(abs)) {
       return abs;
     }
+    const childHeaders = headersForManifestChild(headers, baseUrl, abs);
     const ticket = sealStreamTicket(secret, {
       u: abs,
-      ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+      ...(childHeaders ? { h: childHeaders } : {}),
       k: kind,
+      ...(options?.restrictedOrigin ? { ro: options.restrictedOrigin, exp: options.restrictedExpiry } : {}),
       ...(options?.forceProxy && kind === 'm' ? { fp: 1 } : {}),
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
@@ -597,12 +612,14 @@ function sealDashTemplateUrl(
   headers: Record<string, string> | undefined,
   secret: Buffer,
   streamPath: string,
+  manifestUrl: string,
 ): string {
   const abs = new URL(xmlUnescape(rawTemplate), baseUrl).toString();
   if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH template');
+  const childHeaders = headersForManifestChild(headers, manifestUrl, abs);
   const ticket = sealStreamTicket(secret, {
     u: abs,
-    ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+    ...(childHeaders ? { h: childHeaders } : {}),
     k: 'a',
   });
   const params = [`t=${encodeURIComponent(ticket)}`];
@@ -654,9 +671,10 @@ export function rewriteDashManifest(
     const abs = new URL(xmlUnescape(raw), base).toString();
     if (!isSafeUpstreamUrl(abs)) throw new Error('unsafe DASH URL');
     if (!options?.forceProxy && options?.canOffloadSegment?.(abs)) return abs;
+    const childHeaders = headersForManifestChild(headers, baseUrl, abs);
     const ticket = sealStreamTicket(secret, {
       u: abs,
-      ...(headers && Object.keys(headers).length ? { h: headers } : {}),
+      ...(childHeaders ? { h: childHeaders } : {}),
       k: 'a',
     });
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
@@ -700,7 +718,7 @@ export function rewriteDashManifest(
         rewritten = rewritten.replace(attrPattern, (whole, prefix: string, quote: string, raw: string) => {
           try {
             const value = dynamic
-              ? sealDashTemplateUrl(raw, frame.base, headers, secret, streamPath)
+              ? sealDashTemplateUrl(raw, frame.base, headers, secret, streamPath, baseUrl)
               : staticUrl(raw, frame.base);
             return `${prefix}${quote}${xmlAttributeEscape(value)}${quote}`;
           } catch {
@@ -885,6 +903,8 @@ async function sendRewrittenManifest(
     relayMode: 'hybrid' | 'full';
     forceProxy: boolean;
     requireHttpsOffload: boolean;
+    restrictedOrigin?: string;
+    restrictedExpiry?: number;
     },
 ): Promise<void> {
   const allowedBuckets = new Set<string>();
@@ -911,6 +931,8 @@ async function sendRewrittenManifest(
 
   const rewriteOptions: RewriteManifestOptions = {
     forceProxy: relayOpts.forceProxy,
+    restrictedOrigin: relayOpts.restrictedOrigin,
+    restrictedExpiry: relayOpts.restrictedExpiry,
     ...(allowedBuckets.size > 0
       ? {
           canOffloadSegment: (absUrl: string) =>
@@ -970,7 +992,7 @@ export async function handleStreamRelay(
     return;
   }
 
-  if (!isSafeUpstreamUrl(ticket.u)) {
+  if (!isSafeUpstreamUrl(ticket.u) || (ticket.ro !== undefined && !matchesRestrictedOrigin(ticket.u, ticket.ro))) {
     setCloudflareCache(res, 'no-store');
     res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: 'disallowed upstream target' }));
@@ -979,9 +1001,9 @@ export async function handleStreamRelay(
 
   const streamPath = opts.streamPath || '/api/v1/stream';
   const relayMode = opts.relayMode ?? 'hybrid';
-  const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1;
+  const forceProxy = relayMode === 'full' || !!opts.forceProxy || ticket.fp === 1 || ticket.ro !== undefined;
   const requireHttpsOffload = opts.requireHttpsOffload ?? true;
-  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload };
+  const manifestRelayOpts = { relayMode, forceProxy, requireHttpsOffload, restrictedOrigin: ticket.ro, restrictedExpiry: ticket.ro ? ticket.exp : undefined };
 
   const manifestCacheKey =
     req.method === 'GET' && ticket.k === 'm' && !req.headers.range
@@ -990,7 +1012,7 @@ export async function handleStreamRelay(
 
   if (manifestCacheKey) {
     const cached = getCachedManifest(manifestCacheKey);
-    if (cached) {
+    if (cached && (!ticket.ro || (cached.kind === 'hls' && matchesRestrictedOrigin(cached.finalUrl, ticket.ro)))) {
       await sendRewrittenManifest(
         res,
         cached.kind,
@@ -1024,13 +1046,19 @@ export async function handleStreamRelay(
   const onClientClose = () => {
     if (!res.writableEnded) abortController.abort();
   };
-  req.on('close', onClientClose);
+  // IncomingMessage 'close' can mean the request body completed, not that
+  // the viewer disconnected. Use response close for restricted media so long
+  // CDN segment requests are not cancelled while the client is still waiting.
+  if (ticket.ro) res.on('close', onClientClose);
+  else req.on('close', onClientClose);
 
   try {
-    const upstreamRes = await fetch(ticket.u, {
+    const upstreamInit: RequestInit = {
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
-      redirect: 'follow',
+      // The optional Worker egress preserves manual redirects; using 'error'
+      // there can otherwise result in a Worker following before Node sees it.
+      redirect: ticket.ro ? 'manual' : 'follow',
       signal: AbortSignal.any([
         abortController.signal,
         // Manifests must fail fast so the player can fail over to the next
@@ -1038,10 +1066,11 @@ export async function handleStreamRelay(
         // a longer window because they are larger and range-driven.
         AbortSignal.timeout(ticket.k === 'm' ? 12_000 : 25_000),
       ]),
-    });
+    };
+    const upstreamRes = ticket.ro ? await restrictedFetchWithRedirects(ticket.u, upstreamInit, ticket.ro) : await fetch(ticket.u, upstreamInit);
 
     const finalUrl = upstreamRes.url || ticket.u;
-    if (!isSafeUpstreamUrl(finalUrl)) {
+    if (!isSafeUpstreamUrl(finalUrl) || (ticket.ro && !matchesRestrictedOrigin(finalUrl, ticket.ro))) {
       setCloudflareCache(res, 'no-store');
       res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ ok: false, error: 'blocked unsafe redirect' }));
@@ -1095,7 +1124,7 @@ export async function handleStreamRelay(
         return;
       }
 
-      if (looksLikeDash && trimmedLead.includes('<MPD')) {
+      if (!ticket.ro && looksLikeDash && trimmedLead.includes('<MPD')) {
         if (manifestCacheKey && !/\btype\s*=\s*["']dynamic["']/i.test(bodyText)) {
           setCachedManifest(manifestCacheKey, {
             finalUrl,
@@ -1135,6 +1164,55 @@ export async function handleStreamRelay(
       return;
     }
 
+    // Some restricted anime CDNs mislabel genuine MPEG-TS fragments as HTML.
+    // Require several consecutive packet sync bytes before treating such a
+    // response as media; actual HTML and short/ambiguous payloads stay blocked.
+    if (ticket.ro && ticket.k === 'a' && req.method !== 'HEAD' && upstreamRes.body &&
+        (ct.includes('text/html') || ct.includes('application/xhtml'))) {
+      const reader = upstreamRes.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      let done = false;
+      while (size < 564 && !done) {
+        const next = await reader.read();
+        done = next.done;
+        if (next.value) { chunks.push(next.value); size += next.value.length; }
+      }
+      const sample = Buffer.concat(chunks, size);
+      let transport = false;
+      // Reject an HTML prefix even if it is deliberately padded with TS sync bytes.
+      const htmlPrefix = /^\s*<(?:!doctype\s+html|html\b|head\b|body\b|script\b)/i.test(sample.toString('utf8').replace(/^\uFEFF/, ''));
+      if (!htmlPrefix) for (let i = 0; i < 188 && i + 376 < sample.length; i++) {
+        if (sample[i] === 0x47 && sample[i + 188] === 0x47 && sample[i + 376] === 0x47) { transport = true; break; }
+      }
+      if (!transport) {
+        await reader.cancel().catch(() => {});
+        setCloudflareCache(res, 'no-store');
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'upstream returned HTML instead of media segment' }));
+        return;
+      }
+      setCloudflareCache(res, 'segment');
+      const headers: Record<string, string> = { 'Content-Type': 'video/mp2t', 'X-Content-Type-Options': 'nosniff' };
+      for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+        const value = upstreamRes.headers.get(name);
+        if (value) headers[name] = value;
+      }
+      res.writeHead(upstreamRes.status, headers);
+      const stream = Readable.from((async function* () {
+        try {
+          yield* chunks;
+          while (!done) {
+            const next = await reader.read();
+            done = next.done;
+            if (next.value) yield next.value;
+          }
+        } finally { await reader.cancel().catch(() => {}); }
+      })());
+      await pipeline(stream, res);
+      return;
+    }
+
     // Never pipe HTML error/redirect pages as binary media segments, encryption keys, or MP4 byte ranges
     if ((ticket.k === 'a' || ticket.k === 'k') && (ct.includes('text/html') || ct.includes('application/xhtml'))) {
       try {
@@ -1159,7 +1237,56 @@ export async function handleStreamRelay(
       isImageContentType(ct) &&
       !(Number(upstreamRes.headers.get('content-length') || 0) > MAX_WRAPPED_SEGMENT_BYTES)
     ) {
-      const original = await readBoundedBinary(upstreamRes, MAX_WRAPPED_SEGMENT_BYTES);
+      let original: Buffer | null;
+      if (ticket.ro) {
+        // Some anime CDNs label ordinary (including encrypted) transport bytes
+        // as images. Buffering those entire segments before writing anything can
+        // make hls.js time out. Inspect only the PNG signature first; stream
+        // everything else unchanged, with backpressure and client cancellation.
+        const reader = upstreamRes.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        let done = false;
+        while (size < 8 && !done) {
+          const next = await reader.read();
+          done = next.done;
+          if (next.value) { chunks.push(next.value); size += next.value.length; }
+        }
+        if (!isPng(Buffer.concat(chunks))) {
+          setCloudflareCache(res, 'segment');
+          const headers: Record<string, string> = {
+            'Content-Type': upstreamRes.headers.get('content-type') || 'application/octet-stream',
+            'X-Content-Type-Options': 'nosniff',
+          };
+          for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+            const value = upstreamRes.headers.get(name);
+            if (value) headers[name] = value;
+          }
+          res.writeHead(upstreamRes.status, headers);
+          const stream = Readable.from((async function* () {
+            try {
+              yield* chunks;
+              while (!done) {
+                const next = await reader.read();
+                done = next.done;
+                if (next.value) yield next.value;
+              }
+            } finally { await reader.cancel().catch(() => {}); }
+          })());
+          await pipeline(stream, res);
+          return;
+        }
+        try {
+          while (!done && size <= MAX_WRAPPED_SEGMENT_BYTES) {
+            const next = await reader.read();
+            done = next.done;
+            if (next.value) { chunks.push(next.value); size += next.value.length; }
+          }
+          original = size <= MAX_WRAPPED_SEGMENT_BYTES ? Buffer.concat(chunks, size) : null;
+        } finally { await reader.cancel().catch(() => {}); }
+      } else {
+        original = await readBoundedBinary(upstreamRes, MAX_WRAPPED_SEGMENT_BYTES);
+      }
       if (original) {
         const payload = unwrapPngTransportStream(original, MAX_WRAPPED_SEGMENT_BYTES);
         if (payload) {
@@ -1247,6 +1374,10 @@ export async function handleStreamRelay(
     const nodeStream = Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
     await pipeline(nodeStream, res);
   } catch (err) {
+    if (ticket.ro && process.env.ELFURA_ANIME_RELAY_DEBUG === '1') {
+      const e = err as { name?: string; code?: string; cause?: { code?: string } };
+      console.warn('[elfura-anime-relay]', String(e?.name ?? 'Error').replace(/[^\w-]/g, '').slice(0,40), String(e?.code ?? e?.cause?.code ?? '').replace(/[^\w-]/g, '').slice(0,40), ticket.k ?? '', abortController.signal.aborted ? 'client-abort' : 'upstream-timeout');
+    }
     if (!res.headersSent) {
       setCloudflareCache(res, 'no-store');
       res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -1255,6 +1386,7 @@ export async function handleStreamRelay(
       res.destroy(err instanceof Error ? err : undefined);
     }
   } finally {
-    req.off('close', onClientClose);
+    if (ticket.ro) res.off('close', onClientClose);
+    else req.off('close', onClientClose);
   }
 }

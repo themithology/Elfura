@@ -53,6 +53,7 @@ export function selectPlaybackCandidates(
     // this request measured over what an earlier one remembered. With payload
     // caching off nothing is remembered, and ranking must still work.
     const evidence = candidateEvidence(c);
+    if (evidence?.confirmedDead) continue;
     // Manifest truth about the audio layout beats provider metadata: a measured
     // single-language probe means single-language, however the source labelled
     // itself. Only when nothing was measured may the provider claim stand.
@@ -87,6 +88,7 @@ export function selectPlaybackCandidates(
   single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.tier-b.tier||a.latency-b.latency||a.order-b.order);
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const ordered: typeof single = [];
+  const orderedSet = new Set<typeof single[number]>();
   const hosts = new Set<string>();
   // A verified candidate always beats an unknown one. Within each confidence
   // class, independent hosts come first — but nothing is thrown away for being
@@ -95,10 +97,10 @@ export function selectPlaybackCandidates(
     const tier = ordinarySingle.filter(item => item.alive === alive);
     for (const item of tier) {
       if (hosts.has(item.host)) continue;
-      ordered.push(item); hosts.add(item.host);
+      ordered.push(item); orderedSet.add(item); hosts.add(item.host);
     }
     for (const item of tier) {
-      if (!ordered.includes(item)) ordered.push(item);
+      if (!orderedSet.has(item)) { ordered.push(item); orderedSet.add(item); }
     }
   }
   const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);
@@ -113,13 +115,16 @@ export function selectPlaybackCandidates(
     selected.push(item); languages.add(lang);
     if (++dubsAdded >= MAX_SEPARATE_DUBS) break;
   }
-  // Keep one verified live source for each Anivexa SUB/DUB mode even when the
-  // generic unlabelled fallback cap would otherwise drop one side. These are
-  // provider source variants, not claims about manifest audio tracks.
+  // Variant-labelled streams are separate lanes, not manufactured manifest
+  // audio. Preserve all sources' verified and unproven variants, not just one
+  // sub/dub pair across the whole board. Never reinstate confirmed-dead lanes.
   const animeVariants: typeof single = [];
-  for (const variant of variantOrder) {
-    const item = single.find(candidate => candidate.alive && candidate.candidate.audioVariant === variant);
-    if (item && !selected.includes(item)) animeVariants.push(item);
+  for (const alive of [true, false]) for (const variant of variantOrder) {
+    for (const item of single) {
+      if (item.alive !== alive || item.candidate.audioVariant !== variant) continue;
+      if (animeVariants.length >= MAX_LISTED_SOURCES) break;
+      animeVariants.push(item);
+    }
   }
   return [...multi,...selected,...animeVariants].map(({adapter,candidate})=>({adapter,candidate}));
 }

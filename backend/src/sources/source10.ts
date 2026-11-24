@@ -85,11 +85,10 @@ export function createSource10Adapter(enabled: () => boolean): SourceAdapter {
   return {id:'source-10',label:'Source 10',enabled,async resolve(query) {
     const start = Date.now(), raw = await fetchFromVidNest(query);
     const verified = await verifyAndFilterCandidatesDetailed(raw,query.signal);
-    const candidates = verified.candidates.filter(c => {
-      const evidence = candidateEvidence(c);
-      return !!evidence?.alive && (new Set(evidence.discoveredAudioLangs ?? []).size > 1 || !!c.audioLang && c.audioLang !== 'und');
-    });
-    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},usable=${candidates.length}${raw.length && !candidates.length ? ' (all dropped: no multi-audio or labelled dub)' : ''}`});
+    // Unlabelled but reachable streams remain ordinary options; do not invent
+    // a language or promote provider claims into manifest-proven multi-audio.
+    const candidates = verified.candidates.filter(c => !!candidateEvidence(c)?.alive);
+    query.diag?.push({adapter:'source-10',lane:'V',ok:candidates.length>0,ms:Date.now()-start,detail:`candidates=${raw.length},reachable=${candidates.length}`});
     return {candidates:candidates.map(c=>query.diag ? {...c,diagnosticLane:'V'} : c)};
   }};
 }

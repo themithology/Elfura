@@ -1,0 +1,30 @@
+name: Anime Japanese English playback research
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/anime-ja-en-real-browser.mjs', 'backend/test/anime-audio-language-research.py', '.github/workflows/anime-ja-en-browser.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: AUDIT_AUDIO_DIR="$RUNNER_TEMP/elfura-anime-audio" node backend/test/anime-ja-en-real-browser.mjs
+      - name: Approximate spoken-language check (optional)
+        run: |
+          export AUDIT_AUDIO_DIR="$RUNNER_TEMP/elfura-anime-audio" HF_HOME="$RUNNER_TEMP/elfura-audio-model"
+          if python3 -m venv "$RUNNER_TEMP/anime-audio-venv" && "$RUNNER_TEMP/anime-audio-venv/bin/pip" install --quiet --disable-pip-version-check faster-whisper imageio-ffmpeg; then
+            "$RUNNER_TEMP/anime-audio-venv/bin/python" backend/test/anime-audio-language-research.py
+          else
+            echo '::notice title=Automatic audio language research::Dependency installation unavailable'
+          fi
+      - name: Remove temporary research clips and model
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/elfura-anime-audio" "$RUNNER_TEMP/elfura-audio-model" "$RUNNER_TEMP/anime-audio-venv"

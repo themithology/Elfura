@@ -35,13 +35,19 @@ const port = server.address().port;
 
 process.env.ELFURA_EGRESS_PROFILE = 'browser';
 const lines = [];
+// Production constructs the registry (and its tap) before async egress setup.
+const { installNetTap, tapRequests } = await import('../../dist/backend/sources/net-tap.js');
+installNetTap();
 const { installEgressProfile } = await import('../../dist/backend/egress.js');
 const installed = await installEgressProfile((line) => lines.push(line));
 assert.equal(installed, true, `the profile installs automatically (log: ${lines.join(' | ')})`);
 
 try {
-  const ok = await fetch(`http://127.0.0.1:${port}/plain`, { headers: { accept: 'application/json' } });
+  const tapped = await tapRequests(() => fetch(`http://127.0.0.1:${port}/plain`, { headers: { accept: 'application/json' } }));
+  const ok = tapped.value;
   assert.equal(ok.status, 200);
+  assert.equal(tapped.net.length, 1, 'tap sees discovery after the profile replaces global fetch');
+  assert.equal(tapped.net[0].status, 200);
   const plain = seen.at(-1).headers;
   assert.ok(/Chrome\//.test(plain['user-agent'] ?? ''), 'a browser user-agent is present');
   assert.ok(plain['accept-language'], 'accept-language is present');
@@ -58,8 +64,10 @@ try {
 
   // Media: ranged traffic must bypass the profile entirely.
   const before = seen.length;
-  const media = await fetch(`http://127.0.0.1:${port}/segment.ts`, { headers: { range: 'bytes=0-1023' } });
+  const tappedMedia = await tapRequests(() => fetch(`http://127.0.0.1:${port}/segment.ts`, { headers: { range: 'bytes=0-1023' } }));
+  const media = tappedMedia.value;
   assert.equal(media.status, 200);
+  assert.equal(tappedMedia.net.length, 1, 'nested old tap does not double count delegated media');
   assert.equal(seen.length, before + 1);
   const mediaHeaders = seen.at(-1).headers;
   assert.equal(mediaHeaders.range, 'bytes=0-1023', 'the range header survives');

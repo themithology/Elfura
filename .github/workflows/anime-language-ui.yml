@@ -1,0 +1,20 @@
+name: Anime unified audio language menu
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['src/core/audio.ts', 'src/core/player.ts', 'src/ui/controls.ts', 'backend/test/anime-language*', '.github/workflows/anime-language-ui.yml']
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: node --experimental-strip-types backend/test/anime-language-ui.mjs
+      - run: node backend/test/anime-priority.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
+      - run: node backend/test/anime-language-browser.mjs

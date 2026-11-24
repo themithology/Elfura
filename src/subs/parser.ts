@@ -2,8 +2,8 @@
  * Elfura Player — Cue parsing
  * ===========================
  * WebVTT, SubRip (.srt) and a useful subset of SSA/ASS, normalised to one Cue
- * shape. Inline markup is reduced to three booleans (bold/italic/underline)
- * because that is all a DOM overlay renderer can honour consistently.
+ * shape. Supported inline font tags and basic emphasis are represented as
+ * safe styling data, not injected as HTML.
  */
 
 export interface CueSpan {
@@ -11,6 +11,11 @@ export interface CueSpan {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  /** Font tags are rendered as safe CSS, never as subtitle HTML. */
+  fontFamily?: string;
+  /** Pixel-like source size at the 720p baseline, scaled by the user's size setting. */
+  fontSize?: number;
+  color?: string;
 }
 
 export interface Cue {
@@ -75,33 +80,65 @@ function unescape(s: string): string {
   return s.replace(/&(?:amp|lt|gt|nbsp|lrm|rlm);/g, (m) => ESCAPES[m] ?? m);
 }
 
+type InlineFont = Pick<CueSpan, 'fontFamily' | 'fontSize' | 'color'>;
+const SAFE_COLORS: Record<string, string> = {
+  white: '#ffffff', black: '#000000', red: '#ff0000', green: '#008000', blue: '#0000ff',
+  yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff', lime: '#00ff00', aqua: '#00ffff',
+  fuchsia: '#ff00ff', silver: '#c0c0c0', gray: '#808080', grey: '#808080', maroon: '#800000',
+  olive: '#808000', purple: '#800080', teal: '#008080', navy: '#000080', orange: '#ffa500',
+};
+
+/** Only data we understand is used; untrusted subtitle markup is never HTML. */
+function fontAttributes(raw: string): InlineFont {
+  const out: InlineFont = {};
+  const attrs = /(?:^|\s)(face|size|color)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+  let match: RegExpExecArray | null;
+  while ((match = attrs.exec(raw))) {
+    const value = unescape(match[2] ?? match[3] ?? match[4] ?? '').trim();
+    const key = match[1].toLowerCase();
+    if (key === 'face' && /^[\p{L}\p{N} _.'-]{1,80}$/u.test(value)) out.fontFamily = value;
+    if (key === 'size' && /^\d+(?:\.\d+)?(?:px)?$/i.test(value)) {
+      const size = Number.parseFloat(value);
+      // HTML's legacy 1–7 sizes are steps; larger values in SRT exports are
+      // conventionally pixel-like values (such as size="24").
+      const legacy = [0, 10, 13, 16, 18, 24, 32, 48];
+      if (size > 0) out.fontSize = Math.max(8, Math.min(120, !/px$/i.test(value) && Number.isInteger(size) && size <= 7 ? legacy[size] : size));
+    }
+    if (key === 'color') {
+      const color = value.toLowerCase();
+      if (/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(color)) out.color = color;
+      else if (Object.hasOwn(SAFE_COLORS, color)) out.color = SAFE_COLORS[color];
+    }
+  }
+  return out;
+}
+
 /**
- * Reduce inline markup to spans. Handles VTT <b>/<i>/<u>/<lang>/<c.class> and
- * SSA {\b1}{\i1}{\an8} override blocks plus \N hard breaks.
+ * Reduce inline markup to safe spans. Supports basic emphasis, nested HTML
+ * font face/size/color and SSA emphasis overrides plus \N hard breaks.
  */
 export function parseInline(raw: string): CueSpan[] {
   const spans: CueSpan[] = [];
   let bold = false;
   let italic = false;
   let underline = false;
+  const fonts: InlineFont[] = [{}];
   let buf = '';
 
   const flush = () => {
     const text = unescape(buf);
-    if (text.trim().length || text.includes('\n')) {
-      spans.push({ text, bold, italic, underline });
-    }
+    if (text.length) spans.push({ text, bold, italic, underline, ...fonts[fonts.length - 1] });
     buf = '';
   };
 
   // One pass over every construct that changes state, in source order:
   //   {\b1} {\i1} {\u1}   SSA toggles ({\b0} etc. turn them off, {\b700} is on)
   //   <b> </b> <i> </i> <u> </u>   WebVTT inline tags
+  //   <font face="..." size="..." color="...">   legacy subtitle styles
   //   \N \n   hard and soft line breaks
-  // Everything else - positioning, colours, karaoke - is dropped, because the
-  // renderer paints one style per span.
+  // ASS positioning, colours and karaoke remain outside this simple renderer.
   const TOKEN =
-    /\{([^}]*)\}|<(\/?)([biu])\s*>|\\([Nn])|<\s*\/?\s*(?:lang|c|v|ruby|rt)[^>]*>/gi;
+    /\{([^}]*)\}|<(\/?)([biu])\s*>|\\([Nn])|<\s*(\/?)font(?=\s|\/?>)((?:"[^"]*"|'[^']*'|[^'">])*)>|<\s*\/?\s*(?:lang|c|v|ruby|rt)[^>]*>/gi;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = TOKEN.exec(raw)) !== null) {
@@ -138,13 +175,22 @@ export function parseInline(raw: string): CueSpan[] {
       buf += '\n';
       continue;
     }
+    if (m[5] !== undefined) {
+      flush();
+      if (m[5] === '/') {
+        if (fonts.length > 1) fonts.pop();
+      } else {
+        fonts.push({ ...fonts[fonts.length - 1], ...fontAttributes(m[6]) });
+      }
+      continue;
+    }
     // Other inline tags (positioning, classes): drop, keeping span order.
     flush();
   }
   buf += raw.slice(last);
   flush();
 
-  return spans.filter((s) => s.text.length > 0);
+  return spans.some((s) => s.text.trim().length > 0 || s.text.includes('\n')) ? spans : [];
 }
 
 const textOf = (spans: CueSpan[]) => spans.map((s) => s.text).join('');

@@ -49,6 +49,8 @@ export interface SourceQuery {
   resolveMetaFallback?: () => Promise<{
     title?: string;
     rawTitle?: string;
+    episodeName?: string;
+    genres?: string[];
     year?: string;
     releaseDate?: string;
     latestDate?: string;
@@ -79,6 +81,8 @@ export interface RawStreamCandidate {
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   headers?: Record<string, string>;
+  /** Restrict probe, relay and every HLS child to this exact HTTPS origin. */
+  restrictedOrigin?: string;
   quality: string;
   /** Distinct rendition heights (desc) when the stream is a multi-quality ABR ladder. */
   qualityLadder?: number[];
@@ -90,8 +94,12 @@ export interface RawStreamCandidate {
   audioLang?: string;
   /** Provider-declared language only; never use as verified audio or for language selection. */
   claimedAudioLang?: string;
+  /** Probe bounded MP4 metadata for actual single-track audio language. */
+  probeMp4Audio?: boolean;
   /** Provider-declared source mode, not a verified language/manifest track. */
   audioVariant?: 'sub' | 'dub';
+  /** Provider-declared subtitle presentation, not independently verified. */
+  animeSubtitleMode?: 'hard' | 'soft';
   audioLabel?: string;
   /** Dynamically discovered BCP-47 language codes carried inside a multi-audio stream. */
   availableAudioLangs?: string[];
@@ -173,6 +181,10 @@ export interface UniformStreamOption {
   qualityLabelsUnreliable?: boolean;
   /** Opaque 12-char HMAC digest identifying shared upstream streams without leaking URLs */
   fingerprint?: string;
+  /** Confirmed anime priority lane with reachable manifest; not proof of full playback. */
+  animePriority?: boolean;
+  /** Anime lane not confirmed reachable by the liveness probe. */
+  animeUnverified?: boolean;
   /** Optional edge latency hint in ms for initial candidate ordering */
   latencyHintMs?: number;
   audioLang?: string;
@@ -189,6 +201,8 @@ export interface UniformPlaybackResponse {
   media: MediaMetadata;
   primary: UniformStreamOption;
   sources: UniformStreamOption[];
+  /** Late snapshots include partial updates; clients may avoid per-source rediscovery storms. */
+  waveUpdates?: boolean;
   /** Enabled generic source ids for asynchronous recovery, never provider details. */
   sourceGroups?: string[];
   /** Source ids that had not produced anything when this response was sealed. */

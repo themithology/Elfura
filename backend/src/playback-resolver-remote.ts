@@ -30,7 +30,7 @@ import {
  * nobody would read. The client must be strictly faster than the viewer's
  * patience. 10 s leaves room for a 5-9 s scan plus the rescue extension.
  */
-const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 10_000);
+const RESOLVE_TIMEOUT_MS = Number(process.env.ELFURA_RESOLVER_TIMEOUT_MS || 14_000);
 /** Control-plane calls (status, toggles) should be instant. */
 const CONTROL_TIMEOUT_MS = 5_000;
 
@@ -51,7 +51,9 @@ export class RemotePlaybackResolver implements PlaybackResolver {
     init: { method?: string; body?: unknown; timeoutMs?: number } = {},
   ): Promise<T> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? CONTROL_TIMEOUT_MS);
+    const timeoutMs = init.timeoutMs ?? CONTROL_TIMEOUT_MS;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: init.method ?? 'GET',
@@ -80,21 +82,36 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       }
       if (parsed === null) throw new Error('resolver returned a non-JSON body');
       return parsed as T;
+    } catch (error) {
+      if (timedOut) throw new ResolverCallTimeoutError(`request timed out after ${timeoutMs}ms before a complete response; check resolver logs and network`);
+      throw error;
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async resolve(request: PlaybackRequest): Promise<PlaybackResolution | null> {
+  async resolve(request: PlaybackRequest, timeoutMs = RESOLVE_TIMEOUT_MS, failoverOnAccessError = false): Promise<PlaybackResolution | null> {
     try {
+      // This routing hint is internal to the media node, not part of the resolver API.
+      const { lateAffinityKey: _affinity, ...resolverRequest } = request;
       const body = await this.call<PlaybackResolution | { ok: false; error?: string }>(
         '/resolver/api/playback',
-        { method: 'POST', body: request, timeoutMs: RESOLVE_TIMEOUT_MS },
+        { method: 'POST', body: resolverRequest, timeoutMs: Math.max(1, Math.min(RESOLVE_TIMEOUT_MS, timeoutMs)) },
       );
       if (!body || (body as { ok?: boolean }).ok !== true) return null;
       return body as PlaybackResolution;
     } catch (error) {
       if (error instanceof InvalidRequestError) {
+        // A bad caller request (400/422) is an answer. Auth failures, a missing
+        // route, or upstream rate limiting make this node unusable for this
+        // request: a configured second resolver can still serve it. The single
+        // resolver's established behavior is unchanged.
+        if (failoverOnAccessError && [401, 403, 404, 405, 429].includes(error.status)) {
+          const hint = error.status === 401 || error.status === 403
+            ? 'check the shared resolver token and Cloudflare access rules'
+            : 'check the resolver URL and Cloudflare rate limits';
+          throw new ResolverUnavailableError(`HTTP ${error.status}: ${hint}`);
+        }
         this.log(`[elfura-resolver-client] ${request.type}/${request.tmdbId} rejected: ${error.message}`);
         return null;
       }
@@ -102,7 +119,7 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       // One line, not a stack: the interesting part of a provider outage is that
       // it happened at all, and the resolver keeps its own detailed log.
       this.log(`[elfura-resolver-client] ${request.type}/${request.tmdbId} failed: ${detail}`);
-      throw new ResolverUnavailableError(detail);
+      throw new ResolverUnavailableError(detail, error instanceof ResolverCallTimeoutError);
     }
   }
 
@@ -112,6 +129,21 @@ export class RemotePlaybackResolver implements PlaybackResolver {
       return { reachable: body.ok === true, detail: 'resolver answered', sources: body.sources };
     } catch (error) {
       return { reachable: false, detail: describeFetchFailure(error, this.baseUrl) };
+    }
+  }
+
+  /** Check authenticated API access without resolving a title or revealing tokens. */
+  async authProbe(): Promise<{ authenticated: boolean; detail: string }> {
+    try {
+      const body = await this.call<{ sources?: ResolverSourceStatus[] }>('/resolver/api/sources');
+      if (!Array.isArray(body.sources)) return { authenticated: false, detail: 'invalid resolver response' };
+      return { authenticated: true, detail: 'authenticated' };
+    } catch (error) {
+      if (error instanceof InvalidRequestError) {
+        if (error.status === 401 || error.status === 403) return { authenticated: false, detail: `HTTP ${error.status}: check token and Cloudflare access` };
+        return { authenticated: false, detail: `HTTP ${error.status}: check resolver route` };
+      }
+      return { authenticated: false, detail: 'authenticated API unreachable or invalid response' };
     }
   }
 
@@ -143,8 +175,10 @@ export class InvalidRequestError extends Error {
   }
 }
 
+class ResolverCallTimeoutError extends Error {}
+
 export class ResolverUnavailableError extends Error {
-  constructor(detail: string) {
+  constructor(detail: string, readonly timedOut = false) {
     super(detail);
     this.name = 'ResolverUnavailableError';
   }
@@ -175,10 +209,10 @@ export function describeFetchFailure(error: unknown, baseUrl: string): string {
   if (
     code === 'ETIMEDOUT' ||
     code === 'UND_ERR_CONNECT_TIMEOUT' ||
-    /abort/i.test(message) ||
+    /abort|timed out/i.test(message) ||
     /abort/i.test(cause?.message ?? '')
   ) {
-    return `${baseUrl} timed out after the control timeout: no answer at all. That is a firewall dropping packets or a wrong address, not a wrong token`;
+    return `${baseUrl} control request timed out before a complete response; check network, proxy and resolver logs`;
   }
   if (code === 'ECONNRESET' || code === 'EPIPE') {
     return `${baseUrl} closed the connection mid-request: something between the nodes is terminating it (a reverse proxy or TLS terminator is the usual cause)`;

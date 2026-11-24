@@ -41,7 +41,11 @@ import assert from 'node:assert/strict';
 // (Anivexa), source-17 (Anivortex) and source-19 (DesiDub) each made zero
 // network requests without credentials or a title, and were replaced by the
 // single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
-const MIN_LISTED_SOURCES = 19;
+// Source 26 was removed after real-browser audio-only playback failures.
+// Source 28 adds verified multi-audio anime: 19 -> 20. The two additional
+// direct anime providers add independent source boards: 20 -> 22.
+// Source 17 adds the dynamic TGVIDX server inventory.
+const MIN_LISTED_SOURCES = 23;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -226,13 +230,12 @@ await check('public health exposes a count, never a list', async () => {
 });
 
 await check('resolver lists every source with health', () => {
-  // 19, not 20: source-1 used to be split into two registry rows — the real
-  // adapter (vidrift/vidsync/vidrock) plus a vidbolt-only stub that called
-  // /api/resolve, an endpoint vidbolt does not have, so it could never return a
-  // candidate. The two are now one row that owns all four upstreams, and
-  // source-2 stays unmounted because its nxsha lane duplicates source-5.
-  // The count is rows, not reach: no upstream was lost.
-  assert.equal(MIN_LISTED_SOURCES, 19, 'the configured board');
+  // Each row is one source group; the broken MovieBox lane is not registered.
+  assert.equal(listed.sources.length, MIN_LISTED_SOURCES, 'the configured board');
+  assert(!listed.sources.some(source => source.id === 'source-26'), 'audio-only MovieBox lane must stay removed');
+  assert(listed.sources.some(source => source.id === 'source-28'), 'verified multi-audio anime lane is registered');
+  assert(listed.sources.some(source => source.id === 'source-29'), 'Novus lane is registered');
+  assert(listed.sources.some(source => source.id === 'source-30'), 'MegaPlay lane is registered');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');

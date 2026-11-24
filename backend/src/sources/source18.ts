@@ -195,9 +195,11 @@ export function renditionsFromPayload(payload: unknown): RawStreamCandidate[] {
 }
 
 /** Provider catalogue label ("Hindi Dubbed", "English", …) -> BCP-47 audio tag. */
-function audioFromLabel(label: unknown): { code: string; label: string } | null {
+export function audioFromLabel(label: unknown): { code: string; label: string } | null {
   const raw = typeof label === 'string' ? label.trim() : '';
-  if (!raw) return null;
+  // This catalogue uses ORG for its original/default entry. Intl accepts org
+  // as the ISO code for Oring, which would invent a language for these files.
+  if (!raw || /^(?:org|original|original audio|default)$/i.test(raw)) return null;
   const cleaned = raw.replace(/\b(dub(?:bed)?|sub(?:bed)?|audio|multi)\b/gi, ' ').trim();
   const normalized = normalizeLang(cleaned || raw);
   if (!normalized.code || normalized.code === 'und') return null;
@@ -281,7 +283,10 @@ export async function fetchFromSubDub(query: SourceQuery, trace?: string[]): Pro
     for (const variant of variants) {
       const variantId = typeof variant.tmdbId === 'string' ? variant.tmdbId : '';
       if (!/^\d{1,12}$/.test(variantId)) continue;
-      const audio = audioFromLabel(variant.language) ?? audioFromLabel(variant.title);
+      // An explicit but non-specific catalogue language must not be replaced
+      // by a title's dub claim; the actual stream may be a different variant.
+      const hasLanguage = typeof variant.language === 'string' && !!variant.language.trim();
+      const audio = hasLanguage ? audioFromLabel(variant.language) : audioFromLabel(variant.title);
       const rows = await fetchPayload(query, variantId, deadline, trace);
       for (const candidate of rows) {
         const existing = collected.get(candidate.url);

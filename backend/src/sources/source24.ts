@@ -9,16 +9,12 @@
  *   https://enc-dec.app/api/enc-vidlink?text=<id>   HTTP 200  {status,result}
  *
  * The one non-obvious part: `/api/b/...` does not take a TMDB id. It takes an
- * ENCRYPTED token produced by enc-dec.app, and with a raw id it answers
- * `null` rather than an error — which is exactly the shape of failure that
- * looks like "provider is dead" when it is really "wrong key". So the flow is
- * always: encrypt id -> call API -> map `stream.qualities[*].url` and
- * `stream.playlist`.
- *
- * Call shape and response schema are taken from the Nuvio `vidlink` provider,
- * which works against the live API; nothing here is guessed.
+ * ENCRYPTED token. Generate the public web-client token locally; if that
+ * protocol changes, retain enc-dec.app as a fallback. A successful API reply
+ * is not proof that its media can be played.
  */
 
+import nacl from 'tweetnacl';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import type { RawSourceResult, RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
@@ -28,6 +24,20 @@ const BROWSER_UA =
 
 /** Encrypted-token service. Separate host, so it fails independently. */
 const ENC_DEC_ORIGIN = 'https://enc-dec.app';
+
+// Public web-player protocol constant; may rotate. Protocol independently
+// observed by Nyumat/tvtvme (MIT), and checked against enc-dec and VidLink in
+// .github/workflows/research-local-vidlink.yml. This is not an operator secret.
+const VIDLINK_KEY = Buffer.from('c75136c5668bbfe65a7ecad431a745db68b5f381555b38d8f6c699449cf11fcd', 'hex');
+export function localVidlinkToken(tmdbId: string, nowMs = Date.now()): string | null {
+  if (!/^\d{1,12}$/.test(tmdbId)) return null;
+  const id = Buffer.from(tmdbId, 'utf8');
+  const message = Buffer.alloc(id.length + 8);
+  id.copy(message);
+  message.writeBigUInt64BE(BigInt(Math.floor(nowMs / 1000) + 480), id.length);
+  const nonce = new Uint8Array(24);
+  return Buffer.concat([Buffer.from(nonce), Buffer.from(nacl.secretbox(message, nonce, VIDLINK_KEY))]).toString('base64url');
+}
 
 /** Only heights we will advertise; anything else falls back to 'auto'. */
 function qualityLabel(key: string): string {
@@ -111,12 +121,6 @@ export function createSource24Adapter(
         : AbortSignal.timeout(cfg.timeoutMs);
 
       try {
-        const token = await encryptId(query.tmdbId, signal);
-        if (!token) {
-          diag(false, 'encrypt-failed');
-          return { candidates: [] };
-        }
-
         // `/api/b` is picky about Origin/Referer; both are its own origin.
         const headers = {
           Accept: 'application/json,*/*',
@@ -126,17 +130,43 @@ export function createSource24Adapter(
           Connection: 'keep-alive',
         };
 
-        const path =
-          query.type === 'tv'
+        type Payload = {
+          stream?: { playlist?: unknown; qualities?: Record<string, { url?: unknown }> };
+          url?: unknown;
+          streams?: { url?: unknown; quality?: unknown }[];
+        };
+        const request = async (token: string): Promise<{ payload?: Payload; status?: number }> => {
+          const path = query.type === 'tv'
             ? `/tv/${encodeURIComponent(token)}/${query.season ?? 1}/${query.episode ?? 1}`
             : `/movie/${encodeURIComponent(token)}`;
-        const res = await fetch(`${apiBase}${path}`, { headers, signal });
-        if (!res.ok) {
-          diag(false, `vidlink http=${res.status}`);
+          const res = await fetch(`${apiBase}${path}`, { headers, signal });
+          if (!res.ok) { await res.body?.cancel().catch(() => {}); return { status: res.status }; }
+          const payload = await res.json() as Payload | null;
+          return { payload: payload && typeof payload === 'object' ? payload : undefined, status: res.status };
+        };
+        const safeUrl = (value: unknown): boolean => typeof value === 'string' && !!value && isSafeUpstreamUrl(value);
+        const containsUrls = (payload?: Payload): boolean => !!payload && (
+          safeUrl(payload.stream?.playlist) || safeUrl(payload.url) ||
+          Object.values(payload.stream?.qualities ?? {}).some(value => safeUrl(typeof value === 'string' ? value : value?.url)) ||
+          (Array.isArray(payload.streams) && payload.streams.some(row => safeUrl(row?.url)))
+        );
+        const local = localVidlinkToken(query.tmdbId);
+        let response: { payload?: Payload; status?: number } = {};
+        if (local) {
+          try { response = await request(local); } catch { /* try the established token service */ }
+        }
+        // 429/5xx is an outage, not evidence the token is wrong. Avoid
+        // amplifying rate limits. For other failures or empty payloads keep the
+        // existing service as a compatibility fallback if our key rotates.
+        if (!containsUrls(response.payload) && !signal.aborted && response.status !== 429 && !(response.status && response.status >= 500)) {
+          const remote = await encryptId(query.tmdbId, signal);
+          if (remote) response = await request(remote);
+        }
+        if (!response.payload) {
+          diag(false, response.status ? `vidlink http=${response.status}` : 'encrypt-failed');
           return { candidates: [] };
         }
-
-        const payload = (await res.json()) as {
+        const payload = response.payload as {
           stream?: {
             playlist?: unknown;
             qualities?: Record<string, { url?: unknown }>;

@@ -23,6 +23,8 @@ import path from 'node:path';
 
 const TOKEN = 'relay-test-token';
 const seen = [];
+// The real Worker is a separate process and does not share Elfura's global fetch.
+const workerFetch = globalThis.fetch;
 
 // The "provider": answers, redirects once, and reports what it was told.
 const provider = http.createServer((req, res) => {
@@ -57,7 +59,14 @@ const worker = http.createServer(async (req, res) => {
     return;
   }
   try {
-    const upstream = await fetch(target, {
+    // Model a Greybox API reachable only through this separate Worker.
+    if (new URL(target).hostname === 'greyboxtv.duckdns.org') {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      res.writeHead(200, { 'content-type': 'application/json', 'x-elfura-url': encodeURIComponent(target) });
+      res.end(JSON.stringify({ sources: [{ url: 'https://cdn.example.com/episode.m3u8', type: 'hls', language: 'en' }] }));
+      return;
+    }
+    const upstream = await workerFetch(target, {
       method: req.headers['x-elfura-method'] || 'GET',
       headers: { 'user-agent': req.headers['user-agent'] || 'relay', accept: req.headers.accept || '*/*' },
     });
@@ -135,6 +144,32 @@ try {
   assert.equal(relayStatus().successes, 2, 'a rejected token is not counted as a success (only the two good requests are)');
 
   saveRelayUrl(workerUrl, TOKEN);
+
+  // All concurrent provider requests must go through the relay, including a
+  // Source 25 lookup started while other providers' relay requests are pending.
+  const beforeConcurrent = seen.length;
+  const parallel = await Promise.all(Array.from({ length: 12 }, (_, i) =>
+    fetch(`http://127.0.0.1:${providerPort}/parallel-${i}`).then(async (res) => {
+      assert.equal(res.status, 200);
+      return res.json();
+    }),
+  ));
+  assert.equal(parallel.length, 12);
+  const targets = seen.slice(beforeConcurrent).map((entry) => new URL(entry.target).pathname);
+  assert.equal(targets.length, 12, 'no simultaneous discovery request bypasses the relay');
+  for (let i = 0; i < 12; i += 1) assert.ok(targets.includes(`/parallel-${i}`));
+
+  const { createSource25Adapter } = await import('../../dist/backend/sources/source25.js');
+  const greybox = createSource25Adapter({ enabled: true, origin: 'https://greyboxtv.duckdns.org', timeoutMs: 5000, rank: 50 });
+  const greyboxStart = seen.length;
+  const [firstGreybox, secondGreybox] = await Promise.all([
+    greybox.resolve({ type: 'tv', tmdbId: '71446', season: 1, episode: 1 }),
+    greybox.resolve({ type: 'tv', tmdbId: '71446', season: 1, episode: 1 }),
+  ]);
+  assert.equal(firstGreybox.candidates.length, 1);
+  assert.equal(secondGreybox.candidates.length, 1);
+  assert.equal(seen.slice(greyboxStart).filter(({ target }) => new URL(target).hostname === 'greyboxtv.duckdns.org').length, 2,
+    'both simultaneous Greybox lookups are actually relayed');
 
   // ---- a manual probe never pauses ----------------------------------------
   for (let i = 0; i < 5; i += 1) reportRelayProbe(false, '', 0, 'Bad or missing x-elfura-token');

@@ -1,0 +1,22 @@
+name: Research current direct Orion
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: [.github/workflows/research-current-orion.yml, backend/src/sources/source1.ts, backend/test/research-orion-adapter.mjs]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm install --no-save --no-package-lock @ffmpeg-installer/ffmpeg
+      - run: npm run build:backend
+      - run: node backend/test/research-vidbolt-direct.mjs
+      - run: node backend/test/research-orion-adapter.mjs

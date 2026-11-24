@@ -1,3 +1,4 @@
+process.env.ELFURA_MOVIEBOX_ENABLED = '0'; // isolate fixture tests from the live provider
 process.env.ELFURA_MAPPLE_ENABLED = '0';
 process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
 process.env.ELFURA_ANIVEXA_ENABLED = '0';
@@ -117,11 +118,9 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
   } finally { globalThis.fetch = originalFetch; }
 }
 
-// VidLink (source-24): a real JSON API, and the one trap in it. `/api/b` does
-// NOT take a TMDB id — it takes a token from enc-dec.app, and with a raw id it
-// answers `null` rather than an error. That silent null is what makes a working
-// provider look dead, so the test asserts the request that matters: the id is
-// encrypted first, and only the token reaches the API.
+// VidLink (source-24): `/api/b` takes an encrypted token, not the raw id.
+// The local token path avoids the external service on a successful response;
+// the dedicated local-token test also covers the remote compatibility fallback.
 {
   const { createSource24Adapter } = await import('../../dist/backend/sources/source24.js');
   const originalFetch = globalThis.fetch;
@@ -137,8 +136,9 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      // The API must be called with the token, never the raw tmdb id.
-      assert.equal(parsed.pathname, '/api/b/movie/TOKEN123', 'the API takes the encrypted token, not the raw id');
+      // The API must be called with an encrypted token, never the raw tmdb id.
+      assert.match(parsed.pathname, /^\/api\/b\/movie\/[A-Za-z0-9_-]{40,}$/);
+      assert.notEqual(parsed.pathname, '/api/b/movie/550');
       assert.equal(init?.headers?.Referer, 'https://vidlink.pro/');
       assert.equal(init?.headers?.Origin, 'https://vidlink.pro');
       return new Response(
@@ -161,7 +161,7 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     };
     const adapter = createSource24Adapter({ enabled: true, origin: 'https://vidlink.pro/api/b', timeoutMs: 5000, rank: 55 });
     const out = await adapter.resolve({ type: 'movie', tmdbId: '550', diag: [] });
-    assert.equal(calls.length, 2, 'one encrypt call, one API call');
+    assert.equal(calls.length, 1, 'local encryption needs only the API call');
     assert.equal(out.candidates.length, 3, 'two qualities plus the playlist, deduped');
     const urls = out.candidates.map((c) => c.url);
     assert(urls.includes('https://bcdn.hakunaymatata.com/a/master.m3u8'), 'the adaptive playlist is carried');
@@ -289,6 +289,27 @@ assert.equal(new URL(resolveHlsChildUrl('audio.m3u8', 'https://other.example/mas
     };
     const tv = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 2, episode: 7, diag: [] });
     assert.equal(tv.candidates.length, 1, 'TV resolves with season and episode');
+
+    let attempts = 0;
+    globalThis.fetch = async () => {
+      attempts++;
+      if (attempts === 1) throw new TypeError('network reset');
+      return new Response(JSON.stringify({ sources: [{ url: 'https://cdn.example.com/b/tv.m3u8', type: 'hls' }] }));
+    };
+    const recovered = await adapter.resolve({ type: 'tv', tmdbId: '71446', season: 1, episode: 1 });
+    assert.equal(attempts, 2, 'a network reset gets one sequential retry');
+    assert.equal(recovered.candidates.length, 1, 'a successful retry returns the streams');
+
+    attempts = 0;
+    const controller = new AbortController();
+    globalThis.fetch = async () => { attempts++; controller.abort(); throw new TypeError('aborted'); };
+    await adapter.resolve({ type: 'tv', tmdbId: '71446', signal: controller.signal });
+    assert.equal(attempts, 1, 'a cancelled lookup is never retried');
+
+    attempts = 0;
+    globalThis.fetch = async () => { attempts++; return new Response('not json', { status: 200 }); };
+    await adapter.resolve({ type: 'tv', tmdbId: '71446' });
+    assert.equal(attempts, 1, 'malformed JSON is not retried');
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1704,9 +1725,13 @@ const { server: elfuraServer } = createBackendServer({
     origin: upBase,
   },
   source4: { enabled: false },
+  source17: { enabled: false },
   source18: { enabled: false },
   source20: { enabled: false },
   source21: { enabled: false },
+  // Keep this existing fixture isolated from additional live anime lanes.
+  source29: { enabled: false },
+  source30: { enabled: false },
   subtitles: {
     enabled: true,
     openSubtitlesBase: `${upBase}/opensubs`,
@@ -1734,12 +1759,9 @@ try {
   // saying "what with".
   assert.equal(health.sources, undefined, 'the public health route must not list sources');
   assert.doesNotMatch(JSON.stringify(health), /source-\d+/, 'no source id may appear in a public body');
-  // 6: source-1 (one row owning vidrift+vidsync+vidrock+vidbolt), source-3,
-  // source-16 (Mikaza Hindi dub, on by default), source-22 (Vidly subtitles),
-  // source-24 (VidLink) and source-25 (Greybox). An explicit count is still the
-  // right assertion: it is the only thing that notices a source silently
-  // appearing or vanishing from the fixture.
-  assert.equal(health.sourceCount, 6, 'a bare count is fine (sources 1, 3, 16, 22, 24, 25 in this fixture)');
+  // A bare source count is public, not the source identities. The anime lane
+  // adds one to this fixture's configured source board.
+  assert.equal(health.sourceCount, 7, 'a bare count is fine');
 
   // Playback diagnosis uses actual selected stream candidates and bounded
   // segment-byte probes; it does not mistake root-domain HTTP responses for playability.
@@ -1750,9 +1772,8 @@ try {
   assert.equal(diag.ok, true);
   assert.equal(diag.probe.tmdbId, '94605');
   assert.equal(diag.identity.titleFound, true);
-  // 6: the fixture's sources are 1, 3, 16, 22, 24 and 25 — source-16 (Mikaza
-  // Hindi dub) is on by default and appears in the diagnostic lane set.
-  assert.equal(diag.playback.resolution.adapters.length, 6, 'source-16, source-22, source-24 and source-25 join the lane set');
+  // Source 28 joins the fixture's diagnostic lane set.
+  assert.equal(diag.playback.resolution.adapters.length, 7, 'the diagnostic lane set includes multi-audio anime');
   assert(Array.isArray(diag.playback.candidateChecks));
   assert.equal(diag.playback.policy.browserPlaybackChecked, false);
   assert.match(diag.diagnosis.scope, /1 KiB/);

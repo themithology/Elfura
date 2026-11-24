@@ -40,6 +40,10 @@ export interface PlaybackRequest {
   sourceId?: string;
   preferredLang?: string;
   late?: boolean;
+  /** Retry adapters that completed empty once per active wave. */
+  retryMissing?: boolean;
+  /** Media-node-only session identifier for routing a late request to the same resolver. */
+  lateAffinityKey?: string;
   /** Base path the resolver should use when minting stream tickets. */
   streamPathPrefix?: string;
 }
@@ -58,11 +62,27 @@ export interface PlaybackResolver {
   readonly label: string;
   resolve(request: PlaybackRequest): Promise<PlaybackResolution | null>;
   /** Whether the resolver is reachable, for the panel and the health endpoint. */
-  probe(): Promise<{ reachable: boolean; detail: string; sources?: string[] }>;
+  probe(): Promise<{ reachable: boolean; detail: string; sources?: string[]; nodes?: ResolverNodeStatus[] }>;
+
   /** Per-source status, when the resolver can report it. */
   sourceStatus(): Promise<ResolverSourceStatus[] | null>;
   /** Turn a source on or off without a redeploy. */
   setSourceEnabled(id: string, enabled: boolean): Promise<boolean>;
+  /** Stop optional background monitoring when the owning media server closes. */
+  close?(): void;
+}
+
+/** Operator-only pool diagnostics; contains no URLs, credentials or titles. */
+export interface ResolverNodeStatus {
+  name: string;
+  reachable: boolean;
+  authenticated: boolean;
+  detail: string;
+  attempts: number;
+  failures: number;
+  cooldownMs: number;
+  /** Whether the playback router currently permits new requests to this node. */
+  available?: boolean;
 }
 
 export interface ResolverSourceStatus {
@@ -159,6 +179,31 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
     return null;
   }
   return { url: clean, token };
+}
+
+/** Optional second, third or fourth resolver, with the primary's network policy.
+ * Validation of an optional node must not overwrite primary diagnostics. */
+export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env, which: 'backup' | 'third' | 'fourth' = 'backup'): { url: string; token: string } | null {
+  const key = { backup: 'ELFURA_RESOLVER_BACKUP_URL', third: 'ELFURA_RESOLVER_THIRD_URL', fourth: 'ELFURA_RESOLVER_FOURTH_URL' } as const;
+  const raw = (env[key[which]] ?? '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
+  } catch {
+    console.error(`[elfura-resolver] invalid ${which} URL; use an HTTP(S) URL without credentials, query or fragment.`);
+    return null;
+  }
+  const oldReason = lastFallbackReason;
+  try {
+    const result = resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
+    if (result && new URL(result.url).protocol === 'http:' && !isPrivateResolverUrl(result.url)) {
+      console.warn(`[elfura-resolver] WARNING: the public HTTP ${which} is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.`);
+    }
+    return result;
+  } finally {
+    lastFallbackReason = oldReason;
+  }
 }
 
 /** True for addresses that only make sense on a private network. */
@@ -331,6 +376,7 @@ export function createResilientPlaybackResolver(options: {
     probe: () => options.remote.probe(),
     sourceStatus: () => options.remote.sourceStatus(),
     setSourceEnabled: (id: string, enabled: boolean) => options.remote.setSourceEnabled(id, enabled),
+    close: () => options.remote.close?.(),
     usingLocalFallback: () => false,
     lastFallbackReason: () => lastReason,
   } as unknown as PlaybackResolver & { usingLocalFallback(): boolean };

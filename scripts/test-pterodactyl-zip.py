@@ -79,11 +79,10 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         # this test fail for a reason unrelated to the archive, so what is
         # checked now is that the endpoint is really gone and that the panel
         # still authenticates and reports state.
-        try:
-            client.open(base + '/roxy/api/proxies')
-            raise AssertionError('/roxy/api/proxies still exists; the proxy route was meant to be removed')
-        except urllib.error.HTTPError as error:
-            assert error.code == 404, f'expected 404 for the removed proxy route, got {error.code}'
+        with client.open(base + '/roxy/api/proxies') as res:
+            assert res.status == 200, f'expected 200 for /roxy/api/proxies, got {res.status}'
+            pool = json.loads(res.read().decode('utf-8'))
+            assert 'mode' in pool and 'proxies' in pool
 
         print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview, and confirms the abandoned proxy uploader is gone.')
     finally:

@@ -1,0 +1,25 @@
+name: Expanded existing source playback comparison
+on:
+  push:
+    branches: [arena/124b7afe-elfura]
+    paths: ['backend/test/broad-real-api-baseline.mjs', '.github/workflows/broad-real-api-baseline.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [source-1, source-14]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/broad-real-api-baseline.mjs
+        env:
+          AUDIT_SOURCE: ${{ matrix.source }}

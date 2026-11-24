@@ -77,6 +77,8 @@ globalThis.fetch = async (url) => {
   if (target.endsWith('/variant-47.m3u8')) return new Response(variantFor(47), { status: 200 });
   if (target.includes('/master-clip')) return new Response(manifestFor(2), { status: 200 });
   if (target.endsWith('/variant-2.m3u8')) return new Response(variantFor(2), { status: 200 });
+  if (target.includes('/master-long')) return new Response(manifestFor(70), { status: 200 });
+  if (target.endsWith('/variant-70.m3u8')) return new Response(variantFor(70), { status: 200 });
   if (target.endsWith('seg.ts')) return new Response(new Uint8Array(2048), { status: 206, headers: { 'content-type': 'video/mp2t' } });
   return new Response('nope', { status: 404 });
 };
@@ -100,6 +102,7 @@ try {
   registry.adapters = [
     lane('source-1', 'https://cdn.example.org/master-full.m3u8'),
     lane('source-2', 'https://cdn.example.org/master-clip.m3u8'),
+    lane('source-3', 'https://cdn.example.org/master-long.m3u8'),
   ];
   const playback = await registry.resolvePlayback({ type: 'tv', tmdbId: '1396', season: 1, episode: 1 });
   assert(playback, 'the real episode survives');
@@ -116,9 +119,9 @@ try {
     `the correctly-runtimed lane must be ranked first (got ${playback.sources[0]?.sourceId})`,
   );
   const clipIndex = playback.sources.findIndex((source) => source.sourceId === 'source-2');
-  if (clipIndex !== -1) {
-    assert(clipIndex > 0, 'a wrong-length stream may only appear behind correct-length ones');
-  }
+  assert(clipIndex > 0, 'a short mismatch remains listed behind the matched episode');
+  assert(playback.sources.findIndex(source => source.sourceId === 'source-3') > 0,
+    'a longer episode that disagrees with metadata also remains available');
   // A filter must never empty the list: when every verified stream would be
   // dropped, the guard stands down and keeps them (and logs why).
   const clipOnly = new SourceRegistry(cfg);

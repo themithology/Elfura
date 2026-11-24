@@ -17,11 +17,19 @@ import {
   seedManifestRamCache,
   verifyDirectSegmentOffload,
 } from '../relay.js';
-import { isSafeUpstreamUrl } from '../security.js';
+import { isSafeUpstreamUrl, matchesRestrictedOrigin } from '../security.js';
+import { restrictedFetchWithRedirects } from '../restricted-fetch.js';
 import { normalizeLang } from './lang.js';
+import { extractMp4SingleAudioLanguage, extractMp4AudioByRanges } from './mp4-audio.js';
 import { isImageContentType, sniffMediaBytes } from './media-sniff.js';
 import type { RawStreamCandidate } from './types.js';
 import { PolicyCache } from '../memory-policy.js';
+import { ProbeGate } from './probe-gate.js';
+
+// Per-request worker pools used to multiply by the number of viewers. Bound
+// actual simultaneous upstream probes across all resolves in this process.
+const probeGate = new ProbeGate(40);
+export function livenessWorkload(): { active: number; waiting: number; limit: number } { return probeGate.snapshot(); }
 
 const DEFAULT_PROBE_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
@@ -107,8 +115,8 @@ interface CachedLivenessEntry extends LivenessProbeOutcome {
 const livenessRamCache = new PolicyCache<CachedLivenessEntry>(MAX_LIVENESS_CACHE);
 const livenessInFlight = new Map<string, Promise<LivenessProbeOutcome>>();
 
-function cacheKeyFor(url: string, headers?: Record<string, string>): string {
-  return `${url}|${JSON.stringify(headers ?? {})}`;
+function cacheKeyFor(url: string, headers?: Record<string, string>, restrictedOrigin?: string): string {
+  return `${url}|${JSON.stringify(headers ?? {})}${restrictedOrigin ? `|restricted:${restrictedOrigin}` : ''}`;
 }
 
 function getCachedLiveness(key: string): CachedLivenessEntry | null {
@@ -125,7 +133,7 @@ function getCachedLiveness(key: string): CachedLivenessEntry | null {
 
 /** Age of the cached observation; this is not a fresh playback test. */
 export function cachedCandidateEvidenceAgeMs(candidate: RawStreamCandidate): number | null {
-  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  const hit = getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers, candidate.restrictedOrigin));
   return hit ? Math.max(0, Date.now() - hit.observedAt) : null;
 }
 
@@ -159,7 +167,7 @@ export function candidateEvidence(candidate: RawStreamCandidate): LivenessProbeO
 }
 
 export function cachedCandidateEvidence(candidate: RawStreamCandidate): LivenessProbeOutcome | null {
-  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers));
+  return getCachedLiveness(cacheKeyFor(candidate.url, candidate.headers, candidate.restrictedOrigin));
 }
 
 function setCachedLiveness(key: string, outcome: LivenessProbeOutcome): void {
@@ -185,6 +193,21 @@ function isTransientHttpStatus(status: number): boolean {
 
 /** Wait before re-asking a provider that just refused. Short: this is a blip check, not a backoff. */
 const PROBE_RETRY_DELAY_MS = 250;
+
+async function readBoundedBytes(res: Response, maxBytes: number): Promise<Buffer> {
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = []; let total = 0;
+  try {
+    while (total < maxBytes) {
+      const {done, value} = await reader.read(); if (done) break;
+      const part = value.subarray(0, maxBytes - total);
+      chunks.push(part); total += part.length;
+      if (part.length < value.length) break;
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  return Buffer.concat(chunks);
+}
 
 async function readBoundedManifest(res: Response, maxBytes: number): Promise<string> {
   if (!res.body) return '';
@@ -269,15 +292,13 @@ async function verifyChildHlsPlaylist(
   childUrl: string,
   headers: Record<string, string>,
   signal: AbortSignal,
+  restrictedOrigin?: string,
 ): Promise<{ state: 'alive' | 'dead' | 'unknown'; bodyText?: string }> {
-  const res = await fetch(childUrl, {
-    method: 'GET',
-    headers,
-    redirect: 'follow',
-    signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]),
-  });
+  if (restrictedOrigin && !matchesRestrictedOrigin(childUrl, restrictedOrigin)) return { state: 'dead' };
+  const init: RequestInit = { method: 'GET', headers, redirect: restrictedOrigin ? 'manual' : 'follow', signal: AbortSignal.any([signal, AbortSignal.timeout(2400)]) };
+  const res = restrictedOrigin ? await restrictedFetchWithRedirects(childUrl, init, restrictedOrigin) : await fetch(childUrl, init);
   const finalUrl = res.url || childUrl;
-  if (!isSafeUpstreamUrl(finalUrl)) return { state: 'dead' };
+  if (!isSafeUpstreamUrl(finalUrl) || (restrictedOrigin && !matchesRestrictedOrigin(finalUrl, restrictedOrigin))) return { state: 'dead' };
   if (!res.ok) return { state: isTransientHttpStatus(res.status) ? 'unknown' : 'dead' };
 
   const ct = (res.headers.get('content-type') || '').toLowerCase();
@@ -322,14 +343,14 @@ function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): 
 }
 
 async function runSingleProbe(
-  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers'>,
+  cand: Pick<RawStreamCandidate, 'url' | 'type' | 'headers' | 'probeMp4Audio' | 'restrictedOrigin'>,
   outerSignal?: AbortSignal,
 ): Promise<LivenessProbeOutcome> {
-  if (!isSafeUpstreamUrl(cand.url)) {
+  if (!isSafeUpstreamUrl(cand.url) || (cand.restrictedOrigin && (!matchesRestrictedOrigin(cand.url, cand.restrictedOrigin) || cand.type !== 'hls'))) {
     return { alive: false, confirmedDead: true };
   }
 
-  const key = cacheKeyFor(cand.url, cand.headers);
+  const key = cacheKeyFor(cand.url, cand.headers, cand.restrictedOrigin);
   const cached = getCachedLiveness(key);
   if (cached) return cached;
 
@@ -343,13 +364,16 @@ async function runSingleProbe(
     // shared 3s network probe. Successful late results warm the liveness cache
     // for background recovery; no new request extends initial playback.
     const sig = AbortSignal.timeout(3000);
+    const release = await probeGate.acquire(sig);
+    // A saturated queue or expired budget is uncertain, never proof of death.
+    if (!release) return { alive: false, confirmedDead: false };
 
     try {
       if (cand.type === 'mp4') {
         const mp4Headers: Record<string, string> = {
           'User-Agent': DEFAULT_PROBE_UA,
           Accept: '*/*',
-          Range: 'bytes=0-1023',
+          Range: cand.probeMp4Audio ? 'bytes=0-65535' : 'bytes=0-1023',
           ...(cand.headers ?? {}),
         };
         const res = await fetch(cand.url, {
@@ -360,15 +384,38 @@ async function runSingleProbe(
         });
         const finalUrl = res.url || cand.url;
         const ct = (res.headers.get('content-type') || '').toLowerCase();
-        try {
-          await res.body?.cancel();
-        } catch {
-          /* ignore */
+        let language: string | null = null;
+        if (cand.probeMp4Audio && res.status === 206 && /^bytes 0-/i.test(res.headers.get('content-range') ?? '') && isSafeUpstreamUrl(finalUrl) && !ct.includes('text/html') && !ct.includes('application/json')) {
+          const bytes = await readBoundedBytes(res, 64 * 1024);
+          language = extractMp4SingleAudioLanguage(bytes);
+          const total = Number(res.headers.get('content-range')?.match(/\/(\d+)$/)?.[1] ?? 0);
+          if (!language && total >= bytes.length && Number.isSafeInteger(total) && /^bytes 0-/i.test(res.headers.get('content-range') ?? '')) {
+            try {
+              language = await extractMp4AudioByRanges(bytes, total, async (offset, length) => {
+                const part = await fetch(cand.url, {method:'GET', headers:{...mp4Headers, Range:`bytes=${offset}-${offset + length - 1}`}, redirect:'follow', signal:sig});
+                const expected = `bytes ${offset}-${offset + length - 1}/${total}`;
+                if (part.status !== 206 || !isSafeUpstreamUrl(part.url || cand.url) || part.headers.get('content-range') !== expected) {
+                  await part.body?.cancel().catch(() => {}); return null;
+                }
+                return readBoundedBytes(part, length);
+              });
+            } catch { /* liveness remains valid when metadata is unavailable */ }
+          }
+        } else {
+          try { await res.body?.cancel(); } catch { /* ignore */ }
         }
         if (!isSafeUpstreamUrl(finalUrl)) {
           const dead = { alive: false, confirmedDead: true };
           setCachedLiveness(key, dead);
           return dead;
+        }
+        // MP4 needs the same uncertainty policy as HLS/DASH. A temporary
+        // refusal or a rejected range is not evidence that the video is gone;
+        // do not cache it as dead or hide it from the player's fallback list.
+        // In particular, a CDN may reject our metadata range while accepting
+        // the browser's own request. Only a successful probe is verified alive.
+        if (isTransientHttpStatus(res.status) || res.status === 416) {
+          return { alive: false, confirmedDead: false };
         }
         if (
           (!res.ok && res.status !== 206) ||
@@ -384,6 +431,7 @@ async function runSingleProbe(
           confirmedDead: false,
           rttMs: elapsed(),
           qualityOptions: 1,
+          ...(language ? { discoveredAudioLangs: [language] } : {}),
         };
         setCachedLiveness(key, ok);
         return ok;
@@ -400,12 +448,9 @@ async function runSingleProbe(
       // source is gone" and "this source did not like that particular request".
       // A retry only happens for statuses that are explicitly transient, so a
       // genuinely missing stream still costs exactly one request.
-      let res = await fetch(cand.url, {
-        method: 'GET',
-        headers: manifestHeaders,
-        redirect: 'follow',
-        signal: sig,
-      });
+      const probeInit: RequestInit = { method: 'GET', headers: manifestHeaders, redirect: cand.restrictedOrigin ? 'manual' : 'follow', signal: sig };
+      const probe = () => cand.restrictedOrigin ? restrictedFetchWithRedirects(cand.url, probeInit, cand.restrictedOrigin) : fetch(cand.url, probeInit);
+      let res = await probe();
       if (isTransientHttpStatus(res.status)) {
         try {
           await res.body?.cancel();
@@ -413,15 +458,10 @@ async function runSingleProbe(
           /* ignore */
         }
         await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_DELAY_MS));
-        res = await fetch(cand.url, {
-          method: 'GET',
-          headers: manifestHeaders,
-          redirect: 'follow',
-          signal: sig,
-        });
+        res = await probe();
       }
       const finalUrl = res.url || cand.url;
-      if (!isSafeUpstreamUrl(finalUrl) || !res.ok) {
+      if (!isSafeUpstreamUrl(finalUrl) || (cand.restrictedOrigin && !matchesRestrictedOrigin(finalUrl, cand.restrictedOrigin)) || !res.ok) {
         try {
           await res.body?.cancel();
         } catch {
@@ -456,7 +496,7 @@ async function runSingleProbe(
       const lead = bodyText.trimStart();
 
       if (cand.type === 'dash' || lead.includes('<MPD')) {
-        if (!lead.includes('<MPD')) {
+        if (cand.restrictedOrigin || !lead.includes('<MPD')) {
           const dead = { alive: false, confirmedDead: true };
           setCachedLiveness(key, dead);
           return dead;
@@ -502,10 +542,15 @@ async function runSingleProbe(
       let masterDurationSec: number | undefined;
       if (isMaster) {
         const childTargets = pickHlsChildCheckTargets(bodyText, finalUrl);
+        if (cand.restrictedOrigin && childTargets.length === 0) {
+          const dead = { alive: false, confirmedDead: true };
+          setCachedLiveness(key, dead);
+          return dead;
+        }
         if (childTargets.length > 0) {
           const childChecks = await Promise.all(
             childTargets.map((cu) =>
-              verifyChildHlsPlaylist(cu, manifestHeaders, sig).catch(
+              verifyChildHlsPlaylist(cu, manifestHeaders, sig, cand.restrictedOrigin).catch(
                 () => ({ state: 'unknown' as const, bodyText: undefined }),
               ),
             ),
@@ -560,9 +605,10 @@ async function runSingleProbe(
       setCachedLiveness(key, ok);
       return ok;
     } catch {
-      // Timeout or transient abort is not proof of death. The filter below retains
-      // it only when no other candidate verifies healthy.
+      // Timeout or transient abort is not proof of death; keep it unverified.
       return { alive: false, confirmedDead: false };
+    } finally {
+      release();
     }
   })();
 
@@ -590,6 +636,7 @@ export async function verifyAndFilterCandidates(
 export async function verifyAndFilterCandidatesDetailed(
   candidates: RawStreamCandidate[],
   signal?: AbortSignal,
+  priorityUrls?: ReadonlySet<string>,
 ): Promise<{
   candidates: RawStreamCandidate[];
   verifiedAliveCount: number;
@@ -606,22 +653,22 @@ export async function verifyAndFilterCandidatesDetailed(
   // Track priority so Multi-Audio streams and lowest-latency primaries ALWAYS probe in Wave 0!
   const uniqueTargets = new Map<
     string,
-    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; priority: number }
+    { url: string; type: 'hls' | 'dash' | 'mp4'; headers?: Record<string, string>; probeMp4Audio?: boolean; restrictedOrigin?: string; priority: number }
   >();
   for (const c of candidates) {
-    const pKey = cacheKeyFor(c.url, c.headers);
-    const candPrio = (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
+    const pKey = cacheKeyFor(c.url, c.headers, c.restrictedOrigin);
+    const candPrio = (priorityUrls?.has(c.url) ? -2000 : 0) + (c.multiAudio ? 0 : 1000) + Math.min(c.latencyMs ?? 500, 900);
     const prev = uniqueTargets.get(pKey);
     if (!prev || candPrio < prev.priority) {
-      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, priority: candPrio });
+      uniqueTargets.set(pKey, { url: c.url, type: c.type, headers: c.headers, probeMp4Audio: c.probeMp4Audio, restrictedOrigin: c.restrictedOrigin, priority: candPrio });
     }
     if (c.standbyUrl && c.standbyUrl !== c.url) {
       const sHeaders = c.standbyHeaders ?? c.headers;
-      const sKey = cacheKeyFor(c.standbyUrl, sHeaders);
+      const sKey = cacheKeyFor(c.standbyUrl, sHeaders, c.restrictedOrigin);
       const standbyPrio = candPrio + 1500;
       const prevS = uniqueTargets.get(sKey);
       if (!prevS || standbyPrio < prevS.priority) {
-        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders, priority: standbyPrio });
+        uniqueTargets.set(sKey, { url: c.standbyUrl, type: c.type, headers: sHeaders, restrictedOrigin: c.restrictedOrigin, priority: standbyPrio });
       }
     }
   }
@@ -729,9 +776,9 @@ export async function verifyAndFilterCandidatesDetailed(
   };
 
   const outcomeFor = (cand: RawStreamCandidate) => ({
-    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers)),
+    primary: outcomes.get(cacheKeyFor(cand.url, cand.headers, cand.restrictedOrigin)),
     standby: cand.standbyUrl && cand.standbyUrl !== cand.url
-      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers))
+      ? outcomes.get(cacheKeyFor(cand.standbyUrl, cand.standbyHeaders ?? cand.headers, cand.restrictedOrigin))
       : undefined,
   });
   const kept: RawStreamCandidate[] = [];
@@ -832,11 +879,12 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
     try {
       let url = startUrl;
       for (let redirect = 0; redirect <= 3; redirect++) {
-        if (!isSafeUpstreamUrl(url)) {
+        if ((!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin)))) {
           checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
           return null;
         }
-        const res = await fetch(url, { headers, redirect: 'manual', signal: wholeRequest });
+        const init: RequestInit = { headers, redirect: 'manual', signal: wholeRequest };
+        const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
         if (res.status >= 300 && res.status < 400) {
           const location = res.headers.get('location');
           await res.body?.cancel().catch(() => {});
@@ -870,7 +918,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
         }
         checks.push({ stage, status: 'ok', httpStatus: res.status, ms: Date.now() - t0 });
         const finalUrl = res.url || url;
-        if (!isSafeUpstreamUrl(finalUrl)) return null;
+        if ((!isSafeUpstreamUrl(finalUrl) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(finalUrl, candidate.restrictedOrigin)))) return null;
         return { text, url: finalUrl };
       }
     } catch (err) {
@@ -885,12 +933,12 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
   const rangeProbe = async (stage: string, url: string, redirectDepth = 0): Promise<{ url: string; ok: boolean } | null> => {
     const t0 = Date.now();
     try {
-      if (!isSafeUpstreamUrl(url)) {
+      if ((!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin)))) {
         checks.push({ stage, status: 'blocked-unsafe-url', ms: Date.now() - t0 });
         return null;
       }
-      const res = await fetch(url, { headers: { ...headers, Range: 'bytes=0-1023' }, redirect: 'manual',
-        signal: AbortSignal.any([wholeRequest, AbortSignal.timeout(3000)]) });
+      const init: RequestInit = { headers: { ...headers, Range: 'bytes=0-1023' }, redirect: 'manual', signal: AbortSignal.any([wholeRequest, AbortSignal.timeout(3000)]) };
+      const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get('location');
         await res.body?.cancel().catch(() => {});
@@ -907,7 +955,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
           checks.push({ stage, status: 'blocked-auth-redirect', httpStatus: res.status, ms: Date.now() - t0 });
           return null;
         }
-        if (!isSafeUpstreamUrl(target)) {
+        if ((!isSafeUpstreamUrl(target) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(target, candidate.restrictedOrigin)))) {
           checks.push({ stage, status: 'blocked-unsafe-redirect', httpStatus: res.status, ms: Date.now() - t0 });
           return null;
         }
@@ -1056,7 +1104,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
   const firstSegmentUrl = mediaSegments[0]?.url;
   let delivery: Record<string, unknown> = { mode: 'unknown', segmentRelayChecked: false };
   if (firstSegmentUrl) {
-    if (relayMode === 'full') {
+    if (relayMode === 'full' || candidate.restrictedOrigin) {
       delivery = { mode: 'full', route: 'backend-relay', segmentRelayChecked: false };
     } else {
       const canDirect = await verifyDirectSegmentOffload(firstSegmentUrl);
@@ -1093,8 +1141,9 @@ export async function diagnoseMultiAudioCandidate(candidate: RawStreamCandidate)
     try {
       let url = startUrl;
       for (let i = 0; i <= 3; i++) {
-        if (!isSafeUpstreamUrl(url)) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
-        const res = await fetch(url, {headers, signal, redirect:'manual'});
+        if (!isSafeUpstreamUrl(url) || (candidate.restrictedOrigin && !matchesRestrictedOrigin(url, candidate.restrictedOrigin))) { steps.push({stage,status:'unsafe-url',ms:Date.now()-start}); return null; }
+        const init: RequestInit = {headers, signal, redirect:'manual'};
+        const res = candidate.restrictedOrigin ? await restrictedFetchWithRedirects(url, init, candidate.restrictedOrigin) : await fetch(url, init);
         if (res.status >= 300 && res.status < 400) {
           const location = res.headers.get('location');
           await res.body?.cancel();

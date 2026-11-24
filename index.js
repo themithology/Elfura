@@ -63,7 +63,13 @@ function loadDotEnvIntoProcess() {
       ) {
         value = value.slice(1, -1);
       }
-      if (!key || process.env[key] !== undefined) continue;
+      if (!key) continue;
+      if (process.env[key] !== undefined) {
+        if ((key.startsWith('ELFURA_RESOLVER_') || key === 'ELFURA_SECRET') && process.env[key] && process.env[key] !== value) {
+          console.warn(`[elfura-env] ${key} from the hosting environment overrides .env; check the Pterodactyl startup variables if this is unexpected.`);
+        }
+        continue;
+      }
       process.env[key] = value;
     }
   }

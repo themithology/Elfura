@@ -24,6 +24,7 @@
 import dns from 'node:dns';
 
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
+import { installNetTap } from './sources/net-tap.js';
 
 const CACHE_TTL_MS = 5 * 60_000;
 const QUERY_TIMEOUT_MS = 2_500;
@@ -287,6 +288,8 @@ async function applyRescue(log: (line: string) => void, reason: string): Promise
     return undici.fetch(normalized.url, normalized.init as never);
   }) as typeof fetch;
   globalThis.fetch = rescuedFetch;
+  // Rescue can also be installed later by the watchdog, after registry startup.
+  installNetTap();
 
   installed = true;
   if (watchdog) {

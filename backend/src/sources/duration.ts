@@ -4,8 +4,8 @@
  * Some sources happily serve a 40-second intro, a trailer, a 12-minute recap or
  * a double-episode bundle for the requested title. They are "alive" and they
  * play — they are just the wrong video. Comparing the measured playlist runtime
- * with the runtime TMDB reports for this exact movie/episode removes them
- * without touching anything that could not be measured.
+ * with the runtime TMDB reports for this movie/episode can flag a mismatch;
+ * metadata and playlist durations are not proof of a wrong video.
  *
  * Tolerance: ±20 minutes for a movie, ±5 minutes for one TV episode. Short
  * content (< 10 minutes) gets its own runtime as the window so a genuine 4-minute
@@ -25,8 +25,8 @@ export function durationToleranceSec(type: 'movie' | 'tv', expectedSec: number |
 
 /**
  * `true` means "keep it". An unmeasurable stream (live, MP4, playlist without
- * `#EXT-X-ENDLIST`) or an unknown expected runtime is always kept: the guard may
- * only remove what it can prove is the wrong runtime.
+ * `#EXT-X-ENDLIST`) or an unknown expected runtime always fits. A mismatch is
+ * only a heuristic; it cannot prove which video the stream actually contains.
  */
 export function durationFits(
   measuredSec: number | null | undefined,

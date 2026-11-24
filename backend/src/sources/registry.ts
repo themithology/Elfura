@@ -16,12 +16,13 @@ import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
-import { cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
+import { candidateEvidence, cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
 import { createSource1Adapter } from './source1.js';
 import { createSource3Adapter } from './source3.js';
 import { createSource4Adapter } from './source4.js';
 import { createSource5Adapter } from './source5.js';
 import { createSource16Adapter } from './source16.js';
+import { createSource17Adapter, TGVIDX_DISCOVERY_TIMEOUT_MS } from './source17.js';
 import { createSource6Adapter } from './source6.js';
 import { createSource8Adapter } from './source8.js';
 import { createSource9Adapter } from './source9.js';
@@ -37,6 +38,9 @@ import { createSource21Adapter } from './source21.js';
 import { createSource22Adapter } from './source22.js';
 import { createSource24Adapter } from './source24.js';
 import { createSource25Adapter } from './source25.js';
+import { createSource28Adapter } from './source28.js';
+import { createSource29Adapter } from './source29.js';
+import { createSource30Adapter } from './source30.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -69,7 +73,7 @@ const RESCUE_CEILING_MS = 5200;
 /** Upper bound for the adapter race when nothing has candidates yet. */
 const ADAPTER_RACE_MS = 3600;
 /** Window for a single-adapter recovery call (`?source=source-N`). */
-const SINGLE_SOURCE_BUDGET_MS = 9000;
+const SINGLE_SOURCE_BUDGET_MS = 6500;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 /** Diagnostics only: the environment variable that can switch each source off. */
 const SOURCE_ENV_FLAGS: Record<string, string> = {
@@ -80,6 +84,7 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-6': 'ELFURA_TELUGU_ENABLED',
   'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
   'source-16': 'ELFURA_HINDI_DUB_ENABLED',
+  'source-17': 'ELFURA_TGVIDX_ENABLED',
   'source-8': 'ELFURA_VIDZEE_ENABLED',
   'source-9': 'ELFURA_VIXSRC_ENABLED',
   'source-10': 'ELFURA_VIDNEST_ENABLED',
@@ -93,6 +98,9 @@ const SOURCE_ENV_FLAGS: Record<string, string> = {
   'source-21': 'ELFURA_WATCHOUT_ENABLED',
   'source-24': 'ELFURA_VIDLINK_ENABLED',
   'source-25': 'ELFURA_GREYBOX_ENABLED',
+  'source-28': 'ELFURA_ANIME_MULTI_ENABLED',
+  'source-29': 'ELFURA_ANIME_29_ENABLED',
+  'source-30': 'ELFURA_ANIME_30_ENABLED',
 };
 
 const resolveBudgetMs = (): number => {
@@ -126,6 +134,11 @@ const VERIFY_BREADTH_TARGET = 84;
  */
 const MAX_LANES_PER_SOURCE = 200;
 
+type WaveEntry = { adapter: SourceAdapter; result: RawSourceResult; bytes: number };
+type DiscoveryWave = { expiresAt: number; entries: Map<string, WaveEntry>; retried: Set<string>; bytes: number };
+const MAX_WAVE_TITLES = 256;
+const MAX_WAVE_BYTES = 32 * 1024 * 1024;
+
 export class SourceRegistry {
   private readonly adapters: SourceAdapter[];
   private readonly cfg: BackendConfig;
@@ -143,16 +156,10 @@ export class SourceRegistry {
     MAX_ADAPTER_CACHE_ENTRIES,
   );
   private readonly segmentInFlight = new Map<string, Promise<SkipSegments | undefined>>();
-  /**
-   * Lanes that finished AFTER the first response was sealed.
-   *
-   * This is the one piece of retained state that is not a cache: without it a
-   * slow source's result is simply lost, and the player's follow-up `late=1`
-   * passes would never see it. It is bounded by lane name, holds only the
-   * per-lane candidate list, and drops the payload when a newer resolve of the
-   * same title starts — so a hundred titles viewed once cannot pile up.
-   */
-  private readonly finishedLate = new Map<string, { adapter: SourceAdapter; result: RawSourceResult }[]>();
+  /** Short-lived discovery-wave state, independent of optional payload caches. */
+  private readonly finishedLate = new Map<string, DiscoveryWave>();
+  private finishedLateBytes = 0;
+
   /**
    * Why the last resolve came back empty, when it was us and not the title.
    * The resolver reports this so "no streams" never silently means "every
@@ -209,6 +216,8 @@ export class SourceRegistry {
       // server (./anime-db.ts) so the embed URL stays `/embed/tv/<tmdbId>`. On by
       // default: it needs no credentials and answered 5/5 titles in testing.
       createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_HINDI_DUB_ENABLED !== '0'),
+      // Dynamic TGVIDX inventory; own-player rows are excluded to avoid recursion.
+      createSource17Adapter(() => cfg.source17?.enabled ?? process.env.ELFURA_TGVIDX_ENABLED !== '0'),
       createSource8Adapter(() => cfg.source8?.enabled ?? false),
       createSource9Adapter(() => cfg.source9?.enabled ?? false),
       createSource10Adapter(() => cfg.source10?.enabled ?? false),
@@ -225,6 +234,13 @@ export class SourceRegistry {
       createSource24Adapter(cfg.source24),
       // Greybox: plain JSON with per-stream language labels and no token.
       createSource25Adapter(cfg.source25),
+      // Source 26 is intentionally not registered: tested streams can play
+      // audio without video on browsers that lack HEVC decoding.
+      // Direct multi-audio anime. Only mapped season-one episodes with matching
+      // TMDB episode titles are accepted; no title or language is guessed.
+      createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
+      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED !== '0'),
+      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED !== '0'),
     ];
   }
 
@@ -249,17 +265,25 @@ export class SourceRegistry {
    */
   async selfTestAll(
     params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
-  ): Promise<{ id: string; raw: number; ms: number; net: string }[]> {
+  ): Promise<{ id: string; raw: number; ms: number; net: string; skipped?: string }[]> {
+    // Share one lazy metadata lookup just as the playback resolver does. Anime
+    // adapters cannot correctly resolve an episode without TMDB metadata.
+    let metaPromise: ReturnType<typeof fetchTmdbMetadata> | undefined;
+    const resolveMetaFallback = () => (metaPromise ??= fetchTmdbMetadata(this.cfg.tmdb, params));
     return Promise.all(
       this.adapters
         .filter((adapter) => adapter.enabled())
         .map(async (adapter) => {
           const started = Date.now();
+          if (params.type === 'movie' && ['source-28', 'source-29', 'source-30'].includes(adapter.id)) {
+            return { id: adapter.id, raw: 0, ms: 0, net: '0 req', skipped: 'TV anime only' };
+          }
           const query: SourceQuery = {
             type: params.type,
             tmdbId: params.tmdbId,
             season: params.season,
             episode: params.episode,
+            resolveMetaFallback,
             signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
           };
           try {
@@ -506,15 +530,21 @@ export class SourceRegistry {
     adapter: SourceAdapter,
     baseKey: string,
     query: SourceQuery,
+    onLateResult?: (result: RawSourceResult) => void,
+    onOrigin?: (origin: 'cache' | 'shared' | 'fresh') => void,
   ): Promise<RawSourceResult> {
     const cached = this.getCachedAdapterResult(baseKey);
-    if (cached) return Promise.resolve(cached);
+    if (cached) { onOrigin?.('cache'); return Promise.resolve(cached); }
 
     const existing = this.inFlight.get(baseKey);
-    if (existing) return existing;
+    if (existing) { onOrigin?.('shared'); return existing; }
 
+    onOrigin?.('fresh');
     const p = adapter
-      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => this.setCachedAdapterResult(baseKey, result) })
+      .resolve({ ...query, preferredLang: undefined, onLateResult: (result) => {
+        this.setCachedAdapterResult(baseKey, result);
+        onLateResult?.(result);
+      } })
       .then((res) => {
         this.setCachedAdapterResult(baseKey, res);
         return res;
@@ -583,6 +613,7 @@ export class SourceRegistry {
      * arrived after the first response.
      */
     late?: boolean;
+    retryMissing?: boolean;
   }): Promise<UniformPlaybackResponse | null> {
     const resolveStartedAt = Date.now();
     // One end-to-end budget, not additive provider + liveness + metadata waits.
@@ -594,7 +625,7 @@ export class SourceRegistry {
     const singleSource = typeof params.sourceId === 'string' && params.sourceId.length > 0;
     const deadline =
       resolveStartedAt +
-      (lateOnly ? 2_200 : params.anilistId ? 12_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
+      (lateOnly ? 2_200 : params.anilistId ? 7_000 : singleSource ? SINGLE_SOURCE_BUDGET_MS : resolveBudgetMs());
     // Fairness window for the adapter race (see EARLY_GRACE_MS / MIN_JOIN_MS).
     const remaining = () => Math.max(0, deadline - Date.now());
     const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
@@ -625,7 +656,7 @@ export class SourceRegistry {
 
     // Identity of this title for the late-join stash. Deliberately excludes
     // headers/tokens: it is only a bucket name.
-    const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}`;
+    const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}|${params.anilistId ?? ''}|${params.anilistEpisode ?? ''}`;
     // Launch TMDB metadata AND all source adapters concurrently (zero serial wait!)
     const mediaPromise = fetchTmdbMetadata(this.cfg.tmdb, {
       type: params.type,
@@ -666,6 +697,16 @@ export class SourceRegistry {
       signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
     };
 
+    // TGVIDX aggregates upstreams before replying; its normal response now
+    // takes roughly eight seconds and can exceed the shared discovery signal.
+    // Give only its discovery task a longer, bounded signal. This does not
+    // extend the first-list or focused-request deadline, change resolver
+    // routing, or detach a caller-supplied cancellation signal in the adapter.
+    const queryFor = (adapter: SourceAdapter): SourceQuery =>
+      adapter.id === 'source-17'
+        ? { ...query, signal: AbortSignal.timeout(Math.max(this.cfg.resolveTimeoutMs, TGVIDX_DISCOVERY_TIMEOUT_MS)) }
+        : query;
+
     // Launch all active adapters in parallel; if one adapter finishes quickly with candidates
     // while another is stuck in a multi-second upstream cold scan (>2.6s slower), proceed early
     // once fast candidates pass verification while letting the slower adapter warm `ramCache` in background!
@@ -692,39 +733,51 @@ export class SourceRegistry {
     // sources, "which one failed and why" must be readable from the log.
     const adapterReport = new Map<string, { ms: number; raw?: number; error?: string }>();
     const adapterNet = new Map<string, NetRecord[]>();
-    // A fresh resolve owns a fresh stash. This has to run before any adapter
-    // task can record into it — the tasks below start immediately — and never
-    // on a late pass, which is the pass that reads it.
-    if (!lateOnly) this.finishedLate.delete(lateKey);
-    if (lateOnly) {
-      // Report what finished after the previous response was sealed. The
-      // payload cache is not consulted: it may be disabled entirely, and using
-      // it here is what made late joins look like a caching feature.
-      const finished = this.finishedLate.get(lateKey) ?? [];
+    // Concurrent viewers of the same title share the same active wave. A new
+    // request must not erase a previous viewer's in-flight discoveries. State
+    // expires independently of the optional payload cache and is size-bounded.
+    this.pruneFinishedLate();
+    let wave = this.finishedLate.get(lateKey);
+    if (!lateOnly && !wave) {
+      wave = { expiresAt: Date.now() + 60_000, entries: new Map(), retried: new Set(), bytes: 0 };
+      this.finishedLate.set(lateKey, wave);
+      this.pruneFinishedLate();
+    }
+    const currentWave = wave;
+    if (lateOnly && currentWave) {
       activeAdapters.forEach((adapter, idx) => {
-        const hit = finished.find((entry) => entry.adapter.id === adapter.id);
+        const hit = currentWave.entries.get(adapter.id);
         if (hit) slots[idx] = { adapter, result: hit.result };
+      });
+    }
+    // One shared retry for adapters that explicitly finished empty. This is
+    // asynchronous and coalesced per title/source, not N rediscovery requests
+    // per viewer. In-flight and nonempty providers are never restarted here.
+    if (lateOnly && params.retryMissing && currentWave) {
+      activeAdapters.forEach((adapter, idx) => {
+        const existing = currentWave.entries.get(adapter.id);
+        if (!existing || existing.result.candidates.length || currentWave.retried.has(adapter.id) || this.inFlight.has(cacheKeys[idx])) return;
+        currentWave.retried.add(adapter.id);
+        void this.resolveAdapterWithCache(adapter, cacheKeys[idx], queryFor(adapter), result => {
+          this.recordWaveResult(lateKey, currentWave, adapter, result);
+        }).then(result => {
+          this.recordWaveResult(lateKey, currentWave, adapter, result);
+          if (result.candidates.length) this.health.recordSuccess(adapter.id);
+        }).catch(() => { /* optional recovery, never an unhandled rejection */ });
       });
     }
     const adapterTasks = lateOnly ? [] : activeAdapters.map(async (adapter, idx) => {
       const cacheKey = cacheKeys[idx];
       const startedAt = Date.now();
+      let origin: 'cache' | 'shared' | 'fresh' = 'fresh';
       try {
-        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, query));
+        const tapped = await tapRequests(() => this.resolveAdapterWithCache(adapter, cacheKey, queryFor(adapter), result => {
+          if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
+        }, value => { origin = value; }));
         const result = tapped.value;
         adapterNet.set(adapter.id, tapped.net);
         slots[idx] = { adapter, result };
-        // Keep this lane for the player's follow-up late passes. Every lane is
-        // recorded, not only the ones that missed the seal: a late pass has to
-        // report `pendingSources` correctly, and a lane that already answered
-        // is not pending even if it answered early. The stash is cleared when a
-        // fresh resolve of this title starts, so it never accumulates.
-        if (result.candidates.length) {
-          const prior = this.finishedLate.get(lateKey) ?? [];
-          prior.push({ adapter, result });
-          this.finishedLate.set(lateKey, prior);
-          this.pruneFinishedLate();
-        }
+        if (currentWave) this.recordWaveResult(lateKey, currentWave, adapter, result);
         adapterReport.set(adapter.id, { ms: Date.now() - startedAt, raw: result.candidates.length });
         // Learn from what actually happened. "No candidates" is not a failure —
         // that provider may simply not carry this title — so only a throw or an
@@ -733,7 +786,7 @@ export class SourceRegistry {
         if (!result.candidates.length) {
           console.warn(
             `[elfura-sources] ${adapter.id} ${params.type}/${params.tmdbId}: 0 candidates in ` +
-              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)}`,
+              `${Date.now() - startedAt}ms :: ${summarizeNet(tapped.net)} (observed global fetch; lookup=${origin})`,
           );
         }
         if (result.candidates.length > 0 && !firstWithCandidatesDone) {
@@ -770,6 +823,20 @@ export class SourceRegistry {
     }
     if (lagTimer) clearTimeout(lagTimer);
 
+    // Only confirmed Japanese animation gets the short additional join window.
+    // All adapters were already launched; never block the late-join mechanism or
+    // use this window for a source-specific recovery request.
+    const isPriorityAnime = () => params.type === 'tv' && (params.season ?? 1) === 1 &&
+      readyMedia?.originalLanguage === 'ja' &&
+      !!readyMedia.genres?.some(g => g.toLowerCase() === 'animation');
+    const priorityIds = new Set(['source-28', 'source-29', 'source-30']);
+    if (!lateOnly && !singleSource && isPriorityAnime() && remaining() > 1400) {
+      const priorityTasks = adapterTasks.filter((_, idx) => priorityIds.has(activeAdapters[idx].id));
+      if (priorityTasks.length) await Promise.race([
+        Promise.allSettled(priorityTasks), wait(Math.min(2300, Math.max(0, remaining() - 1400))),
+      ]);
+    }
+
     const verifyCurrentSlots = async (probeFloorMs = PROBE_MIN_WINDOW_MS) => {
       const ready = slots.filter(
         (x): x is { adapter: SourceAdapter; result: RawSourceResult } => x !== null,
@@ -784,6 +851,8 @@ export class SourceRegistry {
       // source was added for. Taking one lane per distinct language first means
       // a 21-lane source spends its probe budget across 8 languages instead of
       // 21 rows of the same one.
+      if (isPriorityAnime()) ready.sort((a, b) =>
+        Number(priorityIds.has(b.adapter.id)) - Number(priorityIds.has(a.adapter.id)));
       const perAdapter = ready.map((entry) => {
         const byLanguage = new Map<string, RawStreamCandidate[]>();
         for (const cand of entry.result.candidates) {
@@ -794,7 +863,11 @@ export class SourceRegistry {
         }
         if (byLanguage.size < 2) return entry.result.candidates;
         const ordered: RawStreamCandidate[] = [];
-        for (const bucket of byLanguage.values()) ordered.push(...bucket);
+        const buckets = [...byLanguage.values()];
+        const maxBucket = Math.max(...buckets.map((bucket) => bucket.length));
+        for (let i = 0; i < maxBucket; i += 1) {
+          for (const bucket of buckets) if (bucket[i]) ordered.push(bucket[i]);
+        }
         return ordered;
       });
       const breadth = Math.max(2, Math.floor(VERIFY_BREADTH_TARGET / Math.max(1, perAdapter.length)));
@@ -817,6 +890,10 @@ export class SourceRegistry {
               Math.min(lateOnly ? 1_300 : 2_000, remaining()),
             ),
           ),
+          isPriorityAnime() ? new Set(tagged.filter(c => {
+            const idx = Number(c.key.slice(0, c.key.indexOf('::')));
+            return priorityIds.has(ready[idx].adapter.id);
+          }).map(c => c.url)) : undefined,
         );
       const byIdx = new Map<number, RawStreamCandidate[]>();
       for (const vc of vFlat) {
@@ -845,11 +922,9 @@ export class SourceRegistry {
     // that are still working instead of shipping what happened to arrive first.
     const readySources = () =>
       slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
-    // A late pass used to assume every lane had already finished, so it never
-    // reported anything pending. Lanes discovered empty (nothing stashed, not
-    // currently resolving) still are pending, and saying so is what lets the
-    // player schedule its remaining retries.
-    const lateStash = lateOnly ? this.finishedLate.get(lateKey) ?? [] : [];
+    // A late pass snapshots the completed wave entries; empty results are
+    // recorded too, while adapters not yet settled remain pending.
+    const lateStash = lateOnly ? [...(currentWave?.entries.values() ?? [])] : [];
     const stillPending = lateOnly
       ? activeAdapters.filter((adapter) => !lateStash.some((entry) => entry.adapter.id === adapter.id)).length
       : activeAdapters.length - doneCount;
@@ -858,6 +933,14 @@ export class SourceRegistry {
         Promise.allSettled(adapterTasks),
         wait(Math.min(1300, Math.max(0, remaining() - 1400))),
       ]);
+    }
+
+    // With a large provider board, three fast answers are not a full first
+    // wave. Give the other already-running adapters a small bounded chance to
+    // join, while retaining time for verification and fast two-source starts.
+    if (!lateOnly && !singleSource && activeAdapters.length >= 5 &&
+        readySources() >= 3 && readySources() < Math.min(8, Math.ceil(activeAdapters.length / 2)) && remaining() > 1500) {
+      await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(700, remaining() - 1400))]);
     }
 
     let verifiedBatch = await verifyCurrentSlots();
@@ -933,8 +1016,8 @@ export class SourceRegistry {
     let mergedSegments: SkipSegments | undefined;
     for (const segments of segmentResults) if (!mergedSegments && segments) mergedSegments = segments;
     const candidateEntries: {adapter: SourceAdapter; candidate: RawStreamCandidate}[] = [];
-    // Wrong-cut guard: a stream that plays but is a trailer, a recap or a double
-    // episode is worse than no stream, because it looks like a working source.
+    // A runtime mismatch may mean a trailer or wrong episode, but metadata and
+    // playlist measurements are not conclusive. Treat it as a fallback.
     const expectedRuntimeSec = media.runtime && media.runtime > 0 ? media.runtime * 60 : null;
     const runtimeToleranceSec = durationToleranceSec(params.type, expectedRuntimeSec);
     const droppedByRuntime: { id: string; measuredSec: number }[] = [];
@@ -996,6 +1079,21 @@ export class SourceRegistry {
       blockedByRuntime.clear();
     }
 
+    // Wait for subtitles before taking the coverage snapshot, not after sealing
+    // sources. This is the same existing 100ms window, but adapters finishing
+    // during it can now join the first list rather than being needlessly late.
+    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
+    if (shouldResolveOpenSubtitles && !subtitleState.value && remaining() > 0 &&
+        slots.some(slot => Boolean(slot?.result.candidates.length))) {
+      await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
+    }
+    // Freeze the slots used for this response. A source completing after this
+    // point must remain pending even if the live slots or stash change before
+    // the reply is sent. The same applies to late-only responses.
+    const coverageSlots = lateOnly ? slots.slice() : slots.map((slot, idx) => {
+      const latest = currentWave?.entries.get(activeAdapters[idx].id);
+      return latest ?? slot;
+    });
     // Coverage pass: every adapter that answered contributes its usable lanes,
     // not only the ones whose probe finished inside the budget. Verified lanes
     // are already in `candidateEntries` and sort first downstream; these fill in
@@ -1005,7 +1103,7 @@ export class SourceRegistry {
     {
       const seenUrls = new Set(candidateEntries.map((entry) => entry.candidate.url));
       let appended = 0;
-      for (const slot of slots) {
+      for (const slot of coverageSlots) {
         if (!slot) continue;
         let added = 0;
         for (const cand of slot.result.candidates) {
@@ -1020,7 +1118,7 @@ export class SourceRegistry {
           const measured = cand.measuredThisRequest;
           const durationHere = measured?.durationSec ?? evidence?.durationSec ?? null;
           const aliveHere = measured?.alive || !!evidence?.alive;
-          if (aliveHere && !durationFits(durationHere, expectedRuntimeSec, runtimeToleranceSec)) continue;
+          if (runtimeGuardEnabled && aliveHere && !durationFits(durationHere, expectedRuntimeSec, runtimeToleranceSec)) continue;
           seenUrls.add(cand.url);
           candidateEntries.push({ adapter: slot.adapter, candidate: cand });
           added += 1;
@@ -1062,12 +1160,18 @@ export class SourceRegistry {
       if (!counts.has(adapter.id)) counts.set(adapter.id, new Map());
       const seq = (sequences.get(adapter.id) ?? 0) + 1;
       sequences.set(adapter.id,seq);
-      uniformOptions.push(this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase));
+      const option = this.sealCandidate(adapter,candidate,seq,counts.get(adapter.id)!,streamBase);
+      const evidence = candidateEvidence(candidate);
+      const duration = evidence?.durationSec ?? null;
+      if (isPriorityAnime() && !evidence?.alive) option.animeUnverified = true;
+      if (isPriorityAnime() && priorityIds.has(adapter.id) && evidence?.alive &&
+          durationFits(duration, expectedRuntimeSec, runtimeToleranceSec)) option.animePriority = true;
+      uniformOptions.push(option);
     }
 
     if (droppedByRuntime.length) {
       console.warn(
-        `[elfura-resolve] runtime guard dropped ${droppedByRuntime.length} stream(s) for ` +
+        `[elfura-resolve] runtime mismatch: ${droppedByRuntime.length} stream(s) considered as fallback before deduplication/selection for ` +
           `${params.type}/${params.tmdbId} (expected ${Math.round((expectedRuntimeSec ?? 0) / 60)}min ±` +
           `${Math.round(runtimeToleranceSec / 60)}min) :: ` +
           droppedByRuntime.map((row) => `${row.id}@${Math.round(row.measuredSec / 60)}min`).join(' '),
@@ -1098,11 +1202,7 @@ export class SourceRegistry {
     // separate, unauthenticated subtitle catalogue. It is used only when
     // OpenSubtitles produced nothing, so it can add languages but can never
     // displace a working OpenSubtitles track.
-    const shouldResolveOpenSubtitles = Boolean(media.imdbId) && Boolean(this.cfg.subtitles?.enabled);
-
     if (shouldResolveOpenSubtitles && media.imdbId) {
-      // Never issue a serial second request or wait beyond the startup budget.
-      if (!subtitleState.value && remaining() > 0) await Promise.race([earlyOpenSubsPromise, wait(Math.min(100, remaining()))]);
       const rawFallbackSubs = subtitleState.value ?? [];
 
       if (rawFallbackSubs.length > 0) {
@@ -1120,7 +1220,12 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          opt.subtitles = [...sealedFallbackSubs];
+          if (['source-29', 'source-30'].includes(opt.sourceId) && opt.subtitles.length) {
+            const existing = new Set(opt.subtitles.map(track => track.lang));
+            opt.subtitles = [...opt.subtitles, ...sealedFallbackSubs.filter(track => !existing.has(track.lang))];
+          } else {
+            opt.subtitles = [...sealedFallbackSubs];
+          }
         }
       }
     }
@@ -1169,6 +1274,8 @@ export class SourceRegistry {
     if (!params.preferredLang) {
       uniformOptions.sort(
         (a, b) =>
+          Number(!!a.animeUnverified) - Number(!!b.animeUnverified) ||
+          Number(!!b.animePriority) - Number(!!a.animePriority) ||
           Number(!!b.multiAudio) - Number(!!a.multiAudio) ||
           qualityTierOf(a) - qualityTierOf(b) ||
           animeVariantTier(a) - animeVariantTier(b),
@@ -1199,6 +1306,8 @@ export class SourceRegistry {
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
+            Number(!!a.animeUnverified) - Number(!!b.animeUnverified) ||
+            Number(!!b.animePriority) - Number(!!a.animePriority) ||
             animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
@@ -1219,31 +1328,54 @@ export class SourceRegistry {
       primary: uniformOptions[0],
       sources: uniformOptions,
       sourceGroups: activeAdapters.map(adapter => adapter.id),
+      waveUpdates: true,
       // Sources that have not produced anything yet. The client uses this to
       // decide whether a late-join pass is worth making.
       pendingSources: activeAdapters
-        .filter((adapter, idx) =>
-          lateOnly
-            ? !(this.finishedLate.get(lateKey) ?? []).some((entry) => entry.adapter.id === adapter.id)
-            : slots[idx] === null,
-        )
+        .filter((_, idx) => coverageSlots[idx] === null)
         .map((adapter) => adapter.id),
       ...(mergedSegments ? { segments: mergedSegments } : {}),
     };
   }
 
-  /**
-   * Keep the late-join stash small. It only ever needs to hold the handful of
-   * titles a viewer currently has open, so a hard cap with oldest-first
-   * eviction is enough — and unlike a payload cache it never holds a manifest
-   * body, only per-lane candidate descriptors.
-   */
+  /** Merge partial provider callbacks without losing already returned lanes. */
+  private recordWaveResult(
+    key: string,
+    wave: DiscoveryWave,
+    adapter: SourceAdapter,
+    result: RawSourceResult,
+  ): void {
+    // Do not resurrect an evicted or expired wave from a stale async completion.
+    if (this.finishedLate.get(key) !== wave || Date.now() >= wave.expiresAt) return;
+    const previous = wave.entries.get(adapter.id);
+    const old = previous?.result;
+    const candidates = new Map((old?.candidates ?? []).map(c => [c.url, c]));
+    for (const candidate of result.candidates) candidates.set(candidate.url, candidate);
+    const merged = { ...old, ...result, candidates: [...candidates.values()].slice(0, MAX_LANES_PER_SOURCE) };
+    // Account for retained payloads as well as title count; enormous provider
+    // responses must not pin the heap during a burst of distinct titles.
+    let bytes: number;
+    try { bytes = Buffer.byteLength(JSON.stringify(merged)); } catch { return; }
+    const delta = bytes - (previous?.bytes ?? 0);
+    wave.bytes += delta;
+    this.finishedLateBytes += delta;
+    wave.entries.set(adapter.id, { adapter, result: merged, bytes });
+    this.pruneFinishedLate();
+  }
+
   private pruneFinishedLate(): void {
-    const MAX_TITLES = 8;
-    while (this.finishedLate.size > MAX_TITLES) {
-      const oldest = this.finishedLate.keys().next().value;
-      if (oldest === undefined) break;
-      this.finishedLate.delete(oldest);
+    const now = Date.now();
+    const remove = (key: string, wave: DiscoveryWave) => {
+      this.finishedLate.delete(key);
+      this.finishedLateBytes -= wave.bytes;
+    };
+    for (const [key, wave] of this.finishedLate) if (wave.expiresAt <= now) remove(key, wave);
+    // Bounded by both count and payload bytes. An evicted wave falls back to
+    // one fresh lookup rather than permanently losing the viewer's sources.
+    while (this.finishedLate.size > MAX_WAVE_TITLES || this.finishedLateBytes > MAX_WAVE_BYTES) {
+      const oldest = this.finishedLate.entries().next().value;
+      if (!oldest) break;
+      remove(oldest[0], oldest[1]);
     }
   }
 
@@ -1256,7 +1388,9 @@ export class SourceRegistry {
   ): UniformStreamOption {
     // Build strictly anonymized display label using ONLY adapter.label + audio/quality traits
     let trait = '';
-    if (cand.multiAudio) {
+    if (adapter.id === 'source-29' && cand.animeSubtitleMode === 'hard') {
+      trait = 'Provider-labelled Hard Sub';
+    } else if (cand.multiAudio) {
       trait = 'Multi-Audio';
     } else if (cand.audioLabel && cand.audioLabel !== 'Original') {
       trait = cand.audioLabel;
@@ -1281,6 +1415,7 @@ export class SourceRegistry {
     const streamTicket = sealStreamTicket(this.cfg.secret, {
       u: cand.url,
       ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
+      ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin, fp: 1 as const } : {}),
       k: cand.type === 'mp4' ? 'a' : 'm',
       ...(singleDubHint ? { l: singleDubHint } : {}),
     });
@@ -1297,6 +1432,19 @@ export class SourceRegistry {
       )}`,
     }));
 
+    // Only the new anime lane opts into source-specific, episode-aligned
+    // subtitles. Keep the existing subtitle policy for every other adapter.
+    const subtitles = ['source-29', 'source-30'].includes(adapter.id) ? (cand.subtitles ?? []).map((track) => ({
+      lang: track.lang,
+      label: track.label,
+      ...(track.format ? { format: track.format } : {}),
+      url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+        u: track.url,
+        ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+        ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin } : {}),
+        k: 's',
+      }))}`,
+    })) : [];
 
     const latencyHintMs =
       typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
@@ -1322,7 +1470,7 @@ export class SourceRegistry {
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),
       audioTracks,
-      subtitles: [],
+      subtitles,
     };
   }
 }

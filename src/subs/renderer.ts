@@ -245,6 +245,12 @@ export class SubtitleRenderer {
         if (span.bold) node.dataset.bold = '';
         if (span.italic) node.dataset.italic = '';
         if (span.underline) node.dataset.underline = '';
+        // Parsed subtitle styles are applied as CSS properties, never HTML.
+        // Relative sizing preserves both player-height scaling and the viewer's
+        // font-size control. A missing font falls back to the configured font.
+        if (span.fontFamily) node.style.fontFamily = `${JSON.stringify(span.fontFamily)}, var(--elf-sub-font)`;
+        if (span.fontSize) node.style.fontSize = `${(span.fontSize / 26) * 100}%`;
+        if (span.color) node.style.color = hexToRgba(span.color, this.style.textOpacity);
         node.textContent = part;
         el.appendChild(node);
       });

@@ -1,42 +1,40 @@
 /**
- * Boot-time source self-test
- * ==========================
- * "Nothing loads and the console only says raw=0" is not a diagnosis. This runs
- * once per boot against a well-known title, asks every adapter directly, and
- * prints what came back — candidate count plus the hosts it talked to and the
- * status each one answered with. Ten seconds of startup traffic buys an instant,
- * legible answer to "which sources are actually working from this machine".
- *
- * Disable with ELFURA_SELF_TEST=0. Title override: ELFURA_SELF_TEST_TMDB=550.
+ * Optional boot-time candidate discovery report. A returned candidate is not
+ * evidence of working playback, audio language or subtitles.
+ * Disable with ELFURA_SELF_TEST=0. The default test is a movie; to run an anime
+ * TV episode instead set ELFURA_SELF_TEST_TYPE=tv and ELFURA_SELF_TEST_TMDB,
+ * ELFURA_SELF_TEST_SEASON and ELFURA_SELF_TEST_EPISODE.
  */
 import type { SourceRegistry } from './registry.js';
 
-const DEFAULT_TMDB = '550';
-
 export async function runSourceSelfTest(registry: SourceRegistry): Promise<void> {
-  const tmdbId = (process.env.ELFURA_SELF_TEST_TMDB || DEFAULT_TMDB).trim();
+  const type = process.env.ELFURA_SELF_TEST_TYPE?.trim().toLowerCase() === 'tv' ? 'tv' : 'movie';
+  const tmdbId = (process.env.ELFURA_SELF_TEST_TMDB || (type === 'tv' ? '46260' : '550')).trim();
+  const positiveInt = (raw: string | undefined) => {
+    const n = Number(raw ?? 1);
+    return Number.isSafeInteger(n) && n > 0 && n <= 5000 ? n : 1;
+  };
+  const season = type === 'tv' ? positiveInt(process.env.ELFURA_SELF_TEST_SEASON) : undefined;
+  const episode = type === 'tv' ? positiveInt(process.env.ELFURA_SELF_TEST_EPISODE) : undefined;
   const started = Date.now();
   try {
-    const rows = await registry.selfTestAll({ type: 'movie', tmdbId });
-    const alive = rows.filter((r) => r.raw > 0);
+    const rows = await registry.selfTestAll({ type, tmdbId, season, episode });
+    const tested = rows.filter(r => !r.skipped);
+    const withCandidates = tested.filter(r => r.raw > 0);
     console.log(
-      `[elfura-selftest] movie/${tmdbId}: ${alive.length}/${rows.length} sources returned candidates ` +
-        `in ${Date.now() - started}ms`,
+      `[elfura-selftest] ${type}/${tmdbId}${type === 'tv' ? `/${season}/${episode}` : ''}: ` +
+        `${withCandidates.length}/${tested.length} tested sources returned candidates in ${Date.now() - started}ms ` +
+        `(${rows.length - tested.length} not applicable; candidates are not playback verification)`,
     );
     for (const row of rows) {
-      console.log(
-        `[elfura-selftest]   ${row.id.padEnd(10)} raw=${String(row.raw).padEnd(3)} ${row.ms}ms :: ${row.net}`,
-      );
+      console.log(row.skipped
+        ? `[elfura-selftest]   ${row.id.padEnd(10)} skipped: ${row.skipped}`
+        : `[elfura-selftest]   ${row.id.padEnd(10)} raw=${String(row.raw).padEnd(3)} ${row.ms}ms :: ${row.net}`);
     }
-    if (!alive.length) {
-      console.warn(
-        '[elfura-selftest] no source returned anything. Every line above shows the host each adapter ' +
-          'contacted and how it answered — 403/challenge means the host is blocking this machine\'s IP, ' +
-          'timeout/DNS means the host is unreachable from here, HTTP 200 with raw=0 means the source answered ' +
-          'but has no row for this title.',
-      );
+    if (!withCandidates.length) {
+      console.warn('[elfura-selftest] no tested source returned candidates. This can mean missing metadata, a provider refusal, a network error, or no matching title; it does not prove playback is broken or working.');
     }
   } catch (err) {
-    console.warn(`[elfura-selftest] failed: ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[elfura-selftest] failed: ${err instanceof Error ? err.name : 'Error'}`);
   }
 }
