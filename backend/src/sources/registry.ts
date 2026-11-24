@@ -15,32 +15,9 @@ import { SourceHealthStore } from '../source-health.js';
 import { buildStreamProxyUrl, DEFAULT_STREAM_PROXY_PATH } from '../stream-proxy.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
+import { APPROVED_SOURCES } from './index.js';
 import { normalizeLang } from './lang.js';
 import { candidateEvidence, cachedCandidateEvidence, cachedCandidateEvidenceAgeMs, diagnoseCandidatePlayback, verifyAndFilterCandidatesDetailed } from './liveness.js';
-import { createSource1Adapter } from './source1.js';
-import { createSource3Adapter } from './source3.js';
-import { createSource4Adapter } from './source4.js';
-import { createSource5Adapter } from './source5.js';
-import { createSource16Adapter } from './source16.js';
-import { createSource17Adapter, TGVIDX_DISCOVERY_TIMEOUT_MS } from './source17.js';
-import { createSource6Adapter } from './source6.js';
-import { createSource8Adapter } from './source8.js';
-import { createSource9Adapter } from './source9.js';
-import { createSource10Adapter } from './source10.js';
-import { createSource11Adapter } from './source11.js';
-import { createSource12Adapter } from './source12.js';
-import { createSource13Adapter } from './source13.js';
-import { createSource14Adapter } from './source14.js';
-import { createSource15Adapter } from './source15.js';
-import { createSource18Adapter } from './source18.js';
-import { createSource20Adapter } from './source20.js';
-import { createSource21Adapter } from './source21.js';
-import { createSource22Adapter } from './source22.js';
-import { createSource24Adapter } from './source24.js';
-import { createSource25Adapter } from './source25.js';
-import { createSource28Adapter } from './source28.js';
-import { createSource29Adapter } from './source29.js';
-import { createSource30Adapter } from './source30.js';
 import { durationFits, durationToleranceSec } from './duration.js';
 import { installNetTap, summarizeNet, tapRequests, type NetRecord } from './net-tap.js';
 import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from './selection.js';
@@ -76,33 +53,6 @@ const ADAPTER_RACE_MS = 3600;
 const SINGLE_SOURCE_BUDGET_MS = 6500;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 /** Diagnostics only: the environment variable that can switch each source off. */
-const SOURCE_ENV_FLAGS: Record<string, string> = {
-  'source-1': 'SOURCE1_ENABLED',
-  'source-3': 'SOURCE3_ENABLED',
-  'source-4': 'ELFURA_BINGR_ENABLED',
-  'source-5': 'ELFURA_NXSHA_ENABLED',
-  'source-6': 'ELFURA_TELUGU_ENABLED',
-  'source-7': 'ELFURA_SCREENSCAPE_ENABLED', // merged into source-5; kept so an old env var still maps
-  'source-16': 'ELFURA_HINDI_DUB_ENABLED',
-  'source-17': 'ELFURA_TGVIDX_ENABLED',
-  'source-8': 'ELFURA_VIDZEE_ENABLED',
-  'source-9': 'ELFURA_VIXSRC_ENABLED',
-  'source-10': 'ELFURA_VIDNEST_ENABLED',
-  'source-11': 'ELFURA_VAPLAYER_ENABLED',
-  'source-12': 'ELFURA_VIDZEN_ENABLED',
-  'source-13': 'ELFURA_XPASS_ENABLED',
-  'source-14': 'ELFURA_RIVE_CITADEL_ENABLED',
-  'source-15': 'ELFURA_MAPPLE_ENABLED',
-  'source-18': 'ELFURA_SUBDUB_ENABLED',
-  'source-20': 'ELFURA_VIDORA_ENABLED',
-  'source-21': 'ELFURA_WATCHOUT_ENABLED',
-  'source-24': 'ELFURA_VIDLINK_ENABLED',
-  'source-25': 'ELFURA_GREYBOX_ENABLED',
-  'source-28': 'ELFURA_ANIME_MULTI_ENABLED',
-  'source-29': 'ELFURA_ANIME_29_ENABLED',
-  'source-30': 'ELFURA_ANIME_30_ENABLED',
-};
-
 const resolveBudgetMs = (): number => {
   const raw = Number(process.env.ELFURA_RESOLVE_BUDGET_MS || 5000);
   return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
@@ -174,74 +124,12 @@ export class SourceRegistry {
     // nothing can explain itself in the console.
     installNetTap();
 
-    // Plug-and-play SourceAdapter registry (Part 1 requires zero changes when adding sources).
-    this.adapters = [
-      // Source 1 is one adapter owning all four direct upstreams it was built
-      // for: vidrift (rift), vidsync (sync), vidrock (rock) and vidbolt.
-      //
-      // It used to be split across two registry entries, and the split was
-      // silently destructive: `createSource1Adapter(cfg, 2, ...)` derives its id
-      // as `source-${group}`, so the entry carrying vidrift and vidrock was
-      // registered as **source-2**. The real source-2 adapter
-      // (createSource2Adapter) is imported nowhere, so nothing collided and
-      // nothing errored — the vidrift/vidrock results simply appeared in the
-      // panel under a source that had nothing to do with them, while the
-      // `source-1` row was the vidbolt-only stub with vidbolt explicitly
-      // disabled below. Four upstreams, and the panel could not attribute one
-      // of them correctly.
-      createSource1Adapter(cfg.source1, 2, { includeVidBolt: true, id: 'source-1' }),
-      // source-2 is deliberately NOT registered. Its adapter exists in
-      // ./source2.ts and is exercised directly by the e2e suite, but
-      // `cfg.source2` is pinned to `{enabled:false, embedOrigin:'', nxshaOrigin:'',
-      // vidstuckOrigin:''}` and legacy SOURCE2_* env vars are stripped (see
-      // config.ts), because its upstreams — nxsha `/api/extract`, `/api/scan`,
-      // `/api/sources` and the vidstuck/vidbolt resolver — are gone. Mounting it
-      // on the default config made it run anyway and re-introduce those dead
-      // endpoints into live traffic; e2e asserts `removedSourceCalls === 0`
-      // ('legacy SOURCE2 settings must not activate removed providers').
-      // Before mounting it, establish which of its upstreams still answers.
-      createSource3Adapter(cfg.source3),
-      createSource4Adapter(() => cfg.source4?.enabled ?? process.env.ELFURA_BINGR_ENABLED !== '0'),
-      // source-7 was never independent: it reused source-5's fetcher against the
-      // same host with a different lane list. It is now source-5's second lane
-      // set, with its original default-off gate preserved.
-      createSource5Adapter(
-        () => cfg.source5?.enabled ?? process.env.ELFURA_NXSHA_ENABLED !== '0',
-        () => cfg.source7?.enabled ?? process.env.ELFURA_SCREENSCAPE_ENABLED === '1',
-      ),
-      // Telugu-only lane, derived from source-5's scraper list but kept as its
-      // own id so its yield is attributable in the panel. Default off.
-      createSource6Adapter(() => cfg.source6?.enabled ?? false),
-      // Hindi-dub anime lane. AniList-keyed, but the TMDB id is converted on the
-      // server (./anime-db.ts) so the embed URL stays `/embed/tv/<tmdbId>`. On by
-      // default: it needs no credentials and answered 5/5 titles in testing.
-      createSource16Adapter(() => cfg.source16?.enabled ?? process.env.ELFURA_HINDI_DUB_ENABLED !== '0'),
-      // Dynamic TGVIDX inventory; own-player rows are excluded to avoid recursion.
-      createSource17Adapter(() => cfg.source17?.enabled ?? process.env.ELFURA_TGVIDX_ENABLED !== '0'),
-      createSource8Adapter(() => cfg.source8?.enabled ?? false),
-      createSource9Adapter(() => cfg.source9?.enabled ?? false),
-      createSource10Adapter(() => cfg.source10?.enabled ?? false),
-      createSource11Adapter(() => cfg.source11?.enabled ?? false),
-      createSource12Adapter(() => cfg.source12?.enabled ?? false),
-      createSource13Adapter(() => cfg.source13?.enabled ?? false),
-      createSource14Adapter(() => cfg.source14?.enabled ?? false),
-      createSource15Adapter(() => cfg.source15?.enabled ?? false),
-      createSource18Adapter(() => cfg.source18?.enabled ?? process.env.ELFURA_SUBDUB_ENABLED !== '0'),
-      createSource20Adapter(() => cfg.source20?.enabled ?? process.env.ELFURA_VIDORA_ENABLED !== '0'),
-      createSource21Adapter(() => cfg.source21?.enabled ?? process.env.ELFURA_WATCHOUT_ENABLED !== '0'),
-      createSource22Adapter(() => cfg.source22?.enabled ?? process.env.ELFURA_VIDLY_SUBS_ENABLED !== '0'),
-      // VidLink: a measured JSON API, not a scrape.
-      createSource24Adapter(cfg.source24),
-      // Greybox: plain JSON with per-stream language labels and no token.
-      createSource25Adapter(cfg.source25),
-      // Source 26 is intentionally not registered: tested streams can play
-      // audio without video on browsers that lack HEVC decoding.
-      // Direct multi-audio anime. Only mapped season-one episodes with matching
-      // TMDB episode titles are accepted; no title or language is guessed.
-      createSource28Adapter(() => cfg.source28?.enabled ?? process.env.ELFURA_ANIME_MULTI_ENABLED !== '0'),
-      createSource29Adapter(() => cfg.source29?.enabled ?? process.env.ELFURA_ANIME_29_ENABLED !== '0'),
-      createSource30Adapter(() => cfg.source30?.enabled ?? process.env.ELFURA_ANIME_30_ENABLED !== '0'),
-    ];
+    // The board is the manifest, and nothing else. An adapter that is not in
+    // APPROVED_SOURCES cannot serve traffic, and one that is there has passed
+    // backend/test/source-contract.mjs — real titles, a real manifest, real
+    // segment bytes. Thirty adapters that answer nothing is worse than none,
+    // because the console reports coverage instead of streams.
+    this.adapters = APPROVED_SOURCES.map((source) => source.create());
   }
 
   /**
@@ -254,7 +142,10 @@ export class SourceRegistry {
     const disabled: { id: string; flag: string }[] = [];
     for (const adapter of this.adapters) {
       if (adapter.enabled()) enabled.push(adapter.id);
-      else disabled.push({ id: adapter.id, flag: SOURCE_ENV_FLAGS[adapter.id] ?? '(configured off)' });
+      else {
+        const definition = APPROVED_SOURCES.find((source) => source.id === adapter.id);
+        disabled.push({ id: adapter.id, flag: definition?.envFlag ?? '(configured off)' });
+      }
     }
     return { enabled, disabled };
   }
@@ -275,7 +166,7 @@ export class SourceRegistry {
         .filter((adapter) => adapter.enabled())
         .map(async (adapter) => {
           const started = Date.now();
-          if (params.type === 'movie' && ['source-28', 'source-29', 'source-30'].includes(adapter.id)) {
+          if (params.type === 'movie' && adapter.traits?.includes('animeEpisode')) {
             return { id: adapter.id, raw: 0, ms: 0, net: '0 req', skipped: 'TV anime only' };
           }
           const query: SourceQuery = {
@@ -696,19 +587,24 @@ export class SourceRegistry {
       signal: AbortSignal.timeout(this.cfg.resolveTimeoutMs),
     };
 
-    // TGVIDX aggregates upstreams before replying; its normal response now
-    // takes roughly eight seconds and can exceed the shared discovery signal.
-    // Give only its discovery task a longer, bounded signal. This does not
-    // extend the first-list or focused-request deadline, change resolver
-    // routing, or detach a caller-supplied cancellation signal in the adapter.
-    const queryFor = (adapter: SourceAdapter): SourceQuery =>
-      adapter.id === 'source-17'
-        ? { ...query, signal: AbortSignal.timeout(Math.max(this.cfg.resolveTimeoutMs, TGVIDX_DISCOVERY_TIMEOUT_MS)) }
-        : query;
+    // A lane that aggregates several upstreams before it can answer asks for a
+    // longer, bounded discovery signal (see SourceAdapter.discoveryTimeoutMs).
+    // This never extends the first-list or focused-request deadline and never
+    // detaches a caller-supplied cancellation signal inside the adapter.
+    const queryFor = (adapter: SourceAdapter): SourceQuery => {
+      const budget = adapter.discoveryTimeoutMs;
+      if (!budget || budget <= this.cfg.resolveTimeoutMs) return query;
+      return { ...query, signal: AbortSignal.timeout(budget) };
+    };
 
     // Launch all active adapters in parallel; if one adapter finishes quickly with candidates
     // while another is stuck in a multi-second upstream cold scan (>2.6s slower), proceed early
     // once fast candidates pass verification while letting the slower adapter warm `ramCache` in background!
+    // Declared here so every later pass (late join, verification order, anime
+    // priority) asks the adapter what it is instead of checking a list of ids.
+    const isAnimeLane = (adapter: SourceAdapter) => adapter.traits?.includes('animeEpisode') === true;
+    const priorityIds = new Set(activeAdapters.filter(isAnimeLane).map((adapter) => adapter.id));
+
     const slots: ({ adapter: SourceAdapter; result: RawSourceResult } | null)[] =
       activeAdapters.map(() => null);
     let doneCount = 0;
@@ -828,9 +724,11 @@ export class SourceRegistry {
     const isPriorityAnime = () => params.type === 'tv' && (params.season ?? 1) === 1 &&
       readyMedia?.originalLanguage === 'ja' &&
       !!readyMedia.genres?.some(g => g.toLowerCase() === 'animation');
-    const priorityIds = new Set(['source-28', 'source-29', 'source-30']);
+    // Lanes that declare themselves anime-episode lanes get a short extra join
+    // window once TMDB confirms the title is Japanese animation. The list used
+    // to be three hardcoded ids here and in two other files.
     if (!lateOnly && !singleSource && isPriorityAnime() && remaining() > 1400) {
-      const priorityTasks = adapterTasks.filter((_, idx) => priorityIds.has(activeAdapters[idx].id));
+      const priorityTasks = adapterTasks.filter((_, idx) => isAnimeLane(activeAdapters[idx]));
       if (priorityTasks.length) await Promise.race([
         Promise.allSettled(priorityTasks), wait(Math.min(2300, Math.max(0, remaining() - 1400))),
       ]);
@@ -1213,7 +1111,8 @@ export class SourceRegistry {
         }));
 
         for (const opt of uniformOptions) {
-          if (['source-29', 'source-30'].includes(opt.sourceId) && opt.subtitles.length) {
+          const lane = this.adapters.find((adapter) => adapter.id === opt.sourceId);
+          if (lane?.traits?.includes('animeEpisode') && opt.subtitles.length) {
             const existing = new Set(opt.subtitles.map(track => track.lang));
             opt.subtitles = [...opt.subtitles, ...sealedFallbackSubs.filter(track => !existing.has(track.lang))];
           } else {
@@ -1375,7 +1274,7 @@ export class SourceRegistry {
   ): UniformStreamOption {
     // Build strictly anonymized display label using ONLY adapter.label + audio/quality traits
     let trait = '';
-    if (adapter.id === 'source-29' && cand.animeSubtitleMode === 'hard') {
+    if (adapter.traits?.includes('hardSubtitle') && cand.animeSubtitleMode === 'hard') {
       trait = 'Provider-labelled Hard Sub';
     } else if (cand.multiAudio) {
       trait = 'Multi-Audio';
@@ -1412,7 +1311,7 @@ export class SourceRegistry {
 
     // Only the new anime lane opts into source-specific, episode-aligned
     // subtitles. Keep the existing subtitle policy for every other adapter.
-    const subtitles = ['source-29', 'source-30'].includes(adapter.id) ? (cand.subtitles ?? []).map((track) => ({
+    const subtitles = adapter.traits?.includes('animeEpisode') ? (cand.subtitles ?? []).map((track) => ({
       lang: track.lang,
       label: track.label,
       ...(track.format ? { format: track.format } : {}),
@@ -1439,6 +1338,7 @@ export class SourceRegistry {
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
+      ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
       ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
       ...(cand.multiAudio ? { multiAudio: true } : {}),

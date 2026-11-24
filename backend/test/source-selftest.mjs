@@ -19,8 +19,9 @@ const base = `http://127.0.0.1:${server.address().port}`;
 try {
   const registry = new SourceRegistry(loadBackendConfig({TMDB_API_BASE:base, ELFURA_SECRET:'test'}));
   const seen = [];
+  // The lane declares what it is; the registry no longer recognises provider ids.
   registry.adapters = ['source-28','source-29','source-30'].map(id => ({
-    id, enabled:()=>true,
+    id, traits:['animeEpisode'], enabled:()=>true,
     resolve:async query=>{
       seen.push([id,query.type]);
       const meta=await query.resolveMetaFallback();

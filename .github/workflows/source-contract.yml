@@ -1,0 +1,36 @@
+name: source contract
+
+# The admission gate, run where it can actually reach the providers.
+#
+# The sandbox that edits this code has no usable egress, so a lane can only be
+# proven on a runner (a datacenter IP, the same as a player host). If this job
+# is red, the board contains a source that does not produce bytes — remove it
+# from APPROVED_SOURCES or fix the adapter; do not merge around it.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 4 * * *'
+  push:
+    paths:
+      - 'backend/src/sources/**'
+      - 'backend/test/source-contract.mjs'
+      - '.github/workflows/source-contract.yml'
+
+jobs:
+  contract:
+    name: every approved source produces bytes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:backend
+      - name: Contract
+        run: node backend/test/source-contract.mjs
+        env:
+          NODE_ENV: production
+          ELFURA_SECRET: contract-test-only-not-a-production-secret
+          RESOLVE_TIMEOUT_MS: '20000'
+          TMDB_TIMEOUT_MS: '8000'

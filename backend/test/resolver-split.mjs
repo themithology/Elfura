@@ -37,15 +37,14 @@ import assert from 'node:assert/strict';
 // 20: it counted a dead vidbolt-only stub alongside the real adapter, so the
 // number matching is a coincidence, not a regression.
 //
-// 21 -> 19 when the retired Hindi/credential lanes were removed: source-16
-// (Anivexa), source-17 (Anivortex) and source-19 (DesiDub) each made zero
-// network requests without credentials or a title, and were replaced by the
-// single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
-// Source 26 was removed after real-browser audio-only playback failures.
-// Source 28 adds verified multi-audio anime: 19 -> 20. The two additional
-// direct anime providers add independent source boards: 20 -> 22.
-// Source 17 adds the dynamic TGVIDX server inventory.
-const MIN_LISTED_SOURCES = 23;
+// The board is the source manifest and nothing else (backend/src/sources/index.ts):
+// a lane appears here only after source-contract.mjs has resolved it and pulled
+// real segment bytes. So the expected count is read, never typed — the old
+// hand-maintained "23" had to be edited every time a source died, and was
+// already wrong by the time anybody looked.
+import { approvedSourceIds } from '../../dist/backend/sources/index.js';
+const APPROVED = approvedSourceIds();
+const MIN_LISTED_SOURCES = APPROVED.length;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -232,10 +231,12 @@ await check('public health exposes a count, never a list', async () => {
 await check('resolver lists every source with health', () => {
   // Each row is one source group; the broken MovieBox lane is not registered.
   assert.equal(listed.sources.length, MIN_LISTED_SOURCES, 'the configured board');
+  assert.deepEqual(
+    listed.sources.map((source) => source.id).sort(),
+    [...APPROVED].sort(),
+    'the resolver lists exactly the approved manifest, no more and no less',
+  );
   assert(!listed.sources.some(source => source.id === 'source-26'), 'audio-only MovieBox lane must stay removed');
-  assert(listed.sources.some(source => source.id === 'source-28'), 'verified multi-audio anime lane is registered');
-  assert(listed.sources.some(source => source.id === 'source-29'), 'Novus lane is registered');
-  assert(listed.sources.some(source => source.id === 'source-30'), 'MegaPlay lane is registered');
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
@@ -314,18 +315,41 @@ await check('control panel shows per-source health', () => {
 });
 
 await check('control panel kill switch works', async () => {
+  // Drive the switch with a source that exists. The old version hardcoded
+  // source-1, so the moment the board was emptied this tested a 404 instead of
+  // the switch — a red test that said nothing about the feature it names.
+  const id = APPROVED[0];
+  if (!id) {
+    // No source is approved: the switch has no row to act on, and the honest
+    // assertion is that an unknown id is refused rather than silently accepted.
+    const off = await fetch(`${mediaBase}/roxy/api/sources`, {
+      method: 'POST',
+      headers: { ...panelHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'no-such-source', enabled: false }),
+    });
+    // Nothing to switch, and the panel must not pretend otherwise: the resolver
+    // rejects the unknown id, so the panel surfaces a failure rather than 200.
+    assert.notEqual(off.status, 200, 'an empty board cannot acknowledge a source switch');
+    const direct = await fetch(`${resolverBase}/resolver/api/sources`, {
+      method: 'POST',
+      headers: { ...tokenHeader, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'no-such-source', enabled: false }),
+    });
+    assert.equal(direct.status, 404, 'the resolver refuses an id that is not on the board');
+    return;
+  }
   const off = await fetch(`${mediaBase}/roxy/api/sources`, {
     method: 'POST',
     headers: { ...panelHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ id: 'source-1', enabled: false }),
+    body: JSON.stringify({ id, enabled: false }),
   });
   assert.equal(off.status, 200);
   const body = await off.json();
-  const one = body.sources.find((s) => s.id === 'source-1');
+  const one = body.sources.find((s) => s.id === id);
   assert.equal(one.disabledByOperator, true);
   // and the resolver itself agrees
   const direct = await (await fetch(`${resolverBase}/resolver/api/sources`, { headers: tokenHeader })).json();
-  assert.equal(direct.sources.find((s) => s.id === 'source-1').disabledByOperator, true);
+  assert.equal(direct.sources.find((s) => s.id === id).disabledByOperator, true);
 });
 
 // ---- A playback token, minted the way the player mints one ----------------

@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { hasConfiguredSecret, type BackendConfig } from './config.js';
 import type { SourceRegistry } from './sources/registry.js';
 import { fetchTmdbMetadata } from './tmdb.js';
+import { APPROVED_SOURCES } from './sources/index.js';
 
 export interface DiagnosticsProbe {
   type: 'movie' | 'tv';
@@ -96,11 +97,18 @@ const EGRESS_TARGETS: { label: string; host: string; path: string }[] = [
   { label: 'control-github', host: 'api.github.com', path: '/' },
   { label: 'control-npm', host: 'registry.npmjs.org', path: '/' },
   { label: 'control-tmdb', host: 'api.themoviedb.org', path: '/3/configuration' },
-  { label: 'rivestream', host: 'www.rivestream.app', path: '/' },
-  { label: 'rive-api', host: 'scrapper.rivestream.app', path: '/' },
-  { label: 'vidbolt', host: 'vidbolt.xyz', path: '/' },
-  { label: 'vidzee', host: 'player.vidzee.wtf', path: '/' },
-  { label: 'vixsrc', host: 'vixsrc.to', path: '/' },
+  // Then whatever is actually mounted. This list used to name six providers by
+  // hand, so after the board was emptied the report still showed their TLS
+  // failures and read as evidence about sources that no longer existed.
+  ...APPROVED_SOURCES.flatMap((source) => {
+    if (!source.website) return [];
+    try {
+      const url = new URL(source.website.url);
+      return [{ label: source.id, host: url.host, path: url.pathname || '/' }];
+    } catch {
+      return [];
+    }
+  }),
 ];
 
 const STAGE_TIMEOUT_MS = 3000;

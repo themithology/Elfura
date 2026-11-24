@@ -1,14 +1,8 @@
-process.env.ELFURA_MAPPLE_ENABLED = '0';
-process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
-process.env.ELFURA_XPASS_ENABLED = '0';
-process.env.ELFURA_VIDZEN_ENABLED = '0';
-process.env.ELFURA_VAPLAYER_ENABLED = '0';
-process.env.ELFURA_VIDNEST_ENABLED = '0';
-process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
-process.env.ELFURA_VIDZEE_ENABLED = '0';
-process.env.ELFURA_VIXSRC_ENABLED = '0';
-process.env.ELFURA_NXSHA_ENABLED = '0';
-process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
+// Operator website checks come from the source manifest now, so there is no
+// per-provider env to switch off here. The invariant worth testing is that the
+// panel can only ever offer a check for a source that is actually approved —
+// the hand-written list it replaced kept offering rows for sources that had
+// been gone for months, and the operator read those red rows as coverage.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -17,17 +11,25 @@ import { createBackendServer } from '../../dist/backend/index.js';
 import { ROXY_PAGE } from '../../dist/backend/roxy-page.js';
 import { roxySourceWebsites } from '../../dist/backend/roxy-source-requests.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
+import { APPROVED_SOURCES, approvedSourceIds } from '../../dist/backend/sources/index.js';
 new Function(ROXY_PAGE.match(/<script>([\s\S]*)<\/script>/)[1]);
 const adminSourceList = roxySourceWebsites(loadBackendConfig({
   ELFURA_SECRET: 'admin-source-test-secret',
-  ELFURA_RIVE_CITADEL_ENABLED: '1',
-  ELFURA_MAPPLE_ENABLED: '1',
 }));
-assert(adminSourceList.some(site => site.id === 'citadel' && site.source === 'Source 14'));
-assert(adminSourceList.some(site => site.id === 'mapple' && site.source === 'Source 15'));
-assert(adminSourceList.some(site => site.id === 'tgvidx' && site.source === 'Source 17'));
-assert(!roxySourceWebsites(loadBackendConfig({ELFURA_SECRET: 'test', ELFURA_TGVIDX_ENABLED: '0'})).some(site => site.id === 'tgvidx'));
-assert(!adminSourceList.some(site => site.id === 'desidub' || site.id === 'anikoto' || site.id === 'anivexa'), 'operator website checks do not claim playback verification for bundled aggregators');
+const approved = new Set(approvedSourceIds());
+assert(
+  adminSourceList.every((site) => approved.has(site.source)),
+  'operator website checks may only list approved sources',
+);
+assert.equal(
+  adminSourceList.length,
+  APPROVED_SOURCES.filter((source) => source.website).length,
+  'one row per approved source that declares a website',
+);
+assert(
+  !adminSourceList.some((site) => site.id === 'desidub' || site.id === 'anikoto' || site.id === 'anivexa'),
+  'operator website checks do not claim playback verification for bundled aggregators',
+);
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
 const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};
@@ -38,7 +40,7 @@ try {
  app=await start();
  const call=(p,opts={})=>fetch(app.base+p,opts);
  const post=(p,data,cookie,org=app.base)=>call(p,{method:'POST',headers:{'Content-Type':'application/json',Origin:org,...cookie?{Cookie:cookie}:{}},body:JSON.stringify(data)});
- let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);assert.equal(health.sources,undefined,'public health must not list sources');assert.equal(typeof health.sourceCount,'number');assert.ok(health.sourceCount>0,'some sources are configured');
+ let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);assert.equal(health.sources,undefined,'public health must not list sources');assert.equal(typeof health.sourceCount,'number');assert.equal(health.sourceCount,approvedSourceIds().length,'health reports exactly the approved board');
  assert.equal((await call('/dl/')).status,404);assert.equal((await call('/dl/api/resolve?type=movie&tmdb=550')).status,404);
  let res=await call('/roxy');assert.equal(res.status,200);assert.equal(res.headers.get('x-frame-options'),'DENY');assert.match(await res.text(),/Playback, at a glance/);
  res=await call('/roxy/api/overview');assert.equal(res.status,401);assert.equal(res.headers.get('access-control-allow-origin'),null);
@@ -55,7 +57,7 @@ try {
  assert.equal((await post('/roxy/api/ban',{site:'https://example.com',ban:true},cookie)).status,200);
  assert.equal((await call('/embed/movie/872585',{headers:{Referer:'https://example.com/another'}})).status,403);
  assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'heartbeat'})).status,400);
- res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.ok(d.sites.length > 0);assert.ok(!d.sites.some(s=>s.id==='vidmody'));assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
+ res=await call('/roxy/api/source-websites',{headers:{Cookie:cookie}});d=await res.json();assert.equal(res.status,200);assert.ok(Array.isArray(d.sites));assert.equal(d.sites.length,approvedSourceIds().length,'panel rows track the approved board, including when it is empty');assert.ok(!d.sites.some(s=>s.id==='vidmody'));assert.equal(new Set(d.sites.map(s=>s.id)).size,d.sites.length);
  assert.equal((await post('/roxy/api/source-websites/request',{id:'unknown'},cookie)).status,400);
  assert.equal((await post('/roxy/api/test',{type:'movie',tmdb:'872585'},cookie)).status,404);
  assert.equal((await post('/roxy/api/clear',{},cookie)).status,200);

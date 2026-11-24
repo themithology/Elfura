@@ -449,24 +449,38 @@ never logged. Media playback never goes through it — streams are served by
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
 
 
-### Source 26 retired
+### Sources: none by default, and each one has to be proven
 
-MovieBox (Source 26) is not registered, including when an older `.env` contains
-`ELFURA_MOVIEBOX_ENABLED=1`. Browser tests showed audio-only playback for the
-HEVC streams on browsers without HEVC decoding, and some reported resolutions
-were inaccurate. Research adapters remain unregistered until real video playback,
-audio switching and episode identity have been verified.
+There are no configured playback sources in this build. `backend/src/sources/index.ts`
+holds an empty `APPROVED_SOURCES` array and the registry builds its board from that
+array alone, so nothing is scraped, nothing is guessed, and `/api/v1/health` reports
+`sourceCount: 0` until a lane earns its place.
 
-Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree/b901738b56170c278b35468c32ade32b9de1890d/src/providers/moviebox)
-(MIT OR Apache-2.0). `.github/workflows/moviebox-direct.yml` checks the adapter
-with mocked responses and probes a movie and an episode on a GitHub runner.
-The ffprobe test checks media streams, not browser playback or audio switching.
-# Multi-audio anime source (Source 28)
+The previous board carried thirty adapters. Most of them answered nothing for
+months, the console reported "coverage", and the viewer got no stream — which is
+worse than an empty board, because an empty board is honest. It also meant every
+provider change had to be chased across a config type, an env-var table, a
+hand-written website list and a source file, each of which could disagree.
 
-Source 28 resolves directly from the anime catalogue to a multi-audio HLS master. It runs only in the resolver and never sends catalogue or player URLs to the client. Audio languages and available quality levels are read from the actual HLS manifest, not assumed from a title or subtitle labels.
+Adding a source is now four steps, and the fourth is the one that matters:
 
-The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each resolver and restart to disable it. A TMDB API key or configured TMDB mirror is required. To avoid wrong episodes, the source currently supports season 1 only and requires TMDB to identify Japanese animation and provide an episode title that matches the provider's title. Missing metadata, alternate title spellings or numbering differences can cause legitimate episodes to be skipped. Movies and other seasons are not supported by this lane.
+1. Write the adapter in `backend/src/sources/<name>.ts`. It reads its own
+   settings from `sourceEnv()` (the real environment, `.env` already merged), so
+   `config.ts` stays free of per-source keys.
+2. Add one entry to `APPROVED_SOURCES` in `backend/src/sources/index.ts`, with
+   the probe titles the contract test must resolve.
+3. Run `npm run build && node backend/test/source-contract.mjs`.
+4. It must print the candidate count, the manifest and a real segment byte
+   count for your lane. Anything less and the suite fails — a timeout is not a
+   source.
 
-The browser audit exercises real discovery, the production registry and stream proxy, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
+The contract test asks for bytes, not for a 200: it resolves your probe titles,
+requires every candidate to be a `/api/proxy` path (never an upstream URL),
+fetches the manifest through the proxy, pulls a media segment and rejects a
+provider hostname that leaked into the response. It also asserts that a lane
+which is not in the manifest cannot appear in the resolver's list, the operator
+panel, or the egress report.
 
-The deployment ZIP includes `wreq-js` and the native bindings available on the build host (the published bundle is Linux x64). On another architecture, install the optional runtime dependency on the resolver with `npm install --omit=dev` in the extracted application directory and restart it. If the native client is unavailable, this source is skipped; other sources continue to work.
+The thirty retired adapters and their tests are archived under `backend/attic/`,
+outside the build, so a lane can be resurrected deliberately rather than by
+accident. `backend/attic/README.md` says how.

@@ -22,7 +22,7 @@
 import type Hls from 'hls.js';
 import type { MediaPlayerClass, MediaInfo } from 'dashjs';
 import { dashHevcDefinitelyUnsupported } from './dash-codecs';
-import { playbackTimeouts } from './source17-timing';
+import { playbackTimeouts } from './playback-timing';
 
 type HlsCtor = typeof Hls;
 
@@ -95,6 +95,13 @@ export interface SourceOption {
   multiAudio?: boolean;
   audioTracks: { lang: string; label: string; url: string }[];
   subtitles: { lang: string; label: string; url: string }[];
+  /**
+   * What the backend says this lane structurally is: `aggregator`,
+   * `animeEpisode`, `hardSubtitle`, `slowManifest`, `hevcFirst`. The player
+   * reads these instead of comparing `sourceId` against provider names, so a
+   * new lane needs no player change at all.
+   */
+  traits?: string[];
 }
 
 export interface SeasonSummaryInfo {
@@ -460,7 +467,7 @@ export class ElfuraPlayer {
     this.activeProbe = null;
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
-    this.manualAggregatorGroup = opt.sourceId === 'source-17' ? opt.sourceId : null;
+    this.manualAggregatorGroup = opt.traits?.includes('aggregator') ? opt.sourceId : null;
     if (opt.audioLang && opt.audioLang !== 'und') {
       this.desiredAudioLang = canonLang(opt.audioLang);
     } else if (
@@ -2680,7 +2687,7 @@ export class ElfuraPlayer {
         return;
       }
       this.failover();
-    }, playbackTimeouts(this.currentSource?.sourceId).startup);
+    }, playbackTimeouts(this.currentSource?.traits).startup);
   }
 
   private teardownEngine(): void {
@@ -2765,7 +2772,7 @@ export class ElfuraPlayer {
       return;
     }
 
-    const timeouts = playbackTimeouts(this.currentSource?.sourceId);
+    const timeouts = playbackTimeouts(this.currentSource?.traits);
     const hls = new Hls({
       enableWorker: true,
       capLevelToPlayerSize: true,
@@ -2939,7 +2946,7 @@ export class ElfuraPlayer {
     // inspect the manifest before attaching the engine and fall back only when
     // every advertised video representation is definitively HEVC. A timeout or
     // unknown/mixed manifest remains eligible rather than being discarded.
-    if (this.currentSource?.sourceId === 'source-17' && !this.supportsHevc()) {
+    if (this.currentSource?.traits?.includes('hevcFirst') && !this.supportsHevc()) {
       try {
         const headers: Record<string, string> = {};
         if (cfg.pltoken && this.isBackendOwnedUrl(url)) headers['X-Playback-Token'] = String(cfg.pltoken);

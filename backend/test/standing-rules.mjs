@@ -124,7 +124,14 @@ rule('the player aborts before the media node does', () => {
 /* ── other standing decisions ─────────────────────────────────────────────── */
 
 rule('the TMDB→AniList converter stays stateless', () => {
-  const anime = read('backend/src/sources/anime-db.ts');
+  // Archived with the source board; the rule outlives the module so it is still
+  // enforced the moment a lane that needs the converter is approved again.
+  let anime;
+  try {
+    anime = read('backend/attic/sources/anime-db.ts');
+  } catch {
+    return 'converter is archived with the sources — nothing to enforce';
+  }
   assert.doesNotMatch(anime, /setInterval|TTL_MS|evict/i, 'no cache, no TTL, no eviction');
 });
 
@@ -134,6 +141,51 @@ rule('the embed takes no client-facing AniList parameter', () => {
 
 rule('playback tokens stay stateless HMAC', () => {
   assert.match(read('backend/src/security.ts'), /createHmac/, 'no session store, safe across processes');
+});
+
+/* ── the source board has exactly one door ────────────────────────────────── */
+
+rule('the board is the manifest and nothing else', () => {
+  const registry = read('backend/src/sources/registry.ts');
+  assert.match(
+    registry,
+    /this\.adapters = APPROVED_SOURCES\.map/,
+    'the registry must build its list from APPROVED_SOURCES',
+  );
+  assert.doesNotMatch(
+    registry,
+    /from '\.\/source\d+\.js'/,
+    'a concrete adapter import would bypass the contract gate',
+  );
+  assert.doesNotMatch(
+    registry,
+    /SOURCE_ENV_FLAGS/,
+    'a second source table drifts out of sync with the manifest',
+  );
+  const config = read('backend/src/config.ts');
+  assert.doesNotMatch(
+    config,
+    /\bsource\d+\s*[:?]/,
+    'per-source config blocks are a second registry; a source reads its own env',
+  );
+});
+
+rule('a source is only approved with probe titles', () => {
+  const manifest = read('backend/src/sources/index.ts');
+  const entries = manifest.split('APPROVED_SOURCES: SourceDefinition[] = [')[1] ?? '';
+  // Every entry must name titles for the contract test; an entry with none
+  // would pass vacuously and admit a lane nobody ever exercised.
+  const creates = (entries.match(/create:\s*\(\)/g) ?? []).length;
+  const probes = (entries.match(/probes:\s*\[/g) ?? []).length;
+  assert.equal(creates, probes, `every approved source needs a probes list (${creates} sources, ${probes} probe lists)`);
+});
+
+rule('archived sources cannot be compiled or imported', () => {
+  const tsconfig = read('backend/tsconfig.json');
+  assert.match(tsconfig, /"include": \["src\/\*\*\/\*\.ts"\]/, 'only src/ is built');
+  for (const file of ['backend/src/sources/registry.ts', 'backend/src/index.ts', 'backend/src/config.ts']) {
+    assert.doesNotMatch(read(file), /attic\//, `${file} must not reach into the archive`);
+  }
 });
 
 /* ── report ───────────────────────────────────────────────────────────────── */

@@ -19,6 +19,13 @@ export async function runSourceSelfTest(registry: SourceRegistry): Promise<void>
   const started = Date.now();
   try {
     const rows = await registry.selfTestAll({ type, tmdbId, season, episode });
+    // An empty board is a state, not a fault: say so and stop. The old line
+    // ("no tested source returned candidates") read like a breakage when in
+    // fact nothing had been approved to test.
+    if (rows.length === 0) {
+      console.log('[elfura-selftest] no sources approved yet — nothing to test (see backend/src/sources/index.ts)');
+      return;
+    }
     const tested = rows.filter(r => !r.skipped);
     const withCandidates = tested.filter(r => r.raw > 0);
     console.log(

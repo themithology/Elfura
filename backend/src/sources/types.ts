@@ -144,12 +144,39 @@ export interface RawSourceResult {
   };
 }
 
+export type SourceTrait = 'aggregator' | 'animeEpisode' | 'hardSubtitle' | 'slowManifest' | 'hevcFirst';
+
 export interface SourceAdapter {
   /** Public canonical source id, e.g. 'source-1'. */
   readonly id: string;
   /** Public branded display name, e.g. 'Source 1'. */
   readonly label: string;
   enabled(): boolean;
+  /**
+   * What this lane structurally is, for the few places that must treat lanes
+   * differently. Declared once, next to the adapter, instead of every consumer
+   * keeping its own list of provider ids — those lists are why adding a source
+   * used to mean editing the player.
+   *
+   * `aggregator`   fronts several independent upstreams, so a manual selection
+   *                should exhaust its own servers before switching groups.
+   * `animeEpisode` serves TV anime episodes with its own subtitle tracks and is
+   *                skipped for movies.
+   * `hardSubtitle` ships burned-in subtitles for some candidates.
+   * `slowManifest` needs the longer manifest/fragment budget.
+   * `hevcFirst` may offer HEVC-only manifests; the player must inspect the
+   *                manifest before attaching dash.js on devices without HEVC.
+   */
+  readonly traits?: readonly SourceTrait[];
+  /**
+   * How long this lane's own discovery may take before it is abandoned.
+   *
+   * Omit to share `resolveTimeoutMs` with everyone else. Set it only for a lane
+   * that genuinely aggregates upstreams before it can answer, and justify the
+   * number in a comment next to the value — a long timeout is a promise to make
+   * every resolve wait, so it has to be earned.
+   */
+  readonly discoveryTimeoutMs?: number;
   resolve(query: SourceQuery): Promise<RawSourceResult>;
   /**
    * Resolve time-range metadata independently from stream racing. This keeps a
@@ -188,6 +215,14 @@ export interface UniformStreamOption {
   /** Optional edge latency hint in ms for initial candidate ordering */
   latencyHintMs?: number;
   audioLang?: string;
+  /**
+   * Structural traits of the lane that produced this option (see SourceTrait).
+   * The player needs a few of these — an aggregator's manual selection must
+   * exhaust its own servers first, a slow lane gets a longer budget, an
+   * HEVC-first lane is inspected before dash.js attaches. Sending them once here
+   * is what lets a new source be added without touching Part 1.
+   */
+  traits?: SourceTrait[];
   /** Provider-declared SUB/DUB source mode, never an asserted manifest language. */
   audioVariant?: 'sub' | 'dub';
   availableAudioLangs?: string[];

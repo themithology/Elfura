@@ -50,6 +50,7 @@ import {
   SlidingWindowLimiter,
   verifyPlaybackToken,
 } from './security.js';
+import { approvedSourceIds } from './sources/index.js';
 import { SourceRegistry } from './sources/registry.js';
 import {
   createLocalPlaybackResolver,
@@ -1477,7 +1478,9 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
         `streamProxy=${cfg.streamProxyPath} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
-        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)} ${runtimeSummary()}`,
+        // Providers come from the manifest, not from this line: naming hosts here
+        // kept stale ones in the log long after they were gone.
+        `sources=${approvedSourceIds().join(',') || 'none-approved'} ${runtimeSummary()}`,
     );
     // One bounded outbound check, logged once per boot. When every source
     // reports "no rows" the first question is whether this container can reach

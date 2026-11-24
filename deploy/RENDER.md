@@ -47,13 +47,15 @@ seconds. Render's native Node runtime is the cheapest way to get a real URL.
 ```bash
 BASE=https://<service>.onrender.com
 
-# 1. process is up and all sources mounted
+# 1. process is up. "sourceCount":0 is correct for this build: no source is
+#    approved yet, and the board is the manifest in backend/src/sources/index.ts
 curl -s "$BASE/api/v1/health"
 
 # 2. the player shell loads
 curl -s -o /dev/null -w '%{http_code}\n' "$BASE/embed/movie/550"
 
-# 3. resolution answers (needs TMDB or it still returns sources, just no metadata)
+# 3. resolution answers honestly. With no approved source this is a clean 404
+#    ("no source for this title") — not a hang, and not a fake 200.
 curl -s "$BASE/api/v1/playback?type=movie&tmdb=550" | head -c 300; echo
 
 # 4. the proxy streams bytes — a public test HLS master, no provider involved

@@ -76,11 +76,33 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
 
 1. **Self-Hosted TMDB Primary Identity & Zero-Outage Fallback:**
    - Titles are addressed by TMDB ID (`movie` or `tv` with `season` & `episode`), resolved first through our self-hosted TMDB API (`TMDB_API_BASE`) and automatically falling back across `api.themoviedb.org/3` / `api.tmdb.org/3` in both `fetchTmdbMetadata` and `fetchTmdbSeasonEpisodes` if `TMDB_API_BASE` is unset or unreachable.
-2. **Plug-and-Play Multi-Cluster Source Isolation & Circuit Breakers:**
-   - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
-   - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
-   - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
-   - Sources that require per-installation credentials (e.g. `source-17` / AniVortex) must stay **off by default**, enable only when `ELFURA_*_ENABLED=1` **and** their credentials are present in the environment, hold those credentials in `.env` key/value form (never on disk, never in logs, never in diagnostics), and emit a single diagnostic instead of making any request when unconfigured.
+2. **A source is admitted by proof, not by declaration:**
+   - The board is `APPROVED_SOURCES` in `backend/src/sources/index.ts`, and it is
+     empty by default. The registry builds its adapter list from that array and
+     nothing else. There is no per-source config block, no `SOURCE*_ENABLED`
+     env table, and no hand-maintained provider list anywhere else in the app —
+     those existed before and drifted out of sync with the adapters they
+     described.
+   - A lane enters that array only after `backend/test/source-contract.mjs`
+     passes for it: real probe titles resolved, every candidate already a
+     `/api/proxy` path, the manifest fetched through the proxy, a media segment
+     returning real bytes, and no provider hostname in the served text. That
+     test is in `npm test` and in `.github/workflows/source-contract.yml`. A lane
+     that answers a 200 with an error page is not a source.
+   - Retiring a lane means deleting its entry and moving its files to
+     `backend/attic/`. Archived code is not compiled, imported or tested, so it
+     cannot half-exist.
+   - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1
+     (`src/`) must require **zero code changes** when new sources are added.
+   - Public-facing source identifiers and labels must stay clean and branded
+     (`source-1` / `Source 1`, etc.), never leaking internal upstream provider
+     names.
+   - A source reads its own settings from `sourceEnv()` (the real environment,
+     `.env` already merged) rather than growing a key in `BackendConfig`. A
+     source that needs per-installation credentials must stay off unless both
+     its switch and its credentials are present, keep those credentials in
+     `.env` key/value form (never on disk, never in logs, never in diagnostics),
+     and emit one diagnostic instead of making any request when unconfigured.
 
 ---
 

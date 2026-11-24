@@ -8,7 +8,10 @@ import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/live
 const original=globalThis.fetch;
 const keepAlive=setInterval(()=>{},1000);
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-const adapter=(id,resolve)=>({id,label:id,enabled:()=>true,resolve});
+// Anime-episode lanes say so on the adapter (SourceAdapter.traits). The registry
+// used to recognise them by a hardcoded id list, which is exactly the coupling
+// that forced a player edit for every new source.
+const adapter=(id,resolve,traits)=>({id,label:id,traits,enabled:()=>true,resolve});
 const cand=(id,more={})=>({key:id,url:`https://anime-priority.example/${id}.mp4`,type:'mp4',quality:'auto',rank:0,...more});
 const cfg=loadBackendConfig({ELFURA_SECRET:'test',TMDB_API_BASE:'http://localhost:42424',OPENSUBTITLES_ENABLED:'0'});
 let requests=[];
@@ -27,9 +30,9 @@ try {
   // Slow anime lane joins the initial response even when ordinary sources are ready.
   const reg=new SourceRegistry(cfg);
   reg.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async()=>({candidates:[cand(id)]}))),
-    adapter('source-28',async()=>{await wait(1800);return {candidates:[cand('28-live')]};}),
-    adapter('source-29',async()=>({candidates:[cand('29-dead',{audioVariant:'sub'}),cand('29-unknown',{audioVariant:'dub'})]})),
-    adapter('source-30',async()=>({candidates:[cand('30-live',{audioVariant:'sub'})]}))];
+    adapter('source-28',async()=>{await wait(1800);return {candidates:[cand('28-live')]};},['animeEpisode']),
+    adapter('source-29',async()=>({candidates:[cand('29-dead',{audioVariant:'sub'}),cand('29-unknown',{audioVariant:'dub'})]}),['animeEpisode']),
+    adapter('source-30',async()=>({candidates:[cand('30-live',{audioVariant:'sub'})]}),['animeEpisode'])];
   const result=await reg.resolvePlayback({type:'tv',tmdbId:'13570',season:1,episode:1});
   assert(result);
   assert(result.sources.some(x=>x.sourceId==='source-28'&&x.animePriority));
@@ -44,19 +47,19 @@ try {
   // adapters to join rather than cutting them at the first fast response.
   const broad=new SourceRegistry(cfg);
   broad.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async()=>({candidates:[cand(`broad-${id}`)]}))),
-    ...['source-28','source-29','source-30'].map((id,i)=>adapter(id,async()=>{await wait(2800+i*350);return {candidates:[cand(`broad-${id}`)]};}))];
+    ...['source-28','source-29','source-30'].map((id,i)=>adapter(id,async()=>{await wait(2800+i*350);return {candidates:[cand(`broad-${id}`)]};},['animeEpisode']))];
   const broadFirst=await broad.resolvePlayback({type:'tv',tmdbId:'13577',season:1,episode:1});
   for(const id of ['source-28','source-29','source-30'])assert(broadFirst.sources.some(s=>s.sourceId===id),`${id} should join the anime first wave`);
 
   // Language matching beats anime source priority.
   const langReg=new SourceRegistry(cfg);
-  langReg.adapters=[adapter('source-1',async()=>({candidates:[cand('hi',{audioLang:'hi'})]})),adapter('source-28',async()=>({candidates:[cand('anime-ja',{audioLang:'ja'})]}))];
+  langReg.adapters=[adapter('source-1',async()=>({candidates:[cand('hi',{audioLang:'hi'})]})),adapter('source-28',async()=>({candidates:[cand('anime-ja',{audioLang:'ja'})]}),['animeEpisode'])];
   const lang=await langReg.resolvePlayback({type:'tv',tmdbId:'13572',season:1,episode:1,preferredLang:'hi'});
   assert.equal(lang.primary.sourceId,'source-1');
 
   // Mock anime-labelled adapters for a non-anime title: no ranking metadata.
   const non=new SourceRegistry(cfg);
-  non.adapters=[adapter('source-1',async()=>({candidates:[cand('non-live',{multiAudio:true})]})),adapter('source-28',async()=>({candidates:[cand('non28')]}))];
+  non.adapters=[adapter('source-1',async()=>({candidates:[cand('non-live',{multiAudio:true})]})),adapter('source-28',async()=>({candidates:[cand('non28')]}),['animeEpisode'])];
   const ordinary=await non.resolvePlayback({type:'tv',tmdbId:'13571',season:1,episode:1});
   assert(ordinary.sources.every(x=>!x.animePriority&&!x.animeUnverified));
 
@@ -74,7 +77,7 @@ try {
   // Anime candidates that finish after the bounded window remain recoverable.
   const lateReg=new SourceRegistry(cfg);let release;
   const pending=new Promise(r=>release=r);
-  lateReg.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async()=>({candidates:[cand(`late-${id}`)]}))),adapter('source-29',async()=>pending)];
+  lateReg.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async()=>({candidates:[cand(`late-${id}`)]}))),adapter('source-29',async()=>pending,['animeEpisode'])];
   const first=await lateReg.resolvePlayback({type:'tv',tmdbId:'13573',season:1,episode:1});
   assert(first.pendingSources.includes('source-29'));
   release({candidates:[cand('late29',{audioVariant:'sub'})]});await wait(20);

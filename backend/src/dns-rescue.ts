@@ -147,7 +147,11 @@ function rescuedLookup(hostname: string, options: LookupOptions | LookupCallback
  * rescued from, so several unrelated names have to work, each within its own
  * budget.
  */
-const RELIABILITY_PROBES = ['api.themoviedb.org', 'www.rivestream.app', 'cdn.jsdelivr.net'];
+// Three unrelated names, none of them a provider. The question this answers is
+// "does this container resolve names at all", and a provider host that is
+// currently down would answer it wrongly — which is how a healthy resolver got
+// replaced by the DoH fallback in the first place.
+const RELIABILITY_PROBES = ['api.themoviedb.org', 'cdn.jsdelivr.net', 'api.github.com'];
 
 async function systemResolverReliable(): Promise<{ reliable: boolean; failed: string[] }> {
   const failed: string[] = [];

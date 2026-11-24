@@ -43,88 +43,19 @@ export interface BackendConfig {
     imageBase: string;
     timeoutMs: number;
   };
-  /** Source 1 configurable endpoints (kept purely server-side). */
-  source1: {
-    enabled: boolean;
-    riftOrigin: string;
-    vidboltOrigin?: string;
-    /** Optional provider-issued Orion keys; never embedded in builds. */
-    orionMovieKey?: string;
-    orionTvKey?: string;
-    riftRelay: string;
-    syncOrigin: string;
-    vidrockOrigin?: string;
-  };
-  /** Source 2 configurable endpoints (kept purely server-side). */
-  source2: {
-    enabled: boolean;
-    embedOrigin: string;
-    defaultServer: string;
-    nxshaOrigin?: string;
-    vidstuckOrigin?: string;
-  };
-  /** Source 3 configurable endpoint (kept purely server-side). */
-  source3: {
-    enabled: boolean;
-    origin: string;
-  };
-
-  /** Optional experimental Source 4 HLS fallback. */
-  source4?: { enabled: boolean };
-  source5?: { enabled: boolean };
-  /** Experimental additional source controls. */
-  source7?: { enabled: boolean };
-  /** Telugu lane (nxsha `bkl-blast`). Off unless explicitly enabled. */
-  source6?: { enabled: boolean };
-  /** Hindi-dub anime lane (Mikaza). AniList-keyed; TMDB ids are converted server-side. */
-  source16?: { enabled: boolean };
-  /** TGVIDX dynamic server inventory. */
-  source17?: { enabled: boolean };
-  /** Direct multi-audio anime with conservative TMDB episode verification. */
-  source28?: { enabled: boolean };
-  source29?: { enabled: boolean };
-  source30?: { enabled: boolean };
-  source8?: { enabled: boolean };
-  source9?: { enabled: boolean };
-  source10?: { enabled: boolean };
-  source11?: { enabled: boolean };
-  source12?: { enabled: boolean };
-  source13?: { enabled: boolean };
-  source14?: { enabled: boolean };
-  source15?: { enabled: boolean };
-  /** AniVortex (signed installation) — off unless explicitly enabled AND credentials exist. */
-  /** Experimental additional source controls (sources 18-21). */
-  source18?: { enabled: boolean };
-  source20?: { enabled: boolean };
-  source21?: { enabled: boolean };
-  /** Vidly subtitle index. Subtitles only: it never contributes a stream. */
-  source22?: { enabled: boolean };
-
   /**
-   * VidLink. A real JSON API (measured: /api/b returns application/json), so it
-   * is a cheap deterministic lane rather than a scrape.
+   * There is no per-source configuration here any more, and that is deliberate.
+   *
+   * Every lane used to get a hand-written block in this file — thirty of them,
+   * with origins, timeouts, ranks and switches — and the file became a second
+   * registry that had to be edited in lockstep with the first. A lane now lives
+   * in one place (`sources/index.ts`) and reads its own settings from the
+   * environment through `sourceEnv()`, so mounting a source cannot leave a
+   * stale config block behind and removing one cannot orphan an env var.
+   *
+   * If a future source needs a setting the operator can tune, it reads it in
+   * its own module; only settings shared by the whole service belong here.
    */
-  source24: {
-    enabled: boolean;
-    origin: string;
-    timeoutMs: number;
-    /** Comes through a third-party API front, so it must not outrank origin CDNs. */
-    rank: number;
-  };
-
-  /**
-   * Greybox. Plain JSON with no token or encryption, and per-stream language
-   * labels, so it is both the cheapest lane and the most useful for
-   * multi-language titles.
-   */
-  source25: {
-    enabled: boolean;
-    origin: string;
-    timeoutMs: number;
-    /** Aggregates third-party providers, so it sits behind direct CDNs. */
-    rank: number;
-  };
-
 
   /** Automatic OpenSubtitles fallback configuration (zero-disk RAM cached). */
   subtitles: {
@@ -284,75 +215,6 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
       bearerToken: (env.TMDB_BEARER_TOKEN || '').trim(),
       imageBase: (env.TMDB_IMAGE_BASE || 'https://image.tmdb.org/t/p').trim().replace(/\/+$/, ''),
       timeoutMs: Math.max(1000, Number(env.TMDB_TIMEOUT_MS || 4500)),
-    },
-    source1: {
-      enabled: env.SOURCE1_ENABLED !== '0',
-      riftOrigin: (env.SOURCE1_RIFT_ORIGIN || 'https://embed.vidrift.in').replace(/\/+$/, ''),
-      vidboltOrigin: (env.SOURCE1_VIDBOLT_ORIGIN || 'https://vidbolt.xyz').replace(/\/+$/, ''),
-      orionMovieKey: (env.SOURCE1_ORION_MOVIE_KEY || '').trim(),
-      orionTvKey: (env.SOURCE1_ORION_TV_KEY || '').trim(),
-      riftRelay: (env.SOURCE1_RIFT_RELAY || '').replace(/\/+$/, ''),
-      syncOrigin: (env.SOURCE1_SYNC_ORIGIN || 'https://vidsync.pro').replace(/\/+$/, ''),
-      vidrockOrigin: (env.SOURCE1_VIDROCK_ORIGIN || 'https://vidrock.net').replace(/\/+$/, ''),
-    },
-    // Legacy Source 2 configuration is retained in the type only; old panel
-    // environment variables must never reactivate the removed providers.
-    source2: {
-      enabled: false,
-      embedOrigin: '',
-      defaultServer: 'orion',
-      nxshaOrigin: '',
-      vidstuckOrigin: '',
-    },
-    source3: {
-      enabled: env.SOURCE3_ENABLED !== '0',
-      // SOURCE1_SYNC_ORIGIN is accepted as a legacy alias because VidSync
-      // used to be an internal Source 1 lane before becoming Source 3.
-      origin: (
-        env.SOURCE3_ORIGIN ||
-        env.VIDSYNC_ORIGIN ||
-        env.SOURCE1_SYNC_ORIGIN ||
-        'https://vidsync.pro'
-      ).replace(/\/+$/, ''),
-    },
-    source4: { enabled: env.ELFURA_BINGR_ENABLED !== '0' },
-    source5: { enabled: env.ELFURA_NXSHA_ENABLED !== '0' },
-    // Merged into source-5 as a second lane set. Default off, matching the
-    // `?? false` gate the standalone adapter used to carry.
-    source7: { enabled: env.ELFURA_SCREENSCAPE_ENABLED === '1' },
-    // Default off: a new source is opt-in until it has run in production.
-    source6: { enabled: env.ELFURA_TELUGU_ENABLED === '1' },
-    source16: { enabled: env.ELFURA_HINDI_DUB_ENABLED !== '0' },
-    source17: { enabled: env.ELFURA_TGVIDX_ENABLED !== '0' },
-    source28: { enabled: env.ELFURA_ANIME_MULTI_ENABLED !== '0' },
-    source29: { enabled: env.ELFURA_ANIME_29_ENABLED !== '0' },
-    source30: { enabled: env.ELFURA_ANIME_30_ENABLED !== '0' },
-    source8: { enabled: env.ELFURA_VIDZEE_ENABLED !== '0' },
-    source9: { enabled: env.ELFURA_VIXSRC_ENABLED !== '0' },
-    source10: { enabled: env.ELFURA_VIDNEST_ENABLED !== '0' },
-    source11: { enabled: env.ELFURA_VAPLAYER_ENABLED !== '0' },
-    source12: { enabled: env.ELFURA_VIDZEN_ENABLED !== '0' },
-    source13: { enabled: env.ELFURA_XPASS_ENABLED !== '0' },
-    source14: { enabled: env.ELFURA_RIVE_CITADEL_ENABLED !== '0' },
-    source15: { enabled: env.ELFURA_MAPPLE_ENABLED !== '0' },
-    // AniVortex signs every request with installation credentials. Without them
-    // the adapter returns in microseconds, so it simply stays on: no toggles to
-    // maintain, no cost when the credentials are absent.
-    source18: { enabled: env.ELFURA_SUBDUB_ENABLED !== '0' },
-    source20: { enabled: env.ELFURA_VIDORA_ENABLED !== '0' },
-    source21: { enabled: env.ELFURA_WATCHOUT_ENABLED !== '0' },
-    source22: { enabled: env.ELFURA_VIDLY_SUBS_ENABLED !== '0' },
-    source24: {
-      enabled: env.ELFURA_VIDLINK_ENABLED !== '0',
-      origin: (env.ELFURA_VIDLINK_ORIGIN || 'https://vidlink.pro/api/b').replace(/\/+$/, ''),
-      timeoutMs: Math.max(3000, Number(env.ELFURA_VIDLINK_TIMEOUT_MS || 12_000)),
-      rank: 55,
-    },
-    source25: {
-      enabled: env.ELFURA_GREYBOX_ENABLED !== '0',
-      origin: (env.ELFURA_GREYBOX_ORIGIN || 'https://greyboxtv.duckdns.org').replace(/\/+$/, ''),
-      timeoutMs: Math.max(3000, Number(env.ELFURA_GREYBOX_TIMEOUT_MS || 12_000)),
-      rank: 50,
     },
     redirectTo: parseRedirectTo(env.ELFURA_REDIRECT_TO),
     subtitles: {
