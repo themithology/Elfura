@@ -19,6 +19,8 @@ on:
     branches: [arena/38aa0193-elfura]
     paths:
       - 'scripts/research/independence.mjs'
+      - 'scripts/research/object-overlap.mjs'
+      - 'backend/src/sources/vidlink.ts'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -54,6 +56,16 @@ jobs:
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
+      # The host probe cannot tell two libraries on one CDN from a re-export.
+      # This one compares the media OBJECT ids, which can.
+      - name: Probe content overlap
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/object-overlap.mjs 2>&1 | tee research/object-overlap-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
       # A plain `git push` here loses a race against a human push that lands
       # while the job is running: the result is computed, then thrown away with
       # a non-fast-forward. Rebase and retry instead — the probe result is the
@@ -63,6 +75,8 @@ jobs:
         run: |
           git config user.name "source research"
           git config user.email "research@example.invalid"
+          git add research/independence.json research/independence.md research/independence-last.txt \
+                  research/object-overlap.json research/object-overlap-last.txt 2>/dev/null || true
           git add research/independence.json research/independence.md research/independence-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
