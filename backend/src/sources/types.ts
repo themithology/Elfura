@@ -244,6 +244,12 @@ export interface UniformStreamOption {
   declaredBitrateBps?: number;
   audioLang?: string;
   /**
+   * The language the provider labelled this stream with. Never presented as
+   * verified audio: the player may show it, and ordering may use it, but a
+   * language switch must not claim it on the strength of a label alone.
+   */
+  claimedAudioLang?: string;
+  /**
    * Structural traits of the lane that produced this option (see SourceTrait).
    * The player needs a few of these — an aggregator's manual selection must
    * exhaust its own servers first, a slow lane gets a longer budget, an

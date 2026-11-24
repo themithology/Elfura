@@ -59,7 +59,22 @@ async function resolveFor(lang) {
   return body;
 }
 
-const hindi = await resolveFor('hi');
+// Ask for the language this lane actually publishes, taken from its own rows.
+// Asking for Hindi on a title citadel only has in English proves nothing: the
+// previous run did exactly that and compared the primary against an empty set,
+// then reported success.
+const offered = [
+  ...new Set(
+    resolved.candidates
+      .map((c) => c.claimedAudioLang)
+      .filter((lang) => typeof lang === 'string' && lang !== 'und'),
+  ),
+];
+assert(offered.length > 0, 'the lane published no language at all — nothing can be ranked');
+const lang = offered[0];
+quiet(`  languages published: ${offered.join(', ')}; ranking inside "${lang}"`);
+
+const hindi = await resolveFor(lang);
 const MB_ = MB;
 quiet(`\n  Hindi request: ${hindi.sources.length} stream(s), primary ${hindi.primary?.label ?? '?'}`);
 for (const source_ of hindi.sources) {
@@ -97,10 +112,22 @@ assert(hindi.size.measured === measured.length, 'the summary disagrees with the 
 assert(hindi.size.meanBytes > 0, 'a reported mean of zero bytes is not a measurement');
 assert(hindi.size.maxBytes >= hindi.size.meanBytes, 'the biggest stream cannot be smaller than the mean');
 
-// ── 3. THE RULE: within the requested language, the biggest stream opens ────
+// ── 3. every stream tells the player what language it is ───────────────────
+for (const stream of hindi.sources) {
+  assert(
+    stream.audioLang || stream.claimedAudioLang,
+    `${stream.label} reached the player with no language at all`,
+  );
+}
+
+// ── 4. THE RULE: within the requested language, the biggest stream opens ────
 const primary = hindi.primary;
 assert(Number.isFinite(primary?.measuredBytes), 'the stream the player opens on carries no measured size');
-const primaryLang = primary.lang ?? primary.audioLang ?? primary.claimedAudioLang ?? 'hi';
+const primaryLang = primary.audioLang ?? primary.claimedAudioLang;
+assert(
+  primaryLang && primaryLang.split('-')[0] === lang.split('-')[0],
+  `the primary stream is "${primaryLang}", not the requested "${lang}"`,
+);
 const biggerSameLang = hindi.sources.filter(
   (s) =>
     Number.isFinite(s.measuredBytes) &&
@@ -117,7 +144,7 @@ quiet(
   `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${primaryLang} stream listed`,
 );
 
-// ── 4. and the same title in another language ranks its own biggest ────────
+// ── 5. and the same title in another language ranks its own biggest ────────
 const english = await resolveFor('en');
 quiet(`\n  English request: ${english.sources.length} stream(s), primary ${english.primary?.label ?? '?'}`);
 const englishPrimary = english.primary;

@@ -104,8 +104,8 @@ console.log('— payload handling');
 
 console.log('— url builder');
 {
-  assert.match(citadelUrl({ type: 'movie', tmdbId: '550' }), /provider=citadel&id=550$/);
-  assert.match(citadelUrl({ type: 'tv', tmdbId: '1399', season: 2, episode: 5 }), /season=2&episode=5$/);
+  assert.match(citadelUrl({ type: 'movie', tmdbId: '550' }), /provider=citadel&id=550&cb=\d+$/);
+  assert.match(citadelUrl({ type: 'tv', tmdbId: '1399', season: 2, episode: 5 }), /season=2&episode=5&cb=\d+$/);
   assert.equal(citadelUrl({ type: 'movie', tmdbId: 'not-a-number' }), null);
 }
 

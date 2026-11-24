@@ -1176,25 +1176,38 @@ export class SourceRegistry {
       const prefCode = normalizeLang(params.preferredLang).code;
       if (prefCode && prefCode !== 'und') {
         const prefPrimary = prefCode.split('-')[0];
+        // 0 = verified in this language, 1 = the provider labelled it as this
+        // language, 2 = multi-audio with unknown tracks, 3 = not this language.
+        // A label outranks "unknown" but sits below a measurement, and it sits
+        // above "no" — otherwise a lane that only ever says "Hindi" could never
+        // be picked for Hindi at all.
         const scoreOpt = (opt: UniformStreamOption): number => {
           const exactDirect = opt.audioLang === prefCode;
           const exactMulti = !!opt.availableAudioLangs?.includes(prefCode);
           const subtagDirect = opt.audioLang?.split('-')[0] === prefPrimary;
           const subtagMulti = !!opt.availableAudioLangs?.some((l) => l.split('-')[0] === prefPrimary);
           if (exactDirect || exactMulti || subtagDirect || subtagMulti) return 0;
-          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 1;
-          return 2;
+          if (opt.claimedAudioLang?.split('-')[0] === prefPrimary) return 1;
+          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 2;
+          return 3;
         };
         const effectiveSpeedMs = (opt: UniformStreamOption): number => {
           const base = opt.latencyHintMs ?? 550;
           return opt.multiAudio ? base - 65 : base;
         };
+        // Size is part of this sort, not only of the earlier one. This pass used
+        // to run purely on latency and silently overwrite the size order, which
+        // is how a 400MB stream became primary over a 1376MB one in the same
+        // language. A stream with no measurement sorts below a measured one.
+        const sizeDesc = (opt: UniformStreamOption): number =>
+          typeof opt.measuredBytes === 'number' && opt.measuredBytes > 0 ? opt.measuredBytes : -1;
         uniformOptions.sort(
           (a, b) =>
             scoreOpt(a) - scoreOpt(b) ||
             Number(!!a.animeUnverified) - Number(!!b.animeUnverified) ||
             Number(!!b.animePriority) - Number(!!a.animePriority) ||
             animeVariantTier(a, prefCode) - animeVariantTier(b, prefCode) ||
+            sizeDesc(b) - sizeDesc(a) ||
             qualityTierOf(a) - qualityTierOf(b) ||
             effectiveSpeedMs(a) - effectiveSpeedMs(b),
         );
@@ -1365,6 +1378,7 @@ export class SourceRegistry {
         ? { declaredBitrateBps: cand.declaredBitrateBps }
         : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
+      ...(cand.claimedAudioLang && !cand.audioLang ? { claimedAudioLang: cand.claimedAudioLang } : {}),
       ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
       ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
