@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-24T18:00:16.796Z",
+  "measuredAt": "2026-11-24T18:03:36.397Z",
   "titles": [
     "fight-club",
     "inception",
@@ -11,7 +11,9 @@
       "id": "source-1",
       "hosts": [
         "img1.hscow.com",
-        "img.hscow.com"
+        "img.hscow.com",
+        "img1.fcxmb.com",
+        "img.fcxmb.com"
       ],
       "rows": [
         {
@@ -24,7 +26,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 1
+          "candidates": 3
         },
         {
           "title": "naruto-s1e1",
@@ -113,7 +115,9 @@
           "mediaUrls": 1,
           "bytes": 131072,
           "segments": 1392,
-          "hosts": [],
+          "hosts": [
+            "proxy.7movie.ws"
+          ],
           "error": null
         },
         {
@@ -121,7 +125,9 @@
           "mediaUrls": 1,
           "bytes": 131072,
           "segments": 1481,
-          "hosts": [],
+          "hosts": [
+            "proxy.7movie.ws"
+          ],
           "error": null
         },
         {
@@ -148,7 +154,88 @@
       "playable": true,
       "shared": [],
       "independent": true,
-      "verdict": "INDEPENDENT — no media host shared with any approved source"
+      "relayShaped": [
+        "proxy.7movie.ws"
+      ],
+      "verdict": "independent of the board; RELAY-SHAPED host(s): proxy.7movie.ws — the board refuses relay fronts"
     }
-  ]
+  ],
+  "discoveryNotes": {
+    "atlantic-vidbox:fight-club": {
+      "status": 502,
+      "topLevelKeys": [
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
+      ],
+      "sourceKeys": [],
+      "rowShape": null
+    },
+    "atlantic-vidbox:inception": {
+      "status": 502,
+      "topLevelKeys": [
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
+      ],
+      "sourceKeys": [],
+      "rowShape": null
+    },
+    "atlantic-vidbox:got-s1e1": {
+      "status": 502,
+      "topLevelKeys": [
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
+      ],
+      "sourceKeys": [],
+      "rowShape": null
+    },
+    "atlantic-vidbox:naruto-s1e1": {
+      "status": 502,
+      "topLevelKeys": [
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
+      ],
+      "sourceKeys": [],
+      "rowShape": null
+    },
+    "atlantic-q62:got-s1e1": {
+      "status": 404,
+      "topLevelKeys": [
+        "detail",
+        "error"
+      ],
+      "releases": null
+    },
+    "atlantic-q62:naruto-s1e1": {
+      "status": 404,
+      "topLevelKeys": [
+        "detail",
+        "error"
+      ],
+      "releases": null
+    }
+  }
 }
