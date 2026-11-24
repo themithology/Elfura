@@ -1,0 +1,4 @@
+[elfura-citadel] movie/550: 2 row(s)
+✗ source-1: source-1: candidate url must be a proxy path, got https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expir
+
+1 source(s) failed the contract: source-1. Remove them from APPROVED_SOURCES or fix the adapter — a lane that cannot produce bytes is not a source.
