@@ -2,15 +2,12 @@
   languages published: en; ranking inside "en"
 [elfura-citadel] movie/550: 2 row(s)
 
-  Hindi request: 2 stream(s), primary Source 1 · English
-    Source 1 · English [?]                 1376MB
-    Source 1 · English #2 [?]              400MB
+  "en" request: 2 stream(s), primary Source 1 · English
+    Source 1 · English [en label]          1376MB
+    Source 1 · English #2 [en label]       400MB
 
   mean 888MB over 2/2 measured, biggest 1376MB
   primary 1376MB is the biggest en stream listed
-[elfura-citadel] movie/550: 2 row(s)
-
-  English request: 2 stream(s), primary Source 1 · English
-  primary 1376MB
+  (this title is published in one language only; cross-language ranking not exercised)
 
 ✓ citadel live: real sizes measured, requested language ranked biggest-first
