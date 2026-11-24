@@ -12,9 +12,9 @@
 
   playable languages on this title: en
 [elfura-greybox] movie/550: throttled, retrying once
-[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
-[elfura-sources] source-2 movie/550: 0 candidates in 2264ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
 [elfura-citadel] movie/550: 2 row(s)
+[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
+[elfura-sources] source-2 movie/550: 0 candidates in 2220ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
 
   "hi" request: 2 stream(s), primary "en"
   reported fallback: requested "hi" (no-stream-in-language)
@@ -22,4 +22,4 @@
 
 ✓ board live: real sizes measured, requested language ranked biggest-first
 [elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
-[elfura-sources] source-2 movie/550: 0 candidates in 1708ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-sources] source-2 movie/550: 0 candidates in 1674ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
