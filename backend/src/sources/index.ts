@@ -39,6 +39,7 @@
 
 import type { SourceAdapter } from './types.js';
 import { createCitadelAdapter } from './citadel.js';
+import { createGreyboxAdapter } from './greybox.js';
 
 /**
  * What a source may read: `process.env`, already carrying the `.env` overlay.
@@ -88,6 +89,20 @@ export const APPROVED_SOURCES: SourceDefinition[] = [
     // Probed on GitHub runners on 2026-11-24: both titles resolved and both
     // returned real segment bytes, twice, with no browser involved. They are the
     // titles the contract test must keep reproducing.
+    probes: [
+      { type: 'movie', tmdbId: '550' },
+      { type: 'tv', tmdbId: '1399', season: 1, episode: 1 },
+    ],
+  },
+  {
+    id: 'source-2',
+    envFlag: 'ELFURA_GREYBOX_ENABLED',
+    create: () => createGreyboxAdapter(),
+    website: { name: 'Greybox', url: 'https://greyboxtv.duckdns.org' },
+    // The research harness only ever fetched the payload's first (relay) URL;
+    // the provider's own /api/media rows were never tried. These titles are the
+    // ones its API answered 200 for, plus the TV title it throttled, so the
+    // contract proves the throttle path too.
     probes: [
       { type: 'movie', tmdbId: '550' },
       { type: 'tv', tmdbId: '1399', season: 1, episode: 1 },
