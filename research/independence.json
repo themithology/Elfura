@@ -1,10 +1,20 @@
 {
-  "measuredAt": "2026-11-24T18:03:36.397Z",
+  "measuredAt": "2026-11-24T18:19:40.487Z",
   "titles": [
     "fight-club",
     "inception",
     "got-s1e1",
     "naruto-s1e1"
+  ],
+  "asked": [
+    "atlantic-vidbox",
+    "vidlink",
+    "atlantic-q62"
+  ],
+  "answered": [
+    "atlantic-vidbox",
+    "vidlink",
+    "atlantic-q62"
   ],
   "board": [
     {
@@ -22,7 +32,7 @@
         },
         {
           "title": "inception",
-          "candidates": 3
+          "candidates": 0
         },
         {
           "title": "got-s1e1",
@@ -104,6 +114,61 @@
       "shared": [],
       "independent": false,
       "verdict": "no media at all — not a source yet"
+    },
+    {
+      "id": "vidlink",
+      "label": "VidLink",
+      "note": "/api/b/<locally minted token> -> stream.playlist + qualities (source24 protocol, no third party)",
+      "titles": [
+        {
+          "title": "fight-club",
+          "mediaUrls": 3,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [
+            "bcdn.hakunaymatata.com"
+          ],
+          "error": "http=429"
+        },
+        {
+          "title": "inception",
+          "mediaUrls": 3,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [
+            "bcdn.hakunaymatata.com"
+          ],
+          "error": "http=429"
+        },
+        {
+          "title": "got-s1e1",
+          "mediaUrls": 4,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [
+            "bcdn.hakunaymatata.com"
+          ],
+          "error": "http=429"
+        },
+        {
+          "title": "naruto-s1e1",
+          "mediaUrls": 2,
+          "bytes": 0,
+          "segments": 0,
+          "hosts": [
+            "bcdn.hakunaymatata.com"
+          ],
+          "error": "http=429"
+        }
+      ],
+      "hosts": [
+        "bcdn.hakunaymatata.com"
+      ],
+      "bytes": 0,
+      "playable": false,
+      "shared": [],
+      "independent": true,
+      "verdict": "media found but no bytes (http=429, http=429)"
     },
     {
       "id": "atlantic-q62",
