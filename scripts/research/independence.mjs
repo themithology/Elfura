@@ -50,6 +50,19 @@ const TITLES = [
 
 const HASH = (value) => crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 10);
 
+/**
+ * A host that looks like it is standing in front of somebody else's media.
+ *
+ * "Independent of the board" is not the same as "its own CDN". `proxy.7movie.ws`
+ * is independent of citadel and greybox and is still a proxy — and this board
+ * refuses relay fronts, so calling it INDEPENDENT and stopping there would have
+ * green-lit exactly the thing the adapters are written to reject.
+ */
+const RELAY_SHAPED =
+  /(?:^|[.-])(?:proxy|relay|transcode|bridge|worker|workers|gateway|mirror|edge)\d*(?:[.-]|$)|workers\.dev$/i;
+
+const relayShaped = (host) => RELAY_SHAPED.test(host);
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Lanes under test.
  *
@@ -94,7 +107,17 @@ const CANDIDATES = [
         return [];
       }
       const row = body?.sources?.Vidbox;
-      if (row?.type !== 'hls' || typeof row.url !== 'string') return [];
+      if (row?.type !== 'hls' || typeof row.url !== 'string') {
+        // Say what arrived instead of returning a bare []. "no media" with no
+        // explanation is the same silence that made greybox look dead.
+        reportDiscovery(this.id, title, {
+          status: response.status,
+          topLevelKeys: body && typeof body === 'object' ? Object.keys(body).slice(0, 8) : [],
+          sourceKeys: body?.sources && typeof body.sources === 'object' ? Object.keys(body.sources).slice(0, 8) : [],
+          rowShape: row ? { type: row.type, urlIsString: typeof row.url === 'string' } : null,
+        });
+        return [];
+      }
       return sanitize([row.url]);
     },
   },
@@ -117,7 +140,14 @@ const CANDIDATES = [
         return [];
       }
       const master = body?.releases?.[0]?.master;
-      if (typeof master !== 'string') return [];
+      if (typeof master !== 'string') {
+        reportDiscovery(this.id, title, {
+          status: response.status,
+          topLevelKeys: body && typeof body === 'object' ? Object.keys(body).slice(0, 8) : [],
+          releases: Array.isArray(body?.releases) ? body.releases.length : null,
+        });
+        return [];
+      }
       return sanitize([master]);
     },
   },
@@ -126,6 +156,13 @@ const CANDIDATES = [
 /* ────────────────────────────────────────────────────────────────────────────
  * Helpers
  * ──────────────────────────────────────────────────────────────────────────── */
+
+/** What a lane actually answered when it produced no media. Shapes, not bodies. */
+const DISCOVERY_NOTES = new Map();
+function reportDiscovery(laneId, title, detail) {
+  const key = `${laneId}:${title.key}`;
+  DISCOVERY_NOTES.set(key, detail);
+}
 
 function sanitize(urls) {
   const out = [];
@@ -335,13 +372,21 @@ for (const lane of CANDIDATES) {
     entry.mediaUrls = found.length;
     if (found.length > 0) {
       // Probe up to two URLs per title; a lane that only has one is still a lane.
+      const titleHosts = new Set();
       for (const mediaUrl of found.slice(0, 2)) {
         const walk = await walkPlaylist(mediaUrl, ATLANTIC_HEADERS);
         entry.bytes += walk.bytes;
         entry.segments += walk.segments;
         entry.error = entry.error ?? walk.error;
-        for (const host of walk.hosts) laneHosts.add(host);
+        for (const host of walk.hosts) {
+          laneHosts.add(host);
+          titleHosts.add(host);
+        }
       }
+      // This field existed and was never assigned, so every title reported an
+      // empty host list while the lane total reported one — a contradiction
+      // that hid where the media actually lived.
+      entry.hosts = [...titleHosts];
     }
     record.titles.push(entry);
   }
@@ -370,12 +415,24 @@ function candidateVerdict(record) {
     record.verdict = `media found but no bytes (${record.titles.map((t) => t.error).filter(Boolean).slice(0, 2).join(', ')})`;
     return;
   }
-  if (record.shared.length === 0) {
-    record.verdict = 'INDEPENDENT — no media host shared with any approved source';
-    return;
+  const parts = [];
+  if (record.shared.length > 0) {
+    const names = [...new Set(record.shared.flatMap((s) => s.withSources))].join(', ');
+    parts.push(`NOT independent — shares ${record.shared.length} host(s) with ${names}`);
+  } else {
+    parts.push('independent of the board');
   }
-  const names = [...new Set(record.shared.flatMap((s) => s.withSources))].join(', ');
-  record.verdict = `NOT independent — shares ${record.shared.length} host(s) with ${names}`;
+  // Independence answers "is it a third name for the same pipe". It does not
+  // answer "is this its own CDN", and a relay front passes the first test while
+  // failing the second.
+  const relays = record.hosts.filter(relayShaped);
+  parts.push(
+    relays.length === 0
+      ? 'own-CDN shaped'
+      : `RELAY-SHAPED host(s): ${relays.join(', ')} — the board refuses relay fronts`,
+  );
+  record.relayShaped = relays;
+  record.verdict = parts.join('; ');
 }
 
 const report = {
@@ -383,6 +440,9 @@ const report = {
   titles: TITLES.map((t) => t.key),
   board,
   candidates,
+  // Why a lane produced nothing, per title. Shapes and status codes only; never
+  // a response body, which may carry a signed URL.
+  discoveryNotes: Object.fromEntries(DISCOVERY_NOTES),
 };
 
 await fs.writeFile(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
@@ -413,6 +473,18 @@ for (const candidate of candidates) {
     `| ${candidate.id} | ${candidate.playable ? `yes, ${candidate.bytes}B` : 'no'} | ${candidate.hosts.length} | ` +
       `${candidate.shared.map((s) => `\`${s.host}\` (${s.withSources.join(',')})`).join('<br>') || '—'} | ${candidate.verdict} |`,
   );
+}
+if (DISCOVERY_NOTES.size > 0) {
+  lines.push('', '## Why a lane produced nothing', '', '| lane / title | what arrived |', '| --- | --- |');
+  for (const [key, detail] of DISCOVERY_NOTES) {
+    const shape =
+      detail.rowShape
+        ? `row type=${detail.rowShape.type}, url is a string: ${detail.rowShape.urlIsString}`
+        : `status ${detail.status}; top-level keys [${(detail.topLevelKeys ?? []).join(', ')}]` +
+          (detail.sourceKeys ? `; sources keys [${detail.sourceKeys.join(', ')}]` : '') +
+          (detail.releases !== null && detail.releases !== undefined ? `; releases ${detail.releases}` : '');
+    lines.push(`| ${key} | ${shape} |`);
+  }
 }
 lines.push('');
 await fs.writeFile('research/independence.md', `${lines.join('\n')}\n`, 'utf8');
