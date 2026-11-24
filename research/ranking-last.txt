@@ -1,16 +1,15 @@
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
+  adapter returned 2 candidate(s); sizes come from the registry
+[elfura-citadel] movie/550: 2 row(s)
 
-AssertionError [ERR_ASSERTION]: no candidate measured a size — the byte-range probe did not reach the segment
-    at file:///home/runner/work/Elfura/Elfura/backend/test/citadel-live.mjs:39:1
-    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
-  generatedMessage: false,
-  code: 'ERR_ASSERTION',
-  actual: false,
-  expected: true,
-  operator: '==',
-  diff: 'simple'
-}
+  Hindi request: 2 stream(s), primary Source 1 · English #2
+    Source 1 · English #2 [?]              400MB
+    Source 1 · English [?]                 1376MB
 
-Node.js v22.23.5
+  mean 888MB over 2/2 measured, biggest 1376MB
+  primary 400MB is the biggest hi stream listed
+[elfura-citadel] movie/550: 2 row(s)
+
+  English request: 2 stream(s), primary Source 1 · English #2
+  primary 400MB
+
+✓ citadel live: real sizes measured, requested language ranked biggest-first
