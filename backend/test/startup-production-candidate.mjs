@@ -7,7 +7,7 @@ const body=readFileSync(`dist/assets/${bundle}`);
 const browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
 const page=await browser.newPage({viewport:{width:393,height:873},isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'});
 const started=Date.now(),events=[],pending=new Map();
-page.on('request',r=>{try{const u=new URL(r.url());if(u.pathname.includes('/api/v1/stream')||['media','xhr','fetch'].includes(r.resourceType())&&u.hostname!=='embed.theogpiratebot.online')pending.set(r,{stage:u.pathname.includes('/api/v1/stream')?'relay':'external',start:Date.now()-started});}catch{}});
+page.on('request',r=>{try{const u=new URL(r.url());if(u.pathname.startsWith('/api/proxy')||['media','xhr','fetch'].includes(r.resourceType())&&u.hostname!=='embed.theogpiratebot.online')pending.set(r,{stage:u.pathname.startsWith('/api/proxy')?'relay':'external',start:Date.now()-started});}catch{}});
 page.on('response',r=>{const p=pending.get(r.request());if(p)events.push({...p,done:Date.now()-started,status:r.status(),ct:(r.headers()['content-type']||'').split(';')[0]});});
 page.on('requestfailed',r=>{const p=pending.get(r);if(p)events.push({...p,done:Date.now()-started,error:r.failure()?.errorText});});
 let injected=false;await page.route('**/assets/embed-*.js',route=>{injected=true;return route.fulfill({status:200,contentType:'application/javascript',body});});

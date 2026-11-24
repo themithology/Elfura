@@ -9,7 +9,7 @@ on:
       - 'backend/src/sources/mp4-audio.ts'
       - 'src/core/player.ts'
       - 'src/ui/controls.ts'
-      - 'backend/src/relay.ts'
+      - 'backend/src/stream-proxy.ts'
       - 'backend/test/moviebox-*.mjs'
       - '.github/workflows/moviebox-direct.yml'
   workflow_dispatch:

@@ -16,7 +16,7 @@
  * per-language renditions (Hindi, Tamil, Telugu, English on the samples read),
  * so the shared liveness probe reports true audio languages instead of claims.
  *
- * Everything stays server-side: the browser receives only `/api/v1/stream?t=…`
+ * Everything stays server-side: the browser receives only `/api/proxy?u=…`
  * tickets. Zero disk, two bounded requests at most, no credentials.
  */
 import { isSafeUpstreamUrl } from '../security.js';

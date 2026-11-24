@@ -73,8 +73,8 @@ try {
  // Chromium binary on Actions and invalidate the remaining samples.
  const page=await browser.newPage();
  let apiStatuses=[],exposedUpstream=false,playlists=[],relayCounts={};
- server.on('request',(req,res)=>{if(req.url?.startsWith('/api/v1/stream?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;relayCounts[key]=(relayCounts[key]??0)+1;});});
- page.on('response',async res=>{try{const u=new URL(res.url());if(u.origin!==base||u.pathname!=='/api/v1/stream'||!(res.headers()['content-type']??'').includes('mpegurl'))return;const text=await res.text();playlists.push({codecs:[...text.matchAll(/CODECS="([^"]+)"/g)].map(m=>m[1]).filter(x=>/^[a-zA-Z0-9., _-]{1,120}$/.test(x)).slice(0,6),variants:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,segments:(text.match(/#EXTINF/g)??[]).length})}catch{}});
+ server.on('request',(req,res)=>{if(req.url?.startsWith('/api/proxy?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;relayCounts[key]=(relayCounts[key]??0)+1;});});
+ page.on('response',async res=>{try{const u=new URL(res.url());if(u.origin!==base||u.pathname!=='/api/proxy'||!(res.headers()['content-type']??'').includes('mpegurl'))return;const text=await res.text();playlists.push({codecs:[...text.matchAll(/CODECS="([^"]+)"/g)].map(m=>m[1]).filter(x=>/^[a-zA-Z0-9., _-]{1,120}$/.test(x)).slice(0,6),variants:(text.match(/#EXT-X-STREAM-INF/g)??[]).length,segments:(text.match(/#EXTINF/g)??[]).length})}catch{}});
  await page.addInitScript(()=>{window.__auditHlsErrors=[];let last=null;setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&h!==last){last=h;h.on('hlsError',(_e,d)=>window.__auditHlsErrors.push({type:d.type,details:d.details,fatal:d.fatal}));}},25);});
  page.on('response',res=>{try{const url=new URL(res.url());if(url.origin===base&&url.pathname==='/api/v1/playback')apiStatuses.push(res.status());}catch{}});
  page.on('request',req=>{try{if(upstreamHosts.has(new URL(req.url()).hostname))exposedUpstream=true}catch{}});

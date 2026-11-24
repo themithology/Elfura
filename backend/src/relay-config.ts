@@ -1,6 +1,12 @@
 /**
- * Where the Worker relay URL lives
- * ================================
+ * Where the discovery egress Worker URL lives
+ * ==========================================
+ * This is NOT a stream relay: no media ever passes through it. It is the single
+ * optional Cloudflare Worker that provider *discovery* requests are sent through
+ * so a provider sees a browser-shaped request from Cloudflare's address instead of
+ * a bare Node request from this server's address. Streams are served by
+ * `stream-proxy.ts`, directly from this server.
+ *
  * An operator should not have to open `.env` and invent a variable name to try a
  * relay, so the URL can also be saved from the Roxy panel. Precedence is the same
  * as the rest of the app — environment first, then `.env`, then whatever the panel

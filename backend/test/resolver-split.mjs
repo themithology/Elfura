@@ -206,7 +206,7 @@ const listed = await (await fetch(`${resolverBase}/resolver/api/sources`, { head
 await check('resolver serves nothing but its own API', async () => {
   // It must be impossible to reach a player, an embed or the panel on the
   // resolver: that box is supposed to be invisible to the public.
-  for (const route of ['/embed/movie/550', '/roxy', '/', '/api/v1/health', '/api/v1/stream?t=x']) {
+  for (const route of ['/embed/movie/550', '/roxy', '/', '/api/v1/health', '/api/proxy?u=x']) {
     const response = await fetch(`http://127.0.0.1:${resolverPort}${route}`);
     assert.ok(
       response.status === 401 || response.status === 404,

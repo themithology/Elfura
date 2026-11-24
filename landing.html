@@ -148,12 +148,12 @@
             </article>
 
             <article class="feature-card feature-security" data-reveal>
-              <span class="feature-icon"><svg><use href="#i-shield"/></svg></span><span class="feature-number">05 / PROTECTION</span><h3>Protected playback<br />by default.</h3><p>Signed playback sessions, encrypted stream tickets, origin checks, SSRF protection, and provider-anonymous relay routes protect every request.</p>
-              <div class="security-code"><span><i></i> SESSION VERIFIED</span><code>/api/v1/stream?t=<b data-ticket>7f2a••••••••</b></code><small>AES-256-GCM · ZERO RAW UPSTREAM URLS</small></div>
+              <span class="feature-icon"><svg><use href="#i-shield"/></svg></span><span class="feature-number">05 / PROTECTION</span><h3>Protected playback<br />by default.</h3><p>Signed playback sessions, sealed playback envelopes, origin checks, SSRF protection, and one opaque, provider-anonymous stream proxy protect every request.</p>
+              <div class="security-code"><span><i></i> SESSION VERIFIED</span><code>/api/proxy?u=<b data-ticket>7f2a••••••••</b></code><small>OPAQUE TARGET · ZERO RAW UPSTREAM URLS</small></div>
             </article>
 
             <article class="feature-card feature-recovery" data-reveal>
-              <span class="feature-number">06 / RELIABILITY</span><h3>Automatic source<br />recovery.</h3><p>Concurrent source racing, honest language fallback, health checks, standby streams, and full/hybrid relay modes recover without making viewers troubleshoot.</p>
+              <span class="feature-number">06 / RELIABILITY</span><h3>Automatic source<br />recovery.</h3><p>Concurrent source racing, honest language fallback, health checks, and standby streams recover without making viewers troubleshoot.</p>
               <div class="recovery-map" aria-hidden="true"><div class="map-center"><img class="brand-logo" src="/icon-maskable-512.png" alt="" width="30" height="30" /></div><span class="map-node node-a">A</span><span class="map-node node-b">B</span><span class="map-node node-c">C</span><svg viewBox="0 0 400 150"><path d="M50 35 Q200 150 350 35"/><path d="M50 115 Q200 0 350 115"/></svg><span class="map-status">FASTEST HEALTHY ROUTE <b>●</b></span></div>
             </article>
           </div>
@@ -246,7 +246,7 @@
         <div class="container faq-layout"><div class="faq-heading" data-reveal><span class="section-kicker">QUICK ANSWERS</span><h2>Frequently asked<br />questions.</h2><p>Everything you need to choose the simplest integration for your site.</p></div><div class="faq-list" data-reveal>
           <details open><summary>Do I need to install a JavaScript library?<span>+</span></summary><p>No. A regular iframe is enough for a complete player. Use the SDK only when you want programmatic mounting, deeper UI integration, or direct access to player methods.</p></details>
           <details><summary>Can I use my own colors, audio, and subtitles?<span>+</span></summary><p>Yes. URL parameters control the accent, start time, preferred audio and subtitle languages, playback behavior, controls, and more. The player also supports separately hosted audio tracks and VTT, SRT, or ASS subtitle files.</p></details>
-          <details><summary>What happens when a source fails or lacks a language?<span>+</span></summary><p>The player checks compatible sources instead of declaring a language unavailable after one failure. It ranks healthy multi-audio sources first, races sources by real latency, and can fail over to standby streams or a full backend relay.</p></details>
+          <details><summary>What happens when a source fails or lacks a language?<span>+</span></summary><p>The player checks compatible sources instead of declaring a language unavailable after one failure. It ranks healthy multi-audio sources first, races sources by real latency, and can fail over to standby streams.</p></details>
           <details><summary>Can I connect playback to my analytics?<span>+</span></summary><p>Yes. The origin-locked PostMessage bridge emits playback, engagement, quality, language, buffering, and recovery events. Send those signals to any analytics pipeline you already use.</p></details>
           <details><summary>Does it work on mobile and with TV series?<span>+</span></summary><p>The controls are responsive and touch-friendly. TV and anime embeds include season/episode metadata, episode selection, next-episode prewarming, intro/outro skipping, and optional auto-next playback.</p></details>
         </div></div>

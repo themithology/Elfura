@@ -25,7 +25,7 @@ const {server,registry}=createBackendServer({...cfg,isProd:false,requireToken:fa
 registry.adapters=registry.adapters.filter(a=>a.id==='source-28');
 assert.equal(registry.adapters.length,1,'production source registry must include the anime lane');
 let browser,page,step='start',sampleInfo='';const responses={};
-server.on('request',(req,res)=>{if(req.url?.startsWith('/api/v1/stream?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;responses[key]=(responses[key]??0)+1;});});
+server.on('request',(req,res)=>{if(req.url?.startsWith('/api/proxy?'))res.on('finish',()=>{const key=`${res.statusCode}:${String(res.getHeader('content-type')??'').split(';')[0]}`;responses[key]=(responses[key]??0)+1;});});
 try{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`;
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});page=await browser.newPage();

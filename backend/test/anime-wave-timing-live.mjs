@@ -23,7 +23,7 @@ const notice=(title,x)=>console.log(`::notice title=${title}::${JSON.stringify(x
 try{
  const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'});
  const urls=[];
- for(let i=0;i<4;i++){
+ for(let i=0;i<1;i++){
   const registry=new SourceRegistry(cfg);
   registry.adapters=registry.adapters.map(a=>!['source-28','source-29','source-30'].includes(a.id)?a:{...a,async resolve(q){
    const begin=now(),diag=[],partial=[];let metaMs;
@@ -33,7 +33,7 @@ try{
   }});
   urls.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server));
  }
- [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=urls;
+ process.env.ELFURA_RESOLVER_URL=urls[0];
  const app=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(app.server);
  browser=await chromium.launch({executablePath:await binary.executablePath(),args:[...binary.args,'--autoplay-policy=no-user-gesture-required']});const page=await browser.newPage();
  await page.addInitScript(()=>{const state=window.__timing={start:Date.now(),first:null,seen:{},requests:[]};setInterval(()=>{const p=window.__elfura?.player;if(!p)return;const all=p.getSources?.()||[];const t=Date.now()-state.start;if(all.length&&state.first===null)state.first={ms:t,groups:[...new Set(all.map(x=>x.sourceId))]};for(const opt of all){if(['source-28','source-29','source-30'].includes(opt.sourceId)&&state.seen[opt.sourceId]===undefined)state.seen[opt.sourceId]=t}},50)});

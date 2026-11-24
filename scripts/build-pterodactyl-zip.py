@@ -319,7 +319,7 @@ def main() -> None:
         # `husky && node ./scripts/platform-shell.js`. Neither husky nor the
         # scripts/ directory ship with the package, so the install died with
         # "Cannot find module .../scripts/platform-shell.js" *before* finishing
-        # — undici was never linked, the egress profile and the proxy pool never
+        # — undici was never linked, the egress profile and the DNS rescue never
         # started, and every console line said the sources were simply offline.
         # Stripping scripts/devDependencies keeps the resolution fields
         # (main, exports, engines) that `import('undici')` needs and leaves

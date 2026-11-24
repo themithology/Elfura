@@ -18,7 +18,7 @@ export interface BackendConfig {
   host: string;
   port: number;
   isProd: boolean;
-  /** Master secret for HMAC session tokens and AES-256-GCM stream tickets. */
+  /** Master secret for HMAC session tokens and the sealed playback envelope. */
   secret: Buffer;
   /** Allowed parent/embed origins ('*' permits any origin). */
   allowedOrigins: string[];
@@ -31,13 +31,10 @@ export interface BackendConfig {
   /** Max time to wait for source adapters before returning available streams. */
   resolveTimeoutMs: number;
   /**
-   * Stream segment delivery mode:
-   *  - 'hybrid' (default): manifests/subtitles/keys + header-locked or source-identifying
-   *    streams relay via `/api/v1/stream`, while verified anonymous CORS-safe HTTPS
-   *    segments offload directly to upstream edge CDNs (Cloudflare & VPS safe).
-   *  - 'full': pipe 100% of manifests and binary segments through `/api/v1/stream`.
+   * Public path of the single raw-stream proxy. Every manifest, key,
+   * subtitle and media segment is served through this one stateless route.
    */
-  relayMode: 'hybrid' | 'full';
+  streamProxyPath: string;
   /** Self-hosted TMDB API configuration. */
   tmdb: {
     apiBase: string;
@@ -280,7 +277,7 @@ export function loadBackendConfig(envInput?: NodeJS.ProcessEnv): BackendConfig {
     // site in index.ts for why the cap is off.
     rateLimitPerMin: Math.max(0, Number(env.RATE_LIMIT_PER_MIN || 0)),
     resolveTimeoutMs: Math.max(2000, Number(env.RESOLVE_TIMEOUT_MS || 9000)),
-    relayMode: (env.RELAY_MODE || 'hybrid').trim().toLowerCase() === 'full' ? 'full' : 'hybrid',
+    streamProxyPath: (env.ELFURA_STREAM_PROXY_PATH || '/api/proxy').trim() || '/api/proxy',
     tmdb: {
       apiBase: (env.TMDB_API_BASE || env.TMDB_API_BASE_URL || '').trim().replace(/\/+$/, ''),
       apiKey: (env.TMDB_API_KEY || '').trim(),

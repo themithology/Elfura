@@ -59,7 +59,6 @@ const { server } = createBackendServer({
   rateLimitPerMin: 120,
   resolveTimeoutMs: 1200,
   tmdb: { apiKey: '', apiBase: 'https://api.themoviedb.org', language: 'en-US' },
-  relayMode: 'hybrid',
 });
 const rateLimiterDefault = loadBackendConfig({ ELFURA_SECRET: 'budget-test-secret' }).rateLimitPerMin;
 await new Promise((r) => server.listen(0, '127.0.0.1', r));

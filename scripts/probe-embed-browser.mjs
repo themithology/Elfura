@@ -128,7 +128,7 @@ for (const variant of Object.keys(VARIANTS)) {
   });
   log(`  ${variant} state`, JSON.stringify(state));
 
-  const bad = requests.filter((r) => !['/api/v1/playback', '/api/v1/stream'].includes(r.path));
+  const bad = requests.filter((r) => !['/api/v1/playback', '/api/proxy'].includes(r.path));
   const non200 = bad.filter((r) => r.status >= 400);
   if (non200.length) {
     const tally = new Map();

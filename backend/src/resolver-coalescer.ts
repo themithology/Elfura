@@ -23,7 +23,7 @@ export class ResolverCoalescer {
     const key = JSON.stringify([this.generation, request.type, request.tmdbId,
       request.season ?? null, request.episode ?? null, request.anilistId ?? null,
       request.anilistEpisode ?? null, request.sourceId ?? null, request.preferredLang ?? null,
-      request.streamPathPrefix ?? null, request.late === true, request.retryMissing === true]);
+      request.late === true, request.retryMissing === true]);
     const existing = this.active.get(key);
     if (existing) { this.shared++; return existing; }
     this.started++;

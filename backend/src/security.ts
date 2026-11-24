@@ -2,7 +2,7 @@
  * Elfura Backend — Anti-Scraper Security & Stateless Stream Tickets
  * =================================================================
  * 1. HMAC-SHA256 Playback Tokens (`pltoken` + `nonce`) gate `/api/v1/playback`.
- * 2. AES-256-GCM Encrypted Stream Tickets (`?t=`) gate `/api/v1/stream`:
+ * 2. Stream tickets are gone: the single `/api/proxy` route is the only media path.
  *    - Raw upstream URLs, domains, cookies, and Referer/Origin headers are
  *      encrypted server-side so scrapers/DevTools cannot decode or tamper them.
  *    - Completely stateless: zero disk writes, zero per-ticket RAM usage.
@@ -12,7 +12,6 @@
 
 import crypto from 'node:crypto';
 import net from 'node:net';
-import zlib from 'node:zlib';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +55,7 @@ export function isLikelyAutomatedScraper(req: IncomingMessage, isProd: boolean):
  *   - `isLikelyAutomatedScraper` rejects downloader/CLI user agents
  *   - per-IP sliding-window rate limits on playback, catalog and diagnostics
  *   - playback tokens (signature, nonce, media scope, UA fingerprint)
- *   - stream tickets for every media URL
+ *   - opaque, non-guessable proxy URLs for every media URL (no upstream identity)
  *
  * The one thing that matters here is CORS correctness: a browser only accepts a
  * response whose `Access-Control-Allow-Origin` is either `*` or the exact
@@ -185,72 +184,6 @@ export function verifyPlaybackToken(
   }
 
   return { ok: true };
-}
-
-/* ------------------------------------------------------------------ */
-/* AES-256-GCM Stateless Stream Tickets                                */
-/* ------------------------------------------------------------------ */
-
-export interface StreamTicketPayload {
-  /** Raw upstream URL (or 'inline' when carrying inline manifest). */
-  u: string;
-  /** Upstream request headers to attach server-side (Referer, Origin, UA, Cookie). */
-  h?: Record<string, string>;
-  /** Hint: 'm' = manifest, 's' = subtitle, 'a' = asset/segment, 'k' = encryption key */
-  k?: 'm' | 's' | 'a' | 'k';
-  /** Optional canonical BCP-47 language hint for single-dub manifests lacking LANGUAGE tags. */
-  l?: string;
-  /** Force 100% backend segment relay (bypasses hybrid CDN offload, e.g. on ISP block fallback). */
-  fp?: 1;
-  /** If present, every fetch and HLS reference must stay on this HTTPS origin. */
-  ro?: string;
-  /** Unix seconds expiration. */
-  exp: number;
-}
-
-const COMP_FLAG_RAW = 0x00;
-const COMP_FLAG_DEFLATE = 0x01;
-
-export function sealStreamTicket(secret: Buffer, payload: Omit<StreamTicketPayload, 'exp'> & { exp?: number }, ttlSec = 14_400): string {
-  const full: StreamTicketPayload = {
-    ...payload,
-    exp: payload.exp ?? Math.floor(Date.now() / 1000) + ttlSec,
-  };
-  const jsonBytes = Buffer.from(JSON.stringify(full), 'utf8');
-  const useDeflate = jsonBytes.length > 140;
-  const body = useDeflate ? zlib.deflateRawSync(jsonBytes) : jsonBytes;
-  const plain = Buffer.concat([Buffer.from([useDeflate ? COMP_FLAG_DEFLATE : COMP_FLAG_RAW]), body]);
-
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', secret, iv);
-  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, enc]).toString('base64url');
-}
-
-export function openStreamTicket(secret: Buffer, ticket: string): StreamTicketPayload | null {
-  if (!ticket || ticket.length < 40) return null;
-  try {
-    const buf = Buffer.from(ticket, 'base64url');
-    if (buf.length < 29) return null;
-    const iv = buf.subarray(0, 12);
-    const tag = buf.subarray(12, 28);
-    const enc = buf.subarray(28);
-
-    const decipher = crypto.createDecipheriv('aes-256-gcm', secret, iv);
-    decipher.setAuthTag(tag);
-    const plain = Buffer.concat([decipher.update(enc), decipher.final()]);
-    if (!plain.length) return null;
-
-    const flag = plain[0];
-    const raw = flag === COMP_FLAG_DEFLATE ? zlib.inflateRawSync(plain.subarray(1)) : plain.subarray(1);
-    const parsed = JSON.parse(raw.toString('utf8')) as StreamTicketPayload;
-    if (!parsed || typeof parsed.u !== 'string' || typeof parsed.exp !== 'number') return null;
-    if (Math.floor(Date.now() / 1000) > parsed.exp) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 /* ------------------------------------------------------------------ */

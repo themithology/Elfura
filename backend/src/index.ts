@@ -4,7 +4,7 @@
  * Zero-dependency Node HTTP server engineered for Pterodactyl + Cloudflare:
  *   - Listens on 0.0.0.0:${SERVER_PORT || PORT || 8787}
  *   - Single uniform resolution endpoint: GET/POST /api/v1/playback
- *   - Single uniform stream ingress/egress relay: GET/HEAD /api/v1/stream?t=...
+ *   - Single raw-stream proxy: GET/HEAD /api/proxy?u=<upstream-url>
  *   - Session token bootstrap: POST /api/v1/session & SSR-injected /embed/*
  *   - Zero local disk writes, logs, SQLite files, or temp media caches
  */
@@ -36,8 +36,7 @@ import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests
 import { checkRelay, proxyProbeTarget } from './proxy-check.js';
 import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
 import { installDnsRescue } from './dns-rescue.js';
-import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe, testProxyConnection } from './egress.js';
-import { proxyPool, type ProxyMode } from './proxy-pool.js';
+import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe } from './egress.js';
 import { clearRelayUrl, currentRelayUrl, readRelayToken, relaySource, saveRelayUrl } from './relay-config.js';
 import { runtimeSummary } from './compat.js';
 import {
@@ -57,7 +56,6 @@ import {
   createRefusingPlaybackResolver,
   createResilientPlaybackResolver,
   ResolverBackendDownError,
-  resolverBackupConfig,
   resolverConfig,
   resolverFallbackReason,
   resolverIntended,
@@ -65,7 +63,6 @@ import {
   type PlaybackResolution,
   type PlaybackResolver,
 } from './playback-resolver.js';
-import { createBalancedPlaybackResolver } from './playback-resolver-balanced.js';
 import {
   InvalidRequestError,
   RemotePlaybackResolver,
@@ -73,7 +70,7 @@ import {
 } from './playback-resolver-remote.js';
 import { createResolverServer, resolverPort } from './resolver-server.js';
 import { buildDiagnoseBundle } from './diagnose-bundle.js';
-import { handleStreamRelay } from './relay.js';
+import { handleStreamProxy, DEFAULT_STREAM_PROXY_PATH } from './stream-proxy.js';
 import { fetchTmdbCatalog, fetchTmdbMetadata, fetchTmdbSeasonEpisodes } from './tmdb.js';
 import { fetchSkipMarkers } from './segments.js';
 import { describeMemoryPolicy, RAM_CACHE_ENABLED } from './memory-policy.js';
@@ -208,7 +205,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   /**
    * Where stream discovery happens. Either this process scrapes providers, or a
    * separate resolver process does and this one only serves video. The player,
-   * the relay and the ticket format are identical in both cases.
+   * the stream proxy and the playback contract are identical in both cases.
    */
   const remote = resolverConfig();
   // A misconfigured resolver must NOT translate into "nothing plays".
@@ -234,16 +231,11 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
+    // One resolver, one connection. There is no round-robin pool, no backup
+    // fan-out and no health-weighted node selection in the media path.
     const primaryRemote = new RemotePlaybackResolver(remote.url, remote.token);
-    const extras = (['backup', 'third', 'fourth'] as const)
-      .map(slot => resolverBackupConfig(process.env, slot))
-      .filter((x): x is { url: string; token: string } => Boolean(x))
-      .map(x => new RemotePlaybackResolver(x.url, x.token));
-    const remoteResolver = extras.length
-      ? createBalancedPlaybackResolver(primaryRemote, extras[0], { additionalClients: extras.slice(1) })
-      : primaryRemote;
     resolver = createResilientPlaybackResolver({
-      remote: remoteResolver,
+      remote: primaryRemote,
       onFallback: (detail) =>
         console.warn(
           `[elfura-resolver] resolver call failed (${detail}). Reporting the backend offline; ` +
@@ -591,63 +583,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         } catch { reply(500, { error: 'Egress check failed' }); }
         return;
       }
-      if (pathname === '/roxy/api/proxies' && method === 'GET') {
-        reply(200, proxyPool.listPublic());
-        return;
-      }
-      if (pathname === '/roxy/api/proxies' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const created = proxyPool.add({
-          kind: body?.kind === 'fetch-api' ? 'fetch-api' : 'connect',
-          label: typeof body?.label === 'string' ? body.label : undefined,
-          url: typeof body?.url === 'string' ? body.url : '',
-          apiKey: typeof body?.apiKey === 'string' ? body.apiKey : undefined,
-          weight: typeof body?.weight === 'number' ? body.weight : undefined,
-        });
-        if (!created) { reply(400, { error: 'Invalid proxy URL (must be http:// or https://)' }); return; }
-        reply(200, { ok: true, proxy: created, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/mode' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const mode = body?.mode as ProxyMode;
-        if (mode !== 'direct' && mode !== 'proxy-pool' && mode !== 'hybrid') {
-          reply(400, { error: 'Invalid mode' }); return;
-        }
-        proxyPool.setMode(mode);
-        reply(200, { ok: true, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/toggle' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        const enabled = typeof body?.enabled === 'boolean' ? body.enabled : undefined;
-        const updated = proxyPool.update(id, { enabled });
-        if (!updated) { reply(404, { error: 'Proxy not found' }); return; }
-        reply(200, { ok: true, proxy: updated, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/delete' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        if (!proxyPool.remove(id)) { reply(404, { error: 'Proxy not found' }); return; }
-        reply(200, { ok: true, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        const entry = proxyPool.getById(id);
-        if (!entry) { reply(404, { error: 'Proxy not found' }); return; }
-        const result = await testProxyConnection(entry.url, entry.kind, entry.apiKey);
-        entry.stats.lastCheckedAt = Date.now();
-        entry.stats.lastLatencyMs = result.latencyMs;
-        entry.stats.lastEgressIp = result.egressIp;
-        entry.stats.lastError = result.error;
-        entry.stats.healthy = result.ok;
-        reply(200, { ok: result.ok, result, pool: proxyPool.listPublic() });
-        return;
-      }
       if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }
       if (pathname === '/roxy/api/relay' && method === 'POST') {
         // The panel is the intended input here: a beginner should not have to
@@ -848,7 +783,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         const bundle = await buildDiagnoseBundle({
           reachedVia: String(req.headers.host ?? ''),
           commit: readBuildInfo().commit,
-          limits: { rateLimitPerMin: cfg.rateLimitPerMin, relayMode: cfg.relayMode, host: cfg.host, port: cfg.port },
+          limits: { rateLimitPerMin: cfg.rateLimitPerMin, streamProxyPath: cfg.streamProxyPath, host: cfg.host, port: cfg.port },
           ramCacheEnabled: RAM_CACHE_ENABLED,
           probeResolver: resolver.kind === 'remote' ? () => resolver.probe() : undefined,
         });
@@ -1108,6 +1043,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
+          retryMissing: url.searchParams.get('late') === '1' && url.searchParams.get('retryMissing') === '1',
         });
       } catch (error) {
         // A resolver that cannot be reached is an outage, not an answer. Saying
@@ -1262,24 +1198,21 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       return;
     }
 
-    // 5. Uniform Stream Ingress / Egress Relay
-    if ((method === 'GET' || method === 'HEAD') && pathname === '/api/v1/stream') {
+    // 5. Single raw-stream proxy (tgvidx style). Every manifest, key,
+    // subtitle and media segment flows through this one stateless route.
+    if (
+      (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') &&
+      (pathname === cfg.streamProxyPath ||
+        pathname === DEFAULT_STREAM_PROXY_PATH ||
+        pathname === '/api/public/stream-proxy' ||
+        pathname === '/proxy')
+    ) {
       if (isLikelyAutomatedScraper(req, cfg.isProd)) {
         sendJson(res, 403, { ok: false, error: 'automated scraper blocked' });
         return;
       }
       const allowOrigin = resolveAllowedOrigin(req, cfg.allowedOrigins);
-      const ticketParam = url.searchParams.get('t') || '';
-      const forceProxy = url.searchParams.get('p') === '1';
-      await handleStreamRelay(req, res, {
-        secret: cfg.secret,
-        allowOrigin,
-        ticketParam,
-        streamPath: '/api/v1/stream',
-        relayMode: cfg.relayMode,
-        forceProxy,
-        requireHttpsOffload: cfg.isProd,
-      });
+      await handleStreamProxy(req, res, { allowOrigin, proxyPath: cfg.streamProxyPath });
       return;
     }
 
@@ -1543,7 +1476,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
     console.log(
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
-        `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
+        `streamProxy=${cfg.streamProxyPath} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
         `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)} ${runtimeSummary()}`,
     );
     // One bounded outbound check, logged once per boot. When every source

@@ -55,7 +55,7 @@ NODE_ENV=production
 ELFURA_SECRET=
 
 ALLOWED_ORIGINS=*
-RELAY_MODE=hybrid
+
 
 # TMDB is the only thing the app genuinely needs.
 TMDB_API_KEY=

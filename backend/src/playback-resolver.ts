@@ -10,9 +10,9 @@
  * This module is the seam that lets the two be separated without touching the
  * player: `/api/v1/playback` asks for streams through `PlaybackResolver`, and the
  * implementation is either the registry in this process or an HTTP call to a
- * resolver process. The player, the relay and the stream ticket format are all
- * unchanged either way, and both sides share ELFURA_SECRET so tickets minted by
- * the resolver open in the media server.
+ * resolver process. The player and the raw stream proxy contract are unchanged
+ * either way: the resolver only hands back candidates, and every stream URL it
+ * returns already points at this server's `/api/proxy`.
  *
  * Configuration:
  *   ELFURA_RESOLVER_URL     base URL of the resolver, e.g. http://127.0.0.1:8790
@@ -44,8 +44,6 @@ export interface PlaybackRequest {
   retryMissing?: boolean;
   /** Media-node-only session identifier for routing a late request to the same resolver. */
   lateAffinityKey?: string;
-  /** Base path the resolver should use when minting stream tickets. */
-  streamPathPrefix?: string;
 }
 
 /**
@@ -183,29 +181,6 @@ export function resolverConfig(env: NodeJS.ProcessEnv = process.env): { url: str
 
 /** Optional second, third or fourth resolver, with the primary's network policy.
  * Validation of an optional node must not overwrite primary diagnostics. */
-export function resolverBackupConfig(env: NodeJS.ProcessEnv = process.env, which: 'backup' | 'third' | 'fourth' = 'backup'): { url: string; token: string } | null {
-  const key = { backup: 'ELFURA_RESOLVER_BACKUP_URL', third: 'ELFURA_RESOLVER_THIRD_URL', fourth: 'ELFURA_RESOLVER_FOURTH_URL' } as const;
-  const raw = (env[key[which]] ?? '').trim();
-  if (!raw) return null;
-  try {
-    const parsed = new URL(raw);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('invalid URL');
-  } catch {
-    console.error(`[elfura-resolver] invalid ${which} URL; use an HTTP(S) URL without credentials, query or fragment.`);
-    return null;
-  }
-  const oldReason = lastFallbackReason;
-  try {
-    const result = resolverConfig({ ...env, ELFURA_RESOLVER_URL: raw });
-    if (result && new URL(result.url).protocol === 'http:' && !isPrivateResolverUrl(result.url)) {
-      console.warn(`[elfura-resolver] WARNING: the public HTTP ${which} is unencrypted. The resolver token, requests and responses are exposed on the network; prefer HTTPS or a private VPN.`);
-    }
-    return result;
-  } finally {
-    lastFallbackReason = oldReason;
-  }
-}
-
 /** True for addresses that only make sense on a private network. */
 export function isPrivateResolverUrl(url: string): boolean {
   let host: string;

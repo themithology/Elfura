@@ -80,7 +80,6 @@ jobs:
         env:
           NODE_ENV: production
           ELFURA_SECRET: live-audit-only-not-a-production-secret
-          RELAY_MODE: hybrid
           RESOLVE_TIMEOUT_MS: 9000
           TMDB_TIMEOUT_MS: 8000
           AUDIT_TYPE: ${{ matrix.type }}

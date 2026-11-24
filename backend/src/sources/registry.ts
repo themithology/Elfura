@@ -3,8 +3,8 @@
  * ===================================================================
  * Orchestrates registered `SourceAdapter` modules concurrently with TMDB
  * metadata resolution, caches raw results in bounded RAM (zero disk writes),
- * strips all internal provider strings, and seals every URL into stateless
- * AES-256-GCM `/api/v1/stream?t=...` tickets.
+ * strips all internal provider strings, and shapes every URL into one
+ * stateless raw-stream proxy URL (`/api/proxy?u=...`).
  */
 
 import crypto from 'node:crypto';
@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { BackendConfig } from '../config.js';
 import { PolicyCache } from '../memory-policy.js';
 import { SourceHealthStore } from '../source-health.js';
-import { sealStreamTicket } from '../security.js';
+import { buildStreamProxyUrl, DEFAULT_STREAM_PROXY_PATH } from '../stream-proxy.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { normalizeLang } from './lang.js';
@@ -468,7 +468,7 @@ export class SourceRegistry {
         fingerprint: crypto.createHmac('sha256', this.cfg.secret).update(candidate.url).digest('hex').slice(0,12),
         type: candidate.type,
         claimedAudio: candidate.claimedAudioLang ?? candidate.audioLang ?? null,
-        check: await diagnoseCandidatePlayback(candidate, this.cfg.relayMode),
+        check: await diagnoseCandidatePlayback(candidate),
       })));
       playbackChecks.push(...batch);
     }
@@ -503,7 +503,7 @@ export class SourceRegistry {
         manifestUnknown: evidence.filter(e => !e || (!e.alive && !e.confirmedDead)).length,
         manifestMultiAudio: evidence.filter(e => e?.alive && new Set(e.discoveredAudioLangs ?? []).size > 1).length };
     });
-    return { adapters, lanes, selected, playbackChecks, policy: { maxListedSources: MAX_LISTED_SOURCES, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; relay delivery is reported as planned, not exercised.' } };
+    return { adapters, lanes, selected, playbackChecks, policy: { maxListedSources: MAX_LISTED_SOURCES, maxSeparateDubs: MAX_SEPARATE_DUBS, multiAudioRequiresManifestLanguages: 2, playbackChecksAreServerSide: true, browserPlaybackChecked: false, note: 'A range read confirms the backend can retrieve a small sample media segment. It does not prove browser playback; proxy delivery is reported as planned, not exercised.' } };
   }
 
   private getCachedAdapterResult(key: string): RawSourceResult | null {
@@ -605,7 +605,6 @@ export class SourceRegistry {
     anilistId?: string;
     anilistEpisode?: number;
     preferredLang?: string;
-    streamPathPrefix?: string;
     /**
      * "Late join" pass: only sources whose discovery already finished (their
      * result is in the RAM cache) are reported. Nothing is started and nothing
@@ -652,7 +651,7 @@ export class SourceRegistry {
       return null;
     }
 
-    const streamBase = params.streamPathPrefix || '/api/v1/stream';
+    const streamBase = DEFAULT_STREAM_PROXY_PATH;
 
     // Identity of this title for the late-join stash. Deliberately excludes
     // headers/tokens: it is only a bucket name.
@@ -1210,13 +1209,7 @@ export class SourceRegistry {
           lang: s.lang,
           label: s.label,
           ...(s.format ? { format: s.format } : {}),
-          url: `${streamBase}?t=${encodeURIComponent(
-            sealStreamTicket(this.cfg.secret, {
-              u: s.url,
-              ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
-              k: 's',
-            }),
-          )}`,
+          url: buildStreamProxyUrl(s.url, s.headers, streamBase),
         }));
 
         for (const opt of uniformOptions) {
@@ -1239,13 +1232,7 @@ export class SourceRegistry {
         lang: track.lang,
         label: track.label,
         format: 'vtt' as const,
-        url: `${streamBase}?t=${encodeURIComponent(
-          sealStreamTicket(this.cfg.secret, {
-            u: track.url,
-            ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
-            k: 's',
-          }),
-        )}`,
+        url: buildStreamProxyUrl(track.url, track.headers, streamBase),
       }));
       for (const opt of uniformOptions) {
         const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
@@ -1412,24 +1399,15 @@ export class SourceRegistry {
     const singleDubHint =
       !cand.multiAudio && cand.audioLang && cand.audioLang !== 'und' ? cand.audioLang : undefined;
 
-    const streamTicket = sealStreamTicket(this.cfg.secret, {
-      u: cand.url,
-      ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
-      ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin, fp: 1 as const } : {}),
-      k: cand.type === 'mp4' ? 'a' : 'm',
-      ...(singleDubHint ? { l: singleDubHint } : {}),
-    });
+    const proxyOptions = {
+      ...(cand.restrictedOrigin ? { restrictedOrigin: cand.restrictedOrigin } : {}),
+      ...(singleDubHint ? { audioLang: singleDubHint } : {}),
+    };
 
     const audioTracks = (cand.audioTracks ?? []).map((t) => ({
       lang: t.lang,
       label: t.label,
-      url: `${streamBase}?t=${encodeURIComponent(
-        sealStreamTicket(this.cfg.secret, {
-          u: t.url,
-          ...(t.headers && Object.keys(t.headers).length ? { h: t.headers } : {}),
-          k: 'a',
-        }),
-      )}`,
+      url: buildStreamProxyUrl(t.url, t.headers, streamBase),
     }));
 
     // Only the new anime lane opts into source-specific, episode-aligned
@@ -1438,12 +1416,7 @@ export class SourceRegistry {
       lang: track.lang,
       label: track.label,
       ...(track.format ? { format: track.format } : {}),
-      url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
-        u: track.url,
-        ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
-        ...(cand.restrictedOrigin ? { ro: cand.restrictedOrigin } : {}),
-        k: 's',
-      }))}`,
+      url: buildStreamProxyUrl(track.url, track.headers, streamBase, proxyOptions),
     })) : [];
 
     const latencyHintMs =
@@ -1456,7 +1429,7 @@ export class SourceRegistry {
       sourceId: adapter.id,
       label: displayLabel,
       type: cand.type,
-      url: `${streamBase}?t=${encodeURIComponent(streamTicket)}`,
+      url: buildStreamProxyUrl(cand.url, cand.headers, streamBase, proxyOptions),
       quality: cand.quality || 'auto',
       ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
       ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),

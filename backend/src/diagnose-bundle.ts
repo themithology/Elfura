@@ -111,7 +111,7 @@ export interface DiagnoseBundle {
     ramCacheEnabled: boolean;
     maxOldSpaceFlag: string;
     semiSpaceFlag: string;
-    relayMode: string;
+    streamProxyPath: string;
     host: string;
     port: number;
   };
@@ -161,7 +161,7 @@ export async function buildDiagnoseBundle(options: {
   /** Host header the caller used, so the report can warn about public exposure. */
   reachedVia?: string;
   commit?: string;
-  limits?: { rateLimitPerMin: number; relayMode: string; host: string; port: number };
+  limits?: { rateLimitPerMin: number; streamProxyPath: string; host: string; port: number };
   ramCacheEnabled?: boolean;
 } = {}): Promise<DiagnoseBundle> {
   // ── CPU: sample the event loop the way Node's own diagnostics do ──────────
@@ -332,7 +332,7 @@ export async function buildDiagnoseBundle(options: {
       ramCacheEnabled: options.ramCacheEnabled ?? false,
       maxOldSpaceFlag: maxOldSpace || 'none (uncapped)',
       semiSpaceFlag: execFlag('max-semi-space-size') || 'default',
-      relayMode: options.limits?.relayMode ?? 'unknown',
+      streamProxyPath: options.limits?.streamProxyPath ?? 'unknown',
       host: options.limits?.host ?? '',
       port: options.limits?.port ?? 0,
     },

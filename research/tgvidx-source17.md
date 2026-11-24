@@ -1,5 +1,10 @@
 # TGVIDX integration research
 
+> Delivery note: every mention of "the relay" below records what was observed at
+> the time. Streams are no longer relayed: Elfura now proxies raw manifests and
+> segments through one stateless `/api/proxy?u=<encoded>` pass-through, the same
+> shape as TGVIDX's own `/api/public/stream-proxy`.
+
 ## Scope and identity
 
 TGVIDX is an aggregator whose server list changes by title and over time, not a

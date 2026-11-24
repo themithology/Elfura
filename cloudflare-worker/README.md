@@ -1,5 +1,9 @@
 # Elfura egress relay (Cloudflare Worker)
 
+> This Worker carries **discovery** traffic only — provider API and page requests.
+> No media ever passes through it. Streams are served to viewers by Elfura's own
+> stateless `/api/proxy` pass-through on your server.
+
 A ~15 minute setup, done entirely in a browser. No CLI, no npm, no card.
 
 ## What this fixes
@@ -89,4 +93,4 @@ then falls back to a direct connection rather than failing the source.
 
 One `resolve` of a title is roughly 40–80 relayed requests, so the free tier covers
 well over a thousand title resolutions a day. Media playback does **not** go through
-the relay — ranged video stays direct.
+the relay: viewers are served by `/api/proxy` on the Elfura server itself.

@@ -2,7 +2,7 @@ name: TGVIDX matched player and wire research
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['backend/test/tgvidx-wire-compare.mjs', 'backend/test/research-tgvidx-65942-browser.mjs', '.github/workflows/tgvidx-matched-research.yml']
+    paths: ['backend/test/research-tgvidx-65942-browser.mjs', '.github/workflows/tgvidx-matched-research.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -16,6 +16,5 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
-      - run: node backend/test/tgvidx-wire-compare.mjs
       - run: node backend/test/research-tgvidx-65942-browser.mjs
       - run: node backend/test/source17-rezero-browser.mjs

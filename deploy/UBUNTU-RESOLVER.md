@@ -35,7 +35,7 @@ at least 24 characters; do not use credentials published in this repository.
    ELFURA_RESOLVER_ALLOW_LOCAL=0
    ```
 
-   `ELFURA_SECRET` must match on both nodes for encrypted stream tickets.
+   `ELFURA_SECRET` must match on both nodes for the sealed playback envelope.
    `ELFURA_RESOLVER_TOKEN` must also match; when absent on a node it defaults to
    that node's `ELFURA_SECRET`. Do not put secrets in URLs, commands or chat.
 3. From the streaming node, verify the tunnel by requesting
@@ -45,62 +45,21 @@ at least 24 characters; do not use credentials published in this repository.
    the separate resolver. A reachable health endpoint alone does not prove
    matching tokens or successful playback.
 
-## Optional: balance two to four resolver VPSes
+## One resolver
 
-Install a resolver and a separate tunnel hostname on each VPS. All resolvers
-and the streaming node must use the **same** `ELFURA_SECRET` and
-`ELFURA_RESOLVER_TOKEN`, compatible software versions and matching source
-configuration. On the Pterodactyl streaming node set:
+Elfura talks to **one** resolver URL. There is no pool, no round-robin and no
+per-node health routing: the streaming node sends every playback request to
+`ELFURA_RESOLVER_URL`, and if that resolver is unreachable the viewer gets a 503
+instead of a silent second scraper being started on the media process. Keep the
+resolver on one box, behind the tunnel, and scale that box if searches get slow.
 
-```ini
-ELFURA_RESOLVER_URL=https://resolver-one.example.com
-ELFURA_RESOLVER_BACKUP_URL=https://resolver-two.example.com
-ELFURA_RESOLVER_THIRD_URL=https://resolver-three.example.com
-ELFURA_RESOLVER_FOURTH_URL=https://resolver-four.example.com
-ELFURA_RESOLVER_ALLOW_PUBLIC=1
-ELFURA_RESOLVER_ALLOW_LOCAL=0
-```
-
-The third and fourth URLs are optional. Duplicate URLs are ignored. One configured resolver
-retains the original single-resolver behavior. Public URLs require opt-in;
-public HTTP exposes tokens and requests in transit, so prefer HTTPS or a
-private VPN and restrict access. A resolver must listen on an accessible port.
-
-Restart the streaming node. New searches are distributed round-robin across
-available resolvers (equal request counts, not equal workload); latency is not
-used to choose a node. A failed playback call marks that node unavailable and
-can try another available node within the shared 12-second budget. If the first
-call takes most of the budget, that viewer may fail instead of getting a useful
-retry. There are no speculative duplicate requests or per-node concurrency
-caps. Empty results and invalid requests do not trigger failover.
-
-Unavailable nodes receive no new playback or source-setting requests. Every
-10 seconds the media process checks the lightweight health and authenticated
-source-status endpoints. Two successful checks reintroduce a failed node;
-two failed checks also remove an otherwise idle node. Checks are independent of
-viewer traffic; a slow check can lengthen the interval. Requests already in
-flight cannot be recalled. If all nodes are unavailable, new searches fail
-until one recovers. A restart starts the checks and routing afresh.
-
-These checks verify reachability and API authentication, **not** playback,
-shared ticket secrets or search capacity. A resolver can answer health checks
-while its searches are overloaded or broken, and may be tried again after
-recovery checks; inspect resolver logs and test real playback. `/roxy` → Source
-health shows live reachability/authentication and whether playback is paused,
-plus per-node request counts. Per-source counters are from one resolver, not
-cluster totals. Source enable/disable changes are sent only to available nodes;
-if one is offline the operation reports failure, so retry after it recovers.
-Settings and caches are independent on each resolver.
-
-For late source updates, deploy the same current package to **every resolver
-and the player server**. The player polls the original resolver's short-lived
-wave, including later lanes from sources already listed. Empty providers get one
-shared retry per active title and source, rather than repeated per-viewer source
-scans. Wave data is bounded to 256 titles and 32 MiB per resolver, and expires
-after 60 seconds. If a wave has been evicted or its owner is unavailable, the
-player can attempt one fresh discovery on an available resolver. These bounds
-and retries do not guarantee upstream availability or capacity under every load;
-source episode mapping and provider reachability still matter.
+Deploy the same current package to **the resolver and the player server**. The
+player polls the resolver's short-lived wave, including later lanes from sources
+already listed. Empty providers get one shared retry per active title and source,
+rather than repeated per-viewer source scans. Wave data is bounded to 256 titles
+and 32 MiB, and expires after 60 seconds. These bounds and retries do not
+guarantee upstream availability or capacity under every load; source episode
+mapping and provider reachability still matter.
 
 **Security:** A Tunnel hostname is publicly reachable unless you separately
 restrict it; `.env` itself is not a network access control. The resolver has

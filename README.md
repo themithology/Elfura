@@ -11,7 +11,7 @@ chunks loaded on demand — an HLS title never downloads the DASH engine.
 npm run dev        # vite dev server on 0.0.0.0:5173 (proxies /api -> backend)
 npm run build      # typecheck (Part 1 + Part 2) + embed + lib + backend
 npm start          # zero-dep Node production server on 0.0.0.0:${SERVER_PORT||PORT||8787}
-npm test           # end-to-end security, TMDB, Source 1 & HLS/Range relay test suite
+npm test           # end-to-end security, TMDB, Source 1 & HLS/Range proxy test suite
 ```
 
 ### Public landing site
@@ -235,7 +235,7 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
   - TV Episode: `/embed/tv/:tmdbId/:season/:episode` or `/embed?tmdb=:tmdbId&type=tv&s=1&e=1`
   - Anime episode with AniList-aware providers prioritized: `/embed?tmdb=:tmdbId&anilist=:anilistId&type=tv&s=1&e=1`
 - **Single Uniform Endpoint (`GET/POST /api/v1/playback`):** Resolves TMDB metadata (from your self-hosted `TMDB_API_BASE`) + modular `SourceAdapter` streams into one uniform schema with zero upstream provider names or raw CDN URLs exposed, wrapped in an **AES-256-GCM Sealed Playback Envelope** (`X-Elfura-Envelope: 1`) so DevTools Network Preview and copied cURL commands only see ciphertext.
-- **Smart Hybrid Stream Relay (`GET /api/v1/stream?t=<ticket>`, `RELAY_MODE=hybrid`):** Encrypts upstream URLs and required `Referer`/`Origin` headers inside AES-256-GCM tickets, always relays manifests/subtitles/keys and header-locked or source-identifying streams in memory with zero disk writes, and offloads verified anonymous CORS-safe HTTPS video segments directly to edge CDNs (keeping Cloudflare Proxy & 2 GB RAM Pterodactyl containers safe at scale, with automatic `&p=1` backend-tunnel failover if a viewer's ISP blocks an external CDN).
+- **Raw Stream Proxy (`GET /api/proxy?u=<encoded upstream>`):** One stateless pass-through for every manifest, key, subtitle and media segment. Upstream URLs and required `Referer`/`Origin` headers never reach the browser: `u` is opaque base64url and required headers travel in `h`, so rewritten playlists and DASH MPDs reference only `/api/proxy`. Streams with zero buffering and zero disk writes, CORS `*`, and no per-viewer state — the same shape TGVIDX uses (`/api/public/stream-proxy`). There are no sealed stream tickets, no relay modes, no CDN offload probes and no player-side force-proxy fallbacks.
 - **Pterodactyl Ready (`elfura-pterodactyl.zip`):** Upload `elfura-pterodactyl.zip` to `/home/container` in Pterodactyl's **Files** tab and click **Unarchive** (flat-root archive — extracts directly into `/home/container` with pre-built `dist/` and zero heavy `node_modules`). Edit `.env` (or Startup variables) with `ELFURA_SECRET`, `TMDB_API_BASE`, and `ALLOWED_ORIGINS`, then click **Start**.
 
   **Startup file: set it to `index.js`.** The zip ships `index.js`, `server.js`, `app.js`, `main.js`, `bot.js`, `start.js` and `src/index.js` — all identical plain JavaScript, so whichever name your egg expects exists. Do **not** point the startup command at a TypeScript toolchain.
@@ -243,8 +243,6 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
   If your egg hard-codes `ts-node --esm index.ts`, change it to `node index.js`. TypeScript files are deliberately not shipped: this project's runtime output is already compiled into `dist/`, and a `.ts` entrypoint makes the host install a compiler it never needs. Some `ts-node` 10.x builds also crash on Node 22 with `Cannot find module './--max-old-space-size=384'` inside `imaginaryUncacheableRequireResolveScript`, which reads as a boot loop in the panel console.
 
   If you cannot change the startup command, `node index.js` still works when launched through `ts-node`/`tsx` — the entrypoint detects a TypeScript runner, ignores its injected flags, and serves the compiled build. It just needs the runner installed.
-<<<<<<< HEAD
-=======
 
 ### Deployment layouts: one server or two
 
@@ -254,12 +252,12 @@ want. There is no separate resolver package to download.
 
 | Role | Command | Does | Never does |
 | --- | --- | --- | --- |
-| **Media server** | `node index.js` | Serves embeds, the player, video relay, catalogue, control panel; mints and checks stream tickets | Scrapes providers (when a resolver is configured) |
+| **Media server** | `node index.js` | Serves embeds, the player, the `/api/proxy` stream proxy, catalogue, control panel | Scrapes providers (when a resolver is configured) |
 | **Resolver** | `node index.js --resolver` | Scrapes providers, keeps per-source health, answers `/resolver/api/*` | Serves video, serves embeds, exposes a player |
 
-They share `ELFURA_SECRET` so a stream ticket minted by the resolver opens in the
-media server. The player, the relay and the ticket format are identical in every
-layout below — that is the point of the seam.
+They share `ELFURA_SECRET` so a playback envelope minted by the resolver opens in
+the media server. The player, the proxy contract and the playback response shape
+are identical in every layout below — that is the point of the seam.
 
 #### Layout A — one server (simplest, and fine)
 
@@ -386,8 +384,9 @@ it is there deliberately, not by accident.
 
 What the split guarantees, and what the suite pins:
 
-- **A broken provider cannot touch a stream that is already playing.** The relay
-  reads tickets, not providers. It never asks the resolver on the stream path.
+- **A broken provider cannot touch a stream that is already playing.** The stream
+  proxy reads an encoded upstream URL, not providers. It never asks the resolver on
+  the stream path.
 - **A resolver outage is a 503, never a 404.** "No source for this title" and
   "our scraper is down" are different facts and must not look the same.
 - **Media serving does not depend on it.** Health, catalogue, embeds and the panel
@@ -413,10 +412,10 @@ Analytics are kept for 72 hours and pruned automatically. The clear button delet
 
 ### Recommended: Cloudflare Worker relay (no `.env` editing)
 
-A proxy list costs money per request and gets throttled — discovery alone fires
-dozens of requests per page load. A Cloudflare Worker is the better egress: one URL,
-one hop, no credential rotation, and the free plan's 100,000 requests/day is far above
-what discovery uses.
+A metered proxy costs money per request and gets throttled — discovery alone
+fires dozens of requests per page load. A Cloudflare Worker is the better egress:
+one URL, one hop, no credential rotation, and the free plan's 100,000 requests/day
+is far above what discovery uses.
 
 1. Deploy `cloudflare-worker/worker.js` — see [cloudflare-worker/README.md](./cloudflare-worker/README.md)
    for the browser-only steps and the `TOKEN` secret.
@@ -432,18 +431,20 @@ playback never goes through the relay.
 The URL and token can also be set as `ELFURA_UPSTREAM_RELAY` / `ELFURA_RELAY_TOKEN`, in
 which case the environment or `.env` wins and the panel shows the value as locked.
 
-### Proxy list (no `.env` editing)
+### A single upstream proxy (optional)
 
-If source discovery fails because provider websites refuse this server's IP, upload a proxy list instead of editing files. Open `/roxy`, sign in, and use the **Proxy pool** panel: pick your provider's `.txt` file and press **Upload proxy list**, or paste the lines into the box and press **Save pasted list**. One proxy per line, in any of these shapes:
+If source discovery fails because provider websites refuse this server's IP, the
+supported fix is the Cloudflare Worker above. There is no proxy pool any more: no
+rotation, no scoring, no health table and no per-request selection. If you still
+need a plain HTTP CONNECT proxy, set exactly one in `.env`:
 
+```ini
+ELFURA_UPSTREAM_PROXY=http://username:password@host:port
 ```
-45.38.107.97:6014:username:password     ← Webshare's export format
-http://username:password@host:port
-username:password@host:port
-host:port                                ← open proxy, no login
-```
 
-Press **Test all** to check the list. Each reachable proxy shows the exit address the internet sees, and the panel reports how many answered. If none answer, the panel also probes the same endpoint *without* a proxy: when that works, the proxies are the problem; when it also fails, the hosting network is. Working proxies are used for source discovery in rotation, three per request, with automatic failover and a direct fallback, so one dead proxy never removes a source. A proxy that fails three times rests for a minute and is marked `SKIPPED`. Passwords are written to `data/proxies.json` (mode 0600) and are never returned to the browser or written to the log. The uploaded list takes precedence over the single `ELFURA_UPSTREAM_PROXY` `.env` value. Media playback traffic is not routed through the list.
+Every discovery request then leaves through that one proxy, and the credential is
+never logged. Media playback never goes through it — streams are served by
+`/api/proxy` on this server.
 
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
 
@@ -466,6 +467,6 @@ Source 28 resolves directly from the anime catalogue to a multi-audio HLS master
 
 The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each resolver and restart to disable it. A TMDB API key or configured TMDB mirror is required. To avoid wrong episodes, the source currently supports season 1 only and requires TMDB to identify Japanese animation and provide an episode title that matches the provider's title. Missing metadata, alternate title spellings or numbering differences can cause legitimate episodes to be skipped. Movies and other seasons are not supported by this lane.
 
-The browser audit exercises real discovery, the production registry and relay, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
+The browser audit exercises real discovery, the production registry and stream proxy, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
 
 The deployment ZIP includes `wreq-js` and the native bindings available on the build host (the published bundle is Linux x64). On another architecture, install the optional runtime dependency on the resolver with `npm install --omit=dev` in the extracted application directory and restart it. If the native client is unavailable, this source is skipped; other sources continue to work.

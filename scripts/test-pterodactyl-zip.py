@@ -71,20 +71,16 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         overview = json.load(client.open(base + '/roxy/api/overview'))
         assert overview['bans'] == ['https://example.org']
 
-        # The proxy uploader is the feature an operator reaches for when a source
-        # has gone quiet, so it is exercised against the real extracted bundle:
-        # The proxy-list uploader used to be asserted here. That feature is gone
-        # on purpose: the proxy route was abandoned in favour of the Cloudflare
-        # worker, and /roxy/api/proxies no longer exists. Asserting on it made
-        # this test fail for a reason unrelated to the archive, so what is
-        # checked now is that the endpoint is really gone and that the panel
-        # still authenticates and reports state.
-        with client.open(base + '/roxy/api/proxies') as res:
-            assert res.status == 200, f'expected 200 for /roxy/api/proxies, got {res.status}'
-            pool = json.loads(res.read().decode('utf-8'))
-            assert 'mode' in pool and 'proxies' in pool
+        # The proxy pool is gone on purpose: there is one optional upstream proxy
+        # in .env and no rotation. The route must be really absent from the
+        # extracted bundle, and the panel must still authenticate and report state.
+        try:
+            client.open(base + '/roxy/api/proxies')
+            raise AssertionError('expected /roxy/api/proxies to be removed')
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, f'expected 404 for /roxy/api/proxies, got {error.code}'
 
-        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview, and confirms the abandoned proxy uploader is gone.')
+        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, runs Roxy login and overview, and confirms the proxy pool is gone.')
     finally:
         process.terminate()
         try: process.wait(timeout=5)

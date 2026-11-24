@@ -411,7 +411,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
     return !['ok', 'not-applicable'].includes(check.manifest?.status ?? '') || !['ok', 'not-applicable'].includes(check.media?.status ?? '');
   });
   if (hasPipelineFailure) hints.push('one-or-more-sampled-manifest-or-media-stages-failed');
-  if (playback.playbackChecks.length && !hasPipelineFailure) hints.push('backend-fetched-sample-media; browser-and-relay-playback-still-unconfirmed');
+  if (playback.playbackChecks.length && !hasPipelineFailure) hints.push('backend-fetched-sample-media; browser-playback-still-unconfirmed');
   if (!hasConfiguredSecret()) hints.push('ephemeral-playback-secret-generated-at-boot');
 
   return {
@@ -422,7 +422,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
     probe,
     config: {
       secretConfigured: hasConfiguredSecret(),
-      relayMode: cfg.relayMode,
+      streamProxyPath: cfg.streamProxyPath,
       resolveTimeoutMs: cfg.resolveTimeoutMs,
       requireToken: cfg.requireToken,
       sourcesEnabled: registry.listPublicSources().map(s => s.id),
@@ -441,7 +441,7 @@ async function collect(cfg: BackendConfig, registry: SourceRegistry, probe: Diag
     egress: await egressPromise,
     diagnosis: {
       hints,
-      scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/v1/stream relay response, device decoder, and audible language are not exercised by this endpoint.',
+      scope: 'The server makes bounded upstream requests and reads at most 1 KiB from each sampled media segment. The browser session, actual /api/proxy response, device decoder, and audible language are not exercised by this endpoint.',
     },
   };
 }

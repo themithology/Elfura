@@ -31,8 +31,8 @@ process.on('uncaughtExceptionMonitor',e=>notice('Full-flow uncaught',{name:e?.na
 installProcessGuards();
 try{
  const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_BASE:'https://tmdb-fixture.example',TMDB_API_KEY:'fixture',OPENSUBTITLES_ENABLED:'0'}),nodes=[],registries=[];fingerprintKey=cfg.secret;
- for(let i=0;i<4;i++){const registry=new SourceRegistry(cfg);registries.push(registry);registry.adapters=registry.adapters.map(a=>a.id!=='source-17'?a:{...a,async resolve(q){const started=Date.now(),diag=[];const r=await a.resolve({...q,diag});observations.push({node:i+1,title:q.tmdbId,started,ms:Date.now()-started,diag,candidates:r.candidates});return r}});nodes.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server))}
- [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
+ for(let i=0;i<1;i++){const registry=new SourceRegistry(cfg);registries.push(registry);registry.adapters=registry.adapters.map(a=>a.id!=='source-17'?a:{...a,async resolve(q){const started=Date.now(),diag=[];const r=await a.resolve({...q,diag});observations.push({node:i+1,title:q.tmdbId,started,ms:Date.now()-started,diag,candidates:r.candidates});return r}});nodes.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server))}
+ process.env.ELFURA_RESOLVER_URL=nodes[0];
  const app=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(app.server);
  browser=await chromium.launch({executablePath:await binary.executablePath(),args:[...binary.args,'--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage();
@@ -49,7 +49,7 @@ try{
    row.inventory=inventory.filter(i=>i.tmdb===sample.id).map(i=>i.rows);
    const options=[...(state.options||[])].sort((a,b)=>Number(['TG STREAMHG','TG MAGPIE'].includes(byFingerprint.get(b.fingerprint)?.name))-Number(['TG STREAMHG','TG MAGPIE'].includes(byFingerprint.get(a.fingerprint)?.name)));
    for(const option of options.slice(0,6)){const info=byFingerprint.get(option.fingerprint)||{name:'unknown'};const lane={name:info.name,type:option.type,fp:option.fingerprint};
-    const responses={},hlsErrors=[];const onResponse=r=>{try{const u=new URL(r.url());if(u.hostname==='127.0.0.1'&&u.pathname==='/api/v1/stream'){const key=`${r.status()}:${(r.headers()['content-type']||'').split(';')[0]}`;responses[key]=(responses[key]||0)+1}}catch{}};page.on('response',onResponse);
+    const responses={},hlsErrors=[];const onResponse=r=>{try{const u=new URL(r.url());if(u.hostname==='127.0.0.1'&&u.pathname==='/api/proxy'){const key=`${r.status()}:${(r.headers()['content-type']||'').split(';')[0]}`;responses[key]=(responses[key]||0)+1}}catch{}};page.on('response',onResponse);
     try{
      await page.evaluate(()=>{window.__hlsErrors=[];window.__seenHls=new WeakSet();window.__hlsInterval=setInterval(()=>{const h=window.__elfura?.player?.hls;if(h&&!window.__seenHls.has(h)){window.__seenHls.add(h);h.on('hlsError',(_,x)=>window.__hlsErrors.push({type:x?.type,details:x?.details,fatal:x?.fatal}))}},40)});
      const accepted=await page.evaluate(id=>window.__elfura.player.setSource(id),option.id);lane.accepted=accepted;

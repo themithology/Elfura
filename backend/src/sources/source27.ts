@@ -1,7 +1,7 @@
 /**
  * Source 27: TMDB lookup -> direct HLS master with real audio renditions.
  * The intermediate pages are used only by the resolver; the browser receives
- * only a sealed stream ticket. No page URLs or invented audio labels escape.
+ * only a proxied stream URL. No page URLs or invented audio labels escape.
  */
 import { isSafeUpstreamUrl } from '../security.js';
 import { readBoundedText } from './upstream-fetch.js';

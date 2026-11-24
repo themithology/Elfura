@@ -10,78 +10,42 @@
  * refused.
  *
  * Nothing here refuses anything, skips anything or changes what an adapter asks
- * for. Media relay keeps its own path: it is ranged byte traffic and must not be
- * buffered or retried.
+ * for. Media keeps its own path: it is ranged byte traffic through the stream
+ * proxy and must not be buffered or retried.
  *
  * Egress can be moved off this server's address in two ways:
  *
  *   ELFURA_UPSTREAM_RELAY=https://name.account.workers.dev   a Cloudflare Worker
  *       that fetches on our behalf. This is the supported way: one URL, no
  *       credentials, no per-request fan-out, and it costs nothing per request.
- *   ELFURA_UPSTREAM_PROXY=http://user:pass@host:port (or an uploaded list)
+ *   ELFURA_UPSTREAM_PROXY=http://user:pass@host:port
  *       a legacy HTTP CONNECT proxy. Kept working for installs that already use
  *       it, but a metered provider bills every request, and discovery is bursty.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
 import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
-import { proxyPool } from './proxy-pool.js';
 
-export async function testProxyConnection(proxyUrl: string, kind: 'connect' | 'fetch-api' = 'connect', apiKey?: string): Promise<{
-  ok: boolean;
-  latencyMs: number;
-  egressIp: string | null;
-  error: string | null;
-}> {
-  const started = Date.now();
-  const undici = await loadUndici();
-  if (!undici) {
-    return { ok: false, latencyMs: Date.now() - started, egressIp: null, error: 'undici unavailable' };
-  }
-  let agent: import('undici').Dispatcher | undefined;
-  try {
-    let res: Awaited<ReturnType<typeof undici.fetch>>;
-    if (kind === 'fetch-api') {
-      const endpoint = new URL(proxyUrl);
-      endpoint.searchParams.set('url', 'https://api.ipify.org?format=json');
-      res = await undici.fetch(endpoint.toString(), {
-        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
-        signal: AbortSignal.timeout(8000),
-      });
-    } else {
-      agent = new undici.ProxyAgent(proxyUrl);
-      res = await undici.fetch('https://api.ipify.org?format=json', {
-        dispatcher: agent,
-        signal: AbortSignal.timeout(8000),
-      });
-    }
-    const latencyMs = Math.max(1, Date.now() - started);
-    if (!res.ok) {
-      return { ok: false, latencyMs, egressIp: null, error: `HTTP ${res.status}` };
-    }
-    const data = (await res.json().catch(() => null)) as { ip?: string } | null;
-    return {
-      ok: true,
-      latencyMs,
-      egressIp: typeof data?.ip === 'string' ? data.ip : null,
-      error: null,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      latencyMs: Math.max(1, Date.now() - started),
-      egressIp: null,
-      error: (err as Error)?.message?.slice(0, 120) || 'connection failed',
-    };
-  } finally {
-    await (agent as { close?: () => Promise<void> } | undefined)?.close?.().catch(() => {});
-  }
+/**
+ * Media serving is not discovery.
+ *
+ * The stream proxy fetches manifests and segments with the headers it chose
+ * itself, and must never be routed through the discovery egress: the optional
+ * Cloudflare Worker has a daily request cap and a provider allowlist, and a
+ * metered upstream proxy bills per request. `bypassEgressProfile` marks one
+ * call as "this is the media path, leave it alone".
+ */
+const bypassStorage = new AsyncLocalStorage<boolean>();
+
+export function bypassEgressProfile<T>(fn: () => Promise<T>): Promise<T> {
+  return bypassStorage.run(true, fn);
 }
 
 /** A ranged request is media, not discovery: never buffered, never retried. */
 function isMediaRequest(url: string, init: Record<string, unknown>): boolean {
-  if (url.includes('/api/v1/stream')) return true;
+  if (url.includes('/api/proxy') || url.includes('/api/public/stream-proxy')) return true;
   const headers = init.headers as Record<string, unknown> | undefined;
   if (!headers) return false;
   if (Array.isArray(headers)) return headers.some(([k]: [string]) => String(k).toLowerCase() === 'range');
@@ -320,18 +284,14 @@ export async function installEgressProfile(log: (line: string) => void = console
     return false;
   }
 
-  const dynamicAgents = new Map<string, import('undici').Dispatcher>();
-  const getProxyDispatcher = (proxyUrl: string): import('undici').Dispatcher => {
-    let agent = dynamicAgents.get(proxyUrl);
-    if (!agent) {
-      agent = new undici.ProxyAgent(proxyUrl);
-      dynamicAgents.set(proxyUrl, agent);
-    }
-    return agent;
-  };
 
-  const fetch = undici.fetch;
-  type FetchResult = Awaited<ReturnType<typeof fetch>>;
+  // Delegate to whatever global fetch is installed right now (in production the
+  // per-adapter network tap) instead of undici's fetch directly: calling
+  // undici.fetch here silently bypassed the tap, so every resolve log said
+  // "0 req" no matter how many providers were asked. Node's global fetch accepts
+  // the same `dispatcher` option, so the agent below still owns the connection.
+  const baseFetch = globalThis.fetch as typeof undici.fetch;
+  type FetchResult = Awaited<ReturnType<typeof baseFetch>>;
 
   /**
    * One discovery request through the Worker. The target URL and the method go
@@ -342,14 +302,6 @@ export async function installEgressProfile(log: (line: string) => void = console
    * 302 ourselves: the Worker has already resolved the chain, so a 3xx reaching
    * this point is the target's real answer.
    */
-  /**
-   * Loop guard. In production the Worker is a separate service, but when the relay
-   * is reachable from this same process — a test harness, or an operator pointing
-   * it at their own server — the hop to the Worker goes through this patched
-   * global fetch, which relays again, forever. While the relay hop is in flight the
-   * flag makes the wrapper pass everything straight to undici.
-   */
-  let relayInFlight = 0;
 
   const relayFetch = async (base: string, url: string, init: unknown, timeoutMs = 20_000): Promise<FetchResult> => {
     const options = (init ?? {}) as {
@@ -377,16 +329,15 @@ export async function installEgressProfile(log: (line: string) => void = console
       // the relay the body has to survive, and it is small enough to inline.
       headers['x-elfura-body'] = Buffer.from(options.body as string).toString('base64').slice(0, 8192);
     }
-    relayInFlight += 1;
     let response: FetchResult;
     try {
-      response = (await fetch(base, {
+      response = (await baseFetch(base, {
         headers,
         redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
       } as never)) as FetchResult;
-    } finally {
-      relayInFlight -= 1;
+    } catch (error) {
+      throw error;
     }
     // The Worker answers its own failures with a JSON body and this header. It is
     // the difference between "the provider refused the Worker" (a 403 with no
@@ -404,13 +355,17 @@ export async function installEgressProfile(log: (line: string) => void = console
 
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
-    if (relayInFlight > 0) return previousFetch(input as never, init as never);
+    if (bypassStorage.getStore()) return previousFetch(input as never, init as never);
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
 
+    // Media is ranged byte traffic through the stream proxy: never buffered,
+    // never restyled, never retried.
     if (isMediaRequest(normalized.url, normalized.init)) {
       return previousFetch(input as never, init as never);
     }
+    // A request already aimed at the relay must never be relayed again.
+    if (relayUrl && normalized.url.startsWith(relayUrl)) return previousFetch(input as never, init as never);
 
     const firstInit = {
       ...(normalized.init as object),
@@ -467,45 +422,15 @@ export async function installEgressProfile(log: (line: string) => void = console
       }
     }
 
-    const pickedProxy = proxyPool.pick();
-    const method = (firstInit as { method?: string }).method;
-    const isFetchApi = pickedProxy?.kind === 'fetch-api' && (!method || String(method).toUpperCase() === 'GET');
-    let dispatcher: import('undici').Dispatcher = (pickedProxy && !isFetchApi) ? getProxyDispatcher(pickedProxy.url) : directAgent;
-    const proxyStart = pickedProxy ? Date.now() : 0;
-    let response: FetchResult | null = null;
+    // One route, no pool and no scoring: the request goes out through the single
+    // configured proxy when there is one, and directly otherwise.
+    let response: FetchResult | null;
     try {
-      if (isFetchApi && pickedProxy) {
-        const endpoint = new URL(pickedProxy.url);
-        endpoint.searchParams.set('url', normalized.url);
-        const apiHeaders: Record<string, string> = {};
-        if (pickedProxy.apiKey) apiHeaders['x-api-key'] = pickedProxy.apiKey;
-        response = await fetch(endpoint.toString(), {
-          ...firstInit,
-          headers: apiHeaders,
-          dispatcher: directAgent,
-        } as never);
-      } else {
-        response = await fetch(normalized.url, {
-          ...firstInit,
-          dispatcher,
-        } as never);
-      }
-      if (pickedProxy) {
-        proxyPool.recordOutcome(pickedProxy.id, {
-          ok: response.status < 400,
-          status: response.status,
-          latencyMs: Date.now() - proxyStart,
-          error: response.status >= 400 ? `HTTP ${response.status}` : undefined,
-        });
-      }
+      response = await baseFetch(normalized.url, {
+        ...firstInit,
+        dispatcher: directAgent,
+      } as never);
     } catch (err) {
-      if (pickedProxy) {
-        proxyPool.recordOutcome(pickedProxy.id, {
-          ok: false,
-          latencyMs: Date.now() - proxyStart,
-          error: (err as Error)?.message || 'fetch failed',
-        });
-      }
       throw err;
     }
 
@@ -526,10 +451,10 @@ export async function installEgressProfile(log: (line: string) => void = console
           /* fall through to the local retry */
         }
       }
-      response = await fetch(normalized.url, {
+      response = await baseFetch(normalized.url, {
         ...firstInit,
         headers: retryHeaders,
-        dispatcher,
+        dispatcher: directAgent,
       } as never).catch(() => response);
     }
     return response;

@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import type { BackendConfig } from '../config.js';
 import { isSafeUpstreamUrl } from '../security.js';
 import { normalizeLang } from './lang.js';
-import { extractManifestAudioLangs } from '../relay.js';
+import { extractManifestAudioLangs } from '../stream-proxy.js';
 import { readBoundedText } from './upstream-fetch.js';
 import type {
   RawSourceResult,
@@ -298,8 +298,6 @@ async function fetchFromRiftBoot(
       : `/api/boot/tv/${encodeURIComponent(query.tmdbId)}/${query.season ?? 1}/${query.episode ?? 1}`;
   const bootQuery = new URLSearchParams({ type: query.type, id: query.tmdbId, source: '0', provider: '', shell: '1' });
   const bootUrl = `${cfg.riftOrigin}${bootPath}?${bootQuery}`;
-  const wrapRelay = (target: string, _manifest = false) => target;
-
   try {
     const sig = query.signal ? AbortSignal.any([query.signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
     const res = await fetch(bootUrl, {
@@ -351,9 +349,6 @@ async function fetchFromRiftBoot(
 
       let finalUrl: string;
       let headers: Record<string, string> = { 'User-Agent': BROWSER_UA };
-      let standbyUrl: string | undefined;
-      let standbyHeaders: Record<string, string> | undefined;
-
       if (streamType === 'mp4' && /^https?:\/\//i.test(s.url)) {
         // Direct progressive MP4 dub (e.g. mb.vidrift.net/.../video.mp4)
         finalUrl = s.url;
@@ -362,7 +357,6 @@ async function fetchFromRiftBoot(
         const absTarget = /^https?:\/\//i.test(s.url)
           ? s.url
           : `${cfg.riftOrigin}/api/orion/${hash}/master.m3u8`;
-        const relayedTarget = wrapRelay(absTarget, streamType === 'hls');
         const directOrionHeaders: Record<string, string> = {
           Referer: `${cfg.riftOrigin}/`,
           Origin: cfg.riftOrigin,
@@ -370,19 +364,13 @@ async function fetchFromRiftBoot(
           ...(riftPlaybackToken ? { 'X-Playback-Token': riftPlaybackToken } : {}),
         };
         if (riftPlaybackToken && isSafeUpstreamUrl(absTarget)) {
-          // Prefer direct Orion HLS when boot provided a live playbackToken (avoids paused external relays)
+          // Prefer direct Orion HLS when boot provided a live playbackToken.
           finalUrl = absTarget;
           headers = directOrionHeaders;
-          if (relayedTarget !== absTarget && isSafeUpstreamUrl(relayedTarget)) {
-            standbyUrl = relayedTarget;
-            standbyHeaders = { 'User-Agent': BROWSER_UA };
-          }
         } else {
-          finalUrl = relayedTarget;
-          if (absTarget !== finalUrl && isSafeUpstreamUrl(absTarget)) {
-            standbyUrl = absTarget;
-            standbyHeaders = directOrionHeaders;
-          }
+          // No playback token from boot: the Orion target is the stream.
+          finalUrl = absTarget;
+          headers = directOrionHeaders;
         }
       }
 
@@ -401,7 +389,6 @@ async function fetchFromRiftBoot(
         quality: maxHeight ? `${maxHeight}p` : 'auto',
         // Language must come from manifest evidence, not the provider's stream name.
         multiAudio: false,
-        ...(standbyUrl ? { standbyUrl, standbyHeaders } : {}),
         rank: (streamType === 'hls' ? 15 : 35) + i,
       });
     }

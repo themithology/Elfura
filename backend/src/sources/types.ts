@@ -171,7 +171,7 @@ export interface UniformStreamOption {
   /** Clean branded label ONLY, e.g. 'Source 1 · Multi-Audio' or 'Source 1 · Hindi' */
   label: string;
   type: 'hls' | 'dash' | 'mp4';
-  /** Uniform relay URL (`/api/v1/stream?t=...`) — never raw upstream URL */
+  /** Uniform proxy URL (`/api/proxy?u=...`) — never a raw upstream URL */
   url: string;
   quality: string;
   /** Distinct rendition heights (desc) for multi-quality ABR streams. */

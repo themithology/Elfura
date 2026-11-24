@@ -66,15 +66,16 @@ try {
 console.log('MovieBox: signing, safety, title matching, episode-scoped recovery and session reuse OK');
 
 // Signed cookies must never follow cross-origin playlist references.
-const { rewriteHlsManifest, rewriteDashManifest } = await import('../../dist/backend/relay.js');
-const { openStreamTicket } = await import('../../dist/backend/security.js');
-const secret = Buffer.alloc(32, 1);
+const { rewriteHlsManifest, rewriteDashManifest, decodeProxyHeaders } = await import('../../dist/backend/stream-proxy.js');
 const headers = { Cookie: 'signed=secret', Authorization: 'Bearer secret', Referer:'https://player.example/' };
-const hls = rewriteHlsManifest('#EXTM3U\n#EXTINF:1,\nhttps://other.example/part.ts\n#EXTINF:1,\nlocal.ts', 'https://cdn.example.com/master.m3u8', headers, secret);
-const tickets = hls.split('\n').filter(x => x.startsWith('/api/v1/stream')).map(x => openStreamTicket(secret,new URL(x,'https://elfura.test').searchParams.get('t')));
-assert.equal(tickets[0].h.Cookie, undefined); assert.equal(tickets[0].h.Authorization, undefined); assert.equal(tickets[0].h.Referer, headers.Referer);
-assert.equal(tickets[1].h.Cookie, headers.Cookie);
-const dash = rewriteDashManifest('<MPD><Period><BaseURL>https://other.example/</BaseURL><Representation><SegmentTemplate media="v/$Number$.m4s" initialization="init.mp4"/></Representation></Period></MPD>', 'https://cdn.example.com/index.mpd', headers, secret);
+const hls = rewriteHlsManifest('#EXTM3U\n#EXTINF:1,\nhttps://other.example/part.ts\n#EXTINF:1,\nlocal.ts', 'https://cdn.example.com/master.m3u8', headers, '/api/proxy');
+const urls = hls.split('\n').filter(x => x.startsWith('/api/proxy')).map(x => new URL(x, 'https://elfura.test'));
+const firstHeaders = decodeProxyHeaders(urls[0].searchParams.get('h'));
+const secondHeaders = decodeProxyHeaders(urls[1].searchParams.get('h'));
+assert.equal(firstHeaders.cookie, undefined); assert.equal(firstHeaders.authorization, undefined); assert.equal(firstHeaders.referer, headers.Referer);
+assert.equal(secondHeaders.cookie, headers.Cookie);
+const dash = rewriteDashManifest('<MPD><Period><BaseURL>https://other.example/</BaseURL><Representation><SegmentTemplate media="v/$Number$.m4s" initialization="init.mp4"/></Representation></Period></MPD>', 'https://cdn.example.com/index.mpd', headers, '/api/proxy');
 const match = dash.match(/media="([^"]+)"/)[1].replaceAll('&amp;','&');
-assert.equal(openStreamTicket(secret,new URL(match,'https://elfura.test').searchParams.get('t')).h.Cookie, undefined);
+const dashHeaders = decodeProxyHeaders(new URL(match, 'https://elfura.test').searchParams.get('h'));
+assert.equal(dashHeaders.cookie, undefined);
 console.log('Signed headers stay scoped to the manifest origin');

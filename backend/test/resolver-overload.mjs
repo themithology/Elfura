@@ -14,8 +14,8 @@ const waiting=gate.acquire(waitAbort.signal);waitAbort.abort();assert.equal(awai
 let calls=0;const groups=new ResolverCoalescer(async q=>{calls++;await sleep(25);return {ok:true,media:{type:q.type,tmdbId:q.tmdbId},sources:[],primary:null}});
 const base={type:'tv',tmdbId:'123',season:1,episode:1};
 await Promise.all([...Array(50)].map(()=>groups.run(base)));assert.equal(calls,1);
-await Promise.all([groups.run(base),groups.run({...base,preferredLang:'ja'}),groups.run({...base,episode:2}),groups.run({...base,sourceId:'source-17'}),groups.run({...base,late:true}),groups.run({...base,late:true,retryMissing:true}),groups.run({...base,streamPathPrefix:'/other'})]);assert.equal(calls,8);
-await groups.run(base);assert.equal(calls,9,'no response payload retained after completion');
+await Promise.all([groups.run(base),groups.run({...base,preferredLang:'ja'}),groups.run({...base,episode:2}),groups.run({...base,sourceId:'source-17'}),groups.run({...base,late:true}),groups.run({...base,late:true,retryMissing:true})]);assert.equal(calls,7);
+await groups.run(base);assert.equal(calls,8,'no response payload retained after completion');
 const bad=new ResolverCoalescer(async()=>{throw Error('fixture')});await assert.rejects(bad.run(base));assert.equal(bad.snapshot().activeKeys,0);
 const invalidation=new ResolverCoalescer(async()=>{await sleep(25);return null});const one=invalidation.run(base);invalidation.invalidate();const two=invalidation.run(base);assert.notEqual(one,two);await Promise.all([one,two]);
 

@@ -1,4 +1,4 @@
-// Synthetic pressure over actual media -> four-resolver HTTP; no external providers.
+// Synthetic pressure over actual media -> one resolver HTTP node; no load-balancing pool, no external providers.
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import os from 'node:os';
@@ -20,8 +20,8 @@ globalThis.fetch=async (input,init)=>String(input).startsWith('https://load-cdn.
  ? new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}}) : original(input,init);
 try {
  const cfg=loadBackendConfig({ELFURA_SECRET:secret,TMDB_API_KEY:'',OPENSUBTITLES_ENABLED:'0'});
- const nodes=[];const scans=[[],[],[],[]];const discoveries=[new Map(),new Map(),new Map(),new Map()];
- for(let n=0;n<4;n++) {
+ const nodes=[];const scans=[[]];const discoveries=[new Map()];
+ for(let n=0;n<1;n++) {
   const reg=new SourceRegistry(cfg);
   const make=(id,ms)=>({id,label:id,enabled:()=>true,async resolve(q){
    const k=`${id}:${q.tmdbId}`;discoveries[n].set(k,(discoveries[n].get(k)??0)+1);
@@ -32,7 +32,7 @@ try {
   reg.resolvePlayback=async req=>{scans[n].push({title:req.tmdbId,late:!!req.late,at:Date.now()});return resolve(req);};
   nodes.push(await listen(createResolverServer({cfg,registry:reg,token:secret,log:()=>{}}).server));
  }
- [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=nodes;
+ process.env.ELFURA_RESOLVER_URL=nodes[0];
  const base=await listen(createBackendServer({...cfg,requireToken:false}).server);
  const titles=Array.from({length:48},(_,i)=>String(70000+i)).concat(Array(102).fill('90000'));
  async function get(i,late=false,retry=false){
@@ -42,21 +42,21 @@ try {
  }
  const started=Date.now();const first=await Promise.all(titles.map((_,i)=>get(i)));
  assert(first.every(x=>x.sources.some(s=>s.sourceId==='source-1')&&x.pendingSources.includes('source-29')));
- assert.deepEqual(scans.map(s=>s.filter(r=>!r.late).length),[13,13,13,13],'102 shared-title requests coalesce into one computation per node');
+ assert.deepEqual(scans.map(s=>s.filter(r=>!r.late).length),[49],'48 unique titles + one coalesced shared-title computation');
  const workload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
  assert.equal(workload.reduce((s,x)=>s+x.playback.started+x.playback.shared,0),150,'all 150 viewer requests reach the resolver pool');
- assert(workload.every(x=>x.playback.started+x.playback.shared>=30),'all 4 nodes share the load');
+ assert.deepEqual(workload.map(x=>x.playback.started+x.playback.shared),[150],'the single resolver owns the whole load');
  await wait(3800);
  const late=await Promise.all(titles.map((_,i)=>get(i,true)));
  assert(late.every(x=>x.sources.some(s=>s.sourceId==='source-29')),'every viewer receives its second wave');
  const lateWorkload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
  assert.equal(lateWorkload.reduce((s,x)=>s+x.playback.started+x.playback.shared,0),300,'late requests still reach the discovery owner');
- for(let n=0;n<4;n++)assert.equal(discoveries[n].get('source-29:90000'),1,'same-title concurrent discoveries coalesce per node');
+ assert.equal(discoveries[0].get('source-29:90000'),1,'same-title concurrent discoveries coalesce');
  await Promise.all(titles.map((t,i)=>t==='90000'?get(i,true,true):null));
  await wait(500);
  const retried=await Promise.all(titles.map((t,i)=>t==='90000'?get(i,true):null));
  assert(retried.filter(Boolean).every(x=>x.sources.some(s=>s.sourceId==='source-5')),'coalesced retry returns previously empty source');
- for(let n=0;n<4;n++)assert.equal(discoveries[n].get('source-5:90000'),2,'one shared retry per source on each node');
+ assert.equal(discoveries[0].get('source-5:90000'),2,'one shared retry per source');
  // An empty first wave still owns in-flight work; its later result must route
  // to that owner rather than disappearing after the initial 404.
  const emptyUrl=`${base}/api/v1/playback?type=movie&tmdb=88888&nonce=empty-viewer`;
@@ -69,7 +69,7 @@ try {
  assert((await emptyLate.json()).sources.some(s=>s.sourceId==='source-29'));
  assert(scans[owner].some(row=>row.title==='88888'&&row.late),'empty first wave retains affinity');
 
- console.log(`wave HTTP pressure: ${titles.length} concurrent viewers, 48 unique titles + 102 shared-title requests, 4 nodes, all second waves; ${(Date.now()-started)}ms`);
+ console.log(`wave HTTP pressure: ${titles.length} concurrent viewers, 48 unique titles + 102 shared-title requests, 1 resolver, all second waves; ${(Date.now()-started)}ms`);
 } finally {
  for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
  globalThis.fetch=original;clearInterval(keep);rmSync(tmp,{recursive:true,force:true});

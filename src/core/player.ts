@@ -753,7 +753,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Playback responses intentionally use root-relative `/api/v1/stream` tickets.
+   * Playback responses intentionally use root-relative `/api/proxy` URLs.
    * When an SDK consumer resolves through an absolute cross-origin `api` URL,
    * those tickets belong to that API origin, not to the site hosting the player.
    */
@@ -844,17 +844,6 @@ export class ElfuraPlayer {
     }
   }
 
-  private withForcedProxyParam(rawUrl: string): string {
-    try {
-      const base = new URL(window.location.href);
-      const u = new URL(rawUrl, base);
-      u.searchParams.set('p', '1');
-      return u.origin === base.origin ? `${u.pathname}${u.search}${u.hash}` : u.toString();
-    } catch {
-      return rawUrl.includes('?') ? `${rawUrl}&p=1` : `${rawUrl}?p=1`;
-    }
-  }
-
   private supportsHevc(): boolean {
     if (this.hevcSupportedCache !== null) return this.hevcSupportedCache;
     try {
@@ -915,7 +904,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Lightweight concurrent probe against our uniform `/api/v1/stream` relay.
+   * Lightweight concurrent probe against our uniform `/api/proxy` stream proxy.
    * Measures true end-to-end upstream latency, verifies the stream is alive
    * (and actually carries `targetLang` when probing multi-audio HLS), and
    * warms the backend RAM manifest cache so `hls.js` / `dash.js` starts in <2ms.
@@ -934,7 +923,7 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
 
     const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
-    const isBackendTicket = resolvedUrl.includes('/api/v1/stream');
+    const isBackendTicket = /\/(?:api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
         ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
@@ -1055,8 +1044,8 @@ export class ElfuraPlayer {
         }
       }
 
-      // Backend `/api/v1/stream` tickets were ALREADY deep-verified (including child playlists)
-      // by `liveness.ts` on the server — only double-check child playlists for raw non-relay URLs!
+      // Backend `/api/proxy` playlists were ALREADY deep-verified (including child playlists)
+      // by `liveness.ts` on the server — only double-check child playlists for raw non-proxy URLs!
       if (streamInfLines.length > 0 && !isBackendTicket) {
         let variantChildUri: string | null = null;
         for (let i = 0; i < lines.length; i++) {
@@ -2453,7 +2442,7 @@ export class ElfuraPlayer {
         subtitles: opt.subtitles?.map(track => ({ ...track, url: this.resolveBackendMediaUrl(track.url) })),
       });
       const topCandidate = resolveSource(data.primary ?? data.sources[0]);
-      // Warm manifest ticket in RAM so hls.js starts playback in ~0.2s when clicked
+      // Warm the manifest in RAM so hls.js starts playback in ~0.2s when clicked
       if (this.canPreProbeViaFetch(topCandidate)) {
         const ctrl = new AbortController();
         void this.probeCandidateViaFetch(
@@ -2910,27 +2899,6 @@ export class ElfuraPlayer {
         details === 'bufferAddCodecError' || details === 'manifestIncompatibleCodecsError';
       if (unrecoverableCodec) {
         this.handleFatal(data.type, url, true);
-        return;
-      }
-
-      // If an offloaded external segment fails (e.g. mobile ISP DNS-blocks a raw CDN),
-      // transparently switch this stream to `&p=1` (100% backend relay) before abandoning it.
-      const errExtra = data as unknown as { frag?: { url?: string }; url?: string };
-      const failedTargetUrl = String(errExtra.frag?.url || errExtra.url || '');
-      if (
-        !this.activeProbe &&
-        /^(?:fragLoadError|fragLoadTimeOut)$/i.test(details) &&
-        failedTargetUrl &&
-        !this.isBackendOwnedUrl(failedTargetUrl) &&
-        this.isBackendOwnedUrl(url) &&
-        !url.includes('p=1')
-      ) {
-        const proxiedUrl = this.withForcedProxyParam(url);
-        cfg.src = proxiedUrl;
-        if (this.currentSource && this.currentSource.url === url) {
-          this.currentSource = { ...this.currentSource, url: proxiedUrl };
-        }
-        void this.load(proxiedUrl, 'hls');
         return;
       }
 
@@ -3458,8 +3426,8 @@ export class ElfuraPlayer {
 
   /**
    * Native HLS subtitles arrive as a media playlist of subtitle segments, not one
-   * file. Resolve all non-comment segment URIs (including `/api/v1/stream?t=...`
-   * tickets), concatenate in order, and parse with our own subtitle engine.
+   * file. Resolve all non-comment segment URIs (including `/api/proxy?u=...`
+   * URLs), concatenate in order, and parse with our own subtitle engine.
    */
   private async loadSubtitleCues(track: SubtitleTrack): Promise<void> {
     const grab = async (u: string) => (await fetch(u, { credentials: 'omit' })).text();
@@ -3681,7 +3649,7 @@ function redacted(cfg: Record<string, unknown>): Record<string, unknown> {
 /**
  * Decrypts AES-256-GCM playback envelopes (`{ ok: true, s: 1, p }`) minted by
  * `/api/v1/playback` using WebCrypto so DevTools Network Preview never exposes
- * plaintext source metadata or stream tickets.
+ * plaintext source metadata or upstream stream URLs.
  */
 async function openSealedEnvelope<T>(
   b64UrlPayload: string,

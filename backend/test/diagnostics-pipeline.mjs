@@ -54,10 +54,8 @@ try {
   assert.equal(result.media.status, 'ok');
   assert.equal(result.media.checks, 3, 'diagnostics probes video and both listed audio segment samples');
   assert.equal(result.browserPlaybackChecked, false);
-  assert.equal(result.delivery.route, 'browser-cdn-offload');
-  assert.equal(result.delivery.corsOffloadPreflight, 'passed');
+  assert.equal(result.delivery.route, 'raw-stream-proxy');
   assert(calls.some(call => call.path.endsWith('.ts') && call.range === 'bytes=0-1023'));
-  assert(calls.some(call => call.path.endsWith('.ts') && call.origin === 'https://player.elfura.invalid'));
   assert(!JSON.stringify(result).includes('cdn.example.com'));
 
   let redirectCalls = 0;
@@ -85,7 +83,7 @@ try {
     key: 'mp4-fixture', url: 'https://cdn.example.com/movie.mp4', type: 'mp4', quality: 'auto', rank: 0,
   }, 'full');
   assert.equal(mp4.media.status, 'ok');
-  assert.equal(mp4.delivery.route, 'backend-relay');
+  assert.equal(mp4.delivery.route, 'raw-stream-proxy');
   assert(mp4Calls.some(call => call.range === 'bytes=0-1023'));
 
   // A genuine 1x1 poster/error image: still rejected, and never offloaded.
@@ -100,7 +98,7 @@ try {
     key: 'image-fixture', url: 'https://cdn.example.com/not-a-stream.mp4', type: 'mp4', quality: 'auto', rank: 0,
   }, 'hybrid');
   assert.equal(imageResponse.media.status, 'unexpected-content-type');
-  assert.equal(imageResponse.delivery.route, 'backend-relay', 'image responses must not be accepted for browser offload');
+  assert.equal(imageResponse.delivery.route, 'raw-stream-proxy', 'image responses must not be accepted for browser offload');
   assert(imageResponse.checks.some(step => step.status === 'unexpected-content-type' && step.contentType === 'image/jpeg'));
 
   // The same header over real transport bytes (some CDNs mislabel TS as JPEG):

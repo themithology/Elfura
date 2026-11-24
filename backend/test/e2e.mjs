@@ -33,8 +33,6 @@ registerHooks({
 
 import {
   isSafeUpstreamUrl,
-  sealStreamTicket,
-  openStreamTicket,
   openPlaybackEnvelope,
 } from '../../dist/backend/security.js';
 import {
@@ -45,10 +43,12 @@ import {
   rewriteHlsManifest,
   resolveHlsChildUrl,
   rewriteDashManifest,
-  materializeDashTicket,
+  materializeProxyTemplate,
   sanitizeWebVtt,
-  isAnonymousSegmentUrl,
-} from '../../dist/backend/relay.js';
+  buildStreamProxyUrl,
+  decodeProxyHeaders,
+  decodeProxyTarget,
+} from '../../dist/backend/stream-proxy.js';
 import { createBackendServer, matchEmbedPath } from '../../dist/backend/index.js';
 import { verifyAndFilterCandidates, verifyAndFilterCandidatesDetailed } from '../../dist/backend/sources/liveness.js';
 import { canonLang, languageLabel, matchScore, buildTrackList, ElfuraPlayer, PlayerUI } from '../../dist/lib/elfura.js';
@@ -347,19 +347,19 @@ assert.deepEqual(matchEmbedPath('/embed/tv/94605/1/3'), {
   episode: 3,
 });
 
-// 5. AES-256-GCM stateless stream tickets
+// 5. Stateless raw-stream proxy URLs (no tickets)
 const secret = crypto.createHash('sha256').update('test-secret').digest();
-const ticket = sealStreamTicket(secret, {
-  u: 'https://cdn.upstream.example/hls/master.m3u8?sig=long-token-value-1234567890',
-  h: { Referer: 'https://player.vidzee.wtf/', Origin: 'https://player.vidzee.wtf' },
-  k: 'm',
-});
-assert(!ticket.includes('vidzee') && !ticket.includes('upstream'));
-const opened = openStreamTicket(secret, ticket);
-assert.equal(opened.u, 'https://cdn.upstream.example/hls/master.m3u8?sig=long-token-value-1234567890');
-assert.equal(opened.h.Referer, 'https://player.vidzee.wtf/');
-const tampered = ticket.slice(0, -2) + (ticket.endsWith('AA') ? 'BB' : 'AA');
-assert.equal(openStreamTicket(secret, tampered), null);
+const proxyUrl = buildStreamProxyUrl(
+  'https://cdn.upstream.example/hls/master.m3u8?sig=long-token-value-1234567890',
+  { Referer: 'https://player.vidzee.wtf/', Origin: 'https://player.vidzee.wtf' },
+  '/api/proxy',
+);
+const parsedProxyUrl = new URL(proxyUrl, 'https://elfura.example');
+assert.equal(parsedProxyUrl.pathname, '/api/proxy');
+assert.equal(decodeProxyTarget(parsedProxyUrl.searchParams.get('u')), 'https://cdn.upstream.example/hls/master.m3u8?sig=long-token-value-1234567890');
+const proxyHeaders = decodeProxyHeaders(parsedProxyUrl.searchParams.get('h'));
+assert.equal(proxyHeaders.referer, 'https://player.vidzee.wtf/');
+assert.equal(proxyHeaders.origin, 'https://player.vidzee.wtf');
 
 // 5b. Dynamic runtime language canonicalization (Part 2 + Part 1, zero hardcoded track maps)
 assert.equal(normalizeLang('hin').code, 'hi');
@@ -420,7 +420,7 @@ const duneManifest = [
   '#EXT-X-STREAM-INF:BANDWIDTH=4000000,AUDIO="aud",SUBTITLES="subs"',
   'vid.m3u8',
 ].join('\n');
-const rewrittenDune = rewriteHlsManifest(duneManifest, 'https://cdn.example.com/hls/master.m3u8', undefined, secret);
+const rewrittenDune = rewriteHlsManifest(duneManifest, 'https://cdn.example.com/hls/master.m3u8', undefined, '/api/proxy');
 assert(!rewrittenDune.includes('MovieHubBD'));
 assert(rewrittenDune.includes('LANGUAGE="hi"'));
 assert(rewrittenDune.includes('NAME="Hindi"'));
@@ -436,7 +436,7 @@ const kaiManifest = [
   '#EXT-X-STREAM-INF:BANDWIDTH=3500000,RESOLUTION=1920x1080,AUDIO="audio"',
   'https://cdn.example.com/api/kai/abc?p=%2Fhls%2Fv1080.m3u8',
 ].join('\n');
-const rewrittenKai = rewriteHlsManifest(kaiManifest, 'https://cdn.example.com/api/kai/abc', undefined, secret);
+const rewrittenKai = rewriteHlsManifest(kaiManifest, 'https://cdn.example.com/api/kai/abc', undefined, '/api/proxy');
 assert.equal(rewrittenKai.match(/^#EXTM3U$/gm)?.length, 1);
 assert(rewrittenKai.includes('LANGUAGE="ja",NAME="Japanese",DEFAULT=YES'));
 assert(rewrittenKai.includes('LANGUAGE="kn",NAME="Kannada",DEFAULT=NO'));
@@ -454,18 +454,15 @@ const rewrittenReZero = rewriteHlsManifest(
   escapedReZeroManifest,
   'https://img1.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/index_287.m3u8',
   { Referer: 'https://api.hlowb.com/', 'User-Agent': 'okhttp/4.9.3' },
-  secret,
+  '/api/proxy',
 );
-const reZeroSegmentRef = rewrittenReZero.split('\n').find((line) => line.startsWith('/api/v1/stream?t='));
-assert(reZeroSegmentRef, 'Escaped Re:Zero media segment must remain relayed');
-const reZeroSegmentTicket = openStreamTicket(
-  secret,
-  new URL(reZeroSegmentRef, 'https://elfura.example').searchParams.get('t'),
-);
+const reZeroSegmentRef = rewrittenReZero.split('\n').find((line) => line.startsWith('/api/proxy?u='));
+assert(reZeroSegmentRef, 'Escaped Re:Zero media segment must remain proxied');
+const reZeroSegmentUrl = decodeProxyTarget(new URL(reZeroSegmentRef, 'https://elfura.example').searchParams.get('u'));
 assert.equal(
-  reZeroSegmentTicket.u,
+  reZeroSegmentUrl,
   'https://img.hscow.com/hls_mps/1e2b23eb7579651f267d872be6c30354/720/0.jpg?t=1777023509',
-  'Re:Zero segment ticket must normalize hls\\_mps to the real hls_mps CDN key',
+  'Re:Zero proxy URL must normalize hls\\_mps to the real hls_mps CDN key',
 );
 
 // DASH SegmentTemplate URLs must remain substitutable by dash.js without exposing
@@ -481,39 +478,67 @@ const rewrittenDashTemplate = rewriteDashManifest(
   dashTemplateMpd,
   'https://origin.example.com/manifest.mpd',
   { Referer: 'https://player.example.com/' },
-  secret,
+  '/api/proxy',
 );
 assert(!rewrittenDashTemplate.includes('cdn.example.com'), 'DASH templates must not leak their upstream origin');
 const dashMediaRef = rewrittenDashTemplate.match(/\smedia="([^"]+)"/)?.[1]?.replaceAll('&amp;', '&');
-assert(dashMediaRef?.startsWith('/api/v1/stream?t='), 'DASH media template must be relayed');
+assert(dashMediaRef?.startsWith('/api/proxy?u='), 'DASH media template must be proxied');
 assert(dashMediaRef.includes('_dr=$RepresentationID$'), 'RepresentationID must remain visible to dash.js');
 assert(dashMediaRef.includes('_dn=$Number%05d$'), 'Number formatting must remain visible to dash.js');
 const dashMediaUrl = new URL(dashMediaRef, 'https://elfura.example');
-const dashTemplateTicket = openStreamTicket(secret, dashMediaUrl.searchParams.get('t'));
 assert.equal(
-  dashTemplateTicket.u,
+  decodeProxyTarget(dashMediaUrl.searchParams.get('u')),
   'https://cdn.example.com/root/video/$RepresentationID$/$Number%05d$.m4s?x=1&y=2',
 );
-const materializedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
-assert.equal(materializedDashTicket, null, 'Unsubstituted test template must be rejected rather than fetched literally');
+assert.equal(
+  materializeProxyTemplate(decodeProxyTarget(dashMediaUrl.searchParams.get('u')), dashMediaUrl.searchParams),
+  null,
+  'Unsubstituted test template must be rejected rather than fetched literally',
+);
 dashMediaUrl.searchParams.set('_dr', 'v1');
 dashMediaUrl.searchParams.set('_dn', '00042');
-const resolvedDashTicket = materializeDashTicket(dashTemplateTicket, dashMediaUrl.searchParams);
 assert.equal(
-  resolvedDashTicket.u,
+  materializeProxyTemplate(decodeProxyTarget(dashMediaUrl.searchParams.get('u')), dashMediaUrl.searchParams),
   'https://cdn.example.com/root/video/v1/00042.m4s?x=1&y=2',
-  'Relay must substitute the actual DASH representation and padded segment number',
+  'Proxy must substitute the actual DASH representation and padded segment number',
 );
+
+// A restricted-origin DASH manifest must drop, not keep, a URL it refuses to
+// proxy. Leaving it raw would hand the browser the provider hostname and let
+// dash.js resolve every child against a host we never approved.
+const restrictedDashMpd = `<MPD><Period><AdaptationSet>
+<Representation id="bad"><BaseURL>https://evil.example/a/</BaseURL>
+<SegmentTemplate media="seg$Number$.m4s" initialization="init.mp4"/></Representation>
+<Representation id="good"><BaseURL>https://cdn.example.com/b/</BaseURL>
+<SegmentTemplate media="seg$Number$.m4s"/></Representation>
+</AdaptationSet></Period></MPD>`;
+const rewrittenRestrictedDash = rewriteDashManifest(
+  restrictedDashMpd,
+  'https://cdn.example.com/manifest.mpd',
+  undefined,
+  '/api/proxy',
+  'https://cdn.example.com',
+);
+assert(!rewrittenRestrictedDash.includes('evil.example'), 'an off-origin DASH BaseURL must be dropped, not left in the MPD');
+assert(!/<Representation id="bad"><BaseURL/.test(rewrittenRestrictedDash), 'the unsafe BaseURL element is removed');
+assert(rewrittenRestrictedDash.includes('<Representation id="good"><BaseURL>/api/proxy?u='), 'the on-origin BaseURL is proxied');
+
+// Same rule without a restricted origin: an address isSafeUpstreamUrl refuses
+// (loopback/private) must not survive either.
+const unsafeDashMpd = `<MPD><Period><Representation id="p"><BaseURL>http://127.0.0.1:9/x/</BaseURL>
+<SegmentTemplate media="s$Number$.m4s"/></Representation></Period></MPD>`;
+const rewrittenUnsafeDash = rewriteDashManifest(unsafeDashMpd, 'https://cdn.example.com/m.mpd', undefined, '/api/proxy');
+assert(!rewrittenUnsafeDash.includes('127.0.0.1'), 'an unsafe DASH BaseURL must be dropped');
 
 const dashListMpd = `<MPD><BaseURL>https://cdn.example.com/list/</BaseURL><Period><Representation id="a">
 <SegmentList><Initialization source="init.mp4"/><SegmentURL media="seg1.m4s"/></SegmentList>
 </Representation></Period></MPD>`;
-const rewrittenDashList = rewriteDashManifest(dashListMpd, 'https://origin.example.com/list.mpd', undefined, secret);
+const rewrittenDashList = rewriteDashManifest(dashListMpd, 'https://origin.example.com/list.mpd', undefined, '/api/proxy');
 const dashInitRef = rewrittenDashList.match(/\ssource="([^"]+)"/)?.[1];
 const dashSegmentRef = rewrittenDashList.match(/\smedia="([^"]+)"/)?.[1];
-assert.equal(openStreamTicket(secret, new URL(dashInitRef, 'https://elfura.example').searchParams.get('t')).u,
+assert.equal(decodeProxyTarget(new URL(dashInitRef, 'https://elfura.example').searchParams.get('u')),
   'https://cdn.example.com/list/init.mp4');
-assert.equal(openStreamTicket(secret, new URL(dashSegmentRef, 'https://elfura.example').searchParams.get('t')).u,
+assert.equal(decodeProxyTarget(new URL(dashSegmentRef, 'https://elfura.example').searchParams.get('u')),
   'https://cdn.example.com/list/seg1.m4s');
 
 // Source 2 rousav + dash-hls-bridge manifest sanitization & WebVTT spam cue stripping
@@ -525,7 +550,7 @@ const rousavManifest = [
   '#EXT-X-STREAM-INF:BANDWIDTH=3500000,RESOLUTION=1920x1080,AUDIO="audio",SUBTITLES="subs"',
   'video_720p.m3u8',
 ].join('\n');
-const rewrittenRousav = rewriteHlsManifest(rousavManifest, 'https://cdn.example.com/media/abc/index.m3u8', undefined, secret);
+const rewrittenRousav = rewriteHlsManifest(rousavManifest, 'https://cdn.example.com/media/abc/index.m3u8', undefined, '/api/proxy');
 assert(rewrittenRousav.includes('LANGUAGE="en"'));
 assert(!rewrittenRousav.includes('en.[CC]'));
 assert(!rewrittenRousav.includes('TYPE=SUBTITLES'));
@@ -542,7 +567,7 @@ const bridgeManifest = [
   '#EXT-X-STREAM-INF:BANDWIDTH=2200000,RESOLUTION=1920x1080,AUDIO="audio"',
   'https://cdn.example.com/v0.m3u8',
 ].join('\n');
-const rewrittenBridge = rewriteHlsManifest(bridgeManifest, 'https://cdn.example.com/master.m3u8', undefined, secret);
+const rewrittenBridge = rewriteHlsManifest(bridgeManifest, 'https://cdn.example.com/master.m3u8', undefined, '/api/proxy');
 assert(rewrittenBridge.includes('NAME="Original"'));
 
 const dirtyVtt = [
@@ -1870,7 +1895,7 @@ try {
   const pb = await pbRes.json();
   assert.equal(pb.ok, true);
   assert.equal(removedSourceCalls, 0, 'legacy SOURCE2 settings must not activate removed providers');
-  const upstreamUrls = pb.sources.map((s) => openStreamTicket(secret, new URL(s.url, apiBase).searchParams.get('t')).u);
+  const upstreamUrls = pb.sources.map((s) => decodeProxyTarget(new URL(s.url, apiBase).searchParams.get('u')));
   assert.equal(new Set(upstreamUrls).size, upstreamUrls.length, 'identical upstream streams must be deduplicated across groups');
   assert.equal(pb.media.title, 'Arcane · S1E1 — Welcome to the Playground');
   assert.equal(pb.segments, undefined, "TG skip endpoint must not be used");
@@ -1930,10 +1955,10 @@ try {
 
   const primaryMasterRes = await fetch(`${apiBase}${pb.primary.url}`, { headers: browserHeaders });
   const primaryMaster = await primaryMasterRes.text();
-  const variantLine = primaryMaster.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
+  const variantLine = primaryMaster.split('\n').find((l) => l.startsWith('/api/proxy?u='));
   const variantRes = await fetch(`${apiBase}${variantLine}`, { headers: browserHeaders });
   const variantText = await variantRes.text();
-  const segLine = variantText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
+  const segLine = variantText.split('\n').find((l) => l.startsWith('/api/proxy?u='));
 
   const segRangeRes = await fetch(`${apiBase}${segLine}`, {
     headers: { ...browserHeaders, Range: 'bytes=0-3' },
@@ -2293,19 +2318,19 @@ try {
     },
     {
       id: 'multi-bad', sourceId: 'source-1', label: 'Source 1', type: 'hls',
-      url: 'https://watch.elfura.example/api/v1/stream?t=multi-bad', quality: '1080p',
+      url: 'https://watch.elfura.example/api/proxy?u=multi-bad', quality: '1080p',
       multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-bad-fp',
       latencyHintMs: 1, audioTracks: [], subtitles: [],
     },
     {
       id: 'multi-good', sourceId: 'source-2', label: 'Source 2', type: 'hls',
-      url: 'https://watch.elfura.example/api/v1/stream?t=multi-good', quality: '720p',
+      url: 'https://watch.elfura.example/api/proxy?u=multi-good', quality: '720p',
       multiAudio: true, availableAudioLangs: ['hi', 'en'], fingerprint: 'multi-good-fp',
       latencyHintMs: 500, audioTracks: [], subtitles: [],
     },
     {
       id: 'direct-hi', sourceId: 'source-2', label: 'Source 2', type: 'hls',
-      url: 'https://watch.elfura.example/api/v1/stream?t=direct-hi', quality: '1080p',
+      url: 'https://watch.elfura.example/api/proxy?u=direct-hi', quality: '1080p',
       audioLang: 'hi', fingerprint: 'direct-hi-fp', latencyHintMs: 1,
       audioTracks: [], subtitles: [],
     },
@@ -2382,7 +2407,7 @@ try {
     const fakeProbePlayer = new ElfuraPlayer({ postMessage: false });
     const fakeCand = {
       id: 'fake-multi', sourceId: 'source-1', label: 'Source 1', type: 'hls',
-      url: 'https://watch.elfura.example/api/v1/stream?t=fake', quality: '1080p',
+      url: 'https://watch.elfura.example/api/proxy?u=fake', quality: '1080p',
       multiAudio: true, availableAudioLangs: ['hi', 'en'], audioTracks: [], subtitles: [],
     };
     const accepted = fakeProbePlayer.applyHlsProbeAudioSelection(
@@ -2488,9 +2513,9 @@ try {
   searchPlayer.destroy();
 
   // 9. Verify concurrent fastest-server racing (not sequential top-to-bottom) in ElfuraPlayer
-  const deadTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/dead.mp4`, k: 'a' }))}`;
-  const slowTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/slow-hi.mp4`, k: 'a' }))}`;
-  const fastTicket = `/api/v1/stream?t=${encodeURIComponent(sealStreamTicket(secret, { u: `${upBase}/race/fast-hi.mp4`, k: 'a' }))}`;
+  const deadTicket = buildStreamProxyUrl(`${upBase}/race/dead.mp4`, undefined, '/api/proxy');
+  const slowTicket = buildStreamProxyUrl(`${upBase}/race/slow-hi.mp4`, undefined, '/api/proxy');
+  const fastTicket = buildStreamProxyUrl(`${upBase}/race/fast-hi.mp4`, undefined, '/api/proxy');
 
   // Point window.location at our real loopback Elfura backend (non-embed path so manual sources aren't overwritten)
   globalThis.window.location = {
@@ -2635,9 +2660,8 @@ try {
 
   const jaOpt = { ...pb.primary, id: 'synthetic-ja', audioLang: 'ja', label: 'Source 2 · Japanese', multiAudio: false, availableAudioLangs: [], audioTracks: [] };
 
-  // Verify relay.ts strictly rejects HTML manifest and HTML segment responses with 502 no-store
-  const htmlManifestTicket = sealStreamTicket(secret, { u: `${upBase}/dead-child-stream/audio0.m3u8`, k: 'm' });
-  const htmlManifestRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(htmlManifestTicket)}`, {
+  // Verify the proxy strictly rejects HTML manifest and HTML segment responses with 502 no-store
+  const htmlManifestRes = await fetch(`${apiBase}${buildStreamProxyUrl(`${upBase}/dead-child-stream/audio0.m3u8`, undefined, '/api/proxy')}`, {
     headers: browserHeaders,
   });
   assert.equal(htmlManifestRes.status, 502, 'Relay must reject HTML masquerading as an HLS manifest with 502');
@@ -2646,8 +2670,7 @@ try {
     'Rejected HTML manifest must never be cached at Cloudflare edge',
   );
 
-  const htmlSegTicket = sealStreamTicket(secret, { u: `${upBase}/dead-html-segment.ts`, k: 'a' });
-  const htmlSegRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(htmlSegTicket)}`, {
+  const htmlSegRes = await fetch(`${apiBase}${buildStreamProxyUrl(`${upBase}/dead-html-segment.ts`, undefined, '/api/proxy')}`, {
     headers: browserHeaders,
   });
   assert.equal(htmlSegRes.status, 502, 'Relay must reject HTML masquerading as a binary media segment with 502');
@@ -2827,37 +2850,15 @@ try {
     assert(builtCss.includes(requiredCss), `Expected built CSS to include "${requiredCss}"`);
   }
 
-  // 14. Verify Smart Hybrid Segment Offload + Source Anonymity + Anti-Scraper Armour:
-  //   (a) Strict source-anonymity filter allows generic HTTPS storage CDNs while blocking every source/bridge leak
+  // 14. Verify Single Raw-Stream Proxy + Anti-Scraper Armour:
+  //   (a) There is no direct-offload decision left to get wrong: every upstream
+  //       resource is served through /api/proxy, and SSRF targets are refused.
   assert.equal(
-    isAnonymousSegmentUrl(
-      'https://sacdn.hakunaymatata.com/dash/30254/chunk-stream0-00001.m4s?Policy=eyJ123&Signature=abc&Key-Pair-Id=KM1',
-      true,
-    ),
-    true,
+    new URL(buildStreamProxyUrl('https://sacdn.hakunaymatata.com/dash/chunk.m4s'), 'https://elfura.example').pathname,
+    '/api/proxy',
   );
-  assert.equal(
-    isAnonymousSegmentUrl('https://img.hscow.com/hls/a30eaa/720/s_0.jpg?t=1777016941', true),
-    true,
-  );
-  assert.equal(
-    isAnonymousSegmentUrl('https://d111111abcdef8.cloudfront.net/media/seg-001.ts', true),
-    true,
-  );
-  for (const leakyUrl of [
-    'http://sacdn.hakunaymatata.com/dash/30254/chunk-stream0-00001.m4s', // Mixed-content HTTP blocked in prod!
-    'https://tgvidapi.lovable.app/api/kai/abc?s=seg1.ts',
-    'https://tgvid-rift-relay.vercel.app/api/relay?u=abc',
-    'https://embed.vidrift.in/api/orion/abc/seg0.ts',
-    'https://mb.vidrift.net/api/orion/abc/video.mp4',
-    'https://vidsync.pro/api/core/proxy?data=123',
-    'https://img.rousav.tech/media/84ba/seg0.ts?api_key=secret123',
-    'https://proxy.vidbolt.xyz/m/tok123',
-    'https://embed.aethoflix.world/api/proxy-segment?url=https%3A%2F%2Fcdn.example.com%2Fa.ts',
-    'https://dash-hls-bridge.johndoesdmc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fa.m4s',
-    'https://vidstuck.cc/backend/database/andromeda?url=abc',
-  ]) {
-    assert.equal(isAnonymousSegmentUrl(leakyUrl, true), false, `Must block leaky/unsafe offload URL: ${leakyUrl}`);
+  for (const unsafe of ['http://169.254.169.254/latest', 'http://10.0.0.1/x', 'http://192.168.1.1/x']) {
+    assert.equal(isSafeUpstreamUrl(unsafe), false, `must refuse unsafe upstream target ${unsafe}`);
   }
 
   //   (b0) The failure this file kept reproducing: an embed framed by a
@@ -2996,12 +2997,12 @@ try {
   assert(embedHtml.includes('name="referrer" content="no-referrer-when-downgrade"'));
   assert(!embedHtml.includes('content="same-origin"'), 'the embed must send a referer when framed cross-site');
 
-  //   (c) CLI scrapers / downloaders (`yt-dlp`, `ffmpeg`/`Lavf`, `curl`) are blocked with 403 on `/api/v1/playback` & `/api/v1/stream`
+  //   (c) CLI scrapers / downloaders (`yt-dlp`, `ffmpeg`/`Lavf`, `curl`) are blocked with 403 on `/api/v1/playback` & `/api/proxy`
   for (const botUa of ['yt-dlp/2026.10.01', 'Lavf/61.1.100', 'curl/8.7.1']) {
     const botStreamRes = await fetch(`${apiBase}${pb.primary.url}`, {
       headers: { Origin: 'https://watch.elfura.example', 'User-Agent': botUa },
     });
-    assert.equal(botStreamRes.status, 403, `Expected 403 for scraper UA "${botUa}" on /api/v1/stream`);
+    assert.equal(botStreamRes.status, 403, `Expected 403 for scraper UA "${botUa}" on /api/proxy`);
   }
 
   //   (d) Sealed Playback Envelope (`X-Elfura-Envelope: 1`) returns pure AES-256-GCM ciphertext (zero plaintext leakage)
@@ -3018,7 +3019,7 @@ try {
   assert.equal(envRes.status, 200);
   const envRawText = await envRes.text();
   assert(!envRawText.includes('Arcane'), 'Sealed envelope must not contain plaintext media title');
-  assert(!envRawText.includes('/api/v1/stream'), 'Sealed envelope must not contain plaintext stream URLs');
+  assert(!envRawText.includes('/api/proxy'), 'Sealed envelope must not contain plaintext stream URLs');
   const envJson = JSON.parse(envRawText);
   assert.equal(envJson.ok, true);
   assert.equal(envJson.s, 1);
@@ -3092,13 +3093,13 @@ try {
     assert.equal(crossSources.length, pb.sources.length);
     for (const source of crossSources) {
       assert(
-        source.url.startsWith(`${apiBase}/api/v1/stream?t=`),
-        `Cross-origin backend ticket was resolved against the wrong origin: ${source.url}`,
+        source.url.startsWith(`${apiBase}/api/proxy?u=`),
+        `Cross-origin backend proxy URL was resolved against the wrong origin: ${source.url}`,
       );
       for (const track of [...(source.audioTracks ?? []), ...(source.subtitles ?? [])]) {
         assert(
-          track.url.startsWith(`${apiBase}/api/v1/stream?t=`),
-          `Cross-origin track ticket was resolved against the wrong origin: ${track.url}`,
+          track.url.startsWith(`${apiBase}/api/proxy?u=`),
+          `Cross-origin track proxy URL was resolved against the wrong origin: ${track.url}`,
         );
       }
     }
@@ -3107,96 +3108,54 @@ try {
     globalThis.fetch = origFetchForEnv;
   }
 
-  //   (e) Live Hybrid Relay verification:
-  //       - CORS + Referer-free anonymous bucket offloads media segments (`#EXT-X-MAP` + `.m4s`) directly
-  //         while keeping master manifest AND `#EXT-X-KEY` encrypted behind `/api/v1/stream?t=...`!
-  //       - Non-CORS bucket and Referer-locked bucket stay 100% relayed behind `/api/v1/stream?t=...`!
-  //       - Forced proxy fallback (`&p=1`) tunnels all child manifests & segments 100% through `/api/v1/stream?t=...`!
+  //   (e) Live raw-stream proxy verification:
+  //       - Master, variant, #EXT-X-KEY, #EXT-X-MAP and every media segment are
+  //         rewritten to /api/proxy?u=... URLs.
+  //       - The proxy is CORS-agnostic, so non-CORS and Referer-locked upstreams
+  //         play exactly like CORS-friendly ones.
   process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST = '1';
   try {
-    const corsMasterTicket = sealStreamTicket(secret, { u: `${upBase}/edge-cors/master.m3u8`, k: 'm' });
-    const corsMasterRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(corsMasterTicket)}`, {
-      headers: browserHeaders,
-    });
+    const corsMasterUrl = buildStreamProxyUrl(`${upBase}/edge-cors/master.m3u8`, undefined, '/api/proxy');
+    const corsMasterRes = await fetch(`${apiBase}${corsMasterUrl}`, { headers: browserHeaders });
     assert.equal(corsMasterRes.status, 200);
     const corsMasterText = await corsMasterRes.text();
-    const corsVariantRel = corsMasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
-    assert(corsVariantRel, 'Master playlist must always keep child variant playlists relayed via /api/v1/stream');
+    const corsVariantRel = corsMasterText.split('\n').find((l) => l.startsWith('/api/proxy?u='));
+    assert(corsVariantRel, 'Master playlist must keep child variant playlists on /api/proxy');
 
     const corsVariantRes = await fetch(`${apiBase}${corsVariantRel}`, { headers: browserHeaders });
     assert.equal(corsVariantRes.status, 200);
     const corsVariantText = await corsVariantRes.text();
     assert(
-      corsVariantText.includes(`#EXT-X-KEY:METHOD=AES-128,URI="/api/v1/stream?t=`),
-      'AES-128 #EXT-X-KEY URI must stay encrypted behind /api/v1/stream even when segments offload',
+      corsVariantText.includes('#EXT-X-KEY:METHOD=AES-128,URI="/api/proxy?u='),
+      'AES-128 #EXT-X-KEY URI must be proxied',
     );
     assert(
-      corsVariantText.includes(`#EXT-X-MAP:URI="${upBase}/edge-cors/init.m4s"`),
-      'Verified CORS-safe anonymous fMP4 init segment must offload directly',
+      corsVariantText.includes('#EXT-X-MAP:URI="/api/proxy?u='),
+      'fMP4 init segment must be proxied',
     );
-    assert(
-      corsVariantText.includes(`${upBase}/edge-cors/chunk-0001.m4s?Policy=abc&Signature=sig1&Key-Pair-Id=K1`),
-      'Verified CORS-safe anonymous media segment must offload directly',
-    );
+    const corsSegLine = corsVariantText.split('\n').find((l) => l.startsWith('/api/proxy?u='));
+    assert(corsSegLine, 'media segments must be proxied');
+    const corsSegRes = await fetch(`${apiBase}${corsSegLine}`, { headers: browserHeaders });
+    assert.equal(corsSegRes.status, 200);
+    assert((await corsSegRes.arrayBuffer()).byteLength > 0);
 
-    // Forced proxy fallback (`&p=1` when viewer ISP blocks direct CDN) tunnels everything via `/api/v1/stream?t=`
-    const forcedMasterRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(corsMasterTicket)}&p=1`, {
-      headers: browserHeaders,
-    });
-    const forcedMasterText = await forcedMasterRes.text();
-    const forcedVariantRel = forcedMasterText.split('\n').find((l) => l.startsWith('/api/v1/stream?t='));
-    const forcedVariantRes = await fetch(`${apiBase}${forcedVariantRel}`, { headers: browserHeaders });
-    const forcedVariantText = await forcedVariantRes.text();
-    assert(
-      !forcedVariantText.includes(`${upBase}/edge-cors/chunk-0001.m4s`),
-      'Forced proxy (&p=1) must propagate fp=1 to child manifests and tunnel all segments via /api/v1/stream',
-    );
-    assert(
-      forcedVariantText.split('\n').some((l) => l.startsWith('/api/v1/stream?t=')),
-      'Forced proxy (&p=1) variant playlist must emit /api/v1/stream?t= segment tickets',
-    );
-
-    // Non-CORS CDN (`/edge-nocors/*`) must NEVER offload (would fail browser CORS!)
-    const noCorsTicket = sealStreamTicket(secret, { u: `${upBase}/edge-nocors/variant.m3u8`, k: 'm' });
-    const noCorsRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(noCorsTicket)}`, {
-      headers: browserHeaders,
-    });
+    // Non-CORS CDN: the proxy fetches server-side, so the browser never sees CORS.
+    const noCorsRes = await fetch(`${apiBase}${buildStreamProxyUrl(`${upBase}/edge-nocors/variant.m3u8`, undefined, '/api/proxy')}`, { headers: browserHeaders });
+    assert.equal(noCorsRes.status, 200);
     const noCorsText = await noCorsRes.text();
-    assert(
-      !noCorsText.includes('/edge-nocors/chunk-0001.m4s'),
-      'Segments lacking Access-Control-Allow-Origin must stay relayed through /api/v1/stream',
-    );
+    assert(noCorsText.split('\n').some((l) => l.startsWith('/api/proxy?u=')), 'non-CORS segments must be proxied');
 
-    // Origin-reflecting CDN authorized only our fake probe origin. It must stay relayed because
-    // a viewer's real Origin would receive a different ACAO value and fail browser CORS.
-    const echoCorsTicket = sealStreamTicket(secret, { u: `${upBase}/edge-echo-cors/variant.m3u8`, k: 'm' });
-    const echoCorsRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(echoCorsTicket)}`, {
-      headers: browserHeaders,
-    });
+    // Origin-reflecting CDN: same result, no browser CORS involved.
+    const echoCorsRes = await fetch(`${apiBase}${buildStreamProxyUrl(`${upBase}/edge-echo-cors/variant.m3u8`, undefined, '/api/proxy')}`, { headers: browserHeaders });
+    assert.equal(echoCorsRes.status, 200);
     const echoCorsText = await echoCorsRes.text();
-    assert(
-      !echoCorsText.includes(`${upBase}/edge-echo-cors/chunk-0001.m4s`),
-      'Origin-reflecting CDN segments must stay relayed instead of failing the viewer real Origin',
-    );
-    assert(
-      echoCorsText.split('\n').some((l) => l.startsWith('/api/v1/stream?t=')),
-      'Origin-reflecting CDN segments must be rewritten to backend stream tickets',
-    );
+    assert(echoCorsText.split('\n').some((l) => l.startsWith('/api/proxy?u=')), 'echo-CORS segments must be proxied');
 
-    // Referer-locked CDN (`/edge-reflock/*`) must NEVER offload (would 403 in browser!)
-    const refLockTicket = sealStreamTicket(secret, {
-      u: `${upBase}/edge-reflock/variant.m3u8`,
-      h: { Referer: 'https://vidbolt.xyz/' },
-      k: 'm',
-    });
-    const refLockRes = await fetch(`${apiBase}/api/v1/stream?t=${encodeURIComponent(noCorsTicket ? refLockTicket : '')}`, {
-      headers: browserHeaders,
-    });
+    // Referer-locked CDN: the header hint travels inside the proxy URL.
+    const refLockRes = await fetch(`${apiBase}${buildStreamProxyUrl(`${upBase}/edge-reflock/variant.m3u8`, { Referer: 'https://vidbolt.xyz/' }, '/api/proxy')}`, { headers: browserHeaders });
+    assert.equal(refLockRes.status, 200);
     const refLockText = await refLockRes.text();
-    assert(
-      !refLockText.includes('/edge-reflock/chunk-0001.m4s'),
-      'Referer-locked segments must stay relayed through /api/v1/stream',
-    );
+    assert(refLockText.split('\n').some((l) => l.startsWith('/api/proxy?u=')), 'Referer-locked segments must be proxied');
   } finally {
     delete process.env.ELFURA_ALLOW_HTTP_OFFLOAD_TEST;
   }
@@ -3330,7 +3289,7 @@ try {
 
   // 16. Verify QoL Batch 3:
   //     (a) Automatic OpenSubtitles Fallback (zero-disk RAM cache, .sub filtering, legacy tag canonicalization,
-  //         sealed `/api/v1/stream?t=...` tickets with zero external domain leak, and SRT spam-cue sanitization)
+  //         raw `/api/proxy?u=...` URLs with zero provider domain leak, and SRT spam-cue sanitization)
   const arcaneSubLangs = pb.primary.subtitles.map((s) => s.lang);
   assert.deepEqual(
     [...arcaneSubLangs].sort(),
@@ -3355,8 +3314,8 @@ try {
   assert(arcaneSubLangs.includes('es-419'), 'Expected OpenSubtitles `spl` to canonicalize to `es-419`');
   for (const sub of pb.primary.subtitles) {
     assert(
-      sub.url.startsWith('/api/v1/stream?t=') && !sub.url.includes('opensubs'),
-      `Subtitle URL must be sealed inside /api/v1/stream?t=...: ${sub.url}`,
+      sub.url.startsWith('/api/proxy?u=') && !sub.url.includes('opensubs'),
+      `Subtitle URL must be proxied through /api/proxy?u=...: ${sub.url}`,
     );
   }
   const hiSubOpt = pb.primary.subtitles.find((s) => s.lang === 'hi');
@@ -3364,11 +3323,11 @@ try {
   assert.equal(hiSubRes.status, 200);
   assert(
     (hiSubRes.headers.get('content-type') || '').includes('text/plain; charset=utf-8'),
-    'Extensionless/SRT OpenSubtitles track must relay with text/plain; charset=utf-8',
+    'Extensionless/SRT OpenSubtitles track must proxy with text/plain; charset=utf-8',
   );
   const hiSubBody = await hiSubRes.text();
-  assert(!hiSubBody.includes('OpenSubtitles.org'), 'Relay must strip OpenSubtitles VIP spam cues from SRT');
-  assert(hiSubBody.includes('Welcome to Piltover.'), 'Relay must preserve real dialogue cues in SRT');
+  assert(!hiSubBody.includes('OpenSubtitles.org'), 'Proxy must strip OpenSubtitles VIP spam cues from SRT');
+  assert(hiSubBody.includes('Welcome to Piltover.'), 'Proxy must preserve real dialogue cues in SRT');
 
   //     (b) `GET /api/v1/episodes` TV Season & Episode Catalog (plain & AES-256-GCM Sealed Envelope)
   const unauthEpRes = await fetch(`${apiBase}/api/v1/episodes?tmdb=94605&s=1`, {
@@ -3519,7 +3478,7 @@ try {
     } = await import('../../dist/backend/sources/source2.js');
     const { createSource3Adapter } = await import('../../dist/backend/sources/source3.js');
     const { loadBackendConfig } = await import('../../dist/backend/config.js');
-    const { rewriteHlsManifest } = await import('../../dist/backend/relay.js');
+    const { rewriteHlsManifest } = await import('../../dist/backend/stream-proxy.js');
 
     // (a) Placeholder ELFURA_SECRET must never derive a deterministic static key
     const pCfgA = loadBackendConfig({
@@ -3544,21 +3503,16 @@ try {
     assert.equal(legacyCfg.source2.enabled, false);
     assert.equal(legacyCfg.source2.nxshaOrigin, '');
 
-    // (b) Anonymity guard blocks every newly added upstream/worker domain from direct segment offload
-    for (const newLeakyUrl of [
+    // (b) The proxy is the only delivery path, so provider domains never need a
+    //     direct-offload allowlist. The SSRF guard is the security boundary.
+    for (const unsafe of [
       'https://nxsha.space/api/sources?q=abc',
       'https://wts.itsnitrox.tech/pitro/seg0.ts',
       'https://vercetti.org/movie/abc/seg0.ts',
       'https://vidrock.net/api/movie/533535',
       'https://vidlink.pro/api/b/movie/abc',
-      'https://enc-dec.app/api/enc-vidlink?text=533535',
-      'https://autumn-art-7466.nxstreamhub.workers.dev/?url=https%3A%2F%2Fsbcdnw.hakunaymatata.com%2Fa.m4s',
     ]) {
-      assert.equal(
-        isAnonymousSegmentUrl(newLeakyUrl, true),
-        false,
-        `Must deny direct offload for upstream-identifying URL: ${newLeakyUrl}`,
-      );
+      assert.equal(isSafeUpstreamUrl(unsafe), true, `public provider URL should be proxyable: ${unsafe}`);
     }
 
     // Verify client bundles contain zero mentions of any upstream domain or codename
@@ -3590,7 +3544,7 @@ try {
       ].join('\n'),
       'https://wts.itsnitrox.tech/pitro/master.m3u8',
       { Referer: 'https://nxsha.space/' },
-      pCfgA.secret,
+      '/api/proxy',
     );
     // Opaque encrypted ticket bytes can coincidentally spell a watermark;
     // inspect only manifest labels, not random URI token contents.
@@ -4022,7 +3976,7 @@ try {
     }
   }
 
-  console.log('✓ All Elfura Part 1/Part 2 boundary, security, Hybrid Relay offload, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, OpenSubtitles fallback, Episode Wheel, QoL Batch 3, Production Recovery Multi-Cluster & OTT Player UI tests passed.');
+  console.log('✓ All Elfura Part 1/Part 2 boundary, security, raw stream proxy, Sealed Envelope, dynamic Multi-Audio Hindi speed hierarchy, OpenSubtitles fallback, Episode Wheel, QoL Batch 3, Production Recovery Multi-Cluster & OTT Player UI tests passed.');
 } finally {
   elfuraServer.close();
   mockUpstream.close();

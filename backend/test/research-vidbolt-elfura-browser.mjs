@@ -1,7 +1,7 @@
 // Full local Elfura backend/player against the original provider. Never log upstream URLs or keys.
 import { createBackendServer } from '../../dist/backend/index.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
-import { openStreamTicket } from '../../dist/backend/security.js';
+import { decodeProxyTarget } from '../../dist/backend/stream-proxy.js';
 import { chromium } from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const base=loadBackendConfig();
@@ -26,7 +26,7 @@ try {
    step='source';
    await page.waitForFunction(()=>window.__elfura?.player?.getSources().some(s=>s.sourceId==='source-1' && s.multiAudio),null,{timeout:45000});
    const options=await page.evaluate(()=>window.__elfura.player.getSources().filter(x=>x.sourceId==='source-1'&&x.multiAudio).map(s=>({id:s.id,url:s.url,langs:s.availableAudioLangs,qualities:s.qualityLadder})));
-   const info=options.find(s=>{try{const ticket=new URL(s.url,`http://127.0.0.1:${port}`).searchParams.get('t');const raw=openStreamTicket(cfg.secret,ticket);return /(?:^|\.)rousav\.tech$/i.test(new URL(raw.u).hostname);}catch{return false;}});
+   const info=options.find(s=>{try{const raw=new URL(s.url,`http://127.0.0.1:${port}`).searchParams.get('u');const target=decodeProxyTarget(raw);return !!target&&/(?:^|\.)rousav\.tech$/i.test(new URL(target).hostname);}catch{return false;}});
    if(!info)throw new Error('direct provider candidate missing');
    step='select';
    await page.evaluate(async id=>{const p=window.__elfura.player;p.video.muted=true;await p.setSource(id);await p.play();},info.id);

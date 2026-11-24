@@ -9,7 +9,7 @@
  * Strictly zero disk writes:
  *   - Bounded 256-entry in-memory LRU cache (30-minute TTL)
  *   - Every returned subtitle URL is validated with `isSafeUpstreamUrl` and
- *     subsequently sealed into `/api/v1/stream?t=<ticket>` (`k: 's'`) so no
+ *     subsequently shaped into `/api/proxy?u=...` so no
  *     external subtitle domain is ever exposed to the client.
  */
 

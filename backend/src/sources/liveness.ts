@@ -4,7 +4,7 @@
  * Eliminates dead streams ("master-alive / child-dead" HTML redirects like
  * `cdn.mhbdtv.top`, `403 Forbidden` direct links, expired tokens, 5xx mirrors)
  * BEFORE they ever cross into Part 1 (`UniformPlaybackResponse`), while:
- *   1. Pre-warming `relay.ts`'s bounded RAM manifest cache (`0ms` first load!).
+ *   1. Pre-warming the raw stream proxy's bounded RAM manifest cache (`0ms` first load!).
  *   2. Harvesting ALL real `#EXT-X-MEDIA:TYPE=AUDIO` and DASH `<AdaptationSet>`
  *      audio tracks directly from live manifests (zero hardcoded tracks!).
  *   3. Deduplicating probes across shared CDN URLs with a bounded RAM cache
@@ -15,8 +15,7 @@ import {
   extractManifestAudioLangs,
   resolveHlsChildUrl,
   seedManifestRamCache,
-  verifyDirectSegmentOffload,
-} from '../relay.js';
+} from '../stream-proxy.js';
 import { isSafeUpstreamUrl, matchesRestrictedOrigin } from '../security.js';
 import { restrictedFetchWithRedirects } from '../restricted-fetch.js';
 import { normalizeLang } from './lang.js';
@@ -863,7 +862,7 @@ export async function verifyAndFilterCandidatesDetailed(
  * plus up to two audio segments. URLs and response bodies never leave the
  * server. This still cannot prove that a viewer's browser can play the stream.
  */
-export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, relayMode: 'hybrid' | 'full' = 'hybrid') {
+export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate) {
   type Check = { stage: string; status: string; ms: number; httpStatus?: number; contentType?: string; bytes?: number; error?: string; mediaEncoding?: string };
   const started = Date.now();
   const checks: Check[] = [];
@@ -1104,13 +1103,7 @@ export async function diagnoseCandidatePlayback(candidate: RawStreamCandidate, r
   const firstSegmentUrl = mediaSegments[0]?.url;
   let delivery: Record<string, unknown> = { mode: 'unknown', segmentRelayChecked: false };
   if (firstSegmentUrl) {
-    if (relayMode === 'full' || candidate.restrictedOrigin) {
-      delivery = { mode: 'full', route: 'backend-relay', segmentRelayChecked: false };
-    } else {
-      const canDirect = await verifyDirectSegmentOffload(firstSegmentUrl);
-      delivery = { mode: 'hybrid', route: canDirect ? 'browser-cdn-offload' : 'backend-relay',
-        corsOffloadPreflight: canDirect ? 'passed' : 'not-passed-or-policy-blocked', segmentRelayChecked: false };
-    }
+    delivery = { mode: 'proxy', route: 'raw-stream-proxy', segmentRelayChecked: false };
   }
   const manifestLanguages = [...languages];
   const failureStage = checks.find(x => !['ok'].includes(x.status))?.stage ??

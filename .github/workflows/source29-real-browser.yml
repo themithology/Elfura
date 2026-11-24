@@ -2,7 +2,7 @@ name: Novus actual adapter player test
 on:
   push:
     branches: [arena/124b7afe-elfura]
-    paths: ['backend/src/sources/source29.ts', 'backend/src/sources/anime-direct-mapping.ts', 'backend/src/sources/liveness.ts', 'backend/src/relay.ts', 'backend/src/security.ts', 'backend/test/source29.mjs', 'backend/test/anime-restricted-relay.mjs', 'backend/test/source29-real-browser.mjs', '.github/workflows/source29-real-browser.yml']
+    paths: ['backend/src/sources/source29.ts', 'backend/src/sources/anime-direct-mapping.ts', 'backend/src/sources/liveness.ts', 'backend/src/stream-proxy.ts', 'backend/src/security.ts', 'backend/test/source29.mjs', 'backend/test/anime-restricted-proxy.mjs', 'backend/test/source29-real-browser.mjs', '.github/workflows/source29-real-browser.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -15,6 +15,6 @@ jobs:
         with: {node-version: 22, cache: npm}
       - run: npm ci
       - run: npm run build
-      - run: node backend/test/source29.mjs && node backend/test/anime-restricted-relay.mjs
+      - run: node backend/test/source29.mjs && node backend/test/anime-restricted-proxy.mjs
       - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
       - run: node backend/test/source29-real-browser.mjs

@@ -10,7 +10,7 @@
  *     -> { result, sources: [ { url, tracks: [ { file, label } ] } ] }
  *
  * The endpoint answers only with its public player key, so every request stays
- * server-side; the browser only ever receives `/api/v1/stream?t=...` tickets.
+ * server-side; the browser only ever receives raw `/api/proxy?u=...` URLs.
  * No scraping, no browser, no disk: one JSON request plus the shared liveness
  * probe on the returned manifest.
  */

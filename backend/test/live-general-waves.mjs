@@ -34,7 +34,7 @@ try {
  // Match normal process startup rather than testing bare Node fetch only.
  await installEgressProfile(()=>{});
  const urls=[];const observations=[];
- for(let i=0;i<4;i++) {
+ for(let i=0;i<1;i++) {
   const registry=new SourceRegistry(cfg);
   registry.adapters=registry.adapters.map(adapter=>({...adapter,async resolve(q){
    const start=Date.now();
@@ -51,7 +51,7 @@ try {
   }}));
   urls.push(await listen(createResolverServer({cfg,registry,token:secret,log:()=>{}}).server));
  }
- [process.env.ELFURA_RESOLVER_URL,process.env.ELFURA_RESOLVER_BACKUP_URL,process.env.ELFURA_RESOLVER_THIRD_URL,process.env.ELFURA_RESOLVER_FOURTH_URL]=urls;
+ process.env.ELFURA_RESOLVER_URL=urls[0];
  const media=createBackendServer({...cfg,isProd:false,requireToken:false});const base=await listen(media.server);
  browser=await chromium.launch({executablePath:await chromiumBinary.executablePath(),args:[...chromiumBinary.args,'--autoplay-policy=no-user-gesture-required']});
  const page=await browser.newPage();

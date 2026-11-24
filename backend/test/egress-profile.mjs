@@ -38,7 +38,7 @@ const lines = [];
 // Production constructs the registry (and its tap) before async egress setup.
 const { installNetTap, tapRequests } = await import('../../dist/backend/sources/net-tap.js');
 installNetTap();
-const { installEgressProfile } = await import('../../dist/backend/egress.js');
+const { installEgressProfile, bypassEgressProfile } = await import('../../dist/backend/egress.js');
 const installed = await installEgressProfile((line) => lines.push(line));
 assert.equal(installed, true, `the profile installs automatically (log: ${lines.join(' | ')})`);
 
@@ -74,7 +74,17 @@ try {
   assert.equal(mediaHeaders['sec-ch-ua'], undefined, 'and media requests are not restyled');
   assert.ok(!/Chrome\//.test(mediaHeaders['user-agent'] ?? ''), 'nor given a browser agent');
 
-  console.log('✓ egress profile: browser headers, one retry on 403, media untouched — no configuration');
+  // Media serving (the stream proxy's own upstream fetch) must bypass the
+  // discovery egress entirely: no Worker hop, no proxy, no browser restyle.
+  const proxied = await bypassEgressProfile(() => fetch(`http://127.0.0.1:${port}/proxy-fetch`, {
+    headers: { 'user-agent': 'elfura-media/1.0', accept: 'application/vnd.apple.mpegurl' },
+  }));
+  assert.equal(proxied.status, 200);
+  const mediaOwn = seen.at(-1).headers;
+  assert.equal(mediaOwn['user-agent'], 'elfura-media/1.0', 'the proxy keeps the headers it chose');
+  assert.equal(mediaOwn.accept, 'application/vnd.apple.mpegurl', 'and its own accept header');
+
+  console.log('✓ egress profile: browser headers, one retry on 403, media and proxy traffic untouched — no configuration');
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }
