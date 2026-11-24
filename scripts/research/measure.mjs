@@ -227,6 +227,18 @@ async function measureHttp(lane, title) {
     if (!HTML_START.test(text)) {
       row.result = 'json-no-media';
       row.preview = short(text.replace(/\s+/g, ' '), 300);
+      // A JSON answer that carries an embed path is not a dead end: the player
+      // lives at that path, so hand it to the browser pass instead of guessing
+      // a URL shape (vixsrc returns /embed/<internal id>, not /embed/movie/<tmdb>).
+      try {
+        const data = JSON.parse(text);
+        for (const key of ['src', 'embed', 'embedUrl', 'iframe', 'player', 'url']) {
+          if (typeof data?.[key] === 'string' && data[key].startsWith('/')) {
+            row.embed = new URL(data[key], base(attempt.url)).href;
+            break;
+          }
+        }
+      } catch {}
       return row;
     }
     row.result = 'html-no-media';
@@ -256,8 +268,10 @@ async function loadBrowser() {
   }
 }
 
-async function measureBrowser(browserKit, lane, title) {
-  const url = lane.browser?.(title);
+async function measureBrowser(browserKit, lane, title, discoveredEmbed) {
+  // Prefer the path the adapter's own discovery produced; fall back to the
+  // recorded page. Guessing a URL shape is how a working lane gets reported dead.
+  const url = discoveredEmbed ?? lane.browser?.(title);
   const row = { lane: lane.id, title: title.key, method: 'browser', kind: lane.kind, requests: [] };
   if (!url) {
     row.result = 'not-applicable';
@@ -276,28 +290,67 @@ async function measureBrowser(browserKit, lane, title) {
   });
   const page = await context.newPage();
   const started = now();
+
+  /**
+   * Media frequently lives in a nested cross-origin iframe — exactly how these
+   * players are shipped to a host site. A page-level listener misses all of it,
+   * which made "no-media-in-page" ambiguous between "dead lane" and "media was
+   * two frames down". Listen on the context, and record the frame tree.
+   */
+  const found = [];
+  const frameHosts = new Set();
+  context.on('response', (res) => {
+    const u = res.url();
+    frameHosts.add(new URL(u).host);
+    if (MEDIA_RE.test(u)) found.push(u);
+  });
+
   try {
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+    // Some players only render inside an embed. A blank host page that then
+    // frames them is closer to the real thing than a direct top-level visit.
+    if (process.env.ELFURA_MEASURE_AS_HOST === '1') {
+      await page
+        .goto('about:blank')
+        .then(() =>
+          page.setContent(`<html><body><iframe id=f src="${url}" allow="autoplay; fullscreen" width=1280 height=720></iframe></body></html>`),
+        )
+        .catch(() => {});
+    }
+
+    let response = null;
+    try {
+      response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
+    } catch (navError) {
+      // A slow embed is not a dead embed: keep inspecting what did load.
+      row.navigation = String(navError?.message ?? navError).split('\n')[0].slice(0, 120);
+      await page.goto(url, { waitUntil: 'commit', timeout: 8000 }).catch(() => {});
+    }
     row.requests.push({ url: short(url, 220), status: response?.status() ?? 0, ms: now() - started });
     row.finalUrl = short(page.url(), 200);
 
-    // Media is usually requested shortly after the page's own JS runs.
-    const found = [];
-    const onResponse = (res) => {
-      const u = res.url();
-      if (MEDIA_RE.test(u)) found.push(u);
-    };
-    page.on('response', onResponse);
-
-    // Nudge playback: many embeds only load the playlist after a click.
-    await page
-      .evaluate(() => {
-        const btn = document.querySelector('button, .play, [class*=play], video') ?? null;
-        if (btn && btn.click) btn.click();
-      })
-      .catch(() => {});
-    await page.waitForTimeout(12_000);
-    page.off('response', onResponse);
+    // "Embedded playback only" pages refuse a top-level visit. A real host puts
+    // them in an iframe, so present the same referrer a host page would.
+    for (const label of [/play|watch|stream|server|start/i]) {
+      const clicked = await page
+        .evaluate((source) => {
+          const re = new RegExp(source, 'i');
+          const candidates = [...document.querySelectorAll('button, a, [role=button], [class*=play], video')];
+          const hit = candidates.find((el) => re.test(el.textContent ?? '') || re.test(el.className ?? ''));
+          if (hit && hit.click) {
+            hit.click();
+            return true;
+          }
+          const video = document.querySelector('video');
+          if (video && video.play) {
+            video.play().catch(() => {});
+            return true;
+          }
+          return false;
+        }, label.source)
+        .catch(() => false);
+      if (clicked) break;
+    }
+    await page.waitForTimeout(20_000);
 
     // The page's own JS state is often the only place the URL lives.
     const inPage = await page
@@ -324,6 +377,9 @@ async function measureBrowser(browserKit, lane, title) {
 
     const mediaUrls = [...new Set([...found, ...inPage])];
     row.pageMedia = mediaUrls.slice(0, 6).map((u) => short(u, 200));
+
+    row.frames = page.frames().map((f) => short(f.url(), 140)).filter((u) => u && u !== 'about:blank').slice(0, 6);
+    row.frameHosts = [...frameHosts].slice(0, 8);
 
     if (mediaUrls.length === 0) {
       // Say what the page actually is, so a false negative is recognisable.
@@ -393,7 +449,7 @@ for (const lane of lanes) {
     // Only pay for a browser when the HTTP path could not answer.
     const needsBrowser = browserKit && lane.browser && http.result !== 'media-found';
     if (needsBrowser) {
-      const b = await measureBrowser(browserKit, lane, title);
+      const b = await measureBrowser(browserKit, lane, title, http.embed);
       results.push({ ...b, laneLabel: lane.label, origin: lane.origin, note: lane.note });
       console.log(
         `${pad(lane.id, 18)}${pad(title.key, 18)}${pad('browser', 9)}${pad(b.result, 24)}${

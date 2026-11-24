@@ -177,7 +177,8 @@ export const LANES = [
         headers: apiHeaders('https://vidsync.pro'),
       },
     ],
-    browser: (t) => `https://vidsync.pro/watch/${t.type}/${t.tmdbId}`,
+    // No recorded page path for this protocol; the API is the lane.
+    browser: () => null,
   },
   {
     id: 'vidzen',
@@ -246,7 +247,7 @@ export const LANES = [
     origin: 'https://novuscloud.buzz',
     kind: 'embed-resolve',
     need: 'media',
-    note: 'source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:"<signed api>"',
+    note: 'source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:"<signed api>"; page says "Embedded playback only"',
     animeOnly: true,
     attempts: (t) =>
       t.anilistId
@@ -338,7 +339,10 @@ export const LANES = [
         headers: browserHeaders('https://tgvidx.lovable.app'),
       },
     ],
-    browser: (t) => `https://tgvidx.lovable.app/?type=${t.type}&tmdb=${t.tmdbId}`,
+    browser: (t) =>
+      `https://tgvidx.lovable.app/embed?type=${t.type}&tmdb=${t.tmdbId}${
+        t.type === 'tv' ? `&season=${t.season ?? 1}&episode=${t.episode ?? 1}` : ''
+      }`,
   },
   {
     id: 'xpass',
@@ -346,7 +350,7 @@ export const LANES = [
     origin: 'https://freakyniki.elaxo.lol',
     kind: 'signed-proxy',
     need: 'media',
-    note: 'source-13: signed /proxyv2 to vip.1x2.space etc.',
+    note: 'source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves',
     attempts: (t) => [
       {
         url:
