@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-24T15:12:15.701Z",
+  "measuredAt": "2026-11-24T15:33:59.723Z",
   "node": "v22.23.5",
   "undici": "6.29.1",
   "browser": "playwright-core + @sparticuz/chromium",
@@ -73,7 +73,6 @@
       "playable": 0,
       "media": 0,
       "outcomes": [
-        "json-no-media",
         "no-media-in-html",
         "no-media-in-page"
       ]
@@ -108,7 +107,7 @@
       "media": 0,
       "outcomes": [
         "html-no-media",
-        "no-media-in-page"
+        "not-applicable"
       ]
     },
     {
@@ -126,12 +125,11 @@
       "lane": "vidnest",
       "label": "VidNest",
       "attempts": 8,
-      "playable": 2,
-      "media": 2,
+      "playable": 0,
+      "media": 0,
       "outcomes": [
-        "html-no-media",
-        "no-media-in-page",
-        "playable"
+        "no-media-in-html",
+        "no-media-in-page"
       ]
     },
     {
@@ -197,8 +195,8 @@
       "playable": 0,
       "media": 0,
       "outcomes": [
-        "browser-error",
-        "html-no-media"
+        "html-no-media",
+        "no-media-in-page"
       ]
     },
     {
@@ -219,7 +217,7 @@
       "playable": 0,
       "media": 0,
       "outcomes": [
-        "browser-error",
+        "no-media-in-page",
         "unreachable"
       ]
     },
@@ -230,7 +228,7 @@
       "playable": 0,
       "media": 0,
       "outcomes": [
-        "html-no-media",
+        "no-media-in-html",
         "no-media-in-page"
       ]
     },
@@ -279,9 +277,9 @@
         {
           "url": "https://greyboxtv.duckdns.org/api/player/sources?media=movie&id=550",
           "status": 200,
-          "ms": 1234,
+          "ms": 7424,
           "contentType": "application/json",
-          "bytes": 64250,
+          "bytes": 64304,
           "media": [
             "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4046544153143035520_0_0_1080_h265_235%2Fmaster.m3u8",
             "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F7080736420700611256_0_0_360_h265_748%2Fmaster.m3u8",
@@ -297,7 +295,7 @@
             "kind": "manifest",
             "status": 502,
             "contentType": "text/plain;charset=UTF-8",
-            "ms": 100,
+            "ms": 86,
             "bytes": 30
           }
         ],
@@ -323,9 +321,9 @@
         {
           "url": "https://greyboxtv.duckdns.org/api/player/sources?media=movie&id=27205",
           "status": 200,
-          "ms": 550,
+          "ms": 245,
           "contentType": "application/json",
-          "bytes": 55275,
+          "bytes": 55299,
           "media": [
             "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3053885418996466528_0_0_1080_h265_740%2Fmaster.m3u8",
             "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F310483201934460304_0_0_720_h265_732%2Fmaster.m3u8",
@@ -341,7 +339,7 @@
             "kind": "manifest",
             "status": 502,
             "contentType": "text/plain;charset=UTF-8",
-            "ms": 72,
+            "ms": 38,
             "bytes": 30
           }
         ],
@@ -367,7 +365,7 @@
         {
           "url": "https://greyboxtv.duckdns.org/api/player/sources?media=tv&id=1399&season=1&episode=1",
           "status": 429,
-          "ms": 776,
+          "ms": 758,
           "contentType": "application/json",
           "bytes": 57,
           "media": []
@@ -390,18 +388,16 @@
         {
           "url": "https://greyboxtv.duckdns.org/api/player/sources?media=tv&id=46260&season=1&episode=1",
           "status": 200,
-          "ms": 4375,
+          "ms": 2991,
           "contentType": "application/json",
-          "bytes": 53083,
+          "bytes": 51059,
           "media": [
             "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmaster.m3u8",
-            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4360485895745717992_1_1_1080_h265_523%2Fmaster.m3u8",
-            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3325889774849773352_1_1_1080_h265%2Fmaster.m3u8"
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3325889774849773352_1_1_1080_h265%2Fmaster.m3u8",
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4360485895745717992_1_1_1080_h265_523%2Fmaster.m3u8"
           ]
         }
       ],
-      "rateLimited": true,
-      "retriedAfter429": true,
       "result": "media-found",
       "proof": {
         "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmaster.m3u8",
@@ -410,7 +406,7 @@
             "kind": "manifest",
             "status": 502,
             "contentType": "text/plain;charset=UTF-8",
-            "ms": 79,
+            "ms": 64,
             "bytes": 30
           }
         ],
@@ -436,18 +432,18 @@
         {
           "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=550",
           "status": 200,
-          "ms": 1019,
+          "ms": 894,
           "contentType": "application/json",
-          "bytes": 3874,
+          "bytes": 3870,
           "media": [
-            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795543146&KeyName=Signature&Signature=qz8mgimVj9faw0GwuctV30vOTgafd9zSJWqefGov8LDl_Ko87C_C-t5lgN0Whtd842cWKbcQKLaSUyCUY59UCA==",
-            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795543146&KeyName=Signature&Signature=VlUvCUuNGlEFvYcdujzquGBhKMHq9dS8C2WgflM_FCQn29U8OcXEopAGC5l0PJH0XZ-KnFTVEuZN1iFbbJR2Ag=="
+            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795544037&KeyName=Signature&Signature=8j6bofZZ-DtQ6UIeZjbFcdmg4z7esP0f7_QO4C12Y--P3OAnxpzFCUU9P1QuJqRJ7T01_grszocAImm3vYH3Bg==",
+            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795544037&KeyName=Signature&Signature=fIrHnYU9fs0bUFe4QjADm6G4mw8XUWTMhj1N4Sw9sChnL8IxnKCXV__kKf7Y6k6dUMsLvG04huvbM6e3lfVTBA=="
           ]
         }
       ],
       "result": "media-found",
       "proof": {
-        "url": "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795543146&KeyName=Signature&Signature=qz8mgimVj9faw0GwuctV30vOTgafd9zSJWqefGov8LDl_Ko87C_C-t5lgN0Whtd842cWKbcQKLaSUyCUY59UCA==",
+        "url": "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795544037&KeyName=Signature&Signature=8j6bofZZ-DtQ6UIeZjbFcdmg4z7esP0f7_QO4C12Y--P3OAnxpzFCUU9P1QuJqRJ7T01_grszocAImm3vYH3Bg==",
         "steps": [
           {
             "kind": "manifest",
@@ -459,7 +455,7 @@
           {
             "kind": "segment",
             "status": 206,
-            "ms": 301,
+            "ms": 242,
             "bytes": 262144,
             "contentType": "image/jpeg"
           }
@@ -472,7 +468,7 @@
       },
       "headersSeen": {
         "server": "cloudflare",
-        "cf-ray": "a5f9468abae70735-YYZ",
+        "cf-ray": "a5f95c48f8e0ef10-PDX",
         "content-type": "application/json",
         "access-control-allow-origin": "*"
       },
@@ -490,31 +486,31 @@
         {
           "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=27205",
           "status": 200,
-          "ms": 513,
+          "ms": 1012,
           "contentType": "application/json",
-          "bytes": 2004,
+          "bytes": 2003,
           "media": [
-            "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795543147&KeyName=Signature&Signature=F05SGdHz0TuBZcxvl669eMfQPyPCJGibdWTCz0r-Kn8bmkWw3jCDCHeoOZykAyXjtWqMAyQPAESkWWzGbcqXCg==",
-            "https://img1.hscow.com/hls_mps/a67403cd9ac643c54c90244dba9ccede/720/index_287.m3u8?Expires=1795543147&KeyName=Signature&Signature=SD7xjlXegnnTZ0AbghdAh1fsvcSOLA8GcLjQ7Q5zw9iN7uesVBxjM1_t5T1mZ3bFerEcS62mMzhlv95ZCWIuBA==",
-            "https://img1.hscow.com/hls/2ab614e3fd237e215ca7a9eb4f645f78/720/index_287.m3u8?Expires=1795543147&KeyName=Signature&Signature=DINs-QrWctMULB5xDCXC-rziph3bm2jipgAXK2uWcfU23HCU8jL3jUX5G48WpJjcil8ydvNvp9XfsiaxavkEAg=="
+            "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795544038&KeyName=Signature&Signature=MyqR_FHem96-IdPvP2aF0Gj6roD5S6bGgWTA1w4iStol3IGEeKJd-cFwpOndP29jrAir43O4ZBrRxAwuaHDKDQ==",
+            "https://img1.hscow.com/hls_mps/a67403cd9ac643c54c90244dba9ccede/720/index_287.m3u8?Expires=1795544038&KeyName=Signature&Signature=86f9t1_YZ7R6qT0MPQFSDoxWWMK55JvxfCyagmyRbMxC06LObfAzW83gJDsaG5LrFFpcVq04RJOY6S4IEOY5Aw==",
+            "https://img1.hscow.com/hls/2ab614e3fd237e215ca7a9eb4f645f78/720/index_287.m3u8?Expires=1795544038&KeyName=Signature&Signature=THgnKy9X8GLdpZNYxBW1JKbZN-cvj7NTQrDf22CtKnQYrKZgGTjUcZII8GADGPdUuBoT7tuXZCQom8kxqahNBg=="
           ]
         }
       ],
       "result": "media-found",
       "proof": {
-        "url": "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795543147&KeyName=Signature&Signature=F05SGdHz0TuBZcxvl669eMfQPyPCJGibdWTCz0r-Kn8bmkWw3jCDCHeoOZykAyXjtWqMAyQPAESkWWzGbcqXCg==",
+        "url": "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795544038&KeyName=Signature&Signature=MyqR_FHem96-IdPvP2aF0Gj6roD5S6bGgWTA1w4iStol3IGEeKJd-cFwpOndP29jrAir43O4ZBrRxAwuaHDKDQ==",
         "steps": [
           {
             "kind": "manifest",
             "status": 200,
             "contentType": "application/vnd.apple.mpegurl",
-            "ms": 62,
+            "ms": 61,
             "bytes": 232288
           },
           {
             "kind": "segment",
             "status": 206,
-            "ms": 4,
+            "ms": 25,
             "bytes": 262144,
             "contentType": "image/jpeg"
           }
@@ -527,7 +523,7 @@
       },
       "headersSeen": {
         "server": "cloudflare",
-        "cf-ray": "a5f946938cc10735-YYZ",
+        "cf-ray": "a5f95c51fbc4ef10-PDX",
         "content-type": "application/json",
         "access-control-allow-origin": "*"
       },
@@ -545,31 +541,31 @@
         {
           "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=1399&season=1&episode=1",
           "status": 200,
-          "ms": 1033,
+          "ms": 1209,
           "contentType": "application/json",
-          "bytes": 1381,
+          "bytes": 2273,
           "media": [
-            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795543148&KeyName=Signature&Signature=uSLI9liznT3Su_Ejh0sHutOKF_m5wQmzvmprO4l4aO7jP0Raf57YZkW1w8XRpiCXsTxE657PzCZfwPtvUxZVDQ==",
-            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_287.m3u8?Expires=1795543148&KeyName=Signature&Signature=NHlzsDTCDBNWIfJXyzTxZHf_RgagM-WYFDawEwFNxgU5FuOHkxN6qhvplLrdVoiQyPNSrRkMGvwPDjeEUyXSCg==",
-            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/480/index_287.m3u8?Expires=1795543148&KeyName=Signature&Signature=C7DpCOMwrieNe5r9KMNFAmwSD_oFCA6RZoDTNTpDBZplbfOPm_aAptryUsxyHD-kYj8KJYszHjOClh1POWPBCg=="
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795544039&KeyName=Signature&Signature=HS4qprljq1UiIVRNZEzts0mTWoF7APR40aJfGgI_TKupH3NoJ2mkAiFKr1w5hLiloYHDbotpemM6KPcVgVX2Ag==",
+            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_287.m3u8?Expires=1795544039&KeyName=Signature&Signature=3hYv6e86p1PSWwPq8hV8mLcTDgWUuSlbjsrGc-v9T01nZGr_qh2KVvTpn_F890xNRLtUbZ6VX8uwICDPmpYCCw==",
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795544040&KeyName=Signature&Signature=R8e_lUzxxFImOmmJ_rXbQSqShoJV5fhnxyCog8vSw-0CE3DF3OtydBb3yu2yVKKK18yge9l4cFTQgGtk9yT9DQ=="
           ]
         }
       ],
       "result": "media-found",
       "proof": {
-        "url": "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795543148&KeyName=Signature&Signature=uSLI9liznT3Su_Ejh0sHutOKF_m5wQmzvmprO4l4aO7jP0Raf57YZkW1w8XRpi…",
+        "url": "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795544039&KeyName=Signature&Signature=HS4qprljq1UiIVRNZEzts0mTWoF7APR40aJfGgI_TKupH3NoJ2mkAiFKr1w5hL…",
         "steps": [
           {
             "kind": "manifest",
             "status": 200,
             "contentType": "application/vnd.apple.mpegurl",
-            "ms": 198,
+            "ms": 315,
             "bytes": 111517
           },
           {
             "kind": "segment",
             "status": 206,
-            "ms": 143,
+            "ms": 218,
             "bytes": 262144,
             "contentType": "image/jpeg"
           }
@@ -582,7 +578,7 @@
       },
       "headersSeen": {
         "server": "cloudflare",
-        "cf-ray": "a5f946977f920735-YYZ",
+        "cf-ray": "a5f95c594bd3ef10-PDX",
         "content-type": "application/json",
         "access-control-allow-origin": "*"
       },
@@ -600,29 +596,29 @@
         {
           "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=46260&season=1&episode=1",
           "status": 200,
-          "ms": 1138,
+          "ms": 958,
           "contentType": "application/json",
-          "bytes": 1078,
+          "bytes": 1080,
           "media": [
-            "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795543150&KeyName=Signature&Signature=-Gi7W66mqX48-KR7SiwqSk5Hh7WQNETIdcte4ZLOHxKpNayyV3lF-3yOTIKFYJUvc0po4HbCQPauurbFKXPOCw=="
+            "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795544041&KeyName=Signature&Signature=JBtQwMqzGL6aSET3zmRRGFeHPWZDZaEME33S7Y2nH-Kk8ED-kzgL4pzjMSMcGR7Niqgukb2gPjqNAv6ncPauAA=="
           ]
         }
       ],
       "result": "media-found",
       "proof": {
-        "url": "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795543150&KeyName=Signature&Signature=-Gi7W66mqX48-KR7SiwqSk5Hh7WQNETIdcte4ZLOHxKpNayyV3lF-3yOTIKFYJUvc0po4HbCQP…",
+        "url": "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795544041&KeyName=Signature&Signature=JBtQwMqzGL6aSET3zmRRGFeHPWZDZaEME33S7Y2nH-Kk8ED-kzgL4pzjMSMcGR7Niqgukb2gPj…",
         "steps": [
           {
             "kind": "manifest",
             "status": 200,
             "contentType": "application/vnd.apple.mpegurl",
-            "ms": 53,
+            "ms": 57,
             "bytes": 24572
           },
           {
             "kind": "segment",
             "status": 206,
-            "ms": 6,
+            "ms": 26,
             "bytes": 262144,
             "contentType": "image/jpeg"
           }
@@ -635,7 +631,7 @@
       },
       "headersSeen": {
         "server": "cloudflare",
-        "cf-ray": "a5f946a03e420735-YYZ",
+        "cf-ray": "a5f95c6529cfef10-PDX",
         "content-type": "application/json",
         "access-control-allow-origin": "*"
       },
@@ -653,7 +649,7 @@
         {
           "url": "https://vidlink.pro/api/b/movie/550",
           "status": 200,
-          "ms": 212,
+          "ms": 227,
           "contentType": "application/json; charset=utf-8",
           "bytes": 4,
           "media": []
@@ -675,7 +671,7 @@
         {
           "url": "https://vidlink.pro/api/b/movie/27205",
           "status": 200,
-          "ms": 150,
+          "ms": 207,
           "contentType": "application/json; charset=utf-8",
           "bytes": 4,
           "media": []
@@ -697,7 +693,7 @@
         {
           "url": "https://vidlink.pro/api/b/tv/1399/1/1",
           "status": 200,
-          "ms": 148,
+          "ms": 228,
           "contentType": "application/json; charset=utf-8",
           "bytes": 4,
           "media": []
@@ -719,7 +715,7 @@
         {
           "url": "https://vidlink.pro/api/b/tv/46260/1/1",
           "status": 200,
-          "ms": 168,
+          "ms": 187,
           "contentType": "application/json; charset=utf-8",
           "bytes": 4,
           "media": []
@@ -740,15 +736,14 @@
       "requests": [
         {
           "url": "https://vixsrc.to/api/movie/550",
-          "status": 200,
-          "ms": 242,
-          "contentType": "application/json",
-          "bytes": 126,
+          "status": 403,
+          "ms": 36,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4542,
           "media": []
         }
       ],
-      "result": "json-no-media",
-      "preview": "{\"src\":\"\\/embed\\/170060?token=aad8cb56d6be7a4ef393bdbd19bf38ba&t=RmlnaHQgQ2x1Yg%3D%3D&expires=1795532361&lang=en&skin=vixsrc\"}",
+      "result": "no-media-in-html",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -761,15 +756,22 @@
       "requests": [
         {
           "url": "https://vixsrc.to/embed/movie/550",
-          "status": 404,
-          "ms": 324
+          "status": 403,
+          "ms": 125
         }
       ],
       "finalUrl": "https://vixsrc.to/embed/movie/550",
       "pageMedia": [],
+      "frames": [
+        "https://vixsrc.to/embed/movie/550"
+      ],
+      "frameHosts": [
+        "vixsrc.to",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Not Found",
-      "pageText": "404 Not Found",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vixsrc.to Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securit…",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -783,15 +785,14 @@
       "requests": [
         {
           "url": "https://vixsrc.to/api/movie/27205",
-          "status": 200,
-          "ms": 253,
-          "contentType": "application/json",
-          "bytes": 118,
+          "status": 403,
+          "ms": 36,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4542,
           "media": []
         }
       ],
-      "result": "json-no-media",
-      "preview": "{\"src\":\"\\/embed\\/790935?token=e2366b889564492c36fdf80648c0508b&t=SW5jZXB0aW9u&expires=1795532378&lang=en&skin=vixsrc\"}",
+      "result": "no-media-in-html",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -804,15 +805,22 @@
       "requests": [
         {
           "url": "https://vixsrc.to/embed/movie/27205",
-          "status": 404,
-          "ms": 289
+          "status": 403,
+          "ms": 84
         }
       ],
       "finalUrl": "https://vixsrc.to/embed/movie/27205",
       "pageMedia": [],
+      "frames": [
+        "https://vixsrc.to/embed/movie/27205"
+      ],
+      "frameHosts": [
+        "vixsrc.to",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Not Found",
-      "pageText": "404 Not Found",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vixsrc.to Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securit…",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -826,15 +834,14 @@
       "requests": [
         {
           "url": "https://vixsrc.to/api/tv/1399/1/1",
-          "status": 200,
-          "ms": 240,
-          "contentType": "application/json",
-          "bytes": 165,
+          "status": 403,
+          "ms": 50,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4542,
           "media": []
         }
       ],
-      "result": "json-no-media",
-      "preview": "{\"src\":\"\\/embed\\/629736?token=bb84d43770cbdb6f565783ff5b66c107&t=R2FtZSBvZiBUaHJvbmVz&expires=1795532393&lang=en&skin=vixsrc&d=UzE6RTEgV2ludGVyIElzIENvbWluZw%3D%3D\"}",
+      "result": "no-media-in-html",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -847,15 +854,22 @@
       "requests": [
         {
           "url": "https://vixsrc.to/embed/movie/1399",
-          "status": 404,
-          "ms": 281
+          "status": 403,
+          "ms": 82
         }
       ],
       "finalUrl": "https://vixsrc.to/embed/movie/1399",
       "pageMedia": [],
+      "frames": [
+        "https://vixsrc.to/embed/movie/1399"
+      ],
+      "frameHosts": [
+        "vixsrc.to",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Not Found",
-      "pageText": "404 Not Found",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vixsrc.to Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securit…",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -869,10 +883,10 @@
       "requests": [
         {
           "url": "https://vixsrc.to/api/tv/46260/1/1",
-          "status": 404,
-          "ms": 218,
-          "contentType": "application/json",
-          "bytes": 21,
+          "status": 403,
+          "ms": 60,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4542,
           "media": []
         }
       ],
@@ -889,15 +903,22 @@
       "requests": [
         {
           "url": "https://vixsrc.to/embed/movie/46260",
-          "status": 404,
-          "ms": 281
+          "status": 403,
+          "ms": 99
         }
       ],
       "finalUrl": "https://vixsrc.to/embed/movie/46260",
       "pageMedia": [],
+      "frames": [
+        "https://vixsrc.to/embed/movie/46260"
+      ],
+      "frameHosts": [
+        "vixsrc.to",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Not Found",
-      "pageText": "404 Not Found",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vixsrc.to Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securit…",
       "laneLabel": "VixSrc",
       "origin": "https://vixsrc.to",
       "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
@@ -912,7 +933,7 @@
         {
           "url": "https://bingr.st/watch/movie/550",
           "status": 403,
-          "ms": 390,
+          "ms": 64,
           "contentType": "text/html; charset=UTF-8",
           "bytes": 5859,
           "media": []
@@ -932,14 +953,24 @@
         {
           "url": "https://bingr.st/watch/movie/550",
           "status": 403,
-          "ms": 139
+          "ms": 83
         }
       ],
-      "finalUrl": "https://bingr.st/watch/movie/550?__cf_chl_rt_tk=TF1BIO6rvZ4wYsLzrIIypMWrSCGdPspyUvymy4jPDqQ-1795532414-1.0.1.1-cwKyt2acU2IpEjPpq7InuHDrZRPc6JrZFKWdyRtjd.E",
+      "finalUrl": "https://bingr.st/watch/movie/550?__cf_chl_rt_tk=rUA.5NOtt2lSC8ciTWtngu38RUs68G3hNHl3VChlIjw-1795533329-1.0.1.1-vWhcRsK8Kdma_b2wQQpXON_vh7Yae.qB3sd1N_8vHE8",
       "pageMedia": [],
+      "frames": [
+        "https://bingr.st/watch/movie/550",
+        "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/cdkn3/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lan…"
+      ],
+      "frameHosts": [
+        "bingr.st",
+        "challenges.cloudflare.com",
+        "",
+        "ca1.cloudflarecaptcha.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Just a moment...",
-      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f948350d4c28fc Performance …",
+      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f95e8bed435d68 Performance …",
       "laneLabel": "Bingr",
       "origin": "https://bingr.st",
       "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
@@ -954,9 +985,9 @@
         {
           "url": "https://bingr.st/watch/movie/27205",
           "status": 403,
-          "ms": 74,
+          "ms": 40,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5887,
+          "bytes": 5865,
           "media": []
         }
       ],
@@ -974,14 +1005,23 @@
         {
           "url": "https://bingr.st/watch/movie/27205",
           "status": 403,
-          "ms": 179
+          "ms": 92
         }
       ],
-      "finalUrl": "https://bingr.st/watch/movie/27205?__cf_chl_rt_tk=ieJjPvV9wczUJGBDiX8gRfhyeO3F7iFrXD82SBETluk-1795532430-1.0.1.1-uwOQeIuBPs5HR8q.e9y8ZW.eeCfai_TMwdkIi4ZvkpE",
+      "finalUrl": "https://bingr.st/watch/movie/27205?__cf_chl_rt_tk=8xubQM7l_BYvi3mqPFHStfyV.P5DJT9M9CKHYJy7WII-1795533349-1.0.1.1-pNllxnx.ZSzGXF2YUbioDQyJgvgpeZUYHZQewNYQ6l0",
       "pageMedia": [],
+      "frames": [
+        "https://bingr.st/watch/movie/27205",
+        "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/gg1ly/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lan…"
+      ],
+      "frameHosts": [
+        "bingr.st",
+        "challenges.cloudflare.com",
+        ""
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Just a moment...",
-      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f9489a1cf6bfc4 Performance …",
+      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f95f0a9b10b1c2 Performance …",
       "laneLabel": "Bingr",
       "origin": "https://bingr.st",
       "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
@@ -996,9 +1036,9 @@
         {
           "url": "https://bingr.st/watch/tv/1399/1/1",
           "status": 403,
-          "ms": 63,
+          "ms": 39,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5887,
+          "bytes": 5865,
           "media": []
         }
       ],
@@ -1016,14 +1056,23 @@
         {
           "url": "https://bingr.st/watch/tv/1399/1/1",
           "status": 403,
-          "ms": 116
+          "ms": 83
         }
       ],
-      "finalUrl": "https://bingr.st/watch/tv/1399/1/1?__cf_chl_rt_tk=XiIn0ELxKID.jMVH7AcAi.QmwyO3VscssaxgKc._QXg-1795532446-1.0.1.1-H4waSEWfR5UKvNHkK4qOKINNGj6nPTB1Y1ziiGj9myE",
+      "finalUrl": "https://bingr.st/watch/tv/1399/1/1?__cf_chl_rt_tk=cSZtNf1_1vi8iheW6ZwZuEonJWYEOWr2m8FFEzvlc7I-1795533372-1.0.1.1-0.kUO_3oHSjxhmQ8icwLytrZqQN04CVzqnT50a9oK2U",
       "pageMedia": [],
+      "frames": [
+        "https://bingr.st/watch/tv/1399/1/1",
+        "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/oxscx/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lan…"
+      ],
+      "frameHosts": [
+        "bingr.st",
+        "challenges.cloudflare.com",
+        ""
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Just a moment...",
-      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f948ffd86d28fc Performance …",
+      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f95f988d0b1509 Performance …",
       "laneLabel": "Bingr",
       "origin": "https://bingr.st",
       "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
@@ -1038,7 +1087,7 @@
         {
           "url": "https://bingr.st/watch/tv/46260/1/1",
           "status": 403,
-          "ms": 149,
+          "ms": 58,
           "contentType": "text/html; charset=UTF-8",
           "bytes": 5890,
           "media": []
@@ -1058,14 +1107,23 @@
         {
           "url": "https://bingr.st/watch/tv/46260/1/1",
           "status": 403,
-          "ms": 191
+          "ms": 81
         }
       ],
-      "finalUrl": "https://bingr.st/watch/tv/46260/1/1?__cf_chl_rt_tk=6Ym_MppzGTccl_S.eO0OLZxkkQC1Utj_C3ecU66YKP4-1795532463-1.0.1.1-amAIvnJSMfGtI2EptA3Sj4wPLhTVx3I_n5Fm_zIW6h4",
+      "finalUrl": "https://bingr.st/watch/tv/46260/1/1?__cf_chl_rt_tk=o8I3ExiKH6N5IvTEUGGR7YQ4NcOMDFP3PwZy4_TwEYQ-1795533392-1.0.1.1-6UnJ3IT52ojo7tFoRNtLb808a5df4yAsaaMZyvVEp1Y",
       "pageMedia": [],
+      "frames": [
+        "https://bingr.st/watch/tv/46260/1/1",
+        "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/f/av0/rch/lof1q/0x4AAAAAAADnPIDROrmt1Wwj/light/fbE/new/normal?lan…"
+      ],
+      "frameHosts": [
+        "bingr.st",
+        "challenges.cloudflare.com",
+        ""
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Just a moment...",
-      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f949685b1c38e5 Performance …",
+      "pageText": "bingr.st Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f96017392e31df Performance …",
       "laneLabel": "Bingr",
       "origin": "https://bingr.st",
       "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
@@ -1080,9 +1138,9 @@
         {
           "url": "https://mapple.fun/watch/movie/550",
           "status": 403,
-          "ms": 106,
+          "ms": 65,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5819,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1100,14 +1158,21 @@
         {
           "url": "https://mapple.fun/watch/movie/550",
           "status": 403,
-          "ms": 155
+          "ms": 95
         }
       ],
-      "finalUrl": "https://mapple.fun/watch/movie/550?__cf_chl_rt_tk=_tmThiyrLqF98G5MCerDjEoNVtlE7oyg0DK5nW6.KXQ-1795532480-1.0.1.1-TXdw5WNuRNfxpZvK6JglD_L7C26XsZo3KPUfDkgqhv8",
+      "finalUrl": "https://mapple.fun/watch/movie/550",
       "pageMedia": [],
+      "frames": [
+        "https://mapple.fun/watch/movie/550"
+      ],
+      "frameHosts": [
+        "mapple.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Just a moment...",
-      "pageText": "mapple.fun Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f949d1afcc6a95 Performanc…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access mapple.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
       "laneLabel": "Mapple",
       "origin": "https://mapple.fun",
       "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
@@ -1122,9 +1187,9 @@
         {
           "url": "https://mapple.fun/watch/movie/27205",
           "status": 403,
-          "ms": 83,
+          "ms": 53,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5825,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1142,14 +1207,21 @@
         {
           "url": "https://mapple.fun/watch/movie/27205",
           "status": 403,
-          "ms": 120
+          "ms": 118
         }
       ],
-      "finalUrl": "https://mapple.fun/watch/movie/27205?__cf_chl_rt_tk=kcNce.EeR8wUyJIMiuxEIo3dPJZsfBaQbBFLwHPWnJU-1795532496-1.0.1.1-LQc9XHT8PO7BDJrThsX5FBhuuTfzshU2mTGDldpIT80",
+      "finalUrl": "https://mapple.fun/watch/movie/27205",
       "pageMedia": [],
+      "frames": [
+        "https://mapple.fun/watch/movie/27205"
+      ],
+      "frameHosts": [
+        "mapple.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Just a moment...",
-      "pageText": "mapple.fun Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f94a37886aed88 Performanc…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access mapple.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
       "laneLabel": "Mapple",
       "origin": "https://mapple.fun",
       "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
@@ -1164,9 +1236,9 @@
         {
           "url": "https://mapple.fun/watch/tv/1399-1-1",
           "status": 403,
-          "ms": 85,
+          "ms": 47,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5825,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1184,14 +1256,21 @@
         {
           "url": "https://mapple.fun/watch/tv/1399-1-1",
           "status": 403,
-          "ms": 152
+          "ms": 106
         }
       ],
-      "finalUrl": "https://mapple.fun/watch/tv/1399-1-1?__cf_chl_rt_tk=lRObVKlaTnxhxmp.ui76kql0CGzIpe5HfQl4i1X8Q28-1795532508-1.0.1.1-ltKNqk7kOj438tBuhIB_H_vOvkQ0.BLlaOT.6cnkSG0",
+      "finalUrl": "https://mapple.fun/watch/tv/1399-1-1",
       "pageMedia": [],
+      "frames": [
+        "https://mapple.fun/watch/tv/1399-1-1"
+      ],
+      "frameHosts": [
+        "mapple.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Just a moment...",
-      "pageText": "mapple.fun Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f94a851f925598 Performanc…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access mapple.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
       "laneLabel": "Mapple",
       "origin": "https://mapple.fun",
       "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
@@ -1206,9 +1285,9 @@
         {
           "url": "https://mapple.fun/watch/tv/46260-1-1",
           "status": 403,
-          "ms": 61,
+          "ms": 41,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 5807,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1226,14 +1305,21 @@
         {
           "url": "https://mapple.fun/watch/tv/46260-1-1",
           "status": 403,
-          "ms": 124
+          "ms": 108
         }
       ],
-      "finalUrl": "https://mapple.fun/watch/tv/46260-1-1?__cf_chl_rt_tk=.Ijx0d4CemFFrZ.KUU4_vynQwvtwWMJADV1Mrn5buwA-1795532521-1.0.1.1-Kvzr.GelXtQ6NQ2dr3UVndA0uFxX9Nxt.sFC_CKVi_k",
+      "finalUrl": "https://mapple.fun/watch/tv/46260-1-1",
       "pageMedia": [],
+      "frames": [
+        "https://mapple.fun/watch/tv/46260-1-1"
+      ],
+      "frameHosts": [
+        "mapple.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Just a moment...",
-      "pageText": "mapple.fun Performing security verification This website uses a security service to protect against malicious bots. This page is displayed while the website verifies you are not a bot. Ray ID: a5f94ad29f1cb241 Performanc…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access mapple.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
       "laneLabel": "Mapple",
       "origin": "https://mapple.fun",
       "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
@@ -1248,7 +1334,7 @@
         {
           "url": "https://vidsync.pro/api/stream?type=movie&tmdb=550",
           "status": 200,
-          "ms": 178,
+          "ms": 169,
           "contentType": "text/html; charset=utf-8",
           "bytes": 3327,
           "media": []
@@ -1265,18 +1351,8 @@
       "title": "movie-550",
       "method": "browser",
       "kind": "json-api",
-      "requests": [
-        {
-          "url": "https://vidsync.pro/watch/movie/550",
-          "status": 200,
-          "ms": 801
-        }
-      ],
-      "finalUrl": "https://vidsync.pro/watch/movie/550",
-      "pageMedia": [],
-      "result": "no-media-in-page",
-      "pageTitle": "VidSync — Unified Media Streaming & Manga Embed",
-      "pageText": "🤖 Automated Browser Detected Our shield detected browser automation or a headless environment. Live playback requires a normal browser session. Disable automation extensions and reload if this is a mistake. REF BD-autom…",
+      "requests": [],
+      "result": "not-applicable",
       "laneLabel": "VidSync",
       "origin": "https://vidsync.pro",
       "note": "source-3: /api/stream and /api/core/streams"
@@ -1291,7 +1367,7 @@
         {
           "url": "https://vidsync.pro/api/stream?type=movie&tmdb=27205",
           "status": 200,
-          "ms": 120,
+          "ms": 113,
           "contentType": "text/html; charset=utf-8",
           "bytes": 3327,
           "media": []
@@ -1308,18 +1384,8 @@
       "title": "movie-27205",
       "method": "browser",
       "kind": "json-api",
-      "requests": [
-        {
-          "url": "https://vidsync.pro/watch/movie/27205",
-          "status": 200,
-          "ms": 317
-        }
-      ],
-      "finalUrl": "https://vidsync.pro/watch/movie/27205",
-      "pageMedia": [],
-      "result": "no-media-in-page",
-      "pageTitle": "VidSync — Unified Media Streaming & Manga Embed",
-      "pageText": "🤖 Automated Browser Detected Our shield detected browser automation or a headless environment. Live playback requires a normal browser session. Disable automation extensions and reload if this is a mistake. REF BD-autom…",
+      "requests": [],
+      "result": "not-applicable",
       "laneLabel": "VidSync",
       "origin": "https://vidsync.pro",
       "note": "source-3: /api/stream and /api/core/streams"
@@ -1334,7 +1400,7 @@
         {
           "url": "https://vidsync.pro/api/stream?type=tv&tmdb=1399&season=1&episode=1",
           "status": 200,
-          "ms": 104,
+          "ms": 84,
           "contentType": "text/html; charset=utf-8",
           "bytes": 3327,
           "media": []
@@ -1351,18 +1417,8 @@
       "title": "tv-1399-1-1",
       "method": "browser",
       "kind": "json-api",
-      "requests": [
-        {
-          "url": "https://vidsync.pro/watch/tv/1399",
-          "status": 200,
-          "ms": 385
-        }
-      ],
-      "finalUrl": "https://vidsync.pro/watch/tv/1399",
-      "pageMedia": [],
-      "result": "no-media-in-page",
-      "pageTitle": "VidSync — Unified Media Streaming & Manga Embed",
-      "pageText": "🤖 Automated Browser Detected Our shield detected browser automation or a headless environment. Live playback requires a normal browser session. Disable automation extensions and reload if this is a mistake. REF BD-autom…",
+      "requests": [],
+      "result": "not-applicable",
       "laneLabel": "VidSync",
       "origin": "https://vidsync.pro",
       "note": "source-3: /api/stream and /api/core/streams"
@@ -1377,7 +1433,7 @@
         {
           "url": "https://vidsync.pro/api/stream?type=tv&tmdb=46260&season=1&episode=1",
           "status": 200,
-          "ms": 395,
+          "ms": 54,
           "contentType": "text/html; charset=utf-8",
           "bytes": 3327,
           "media": []
@@ -1394,18 +1450,8 @@
       "title": "anime-46260-1-1",
       "method": "browser",
       "kind": "json-api",
-      "requests": [
-        {
-          "url": "https://vidsync.pro/watch/tv/46260",
-          "status": 200,
-          "ms": 498
-        }
-      ],
-      "finalUrl": "https://vidsync.pro/watch/tv/46260",
-      "pageMedia": [],
-      "result": "no-media-in-page",
-      "pageTitle": "VidSync — Unified Media Streaming & Manga Embed",
-      "pageText": "🤖 Automated Browser Detected Our shield detected browser automation or a headless environment. Live playback requires a normal browser session. Disable automation extensions and reload if this is a mistake. REF BD-autom…",
+      "requests": [],
+      "result": "not-applicable",
       "laneLabel": "VidSync",
       "origin": "https://vidsync.pro",
       "note": "source-3: /api/stream and /api/core/streams"
@@ -1420,9 +1466,9 @@
         {
           "url": "https://vidzen.fun/watch/movie/550",
           "status": 403,
-          "ms": 113,
+          "ms": 82,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 4911,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1440,11 +1486,18 @@
         {
           "url": "https://vidzen.fun/watch/movie/550",
           "status": 403,
-          "ms": 170
+          "ms": 114
         }
       ],
       "finalUrl": "https://vidzen.fun/watch/movie/550",
       "pageMedia": [],
+      "frames": [
+        "https://vidzen.fun/watch/movie/550"
+      ],
+      "frameHosts": [
+        "vidzen.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Attention Required! | Cloudflare",
       "pageText": "Sorry, you have been blocked You are unable to access vidzen.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
@@ -1464,7 +1517,7 @@
           "status": 403,
           "ms": 73,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 4911,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1482,11 +1535,18 @@
         {
           "url": "https://vidzen.fun/watch/movie/27205",
           "status": 403,
-          "ms": 172
+          "ms": 98
         }
       ],
       "finalUrl": "https://vidzen.fun/watch/movie/27205",
       "pageMedia": [],
+      "frames": [
+        "https://vidzen.fun/watch/movie/27205"
+      ],
+      "frameHosts": [
+        "vidzen.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Attention Required! | Cloudflare",
       "pageText": "Sorry, you have been blocked You are unable to access vidzen.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
@@ -1504,9 +1564,9 @@
         {
           "url": "https://vidzen.fun/watch/tv/1399/1/1",
           "status": 403,
-          "ms": 62,
+          "ms": 41,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 4911,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1524,11 +1584,18 @@
         {
           "url": "https://vidzen.fun/watch/tv/1399/1/1",
           "status": 403,
-          "ms": 210
+          "ms": 105
         }
       ],
       "finalUrl": "https://vidzen.fun/watch/tv/1399/1/1",
       "pageMedia": [],
+      "frames": [
+        "https://vidzen.fun/watch/tv/1399/1/1"
+      ],
+      "frameHosts": [
+        "vidzen.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Attention Required! | Cloudflare",
       "pageText": "Sorry, you have been blocked You are unable to access vidzen.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
@@ -1546,9 +1613,9 @@
         {
           "url": "https://vidzen.fun/watch/tv/46260/1/1",
           "status": 403,
-          "ms": 84,
+          "ms": 32,
           "contentType": "text/html; charset=UTF-8",
-          "bytes": 4911,
+          "bytes": 4910,
           "media": []
         }
       ],
@@ -1566,11 +1633,18 @@
         {
           "url": "https://vidzen.fun/watch/tv/46260/1/1",
           "status": 403,
-          "ms": 187
+          "ms": 99
         }
       ],
       "finalUrl": "https://vidzen.fun/watch/tv/46260/1/1",
       "pageMedia": [],
+      "frames": [
+        "https://vidzen.fun/watch/tv/46260/1/1"
+      ],
+      "frameHosts": [
+        "vidzen.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Attention Required! | Cloudflare",
       "pageText": "Sorry, you have been blocked You are unable to access vidzen.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the securi…",
@@ -1587,15 +1661,14 @@
       "requests": [
         {
           "url": "https://vidnest.fun/movie/550",
-          "status": 200,
-          "ms": 246,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 16309,
+          "status": 403,
+          "ms": 83,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "result": "no-media-in-html",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1608,15 +1681,22 @@
       "requests": [
         {
           "url": "https://vidnest.fun/movie/550",
-          "status": 200,
-          "ms": 270
+          "status": 403,
+          "ms": 90
         }
       ],
       "finalUrl": "https://vidnest.fun/movie/550",
       "pageMedia": [],
+      "frames": [
+        "https://vidnest.fun/movie/550"
+      ],
+      "frameHosts": [
+        "vidnest.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "",
-      "pageText": "",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vidnest.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1630,15 +1710,14 @@
       "requests": [
         {
           "url": "https://vidnest.fun/movie/27205",
-          "status": 200,
-          "ms": 199,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 16315,
+          "status": 403,
+          "ms": 105,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "result": "no-media-in-html",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1651,46 +1730,22 @@
       "requests": [
         {
           "url": "https://vidnest.fun/movie/27205",
-          "status": 200,
-          "ms": 324
+          "status": 403,
+          "ms": 165
         }
       ],
       "finalUrl": "https://vidnest.fun/movie/27205",
-      "pageMedia": [
-        "https://pwcloud.animanga.fun/hls/aHR0cHM6Ly9oZ3BsYXljZG4uY29tL3N0cmVhbS85blB3dGljbnFTZDZIT093bmRjRUt3L2tqaGhpdWFoaXVoZ2loZGYvMTc5NTU3NTgyOS82MTA5MjkyNy9tYXN0ZXIubTN1OA/master.m3u8"
+      "pageMedia": [],
+      "frames": [
+        "https://vidnest.fun/movie/27205"
       ],
-      "proof": {
-        "url": "https://pwcloud.animanga.fun/hls/aHR0cHM6Ly9oZ3BsYXljZG4uY29tL3N0cmVhbS85blB3dGljbnFTZDZIT093bmRjRUt3L2tqaGhpdWFoaXVoZ2loZGYvMTc5NTU3NTgyOS82MTA5MjkyNy9tYXN0ZXIubTN1OA/master.m3u8",
-        "steps": [
-          {
-            "kind": "manifest",
-            "status": 200,
-            "contentType": "application/vnd.apple.mpegurl",
-            "ms": 756,
-            "bytes": 310
-          },
-          {
-            "kind": "variant",
-            "status": 200,
-            "ms": 416,
-            "bytes": 196220
-          },
-          {
-            "kind": "segment",
-            "status": 206,
-            "ms": 27,
-            "bytes": 262144,
-            "contentType": "image/png"
-          }
-        ],
-        "contentType": "application/vnd.apple.mpegurl",
-        "kind": "hls",
-        "encrypted": false,
-        "bytes": 262144,
-        "segmentContentType": "image/png",
-        "ok": true
-      },
-      "result": "playable",
+      "frameHosts": [
+        "vidnest.fun",
+        "static.cloudflareinsights.com"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vidnest.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1704,15 +1759,14 @@
       "requests": [
         {
           "url": "https://vidnest.fun/tv/1399/1/1",
-          "status": 200,
-          "ms": 218,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 17340,
+          "status": 403,
+          "ms": 39,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "result": "no-media-in-html",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1725,47 +1779,22 @@
       "requests": [
         {
           "url": "https://vidnest.fun/tv/1399/1/1",
-          "status": 200,
-          "ms": 379
+          "status": 403,
+          "ms": 116
         }
       ],
       "finalUrl": "https://vidnest.fun/tv/1399/1/1",
-      "pageMedia": [
-        "https://pwcloud.animanga.fun/hls/aHR0cHM6Ly9oZ3BsYXljZG4uY29tL3N0cmVhbS9wMzFCb1ZOdWJwNFpxRnI4ZXhqSTZ3L2tqaGhpdWFoaXVoZ2loZGYvMTc5NTU3NTE0Ni82NzUwOTU1OS9tYXN0ZXIubTN1OA/master.m3u8",
-        "https://pwcloud.animanga.fun/hls/aHR0cHM6Ly9oZ3BsYXljZG4uY29tL3N0cmVhbS9wMzFCb1ZOdWJwNFpxRnI4ZXhqSTZ3L2tqaGhpdWFoaXVoZ2loZGYvMTc5NTU3NTE0Ni82NzUwOTU1OS9tYXN0ZXIubTN1OA/index-v1-a1.m3u8"
+      "pageMedia": [],
+      "frames": [
+        "https://vidnest.fun/tv/1399/1/1"
       ],
-      "proof": {
-        "url": "https://pwcloud.animanga.fun/hls/aHR0cHM6Ly9oZ3BsYXljZG4uY29tL3N0cmVhbS9wMzFCb1ZOdWJwNFpxRnI4ZXhqSTZ3L2tqaGhpdWFoaXVoZ2loZGYvMTc5NTU3NTE0Ni82NzUwOTU1OS9tYXN0ZXIubTN1OA/master.m3u8",
-        "steps": [
-          {
-            "kind": "manifest",
-            "status": 200,
-            "contentType": "application/vnd.apple.mpegurl",
-            "ms": 770,
-            "bytes": 311
-          },
-          {
-            "kind": "variant",
-            "status": 200,
-            "ms": 396,
-            "bytes": 81774
-          },
-          {
-            "kind": "segment",
-            "status": 206,
-            "ms": 14,
-            "bytes": 262144,
-            "contentType": "image/png"
-          }
-        ],
-        "contentType": "application/vnd.apple.mpegurl",
-        "kind": "hls",
-        "encrypted": false,
-        "bytes": 262144,
-        "segmentContentType": "image/png",
-        "ok": true
-      },
-      "result": "playable",
+      "frameHosts": [
+        "vidnest.fun",
+        "static.cloudflareinsights.com"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vidnest.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1779,15 +1808,14 @@
       "requests": [
         {
           "url": "https://vidnest.fun/tv/46260/1/1",
-          "status": 200,
-          "ms": 219,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 17343,
+          "status": 403,
+          "ms": 40,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "result": "no-media-in-html",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1800,15 +1828,22 @@
       "requests": [
         {
           "url": "https://vidnest.fun/tv/46260/1/1",
-          "status": 200,
-          "ms": 283
+          "status": 403,
+          "ms": 91
         }
       ],
       "finalUrl": "https://vidnest.fun/tv/46260/1/1",
       "pageMedia": [],
+      "frames": [
+        "https://vidnest.fun/tv/46260/1/1"
+      ],
+      "frameHosts": [
+        "vidnest.fun",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "",
-      "pageText": "",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access vidnest.fun Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "VidNest",
       "origin": "https://vidnest.fun",
       "note": "source-10: per-lane encrypted API, six lanes"
@@ -1823,7 +1858,7 @@
         {
           "url": "https://core.vidzee.wtf/embed/movie/550",
           "status": 404,
-          "ms": 248,
+          "ms": 272,
           "contentType": "application/json; charset=utf-8",
           "bytes": 47,
           "media": []
@@ -1843,7 +1878,7 @@
         {
           "url": "https://player.vidzee.wtf/embed/movie/550",
           "status": 200,
-          "ms": 342
+          "ms": 329
         }
       ],
       "finalUrl": "https://player.vidzee.wtf/embed/movie/550",
@@ -1855,6 +1890,19 @@
         "https://cdn.ngcloud.app/movie/qPwg5VI4inAyuQFSRPfspUl7z7OCHwAyzytEY5hF68s.sayjRV5C/bigtits.m3u8",
         "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795541977&KeyName=Signature&Signature=FLBgIspuN9RQ3S3pYvQjw1RNTSr1Ov4i1htglcaoIHkvbXPje_36uSrNF94WYxYcy3Ayj5zXu3YFMqwjQRo-Bw=="
       ],
+      "frames": [
+        "https://player.vidzee.wtf/embed/movie/550"
+      ],
+      "frameHosts": [
+        "player.vidzee.wtf",
+        "static.cloudflareinsights.com",
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
+        "umommy.cyou",
+        "api.themoviedb.org",
+        "image.tmdb.org",
+        "core.vidzee.wtf"
+      ],
       "proof": {
         "url": "https://vercetti.org/movie/Wf3dx7YOLgBbi1ppZUeAZakpqq6CHgoDZRCrv-e2U-U.WHzJyYaK/bigtits.m3u8",
         "steps": [
@@ -1862,7 +1910,7 @@
             "kind": "manifest",
             "status": 403,
             "contentType": "text/plain;charset=UTF-8",
-            "ms": 267,
+            "ms": 139,
             "bytes": 24
           }
         ],
@@ -1883,7 +1931,7 @@
         {
           "url": "https://core.vidzee.wtf/embed/movie/27205",
           "status": 404,
-          "ms": 169,
+          "ms": 220,
           "contentType": "application/json; charset=utf-8",
           "bytes": 49,
           "media": []
@@ -1903,7 +1951,7 @@
         {
           "url": "https://player.vidzee.wtf/embed/movie/27205",
           "status": 200,
-          "ms": 296
+          "ms": 298
         }
       ],
       "finalUrl": "https://player.vidzee.wtf/embed/movie/27205",
@@ -1915,6 +1963,19 @@
         "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/17d60010d604994c11d405d66a1b468a/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2p1RRdXWqNGeOR1ZwoFRKhWTUlEeZ…",
         "https://cdn30091.asrmo449ddj.com/stream2/i-arch-400/17d60010d604994c11d405d66a1b468a/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2p1RRdXWqNGeOR1ZwoFRKhWTUlEeZ1W…"
       ],
+      "frames": [
+        "https://player.vidzee.wtf/embed/movie/27205"
+      ],
+      "frameHosts": [
+        "player.vidzee.wtf",
+        "static.cloudflareinsights.com",
+        "fonts.googleapis.com",
+        "umommy.cyou",
+        "fonts.gstatic.com",
+        "api.themoviedb.org",
+        "image.tmdb.org",
+        "wu.unspeedsnuffer.com"
+      ],
       "proof": {
         "url": "https://vercetti.org/movie/bTwndMfHcTPIrd1MKnTeMGFaiISibv0dktrzMQf9h_Y.nsCBPAyV/bigtits.m3u8",
         "steps": [
@@ -1922,7 +1983,7 @@
             "kind": "manifest",
             "status": 403,
             "contentType": "text/plain;charset=UTF-8",
-            "ms": 75,
+            "ms": 35,
             "bytes": 24
           }
         ],
@@ -1943,7 +2004,7 @@
         {
           "url": "https://core.vidzee.wtf/embed/tv/1399/1/1",
           "status": 404,
-          "ms": 177,
+          "ms": 218,
           "contentType": "application/json; charset=utf-8",
           "bytes": 49,
           "media": []
@@ -1963,11 +2024,21 @@
         {
           "url": "https://player.vidzee.wtf/embed/tv/1399",
           "status": 404,
-          "ms": 308
+          "ms": 295
         }
       ],
       "finalUrl": "https://player.vidzee.wtf/embed/tv/1399",
       "pageMedia": [],
+      "frames": [
+        "https://player.vidzee.wtf/embed/tv/1399"
+      ],
+      "frameHosts": [
+        "player.vidzee.wtf",
+        "static.cloudflareinsights.com",
+        "fonts.googleapis.com",
+        "umommy.cyou",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Vidzee Player",
       "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved.",
@@ -1985,7 +2056,7 @@
         {
           "url": "https://core.vidzee.wtf/embed/tv/46260/1/1",
           "status": 404,
-          "ms": 179,
+          "ms": 207,
           "contentType": "application/json; charset=utf-8",
           "bytes": 50,
           "media": []
@@ -2005,11 +2076,21 @@
         {
           "url": "https://player.vidzee.wtf/embed/tv/46260",
           "status": 404,
-          "ms": 297
+          "ms": 327
         }
       ],
       "finalUrl": "https://player.vidzee.wtf/embed/tv/46260",
       "pageMedia": [],
+      "frames": [
+        "https://player.vidzee.wtf/embed/tv/46260"
+      ],
+      "frameHosts": [
+        "player.vidzee.wtf",
+        "static.cloudflareinsights.com",
+        "fonts.googleapis.com",
+        "umommy.cyou",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Vidzee Player",
       "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved.",
@@ -2027,7 +2108,7 @@
         {
           "url": "https://novuscloud.buzz/embed/ani/20/1/sub?k=1",
           "status": 200,
-          "ms": 514,
+          "ms": 610,
           "contentType": "text/html; charset=UTF-8",
           "bytes": 33265,
           "media": []
@@ -2037,7 +2118,7 @@
       "preview": "<!DOCTYPE html> <html> <head> <title>Ep 1: Enter: Naruto Uzumaki! - NovusCloud</title> <meta charset=\"UTF-8\" /> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\" /> <meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\" /> <li…",
       "laneLabel": "NovusCloud",
       "origin": "https://novuscloud.buzz",
-      "note": "source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:\"<signed api>\""
+      "note": "source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:\"<signed api>\"; page says \"Embedded playback only\""
     },
     {
       "lane": "novuscloud",
@@ -2048,17 +2129,28 @@
         {
           "url": "https://novuscloud.buzz/embed/ani/20/1/sub",
           "status": 200,
-          "ms": 1317
+          "ms": 1746
         }
       ],
       "finalUrl": "https://novuscloud.buzz/embed/ani/20/1/sub",
       "pageMedia": [],
+      "frames": [
+        "https://novuscloud.buzz/embed/ani/20/1/sub"
+      ],
+      "frameHosts": [
+        "novuscloud.buzz",
+        "static.cloudflareinsights.com",
+        "umami.flixera.co",
+        "",
+        "usrpubtrck.com",
+        "rapidadexchange.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Ep 1: Enter: Naruto Uzumaki! - NovusCloud",
       "pageText": "Embedded playback only This player works inside an embed on your site. Copy the iframe embed code to start playback.",
       "laneLabel": "NovusCloud",
       "origin": "https://novuscloud.buzz",
-      "note": "source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:\"<signed api>\""
+      "note": "source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:\"<signed api>\"; page says \"Embedded playback only\""
     },
     {
       "lane": "megaplay",
@@ -2082,11 +2174,21 @@
         {
           "url": "https://megaplay.buzz/stream/ani/20/1/sub",
           "status": 200,
-          "ms": 295
+          "ms": 293
         }
       ],
       "finalUrl": "https://megaplay.buzz/stream/ani/20/1/sub",
       "pageMedia": [],
+      "frames": [
+        "https://megaplay.buzz/stream/ani/20/1/sub"
+      ],
+      "frameHosts": [
+        "megaplay.buzz",
+        "static.cloudflareinsights.com",
+        "fonts.googleapis.com",
+        "cdnjs.cloudflare.com",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Error - MegaPlay",
       "pageText": "We're Sorry! We can't find the file you are looking for. It maybe got deleted by the owner or was removed due a copyright violation. Error Code: 410",
@@ -2104,7 +2206,7 @@
         {
           "url": "https://mikaza.buzz/embed/haiku/ani/20/1/jpn",
           "status": 200,
-          "ms": 432,
+          "ms": 622,
           "contentType": "text/html; charset=utf-8",
           "bytes": 5667,
           "media": []
@@ -2125,21 +2227,35 @@
         {
           "url": "https://mikaza.buzz/embed/haiku/ani/20/1/jpn",
           "status": 200,
-          "ms": 1349
+          "ms": 1523
         }
       ],
       "finalUrl": "https://mikaza.buzz/embed/haiku/ani/20/1/jpn",
       "pageMedia": [
-        "https://mikaza.buzz/p/8rb10Ryewn6XnagWQKnomEA3YLfh9Bs5tbv-TxnDWdFuNBFnPeKmjwUrUoISVIYivL_CUNs0CUodCztuvulXdMiNwvu-Nd-57EfnZqMU758jyLkBbO8naUsFnQTwe-JcEG6vP-a0pz55KPeJzoFu7nKVkvu5M4Aw80jmkd_MWSCokoK8h9…"
+        "https://mikaza.buzz/p/uMDshRNllLe-Hnf-XlQjkRxeQYe_Xewn6zL7kIGesFdCjruNGwJQFK0kVyOBCDjUsmIXymynenaakVyyO6AKgDyUDzDlpk3zt8oQM9hFXBlXc_ebd09G_DQUxozlQzN7EVrhXv1fSAvqmBVfPtZ98DBaJ6aMDtwbi53JANpnPtStCty2Zf…"
+      ],
+      "frames": [
+        "https://mikaza.buzz/embed/haiku/ani/20/1/jpn",
+        "chrome-error://chromewebdata/"
+      ],
+      "frameHosts": [
+        "mikaza.buzz",
+        "static.cloudflareinsights.com",
+        "dvwztnx4ab3fl.cloudfront.net",
+        "accounts.google.com",
+        "www.facebook.com",
+        "liveandhadapickup.org",
+        "ukankingwithea.com",
+        "dgoldsaidthewal.org"
       ],
       "proof": {
-        "url": "https://mikaza.buzz/p/8rb10Ryewn6XnagWQKnomEA3YLfh9Bs5tbv-TxnDWdFuNBFnPeKmjwUrUoISVIYivL_CUNs0CUodCztuvulXdMiNwvu-Nd-57EfnZqMU758jyLkBbO8naUsFnQTwe-JcEG6vP-a0pz55KPeJzoFu7nKVkvu5M4Aw80jmkd_MWSCokoK8h9…",
+        "url": "https://mikaza.buzz/p/uMDshRNllLe-Hnf-XlQjkRxeQYe_Xewn6zL7kIGesFdCjruNGwJQFK0kVyOBCDjUsmIXymynenaakVyyO6AKgDyUDzDlpk3zt8oQM9hFXBlXc_ebd09G_DQUxozlQzN7EVrhXv1fSAvqmBVfPtZ98DBaJ6aMDtwbi53JANpnPtStCty2Zf…",
         "steps": [
           {
             "kind": "mp4",
             "status": 206,
             "contentType": "video/mp4",
-            "ms": 361
+            "ms": 477
           }
         ],
         "bytes": 5242880,
@@ -2173,27 +2289,41 @@
         {
           "url": "https://animesalt.cx/watch/20",
           "status": 200,
-          "ms": 1279
+          "ms": 1989
         }
       ],
       "finalUrl": "https://animesalt.cx/movies/watchmen-chapter-i/",
       "pageMedia": [
-        "https://ravok.buzz/cdn/hls/47e064562645dd194f6563bb3713979e/master.m3u8?md5=spCccPD-AXNUPtcMmlxtCA&expires=1795540017"
+        "https://ravok.buzz/cdn/hls/47e064562645dd194f6563bb3713979e/master.m3u8?md5=noDIKpqllp-ayCeSm-BajQ&expires=1795541026"
+      ],
+      "frames": [
+        "https://animesalt.cx/movies/watchmen-chapter-i/",
+        "https://ravok.buzz/video/997440836d4c2346926d8aca03690f78"
+      ],
+      "frameHosts": [
+        "animesalt.cx",
+        "www.googletagmanager.com",
+        "www.google-analytics.com",
+        "static.cloudflareinsights.com",
+        "image.tmdb.org",
+        "fj.rybatquick.com",
+        "ravok.buzz",
+        "code.jquery.com"
       ],
       "proof": {
-        "url": "https://ravok.buzz/cdn/hls/47e064562645dd194f6563bb3713979e/master.m3u8?md5=spCccPD-AXNUPtcMmlxtCA&expires=1795540017",
+        "url": "https://ravok.buzz/cdn/hls/47e064562645dd194f6563bb3713979e/master.m3u8?md5=noDIKpqllp-ayCeSm-BajQ&expires=1795541026",
         "steps": [
           {
             "kind": "manifest",
             "status": 200,
             "contentType": "application/x-mpegURL",
-            "ms": 470,
+            "ms": 373,
             "bytes": 3172
           },
           {
             "kind": "segment",
             "status": 200,
-            "ms": 518,
+            "ms": 1028,
             "bytes": 385035,
             "contentType": "application/x-mpegURL"
           }
@@ -2219,7 +2349,7 @@
         {
           "url": "https://vidbolt.xyz/embed/movie/550",
           "status": 200,
-          "ms": 202,
+          "ms": 459,
           "contentType": "text/html; charset=utf-8",
           "bytes": 8839,
           "media": []
@@ -2236,9 +2366,25 @@
       "title": "movie-550",
       "method": "browser",
       "kind": "js-player",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://vidbolt.xyz/embed/movie/550\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/movie/550",
+          "status": 0,
+          "ms": 15033
+        }
+      ],
+      "navigation": "page.goto: Timeout 15000ms exceeded.",
+      "finalUrl": "https://vidbolt.xyz/embed/movie/550",
+      "pageMedia": [],
+      "frames": [
+        "https://vidbolt.xyz/embed/movie/550"
+      ],
+      "frameHosts": [
+        "vidbolt.xyz"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "404 Not Found",
+      "pageText": "404 Page not found",
       "laneLabel": "VidBolt (source-1 family)",
       "origin": "https://vidbolt.xyz",
       "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
@@ -2253,7 +2399,7 @@
         {
           "url": "https://vidbolt.xyz/embed/movie/27205",
           "status": 200,
-          "ms": 209,
+          "ms": 241,
           "contentType": "text/html; charset=utf-8",
           "bytes": 8840,
           "media": []
@@ -2270,9 +2416,25 @@
       "title": "movie-27205",
       "method": "browser",
       "kind": "js-player",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://vidbolt.xyz/embed/movie/27205\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/movie/27205",
+          "status": 0,
+          "ms": 15068
+        }
+      ],
+      "navigation": "page.goto: Timeout 15000ms exceeded.",
+      "finalUrl": "https://vidbolt.xyz/embed/movie/27205",
+      "pageMedia": [],
+      "frames": [
+        "https://vidbolt.xyz/embed/movie/27205"
+      ],
+      "frameHosts": [
+        "vidbolt.xyz"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "404 Not Found",
+      "pageText": "404 Page not found",
       "laneLabel": "VidBolt (source-1 family)",
       "origin": "https://vidbolt.xyz",
       "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
@@ -2287,7 +2449,7 @@
         {
           "url": "https://vidbolt.xyz/embed/tv/1399/1/1",
           "status": 200,
-          "ms": 200,
+          "ms": 243,
           "contentType": "text/html; charset=utf-8",
           "bytes": 8898,
           "media": []
@@ -2304,9 +2466,25 @@
       "title": "tv-1399-1-1",
       "method": "browser",
       "kind": "js-player",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://vidbolt.xyz/embed/tv/1399/1/1\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/tv/1399/1/1",
+          "status": 0,
+          "ms": 15039
+        }
+      ],
+      "navigation": "page.goto: Timeout 15000ms exceeded.",
+      "finalUrl": "https://vidbolt.xyz/embed/tv/1399/1/1",
+      "pageMedia": [],
+      "frames": [
+        "https://vidbolt.xyz/embed/tv/1399/1/1"
+      ],
+      "frameHosts": [
+        "vidbolt.xyz"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "404 Not Found",
+      "pageText": "404 Page not found",
       "laneLabel": "VidBolt (source-1 family)",
       "origin": "https://vidbolt.xyz",
       "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
@@ -2321,7 +2499,7 @@
         {
           "url": "https://vidbolt.xyz/embed/tv/46260/1/1",
           "status": 200,
-          "ms": 180,
+          "ms": 268,
           "contentType": "text/html; charset=utf-8",
           "bytes": 8873,
           "media": []
@@ -2338,9 +2516,25 @@
       "title": "anime-46260-1-1",
       "method": "browser",
       "kind": "js-player",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: Timeout 15000ms exceeded.\nCall log:\n  - navigating to \"https://vidbolt.xyz/embed/tv/46260/1/1\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/tv/46260/1/1",
+          "status": 0,
+          "ms": 15058
+        }
+      ],
+      "navigation": "page.goto: Timeout 15000ms exceeded.",
+      "finalUrl": "https://vidbolt.xyz/embed/tv/46260/1/1",
+      "pageMedia": [],
+      "frames": [
+        "https://vidbolt.xyz/embed/tv/46260/1/1"
+      ],
+      "frameHosts": [
+        "vidbolt.xyz"
+      ],
+      "result": "no-media-in-page",
+      "pageTitle": "404 Not Found",
+      "pageText": "404 Page not found",
       "laneLabel": "VidBolt (source-1 family)",
       "origin": "https://vidbolt.xyz",
       "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
@@ -2355,7 +2549,7 @@
         {
           "url": "https://tgvidx.lovable.app/?type=movie&tmdb=550",
           "status": 200,
-          "ms": 1051,
+          "ms": 1198,
           "contentType": "text/html; charset=utf-8",
           "bytes": 23675,
           "media": []
@@ -2374,16 +2568,23 @@
       "kind": "js-player",
       "requests": [
         {
-          "url": "https://tgvidx.lovable.app/?type=movie&tmdb=550",
-          "status": 200,
-          "ms": 806
+          "url": "https://tgvidx.lovable.app/embed?type=movie&tmdb=550",
+          "status": 404,
+          "ms": 884
         }
       ],
-      "finalUrl": "https://tgvidx.lovable.app/?type=movie&tmdb=550",
+      "finalUrl": "https://tgvidx.lovable.app/embed?type=movie&tmdb=550",
       "pageMedia": [],
+      "frames": [
+        "https://tgvidx.lovable.app/embed?type=movie&tmdb=550"
+      ],
+      "frameHosts": [
+        "tgvidx.lovable.app",
+        "fonts.googleapis.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "TGVID X — Embeddable Movie & TV Player",
-      "pageText": "X TGVID X Builder Features Discord Docs Multi-server streaming embed Stream any movie or series with one iframe TGVID X gives your site a fast, beautiful player with server switching, multi-audio, quality and subtitles b…",
+      "pageTitle": "TGFLIX — Movie & TV Player",
+      "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved. Go home",
       "laneLabel": "TGVIDX",
       "origin": "https://tgvidx.lovable.app",
       "note": "source-17: dynamic server inventory, aggregates other upstreams"
@@ -2398,7 +2599,7 @@
         {
           "url": "https://tgvidx.lovable.app/?type=movie&tmdb=27205",
           "status": 200,
-          "ms": 448,
+          "ms": 311,
           "contentType": "text/html; charset=utf-8",
           "bytes": 23675,
           "media": []
@@ -2417,16 +2618,23 @@
       "kind": "js-player",
       "requests": [
         {
-          "url": "https://tgvidx.lovable.app/?type=movie&tmdb=27205",
-          "status": 200,
-          "ms": 474
+          "url": "https://tgvidx.lovable.app/embed?type=movie&tmdb=27205",
+          "status": 404,
+          "ms": 591
         }
       ],
-      "finalUrl": "https://tgvidx.lovable.app/?type=movie&tmdb=27205",
+      "finalUrl": "https://tgvidx.lovable.app/embed?type=movie&tmdb=27205",
       "pageMedia": [],
+      "frames": [
+        "https://tgvidx.lovable.app/embed?type=movie&tmdb=27205"
+      ],
+      "frameHosts": [
+        "tgvidx.lovable.app",
+        "fonts.googleapis.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "TGVID X — Embeddable Movie & TV Player",
-      "pageText": "X TGVID X Builder Features Discord Docs Multi-server streaming embed Stream any movie or series with one iframe TGVID X gives your site a fast, beautiful player with server switching, multi-audio, quality and subtitles b…",
+      "pageTitle": "TGFLIX — Movie & TV Player",
+      "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved. Go home",
       "laneLabel": "TGVIDX",
       "origin": "https://tgvidx.lovable.app",
       "note": "source-17: dynamic server inventory, aggregates other upstreams"
@@ -2441,7 +2649,7 @@
         {
           "url": "https://tgvidx.lovable.app/?type=tv&tmdb=1399&s=1&e=1",
           "status": 200,
-          "ms": 214,
+          "ms": 272,
           "contentType": "text/html; charset=utf-8",
           "bytes": 23675,
           "media": []
@@ -2460,16 +2668,23 @@
       "kind": "js-player",
       "requests": [
         {
-          "url": "https://tgvidx.lovable.app/?type=tv&tmdb=1399",
-          "status": 200,
-          "ms": 682
+          "url": "https://tgvidx.lovable.app/embed?type=tv&tmdb=1399&season=1&episode=1",
+          "status": 404,
+          "ms": 611
         }
       ],
-      "finalUrl": "https://tgvidx.lovable.app/?type=tv&tmdb=1399",
+      "finalUrl": "https://tgvidx.lovable.app/embed?type=tv&tmdb=1399&season=1&episode=1",
       "pageMedia": [],
+      "frames": [
+        "https://tgvidx.lovable.app/embed?type=tv&tmdb=1399&season=1&episode=1"
+      ],
+      "frameHosts": [
+        "tgvidx.lovable.app",
+        "fonts.googleapis.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "TGVID X — Embeddable Movie & TV Player",
-      "pageText": "X TGVID X Builder Features Discord Docs Multi-server streaming embed Stream any movie or series with one iframe TGVID X gives your site a fast, beautiful player with server switching, multi-audio, quality and subtitles b…",
+      "pageTitle": "TGFLIX — Movie & TV Player",
+      "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved. Go home",
       "laneLabel": "TGVIDX",
       "origin": "https://tgvidx.lovable.app",
       "note": "source-17: dynamic server inventory, aggregates other upstreams"
@@ -2484,7 +2699,7 @@
         {
           "url": "https://tgvidx.lovable.app/?type=tv&tmdb=46260&s=1&e=1",
           "status": 200,
-          "ms": 223,
+          "ms": 745,
           "contentType": "text/html; charset=utf-8",
           "bytes": 23675,
           "media": []
@@ -2503,16 +2718,23 @@
       "kind": "js-player",
       "requests": [
         {
-          "url": "https://tgvidx.lovable.app/?type=tv&tmdb=46260",
-          "status": 200,
-          "ms": 714
+          "url": "https://tgvidx.lovable.app/embed?type=tv&tmdb=46260&season=1&episode=1",
+          "status": 404,
+          "ms": 734
         }
       ],
-      "finalUrl": "https://tgvidx.lovable.app/?type=tv&tmdb=46260",
+      "finalUrl": "https://tgvidx.lovable.app/embed?type=tv&tmdb=46260&season=1&episode=1",
       "pageMedia": [],
+      "frames": [
+        "https://tgvidx.lovable.app/embed?type=tv&tmdb=46260&season=1&episode=1"
+      ],
+      "frameHosts": [
+        "tgvidx.lovable.app",
+        "fonts.googleapis.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "TGVID X — Embeddable Movie & TV Player",
-      "pageText": "X TGVID X Builder Features Discord Docs Multi-server streaming embed Stream any movie or series with one iframe TGVID X gives your site a fast, beautiful player with server switching, multi-audio, quality and subtitles b…",
+      "pageTitle": "TGFLIX — Movie & TV Player",
+      "pageText": "404 Page not found The page you're looking for doesn't exist or has been moved. Go home",
       "laneLabel": "TGVIDX",
       "origin": "https://tgvidx.lovable.app",
       "note": "source-17: dynamic server inventory, aggregates other upstreams"
@@ -2527,7 +2749,7 @@
         {
           "url": "https://player-4aq.pages.dev/embed/movie/550",
           "status": 0,
-          "ms": 15,
+          "ms": 11,
           "contentType": "",
           "bytes": 0,
           "media": [],
@@ -2538,19 +2760,33 @@
       "result": "unreachable",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
       "title": "movie-550",
       "method": "browser",
       "kind": "signed-proxy",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/movie/550\nCall log:\n  - navigating to \"https://player-4aq.pages.dev/embed/movie/550\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/movie/550",
+          "status": 0,
+          "ms": 10
+        }
+      ],
+      "navigation": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/movie/550",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "pageMedia": [],
+      "frames": [
+        "chrome-error://chromewebdata/"
+      ],
+      "frameHosts": [],
+      "result": "no-media-in-page",
+      "pageTitle": "",
+      "pageText": "",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
@@ -2562,7 +2798,7 @@
         {
           "url": "https://player-4aq.pages.dev/embed/movie/27205",
           "status": 0,
-          "ms": 15,
+          "ms": 3,
           "contentType": "",
           "bytes": 0,
           "media": [],
@@ -2573,19 +2809,33 @@
       "result": "unreachable",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
       "title": "movie-27205",
       "method": "browser",
       "kind": "signed-proxy",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/movie/27205\nCall log:\n  - navigating to \"https://player-4aq.pages.dev/embed/movie/27205\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/movie/27205",
+          "status": 0,
+          "ms": 10
+        }
+      ],
+      "navigation": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/movie/27205",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "pageMedia": [],
+      "frames": [
+        "chrome-error://chromewebdata/"
+      ],
+      "frameHosts": [],
+      "result": "no-media-in-page",
+      "pageTitle": "",
+      "pageText": "",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
@@ -2597,7 +2847,7 @@
         {
           "url": "https://player-4aq.pages.dev/embed/tv/1399/1/1",
           "status": 0,
-          "ms": 17,
+          "ms": 2,
           "contentType": "",
           "bytes": 0,
           "media": [],
@@ -2608,19 +2858,33 @@
       "result": "unreachable",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
       "title": "tv-1399-1-1",
       "method": "browser",
       "kind": "signed-proxy",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/tv/1399/1/1\nCall log:\n  - navigating to \"https://player-4aq.pages.dev/embed/tv/1399/1/1\", waiting until \"domcontentloaded\"\n",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/tv/1399/1/1",
+          "status": 0,
+          "ms": 12
+        }
+      ],
+      "navigation": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/tv/1399/1/1",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "pageMedia": [],
+      "frames": [
+        "chrome-error://chromewebdata/"
+      ],
+      "frameHosts": [],
+      "result": "no-media-in-page",
+      "pageTitle": "",
+      "pageText": "",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
@@ -2632,7 +2896,7 @@
         {
           "url": "https://player-4aq.pages.dev/embed/tv/46260/1/1",
           "status": 0,
-          "ms": 13,
+          "ms": 11,
           "contentType": "",
           "bytes": 0,
           "media": [],
@@ -2643,19 +2907,33 @@
       "result": "unreachable",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "xpass",
       "title": "anime-46260-1-1",
       "method": "browser",
       "kind": "signed-proxy",
-      "requests": [],
-      "result": "browser-error",
-      "error": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/tv/46260/1/1\nCall log:\n  - navigating to \"https://player-4aq.pages.dev/embed/tv/46260/1/1\", waiting until \"domcontentloaded\"",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/tv/46260/1/1",
+          "status": 0,
+          "ms": 11
+        }
+      ],
+      "navigation": "page.goto: net::ERR_NAME_NOT_RESOLVED at https://player-4aq.pages.dev/embed/tv/46260/1/1",
+      "finalUrl": "chrome-error://chromewebdata/",
+      "pageMedia": [],
+      "frames": [
+        "chrome-error://chromewebdata/"
+      ],
+      "frameHosts": [],
+      "result": "no-media-in-page",
+      "pageTitle": "",
+      "pageText": "",
       "laneLabel": "Xpass",
       "origin": "https://freakyniki.elaxo.lol",
-      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+      "note": "source-13: signed /proxyv2; NOTE its recorded player host player-4aq.pages.dev no longer resolves"
     },
     {
       "lane": "nxsha",
@@ -2666,15 +2944,14 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/movie/550",
-          "status": 200,
-          "ms": 220,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 50610,
+          "status": 403,
+          "ms": 75,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "result": "no-media-in-html",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2687,15 +2964,22 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/movie/550",
-          "status": 200,
-          "ms": 351
+          "status": 403,
+          "ms": 104
         }
       ],
       "finalUrl": "https://nxsha.space/watch/movie/550",
       "pageMedia": [],
+      "frames": [
+        "https://nxsha.space/watch/movie/550"
+      ],
+      "frameHosts": [
+        "nxsha.space",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Watch Fight Club | Nxsha",
-      "pageText": "Home Search NxBox WatchList My Space HOME • MOVIE • FIGHT CLUB If a server isn't working, switch to another one using the player controls. For the best experience on Phone, Android TV, and Fire TV, use our app: nxsha.app…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access nxsha.space Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2709,15 +2993,14 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/movie/27205",
-          "status": 200,
-          "ms": 313,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 50614,
+          "status": 403,
+          "ms": 42,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "result": "no-media-in-html",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2730,15 +3013,22 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/movie/27205",
-          "status": 200,
-          "ms": 375
+          "status": 403,
+          "ms": 113
         }
       ],
       "finalUrl": "https://nxsha.space/watch/movie/27205",
       "pageMedia": [],
+      "frames": [
+        "https://nxsha.space/watch/movie/27205"
+      ],
+      "frameHosts": [
+        "nxsha.space",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Watch Inception | Nxsha",
-      "pageText": "Home Search NxBox WatchList My Space HOME • MOVIE • INCEPTION If a server isn't working, switch to another one using the player controls. For the best experience on Phone, Android TV, and Fire TV, use our app: nxsha.app.…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access nxsha.space Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2752,15 +3042,14 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/tv/1399/1/1",
-          "status": 200,
-          "ms": 299,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 50942,
+          "status": 403,
+          "ms": 39,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "result": "no-media-in-html",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2773,15 +3062,22 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/tv/1399/1/1",
-          "status": 200,
-          "ms": 521
+          "status": 403,
+          "ms": 125
         }
       ],
       "finalUrl": "https://nxsha.space/watch/tv/1399/1/1",
       "pageMedia": [],
+      "frames": [
+        "https://nxsha.space/watch/tv/1399/1/1"
+      ],
+      "frameHosts": [
+        "nxsha.space",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "",
-      "pageText": "",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access nxsha.space Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2795,15 +3091,14 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/tv/46260/1/1",
-          "status": 200,
-          "ms": 317,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 50893,
+          "status": 403,
+          "ms": 41,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4911,
           "media": []
         }
       ],
-      "result": "html-no-media",
-      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "result": "no-media-in-html",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2816,15 +3111,22 @@
       "requests": [
         {
           "url": "https://nxsha.space/watch/tv/46260/1/1",
-          "status": 200,
-          "ms": 360
+          "status": 403,
+          "ms": 118
         }
       ],
       "finalUrl": "https://nxsha.space/watch/tv/46260/1/1",
       "pageMedia": [],
+      "frames": [
+        "https://nxsha.space/watch/tv/46260/1/1"
+      ],
+      "frameHosts": [
+        "nxsha.space",
+        "static.cloudflareinsights.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Watch Naruto - S1:E1 | Nxsha",
-      "pageText": "Home Search NxBox WatchList My Space HOME • TV • NARUTO • S1 E1 If a server isn't working, switch to another one using the player controls. For the best experience on Phone, Android TV, and Fire TV, use our app: nxsha.ap…",
+      "pageTitle": "Attention Required! | Cloudflare",
+      "pageText": "Sorry, you have been blocked You are unable to access nxsha.space Why have I been blocked? This website is using a security service to protect itself from online attacks. The action you just performed triggered the secur…",
       "laneLabel": "Nxsha",
       "origin": "https://nxsha.space",
       "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
@@ -2839,7 +3141,7 @@
         {
           "url": "https://blakiteapi.xyz/api/getAllAnime.php",
           "status": 200,
-          "ms": 417,
+          "ms": 707,
           "contentType": "application/json",
           "bytes": 496281,
           "media": []
@@ -2861,7 +3163,7 @@
         {
           "url": "https://blakiteapi.xyz/api/getAllAnime.php",
           "status": 200,
-          "ms": 173,
+          "ms": 224,
           "contentType": "application/json",
           "bytes": 496281,
           "media": []
@@ -2883,7 +3185,7 @@
         {
           "url": "https://blakiteapi.xyz/api/getAllAnime.php",
           "status": 200,
-          "ms": 243,
+          "ms": 222,
           "contentType": "application/json",
           "bytes": 496281,
           "media": []
@@ -2905,7 +3207,7 @@
         {
           "url": "https://blakiteapi.xyz/api/getAllAnime.php",
           "status": 200,
-          "ms": 197,
+          "ms": 211,
           "contentType": "application/json",
           "bytes": 496281,
           "media": []
@@ -2927,7 +3229,7 @@
         {
           "url": "https://moviesapi.to/movie/550",
           "status": 200,
-          "ms": 404,
+          "ms": 484,
           "contentType": "text/html; charset=utf-8",
           "bytes": 136591,
           "media": []
@@ -2948,151 +3250,38 @@
         {
           "url": "https://moviesapi.to/movie/550",
           "status": 200,
-          "ms": 767
+          "ms": 772
         }
       ],
       "finalUrl": "https://moviesapi.to/movie/550",
       "pageMedia": [
-        "https://patient-cherry.workerscloud32.workers.dev/hls2/02/00006/194l842aw8ib_o/master.m3u8?t=KhgYVDjMMS2wCxqKUzhhWIg7xgZxv4bCzLp8-E51QCw&s=1795533018&e=43200&v=&srv=box&i=0.3&sp=0"
+        "https://paretocdn.site/hls2/02/00006/194l842aw8ib_o/master.m3u8?t=JS8LirTYFykE8Yrw6K4IHGqJhnp7PQYjd5jRpU5dc_Y&s=1795534255&e=43200&v=&srv=box&i=0.3&sp=0"
+      ],
+      "frames": [
+        "https://moviesapi.to/movie/550"
+      ],
+      "frameHosts": [
+        "moviesapi.to",
+        "static.cloudflareinsights.com",
+        "api.themoviedb.org",
+        "qhbi3.131vqvt1ni417ur85o1.cfd",
+        "image.tmdb.org",
+        "paretocdn.site"
       ],
       "proof": {
-        "url": "https://patient-cherry.workerscloud32.workers.dev/hls2/02/00006/194l842aw8ib_o/master.m3u8?t=KhgYVDjMMS2wCxqKUzhhWIg7xgZxv4bCzLp8-E51QCw&s=1795533018&e=43200&v=&srv=box&i=0.3&sp=0",
-        "steps": [
-          {
-            "kind": "manifest",
-            "status": 200,
-            "contentType": "application/javascript",
-            "ms": 1589,
-            "bytes": 336
-          },
-          {
-            "kind": "segment",
-            "status": 200,
-            "ms": 42,
-            "bytes": 293154,
-            "contentType": "application/javascript"
-          }
-        ],
-        "contentType": "application/javascript",
-        "kind": "hls",
-        "encrypted": false,
-        "bytes": 293154,
-        "ok": true
-      },
-      "result": "playable",
-      "laneLabel": "Vidora (moviesapi)",
-      "origin": "https://moviesapi.to",
-      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
-    },
-    {
-      "lane": "vidora",
-      "title": "movie-27205",
-      "method": "http",
-      "kind": "js-player",
-      "need": "media",
-      "requests": [
-        {
-          "url": "https://moviesapi.to/movie/27205",
-          "status": 200,
-          "ms": 257,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 136591,
-          "media": []
-        }
-      ],
-      "result": "html-no-media",
-      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
-      "laneLabel": "Vidora (moviesapi)",
-      "origin": "https://moviesapi.to",
-      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
-    },
-    {
-      "lane": "vidora",
-      "title": "movie-27205",
-      "method": "browser",
-      "kind": "js-player",
-      "requests": [
-        {
-          "url": "https://moviesapi.to/movie/27205",
-          "status": 200,
-          "ms": 687
-        }
-      ],
-      "finalUrl": "https://moviesapi.to/movie/27205",
-      "pageMedia": [
-        "https://bcdnt.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=28d19eec9f770ac8da1ba34e3a8a7408&t=1795533033"
-      ],
-      "proof": {
-        "url": "https://bcdnt.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=28d19eec9f770ac8da1ba34e3a8a7408&t=1795533033",
-        "steps": [
-          {
-            "kind": "mp4",
-            "status": 429,
-            "contentType": "text/html",
-            "ms": 615
-          }
-        ],
-        "bytes": 587,
-        "contentType": "text/html",
-        "ok": false
-      },
-      "result": "media-found-not-playable",
-      "laneLabel": "Vidora (moviesapi)",
-      "origin": "https://moviesapi.to",
-      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
-    },
-    {
-      "lane": "vidora",
-      "title": "tv-1399-1-1",
-      "method": "http",
-      "kind": "js-player",
-      "need": "media",
-      "requests": [
-        {
-          "url": "https://moviesapi.to/tv/1399/1/1",
-          "status": 200,
-          "ms": 359,
-          "contentType": "text/html; charset=utf-8",
-          "bytes": 136591,
-          "media": []
-        }
-      ],
-      "result": "html-no-media",
-      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
-      "laneLabel": "Vidora (moviesapi)",
-      "origin": "https://moviesapi.to",
-      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
-    },
-    {
-      "lane": "vidora",
-      "title": "tv-1399-1-1",
-      "method": "browser",
-      "kind": "js-player",
-      "requests": [
-        {
-          "url": "https://moviesapi.to/tv/1399/1/1",
-          "status": 200,
-          "ms": 729
-        }
-      ],
-      "finalUrl": "https://moviesapi.to/tv/1399/1/1",
-      "pageMedia": [
-        "https://paretocdn.site/hls2/04/00003/8attl0cjdiou_,h,x,.urlset/master.m3u8?t=kCzLyDJvEX_8nwlxcgvtMVML1zNLC53IYMYdSwkDDD4&s=1795533047&e=43200&v=&srv=s2&i=0.3&sp=0"
-      ],
-      "proof": {
-        "url": "https://paretocdn.site/hls2/04/00003/8attl0cjdiou_,h,x,.urlset/master.m3u8?t=kCzLyDJvEX_8nwlxcgvtMVML1zNLC53IYMYdSwkDDD4&s=1795533047&e=43200&v=&srv=s2&i=0.3&sp=0",
+        "url": "https://paretocdn.site/hls2/02/00006/194l842aw8ib_o/master.m3u8?t=JS8LirTYFykE8Yrw6K4IHGqJhnp7PQYjd5jRpU5dc_Y&s=1795534255&e=43200&v=&srv=box&i=0.3&sp=0",
         "steps": [
           {
             "kind": "manifest",
             "status": 200,
             "contentType": "application/vnd.apple.mpegurl",
-            "ms": 216,
-            "bytes": 554
+            "ms": 313,
+            "bytes": 282
           },
           {
             "kind": "segment",
             "status": 403,
-            "ms": 148,
+            "ms": 249,
             "bytes": 146,
             "contentType": "text/html; charset=utf-8"
           }
@@ -3110,6 +3299,155 @@
     },
     {
       "lane": "vidora",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/movie/27205",
+          "status": 200,
+          "ms": 294,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "title": "movie-27205",
+      "method": "browser",
+      "kind": "js-player",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/movie/27205",
+          "status": 200,
+          "ms": 376
+        }
+      ],
+      "finalUrl": "https://moviesapi.to/movie/27205",
+      "pageMedia": [
+        "https://bcdnt.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=28d19eec9f770ac8da1ba34e3a8a7408&t=1795533033"
+      ],
+      "frames": [
+        "https://moviesapi.to/movie/27205",
+        "https://cdn.vidspark.to/movie/27205"
+      ],
+      "frameHosts": [
+        "moviesapi.to",
+        "static.cloudflareinsights.com",
+        "api.themoviedb.org",
+        "qhbi3.131vqvt1ni417ur85o1.cfd",
+        "image.tmdb.org",
+        "cdn.vidspark.to",
+        "dn.anemonytahua.com",
+        "rest.opensubtitles.org"
+      ],
+      "proof": {
+        "url": "https://bcdnt.hakunaymatata.com/resource/a58dd00af907b9b8cc3b5c04b1a422c9.mp4?sign=28d19eec9f770ac8da1ba34e3a8a7408&t=1795533033",
+        "steps": [
+          {
+            "kind": "mp4",
+            "status": 429,
+            "contentType": "text/html",
+            "ms": 196
+          }
+        ],
+        "bytes": 587,
+        "contentType": "text/html",
+        "ok": false
+      },
+      "result": "media-found-not-playable",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/tv/1399/1/1",
+          "status": 200,
+          "ms": 456,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "kind": "js-player",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/tv/1399/1/1",
+          "status": 200,
+          "ms": 334
+        }
+      ],
+      "finalUrl": "https://moviesapi.to/tv/1399/1/1",
+      "pageMedia": [
+        "https://patient-cherry.workerscloud32.workers.dev/hls2/04/00003/8attl0cjdiou_,h,x,.urlset/master.m3u8?t=LXIFqj5XczWAQRn-xkZcaxuso1htmUSGy-MSJgsvjAg&s=1795534306&e=43200&v=&srv=s2&i=0.3&sp=0"
+      ],
+      "frames": [
+        "https://moviesapi.to/tv/1399/1/1"
+      ],
+      "frameHosts": [
+        "moviesapi.to",
+        "static.cloudflareinsights.com",
+        "api.themoviedb.org",
+        "qhbi3.131vqvt1ni417ur85o1.cfd",
+        "image.tmdb.org",
+        "patient-cherry.workerscloud32.workers.dev"
+      ],
+      "proof": {
+        "url": "https://patient-cherry.workerscloud32.workers.dev/hls2/04/00003/8attl0cjdiou_,h,x,.urlset/master.m3u8?t=LXIFqj5XczWAQRn-xkZcaxuso1htmUSGy-MSJgsvjAg&s=1795534306&e=43200&v=&srv=s2&i=0.3&sp=0",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 200,
+            "contentType": "application/javascript",
+            "ms": 151,
+            "bytes": 662
+          },
+          {
+            "kind": "segment",
+            "status": 200,
+            "ms": 52,
+            "bytes": 129742,
+            "contentType": "application/javascript"
+          }
+        ],
+        "contentType": "application/javascript",
+        "kind": "hls",
+        "encrypted": false,
+        "bytes": 129742,
+        "ok": true
+      },
+      "result": "playable",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
       "title": "anime-46260-1-1",
       "method": "http",
       "kind": "js-player",
@@ -3118,7 +3456,7 @@
         {
           "url": "https://moviesapi.to/tv/46260/1/1",
           "status": 200,
-          "ms": 220,
+          "ms": 463,
           "contentType": "text/html; charset=utf-8",
           "bytes": 136591,
           "media": []
@@ -3139,21 +3477,35 @@
         {
           "url": "https://moviesapi.to/tv/46260/1/1",
           "status": 200,
-          "ms": 730
+          "ms": 777
         }
       ],
       "finalUrl": "https://moviesapi.to/tv/46260/1/1",
       "pageMedia": [
-        "https://bcdnt.hakunaymatata.com/bt/d9353c37f01afeaee0ca39ee1cceb320.mp4?sign=8a732d6dc60386cbb8a23094f2852ebd&t=1795532496"
+        "https://bcdnt.hakunaymatata.com/bt/d9353c37f01afeaee0ca39ee1cceb320.mp4?sign=d6fc54a07249769e4fb453d08fbb78ac&t=1795534334"
+      ],
+      "frames": [
+        "https://moviesapi.to/tv/46260/1/1",
+        "https://cdn.vidspark.to/tv/46260/1/1"
+      ],
+      "frameHosts": [
+        "moviesapi.to",
+        "static.cloudflareinsights.com",
+        "api.themoviedb.org",
+        "image.tmdb.org",
+        "qhbi3.131vqvt1ni417ur85o1.cfd",
+        "cdn.vidspark.to",
+        "dn.anemonytahua.com",
+        "rest.opensubtitles.org"
       ],
       "proof": {
-        "url": "https://bcdnt.hakunaymatata.com/bt/d9353c37f01afeaee0ca39ee1cceb320.mp4?sign=8a732d6dc60386cbb8a23094f2852ebd&t=1795532496",
+        "url": "https://bcdnt.hakunaymatata.com/bt/d9353c37f01afeaee0ca39ee1cceb320.mp4?sign=d6fc54a07249769e4fb453d08fbb78ac&t=1795534334",
         "steps": [
           {
             "kind": "mp4",
             "status": 429,
             "contentType": "text/html",
-            "ms": 252
+            "ms": 597
           }
         ],
         "bytes": 587,
@@ -3175,9 +3527,9 @@
         {
           "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
           "status": 404,
-          "ms": 2191,
+          "ms": 375,
           "contentType": "text/plain; charset=utf-8",
-          "bytes": 51,
+          "bytes": 63,
           "media": []
         }
       ],
@@ -3195,14 +3547,27 @@
         {
           "url": "https://vidout.pages.dev/",
           "status": 200,
-          "ms": 420
+          "ms": 374
         }
       ],
       "finalUrl": "https://www.google.com/",
       "pageMedia": [],
+      "frames": [
+        "https://www.google.com/"
+      ],
+      "frameHosts": [
+        "vidout.pages.dev",
+        "assets.nflxext.com",
+        "google.com",
+        "cdn.tailwindcss.com",
+        "cdn.jsdelivr.net",
+        "static.cloudflareinsights.com",
+        "www.google.com",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Google",
-      "pageText": "About Store GmailImages Sign in What's on your mind? AI Mode Free local events happening this week How do I get started playing padel? Give me some ideas for a low-key housewarming party Advertising Business How Search w…",
+      "pageText": "About Store GmailImages Sign in AI Mode Advertising Business How Search works Build, create, and do more with AI tools from Google Privacy Terms Settings",
       "laneLabel": "Watchout",
       "origin": "https://vidout.pages.dev",
       "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
@@ -3217,9 +3582,9 @@
         {
           "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
           "status": 404,
-          "ms": 24,
+          "ms": 45,
           "contentType": "text/plain; charset=utf-8",
-          "bytes": 51,
+          "bytes": 63,
           "media": []
         }
       ],
@@ -3237,14 +3602,29 @@
         {
           "url": "https://vidout.pages.dev/",
           "status": 200,
-          "ms": 353
+          "ms": 369
         }
       ],
       "finalUrl": "https://www.google.com/",
       "pageMedia": [],
+      "frames": [
+        "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3D%26sca_esv%3D310c28dd712d82c9%26sxsrf%3DAKL5yDhJcDSLHlagCYMe…",
+        "https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LdLLIMbAAAAAIl-KLj9p1ePhM-4LCCDbjtJLqRO&co=aHR0cHM6Ly93d3cuZ29vZ2xlLmNvbTo0NDM.&h…",
+        "https://www.google.com/recaptcha/enterprise/bframe?hl=en&v=DqDoLJqJmjhqr0vRwNZ2MCHA&k=6LdLLIMbAAAAAIl-KLj9p1ePhM-4LCCDbjtJLqRO&bft=0dAFcWeA4…"
+      ],
+      "frameHosts": [
+        "vidout.pages.dev",
+        "cdn.tailwindcss.com",
+        "google.com",
+        "cdn.jsdelivr.net",
+        "static.cloudflareinsights.com",
+        "assets.nflxext.com",
+        "www.google.com",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
-      "pageTitle": "Google",
-      "pageText": "About Store GmailImages Sign in What's on your mind? AI Mode Free local events happening this week How do I get started playing padel? Give me some ideas for a low-key housewarming party Advertising Business How Search w…",
+      "pageTitle": "https://www.google.com/search?q=&sca_esv=310c28dd712d82c9&sxsrf=AKL5yDhJcDSLHlagCYMe_t7fej0PCq-05A%3A1795534376348&sourc…",
+      "pageText": " About this page Our systems have detected unusual traffic from your computer network. This page checks to see if it's really you sending the requests, and not a robot. Why did this happen? IP address: 3.42.157.21 Time: …",
       "laneLabel": "Watchout",
       "origin": "https://vidout.pages.dev",
       "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
@@ -3259,9 +3639,9 @@
         {
           "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
           "status": 404,
-          "ms": 20,
+          "ms": 199,
           "contentType": "text/plain; charset=utf-8",
-          "bytes": 51,
+          "bytes": 63,
           "media": []
         }
       ],
@@ -3279,14 +3659,27 @@
         {
           "url": "https://vidout.pages.dev/",
           "status": 200,
-          "ms": 402
+          "ms": 383
         }
       ],
       "finalUrl": "https://www.google.com/",
       "pageMedia": [],
+      "frames": [
+        "https://www.google.com/"
+      ],
+      "frameHosts": [
+        "vidout.pages.dev",
+        "assets.nflxext.com",
+        "cdn.tailwindcss.com",
+        "google.com",
+        "cdn.jsdelivr.net",
+        "static.cloudflareinsights.com",
+        "www.google.com",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Google",
-      "pageText": "About Store GmailImages Sign in What's on your mind? AI Mode Free local events happening this week How do I get started playing padel? Give me some ideas for a low-key housewarming party Advertising Business How Search w…",
+      "pageText": "About Store GmailImages Sign in AI Mode Advertising Business How Search works Build, create, and do more with AI tools from Google Privacy Terms Settings",
       "laneLabel": "Watchout",
       "origin": "https://vidout.pages.dev",
       "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
@@ -3301,9 +3694,9 @@
         {
           "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
           "status": 404,
-          "ms": 287,
+          "ms": 27,
           "contentType": "text/plain; charset=utf-8",
-          "bytes": 51,
+          "bytes": 63,
           "media": []
         }
       ],
@@ -3321,14 +3714,27 @@
         {
           "url": "https://vidout.pages.dev/",
           "status": 200,
-          "ms": 495
+          "ms": 363
         }
       ],
       "finalUrl": "https://www.google.com/",
       "pageMedia": [],
+      "frames": [
+        "https://www.google.com/"
+      ],
+      "frameHosts": [
+        "vidout.pages.dev",
+        "assets.nflxext.com",
+        "cdn.tailwindcss.com",
+        "google.com",
+        "cdn.jsdelivr.net",
+        "static.cloudflareinsights.com",
+        "www.google.com",
+        "fonts.gstatic.com"
+      ],
       "result": "no-media-in-page",
       "pageTitle": "Google",
-      "pageText": "About Store GmailImages Sign in What's on your mind? AI Mode Free local events happening this week How do I get started playing padel? Give me some ideas for a low-key housewarming party Advertising Business How Search w…",
+      "pageText": "About Store GmailImages Sign in AI Mode Advertising Business How Search works Build, create, and do more with AI tools from Google Privacy Terms Settings",
       "laneLabel": "Watchout",
       "origin": "https://vidout.pages.dev",
       "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
