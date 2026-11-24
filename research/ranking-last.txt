@@ -1,15 +1,16 @@
   adapter returned 2 candidate(s); sizes come from the registry
+  languages published: en; ranking inside "en"
 [elfura-citadel] movie/550: 2 row(s)
 
-  Hindi request: 2 stream(s), primary Source 1 · English #2
-    Source 1 · English #2 [?]              400MB
+  Hindi request: 2 stream(s), primary Source 1 · English
     Source 1 · English [?]                 1376MB
+    Source 1 · English #2 [?]              400MB
 
   mean 888MB over 2/2 measured, biggest 1376MB
-  primary 400MB is the biggest hi stream listed
+  primary 1376MB is the biggest en stream listed
 [elfura-citadel] movie/550: 2 row(s)
 
-  English request: 2 stream(s), primary Source 1 · English #2
-  primary 400MB
+  English request: 2 stream(s), primary Source 1 · English
+  primary 1376MB
 
 ✓ citadel live: real sizes measured, requested language ranked biggest-first
