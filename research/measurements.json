@@ -1,0 +1,2438 @@
+{
+  "measuredAt": "2026-11-24T14:57:45.702Z",
+  "node": "v22.23.5",
+  "undici": "6.29.1",
+  "browser": "none",
+  "titles": [
+    {
+      "key": "movie-550",
+      "type": "movie",
+      "tmdbId": "550",
+      "label": "Fight Club"
+    },
+    {
+      "key": "movie-27205",
+      "type": "movie",
+      "tmdbId": "27205",
+      "label": "Inception"
+    },
+    {
+      "key": "tv-1399-1-1",
+      "type": "tv",
+      "tmdbId": "1399",
+      "season": 1,
+      "episode": 1,
+      "label": "Game of Thrones S1E1"
+    },
+    {
+      "key": "anime-46260-1-1",
+      "type": "tv",
+      "tmdbId": "46260",
+      "season": 1,
+      "episode": 1,
+      "anilistId": "20",
+      "label": "Naruto S1E1"
+    }
+  ],
+  "summary": [
+    {
+      "lane": "greybox",
+      "label": "Greybox",
+      "attempts": 4,
+      "playable": 0,
+      "media": 2,
+      "outcomes": [
+        "media-found",
+        "no-media-in-html"
+      ]
+    },
+    {
+      "lane": "rivestream-citadel",
+      "label": "RiveStream (citadel)",
+      "attempts": 4,
+      "playable": 4,
+      "media": 4,
+      "outcomes": [
+        "media-found"
+      ]
+    },
+    {
+      "lane": "vidlink",
+      "label": "VidLink",
+      "attempts": 4,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "json-no-media"
+      ]
+    },
+    {
+      "lane": "vixsrc",
+      "label": "VixSrc",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "json-no-media",
+        "no-media-in-html",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "bingr",
+      "label": "Bingr",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "no-media-in-html",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "mapple",
+      "label": "Mapple",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "no-media-in-html",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "vidsync",
+      "label": "VidSync",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "vidzen",
+      "label": "VidZen",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "no-media-in-html",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "vidnest",
+      "label": "VidNest",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "vidzee",
+      "label": "VidZee",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "no-media-in-html",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "novuscloud",
+      "label": "NovusCloud",
+      "attempts": 2,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "megaplay",
+      "label": "MegaPlay",
+      "attempts": 2,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "needs-browser",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "mikaza",
+      "label": "Mikaza",
+      "attempts": 2,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "animesalt",
+      "label": "AnimeSalt (Ravok)",
+      "attempts": 2,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "needs-browser",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "vidbolt",
+      "label": "VidBolt (source-1 family)",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "tgvidx",
+      "label": "TGVIDX",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "xpass",
+      "label": "Xpass",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "skipped",
+        "unreachable"
+      ]
+    },
+    {
+      "lane": "nxsha",
+      "label": "Nxsha",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "blakite",
+      "label": "Blakite",
+      "attempts": 4,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "json-no-media"
+      ]
+    },
+    {
+      "lane": "vidora",
+      "label": "Vidora (moviesapi)",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "html-no-media",
+        "skipped"
+      ]
+    },
+    {
+      "lane": "watchout",
+      "label": "Watchout",
+      "attempts": 8,
+      "playable": 0,
+      "media": 0,
+      "outcomes": [
+        "no-media-in-html",
+        "skipped"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "lane": "greybox",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://greyboxtv.duckdns.org/api/player/sources?media=movie&id=550",
+          "status": 200,
+          "ms": 1121,
+          "contentType": "application/json",
+          "bytes": 64250,
+          "media": [
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4046544153143035520_0_0_1080_h265_235%2Fmaster.m3u8",
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F7080736420700611256_0_0_360_h265_748%2Fmaster.m3u8",
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F7148079028095045304_0_0_480_h265_876%2Fmaster.m3u8"
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4046544153143035520_0_0_1080_h265_235%2Fmaster.m3u8",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 502,
+            "contentType": "text/plain;charset=UTF-8",
+            "ms": 109,
+            "bytes": 30
+          }
+        ],
+        "contentType": "text/plain;charset=UTF-8"
+      },
+      "headersSeen": {
+        "server": "nginx/1.18.0 (Ubuntu)",
+        "cf-ray": null,
+        "content-type": "application/json",
+        "access-control-allow-origin": null
+      },
+      "laneLabel": "Greybox",
+      "origin": "https://greyboxtv.duckdns.org",
+      "note": "plain JSON, no token; source-25 recorded /api/player/sources"
+    },
+    {
+      "lane": "greybox",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://greyboxtv.duckdns.org/api/player/sources?media=movie&id=27205",
+          "status": 200,
+          "ms": 2926,
+          "contentType": "application/json",
+          "bytes": 55275,
+          "media": [
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3053885418996466528_0_0_1080_h265_740%2Fmaster.m3u8",
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F310483201934460304_0_0_720_h265_732%2Fmaster.m3u8",
+            "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F6391474290696802080_0_0_1080_h265_884%2Fmaster.m3u8"
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3053885418996466528_0_0_1080_h265_740%2Fmaster.m3u8",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 502,
+            "contentType": "text/plain;charset=UTF-8",
+            "ms": 28,
+            "bytes": 30
+          }
+        ],
+        "contentType": "text/plain;charset=UTF-8"
+      },
+      "headersSeen": {
+        "server": "nginx/1.18.0 (Ubuntu)",
+        "cf-ray": null,
+        "content-type": "application/json",
+        "access-control-allow-origin": null
+      },
+      "laneLabel": "Greybox",
+      "origin": "https://greyboxtv.duckdns.org",
+      "note": "plain JSON, no token; source-25 recorded /api/player/sources"
+    },
+    {
+      "lane": "greybox",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://greyboxtv.duckdns.org/api/player/sources?media=tv&id=1399&season=1&episode=1",
+          "status": 429,
+          "ms": 255,
+          "contentType": "application/json",
+          "bytes": 57,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Greybox",
+      "origin": "https://greyboxtv.duckdns.org",
+      "note": "plain JSON, no token; source-25 recorded /api/player/sources"
+    },
+    {
+      "lane": "greybox",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://greyboxtv.duckdns.org/api/player/sources?media=tv&id=46260&season=1&episode=1",
+          "status": 429,
+          "ms": 824,
+          "contentType": "application/json",
+          "bytes": 57,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Greybox",
+      "origin": "https://greyboxtv.duckdns.org",
+      "note": "plain JSON, no token; source-25 recorded /api/player/sources"
+    },
+    {
+      "lane": "rivestream-citadel",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=550",
+          "status": 200,
+          "ms": 1037,
+          "contentType": "application/json",
+          "bytes": 3874,
+          "media": [
+            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795543045&KeyName=Signature&Signature=d328q6J2RPYOpjpIC60RbRhQijaPf12AS47GDQo0X_Vgww0d5F2k6EOwbk9UlAoCbAUM1Oty9SNVgU3yQfJLCw==",
+            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795543045&KeyName=Signature&Signature=rbZbj9Tp9ty2ijN_DJdSrTnjICk60fXg32Z--t1r63v2AoWOPCHqRagrVqZghrpcOKkFmlWaFm9AbyMthLk_AQ=="
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795543045&KeyName=Signature&Signature=d328q6J2RPYOpjpIC60RbRhQijaPf12AS47GDQo0X_Vgww0d5F2k6EOwbk9UlAoCbAUM1Oty9SNVgU3yQfJLCw==",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 200,
+            "contentType": "application/vnd.apple.mpegurl",
+            "ms": 225,
+            "bytes": 111923
+          },
+          {
+            "kind": "segment",
+            "status": 206,
+            "ms": 248,
+            "bytes": 262144,
+            "contentType": "image/jpeg"
+          }
+        ],
+        "contentType": "application/vnd.apple.mpegurl",
+        "kind": "hls",
+        "encrypted": false,
+        "bytes": 262144,
+        "ok": true
+      },
+      "headersSeen": {
+        "server": "cloudflare",
+        "cf-ray": "a5f944107a8bd2c8-DFW",
+        "content-type": "application/json",
+        "access-control-allow-origin": "*"
+      },
+      "laneLabel": "RiveStream (citadel)",
+      "origin": "https://scrapper.rivestream.app",
+      "note": "source-14: /api/provider?provider=citadel&id=<tmdb> answered in ~200ms"
+    },
+    {
+      "lane": "rivestream-citadel",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=27205",
+          "status": 200,
+          "ms": 1343,
+          "contentType": "application/json",
+          "bytes": 2004,
+          "media": [
+            "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795543047&KeyName=Signature&Signature=O3XRFD5Urr1jDrV-DpPbFdXKiKghqVkjflWvpg-KpbxbHka2XC2iG1L4MNR3hNtu8Oma-PF-61lTSKw6jCHWBQ==",
+            "https://img1.hscow.com/hls_mps/a67403cd9ac643c54c90244dba9ccede/720/index_287.m3u8?Expires=1795543047&KeyName=Signature&Signature=hZBELanSEonqlkg21vZ6Z_8Q_VAGYo84g4Lr4GKY_RlUH7KTQpslRMp5M73tLjjsZqc_HJ83XtMlKI_B0VcrCg==",
+            "https://img1.hscow.com/hls/2ab614e3fd237e215ca7a9eb4f645f78/720/index_287.m3u8?Expires=1795543047&KeyName=Signature&Signature=IEkyI3EecSwj8RMjDwI8iSnjeCHyNpYzURbNrxCmeDbHvcUEbXhjHmJdqpDJTFb9GbZXuM6RjVGMH-amRQlfAQ=="
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795543047&KeyName=Signature&Signature=O3XRFD5Urr1jDrV-DpPbFdXKiKghqVkjflWvpg-KpbxbHka2XC2iG1L4MNR3hNtu8Oma-PF-61lTSKw6jCHWBQ==",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 200,
+            "contentType": "application/vnd.apple.mpegurl",
+            "ms": 36,
+            "bytes": 232288
+          },
+          {
+            "kind": "segment",
+            "status": 206,
+            "ms": 11,
+            "bytes": 262144,
+            "contentType": "image/jpeg"
+          }
+        ],
+        "contentType": "application/vnd.apple.mpegurl",
+        "kind": "hls",
+        "encrypted": false,
+        "bytes": 262144,
+        "ok": true
+      },
+      "headersSeen": {
+        "server": "cloudflare",
+        "cf-ray": "a5f94419bd34d2c8-DFW",
+        "content-type": "application/json",
+        "access-control-allow-origin": "*"
+      },
+      "laneLabel": "RiveStream (citadel)",
+      "origin": "https://scrapper.rivestream.app",
+      "note": "source-14: /api/provider?provider=citadel&id=<tmdb> answered in ~200ms"
+    },
+    {
+      "lane": "rivestream-citadel",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=1399&season=1&episode=1",
+          "status": 200,
+          "ms": 1252,
+          "contentType": "application/json",
+          "bytes": 1085,
+          "media": [
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795543048&KeyName=Signature&Signature=OPMkJFRX0tFjGim2HhXsLvXSOwrq3RnLgy6QdTv0nOFRPYz5j0OeRwfdMt4XWEgYJpC0ks1w6pTUI-5QVKy-Aw==",
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/480/index_266.m3u8?Expires=1795543048&KeyName=Signature&Signature=kPxGaif-ErZgQNsa0Mk1NC6lvauRrqGsc2VweEGPrpP_GfB4tn_oi9GdVrkbg38bHs3WaAHyhtpcLTd_l_icDA==",
+            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/480/index_287.m3u8?Expires=1795543048&KeyName=Signature&Signature=VvRzV0LR1YgAVD6p2XhAcP1P7mghApcJmE2y5F3V9q69_iXlJ7ykFACerB4Vo4sKsNltUKNZRXv_dXcXfkH7Ag=="
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795543048&KeyName=Signature&Signature=OPMkJFRX0tFjGim2HhXsLvXSOwrq3RnLgy6QdTv0nOFRPYz5j0OeRwfdMt4XWE…",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 200,
+            "contentType": "application/vnd.apple.mpegurl",
+            "ms": 469,
+            "bytes": 111517
+          },
+          {
+            "kind": "segment",
+            "status": 206,
+            "ms": 188,
+            "bytes": 262144,
+            "contentType": "image/jpeg"
+          }
+        ],
+        "contentType": "application/vnd.apple.mpegurl",
+        "kind": "hls",
+        "encrypted": false,
+        "bytes": 262144,
+        "ok": true
+      },
+      "headersSeen": {
+        "server": "cloudflare",
+        "cf-ray": "a5f944228ecdd2c8-DFW",
+        "content-type": "application/json",
+        "access-control-allow-origin": "*"
+      },
+      "laneLabel": "RiveStream (citadel)",
+      "origin": "https://scrapper.rivestream.app",
+      "note": "source-14: /api/provider?provider=citadel&id=<tmdb> answered in ~200ms"
+    },
+    {
+      "lane": "rivestream-citadel",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://scrapper.rivestream.app/api/provider?provider=citadel&id=46260&season=1&episode=1",
+          "status": 200,
+          "ms": 1505,
+          "contentType": "application/json",
+          "bytes": 1078,
+          "media": [
+            "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795543050&KeyName=Signature&Signature=pGpdrwhOfuZPFH5-E_wrT2C820JcaIMjq0qKHm6um21JDEURGqE0p7f4j0pNErmoCEaVF5ZyxXIb2ht7wl_yAA=="
+          ]
+        }
+      ],
+      "result": "media-found",
+      "proof": {
+        "url": "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795543050&KeyName=Signature&Signature=pGpdrwhOfuZPFH5-E_wrT2C820JcaIMjq0qKHm6um21JDEURGqE0p7f4j0pNErmoCEaVF5ZyxX…",
+        "steps": [
+          {
+            "kind": "manifest",
+            "status": 200,
+            "contentType": "application/vnd.apple.mpegurl",
+            "ms": 44,
+            "bytes": 24572
+          },
+          {
+            "kind": "segment",
+            "status": 206,
+            "ms": 324,
+            "bytes": 262144,
+            "contentType": "image/jpeg"
+          }
+        ],
+        "contentType": "application/vnd.apple.mpegurl",
+        "kind": "hls",
+        "encrypted": false,
+        "bytes": 262144,
+        "ok": true
+      },
+      "headersSeen": {
+        "server": "cloudflare",
+        "cf-ray": "a5f9442eec79d2c8-DFW",
+        "content-type": "application/json",
+        "access-control-allow-origin": "*"
+      },
+      "laneLabel": "RiveStream (citadel)",
+      "origin": "https://scrapper.rivestream.app",
+      "note": "source-14: /api/provider?provider=citadel&id=<tmdb> answered in ~200ms"
+    },
+    {
+      "lane": "vidlink",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidlink.pro/api/b/movie/550",
+          "status": 200,
+          "ms": 376,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 4,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "null",
+      "laneLabel": "VidLink",
+      "origin": "https://vidlink.pro",
+      "note": "source-24: /api/b/movie/<tmdb> is real JSON; token dance via enc-dec.app"
+    },
+    {
+      "lane": "vidlink",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidlink.pro/api/b/movie/27205",
+          "status": 200,
+          "ms": 160,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 4,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "null",
+      "laneLabel": "VidLink",
+      "origin": "https://vidlink.pro",
+      "note": "source-24: /api/b/movie/<tmdb> is real JSON; token dance via enc-dec.app"
+    },
+    {
+      "lane": "vidlink",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidlink.pro/api/b/tv/1399/1/1",
+          "status": 200,
+          "ms": 175,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 4,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "null",
+      "laneLabel": "VidLink",
+      "origin": "https://vidlink.pro",
+      "note": "source-24: /api/b/movie/<tmdb> is real JSON; token dance via enc-dec.app"
+    },
+    {
+      "lane": "vidlink",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidlink.pro/api/b/tv/46260/1/1",
+          "status": 200,
+          "ms": 170,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 4,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "null",
+      "laneLabel": "VidLink",
+      "origin": "https://vidlink.pro",
+      "note": "source-24: /api/b/movie/<tmdb> is real JSON; token dance via enc-dec.app"
+    },
+    {
+      "lane": "vixsrc",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "html-token",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vixsrc.to/api/movie/550",
+          "status": 200,
+          "ms": 219,
+          "contentType": "application/json",
+          "bytes": 126,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"src\":\"\\/embed\\/170060?token=159fe4aac387f2910b0abb5081679b90&t=RmlnaHQgQ2x1Yg%3D%3D&expires=1795532262&lang=en&skin=vixsrc\"}",
+      "laneLabel": "VixSrc",
+      "origin": "https://vixsrc.to",
+      "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
+    },
+    {
+      "lane": "vixsrc",
+      "laneLabel": "VixSrc",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vixsrc",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "html-token",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vixsrc.to/api/movie/27205",
+          "status": 200,
+          "ms": 199,
+          "contentType": "application/json",
+          "bytes": 118,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"src\":\"\\/embed\\/790935?token=e2c57acbeb071c85c11b6905ddd46c47&t=SW5jZXB0aW9u&expires=1795532262&lang=en&skin=vixsrc\"}",
+      "laneLabel": "VixSrc",
+      "origin": "https://vixsrc.to",
+      "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
+    },
+    {
+      "lane": "vixsrc",
+      "laneLabel": "VixSrc",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vixsrc",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "html-token",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vixsrc.to/api/tv/1399/1/1",
+          "status": 200,
+          "ms": 190,
+          "contentType": "application/json",
+          "bytes": 165,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"src\":\"\\/embed\\/629736?token=a713ec13d40df0d1993ac2af81e49937&t=R2FtZSBvZiBUaHJvbmVz&expires=1795532262&lang=en&skin=vixsrc&d=UzE6RTEgV2ludGVyIElzIENvbWluZw%3D%3D\"}",
+      "laneLabel": "VixSrc",
+      "origin": "https://vixsrc.to",
+      "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
+    },
+    {
+      "lane": "vixsrc",
+      "laneLabel": "VixSrc",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vixsrc",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "html-token",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vixsrc.to/api/tv/46260/1/1",
+          "status": 404,
+          "ms": 197,
+          "contentType": "application/json",
+          "bytes": 21,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VixSrc",
+      "origin": "https://vixsrc.to",
+      "note": "source-9: /api/movie/<tmdb> -> {src:\"/embed/...\"} -> token+expires+url in HTML"
+    },
+    {
+      "lane": "vixsrc",
+      "laneLabel": "VixSrc",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "bingr",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://bingr.st/watch/movie/550",
+          "status": 403,
+          "ms": 217,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5881,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Bingr",
+      "origin": "https://bingr.st",
+      "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
+    },
+    {
+      "lane": "bingr",
+      "laneLabel": "Bingr",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "bingr",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://bingr.st/watch/movie/27205",
+          "status": 403,
+          "ms": 52,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5887,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Bingr",
+      "origin": "https://bingr.st",
+      "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
+    },
+    {
+      "lane": "bingr",
+      "laneLabel": "Bingr",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "bingr",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://bingr.st/watch/tv/1399/1/1",
+          "status": 403,
+          "ms": 42,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5887,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Bingr",
+      "origin": "https://bingr.st",
+      "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
+    },
+    {
+      "lane": "bingr",
+      "laneLabel": "Bingr",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "bingr",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://bingr.st/watch/tv/46260/1/1",
+          "status": 403,
+          "ms": 62,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5890,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Bingr",
+      "origin": "https://bingr.st",
+      "note": "source-4: /watch/movie/<tmdb> page -> /api/sources (server ids are dynamic)"
+    },
+    {
+      "lane": "bingr",
+      "laneLabel": "Bingr",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "mapple",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "token-chain",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://mapple.fun/watch/movie/550",
+          "status": 403,
+          "ms": 112,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5819,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Mapple",
+      "origin": "https://mapple.fun",
+      "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
+    },
+    {
+      "lane": "mapple",
+      "laneLabel": "Mapple",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "mapple",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "token-chain",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://mapple.fun/watch/movie/27205",
+          "status": 403,
+          "ms": 56,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5825,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Mapple",
+      "origin": "https://mapple.fun",
+      "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
+    },
+    {
+      "lane": "mapple",
+      "laneLabel": "Mapple",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "mapple",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "token-chain",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://mapple.fun/watch/tv/1399-1-1",
+          "status": 403,
+          "ms": 55,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5804,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Mapple",
+      "origin": "https://mapple.fun",
+      "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
+    },
+    {
+      "lane": "mapple",
+      "laneLabel": "Mapple",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "mapple",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "token-chain",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://mapple.fun/watch/tv/46260-1-1",
+          "status": 403,
+          "ms": 49,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 5828,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Mapple",
+      "origin": "https://mapple.fun",
+      "note": "source-15: /watch/movie/<tmdb> -> request-token -> playback-init -> stream-encrypted"
+    },
+    {
+      "lane": "mapple",
+      "laneLabel": "Mapple",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidsync",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidsync.pro/api/stream?type=movie&tmdb=550",
+          "status": 200,
+          "ms": 144,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 3327,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▶</text></svg>\" /> <meta name=\"viewport\" content=\"width=device-width, initial-sc…",
+      "laneLabel": "VidSync",
+      "origin": "https://vidsync.pro",
+      "note": "source-3: /api/stream and /api/core/streams"
+    },
+    {
+      "lane": "vidsync",
+      "laneLabel": "VidSync",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidsync",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidsync.pro/api/stream?type=movie&tmdb=27205",
+          "status": 200,
+          "ms": 72,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 3327,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▶</text></svg>\" /> <meta name=\"viewport\" content=\"width=device-width, initial-sc…",
+      "laneLabel": "VidSync",
+      "origin": "https://vidsync.pro",
+      "note": "source-3: /api/stream and /api/core/streams"
+    },
+    {
+      "lane": "vidsync",
+      "laneLabel": "VidSync",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidsync",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidsync.pro/api/stream?type=tv&tmdb=1399&season=1&episode=1",
+          "status": 200,
+          "ms": 77,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 3327,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▶</text></svg>\" /> <meta name=\"viewport\" content=\"width=device-width, initial-sc…",
+      "laneLabel": "VidSync",
+      "origin": "https://vidsync.pro",
+      "note": "source-3: /api/stream and /api/core/streams"
+    },
+    {
+      "lane": "vidsync",
+      "laneLabel": "VidSync",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidsync",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidsync.pro/api/stream?type=tv&tmdb=46260&season=1&episode=1",
+          "status": 200,
+          "ms": 80,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 3327,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>▶</text></svg>\" /> <meta name=\"viewport\" content=\"width=device-width, initial-sc…",
+      "laneLabel": "VidSync",
+      "origin": "https://vidsync.pro",
+      "note": "source-3: /api/stream and /api/core/streams"
+    },
+    {
+      "lane": "vidsync",
+      "laneLabel": "VidSync",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzen",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidzen.fun/watch/movie/550",
+          "status": 403,
+          "ms": 105,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4913,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZen",
+      "origin": "https://vidzen.fun",
+      "note": "source-12: server list -> opaque /api/stream/ URLs"
+    },
+    {
+      "lane": "vidzen",
+      "laneLabel": "VidZen",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzen",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidzen.fun/watch/movie/27205",
+          "status": 403,
+          "ms": 24,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4913,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZen",
+      "origin": "https://vidzen.fun",
+      "note": "source-12: server list -> opaque /api/stream/ URLs"
+    },
+    {
+      "lane": "vidzen",
+      "laneLabel": "VidZen",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzen",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidzen.fun/watch/tv/1399/1/1",
+          "status": 403,
+          "ms": 28,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4913,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZen",
+      "origin": "https://vidzen.fun",
+      "note": "source-12: server list -> opaque /api/stream/ URLs"
+    },
+    {
+      "lane": "vidzen",
+      "laneLabel": "VidZen",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzen",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidzen.fun/watch/tv/46260/1/1",
+          "status": 403,
+          "ms": 26,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 4913,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZen",
+      "origin": "https://vidzen.fun",
+      "note": "source-12: server list -> opaque /api/stream/ URLs"
+    },
+    {
+      "lane": "vidzen",
+      "laneLabel": "VidZen",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidnest",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidnest.fun/movie/550",
+          "status": 200,
+          "ms": 260,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 16309,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "laneLabel": "VidNest",
+      "origin": "https://vidnest.fun",
+      "note": "source-10: per-lane encrypted API, six lanes"
+    },
+    {
+      "lane": "vidnest",
+      "laneLabel": "VidNest",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidnest",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidnest.fun/movie/27205",
+          "status": 200,
+          "ms": 172,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 16315,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "laneLabel": "VidNest",
+      "origin": "https://vidnest.fun",
+      "note": "source-10: per-lane encrypted API, six lanes"
+    },
+    {
+      "lane": "vidnest",
+      "laneLabel": "VidNest",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidnest",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidnest.fun/tv/1399/1/1",
+          "status": 200,
+          "ms": 179,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 17340,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "laneLabel": "VidNest",
+      "origin": "https://vidnest.fun",
+      "note": "source-10: per-lane encrypted API, six lanes"
+    },
+    {
+      "lane": "vidnest",
+      "laneLabel": "VidNest",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidnest",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "next-page",
+      "need": "json",
+      "requests": [
+        {
+          "url": "https://vidnest.fun/tv/46260/1/1",
+          "status": 200,
+          "ms": 185,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 17343,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/96956ead63082c4b.css\" data-precedence=\"next\"/><link rel=\"stylesheet\" href=\"/_next/static/chunks/bb46319f577f42b7.css\" dat…",
+      "laneLabel": "VidNest",
+      "origin": "https://vidnest.fun",
+      "note": "source-10: per-lane encrypted API, six lanes"
+    },
+    {
+      "lane": "vidnest",
+      "laneLabel": "VidNest",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzee",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://core.vidzee.wtf/embed/movie/550",
+          "status": 404,
+          "ms": 221,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 47,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZee",
+      "origin": "https://core.vidzee.wtf",
+      "note": "source-8: core.vidzee.wtf server endpoints (dcloud, tik, ipcloud, v6)"
+    },
+    {
+      "lane": "vidzee",
+      "laneLabel": "VidZee",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzee",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://core.vidzee.wtf/embed/movie/27205",
+          "status": 404,
+          "ms": 147,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 49,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZee",
+      "origin": "https://core.vidzee.wtf",
+      "note": "source-8: core.vidzee.wtf server endpoints (dcloud, tik, ipcloud, v6)"
+    },
+    {
+      "lane": "vidzee",
+      "laneLabel": "VidZee",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzee",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://core.vidzee.wtf/embed/tv/1399/1/1",
+          "status": 404,
+          "ms": 144,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 49,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZee",
+      "origin": "https://core.vidzee.wtf",
+      "note": "source-8: core.vidzee.wtf server endpoints (dcloud, tik, ipcloud, v6)"
+    },
+    {
+      "lane": "vidzee",
+      "laneLabel": "VidZee",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidzee",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://core.vidzee.wtf/embed/tv/46260/1/1",
+          "status": 404,
+          "ms": 146,
+          "contentType": "application/json; charset=utf-8",
+          "bytes": 50,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "VidZee",
+      "origin": "https://core.vidzee.wtf",
+      "note": "source-8: core.vidzee.wtf server endpoints (dcloud, tik, ipcloud, v6)"
+    },
+    {
+      "lane": "vidzee",
+      "laneLabel": "VidZee",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "novuscloud",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "embed-resolve",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://novuscloud.buzz/embed/ani/20/1/sub?k=1",
+          "status": 200,
+          "ms": 533,
+          "contentType": "text/html; charset=UTF-8",
+          "bytes": 33265,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html> <html> <head> <title>Ep 1: Enter: Naruto Uzumaki! - NovusCloud</title> <meta charset=\"UTF-8\" /> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\" /> <meta http-equiv=\"Cache-Control\" content=\"no-cache, no-store, must-revalidate\" /> <li…",
+      "laneLabel": "NovusCloud",
+      "origin": "https://novuscloud.buzz",
+      "note": "source-29: /embed/ani/<anilist>/<ep>/<lane> exposes resolve:\"<signed api>\""
+    },
+    {
+      "lane": "novuscloud",
+      "laneLabel": "NovusCloud",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "megaplay",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [],
+      "result": "needs-browser",
+      "why": "no HTTP discovery path recorded for this lane",
+      "laneLabel": "MegaPlay",
+      "origin": "https://megaplay.buzz",
+      "note": "source-30: /stream/ani/<anilist>/<ep>/<mode>, media discovered by page JS"
+    },
+    {
+      "lane": "megaplay",
+      "laneLabel": "MegaPlay",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "mikaza",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "embed-resolve",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://mikaza.buzz/embed/haiku/ani/20/1/jpn",
+          "status": 200,
+          "ms": 496,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 5667,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> <meta name=\"monetag\" content=\"b49838c4559fa1b4c7e4f68bf9af4f5e\"> <meta name=\"referrer\" content=\"origin\"> <title>player</title> <link rel=\"icon\" type=\"image/svg+xml\" hre…",
+      "laneLabel": "Mikaza",
+      "origin": "https://mikaza.buzz",
+      "note": "source-16: /embed/haiku/ani/<anilist>/<ep>/<lang> exposes a resolve URL"
+    },
+    {
+      "lane": "mikaza",
+      "laneLabel": "Mikaza",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "animesalt",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [],
+      "result": "needs-browser",
+      "why": "no HTTP discovery path recorded for this lane",
+      "laneLabel": "AnimeSalt (Ravok)",
+      "origin": "https://ravok.buzz",
+      "note": "source-28: catalogue on animesalt.cx -> ravok.buzz player/index.php POST"
+    },
+    {
+      "lane": "animesalt",
+      "laneLabel": "AnimeSalt (Ravok)",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidbolt",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/movie/550",
+          "status": 200,
+          "ms": 259,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 8839,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><link rel=\"icon\" href=\"data:,\"> <title>Fight Club — VidBolt</title> <script>(function(){var dev=/(^|\\.)localhost$|^127\\.0\\.0\\.1$|^\\[::1…",
+      "laneLabel": "VidBolt (source-1 family)",
+      "origin": "https://vidbolt.xyz",
+      "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
+    },
+    {
+      "lane": "vidbolt",
+      "laneLabel": "VidBolt (source-1 family)",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidbolt",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/movie/27205",
+          "status": 200,
+          "ms": 180,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 8840,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><link rel=\"icon\" href=\"data:,\"> <title>Inception — VidBolt</title> <script>(function(){var dev=/(^|\\.)localhost$|^127\\.0\\.0\\.1$|^\\[::1\\…",
+      "laneLabel": "VidBolt (source-1 family)",
+      "origin": "https://vidbolt.xyz",
+      "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
+    },
+    {
+      "lane": "vidbolt",
+      "laneLabel": "VidBolt (source-1 family)",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidbolt",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/tv/1399/1/1",
+          "status": 200,
+          "ms": 172,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 8898,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><link rel=\"icon\" href=\"data:,\"> <title>Game of Thrones — VidBolt</title> <script>(function(){var dev=/(^|\\.)localhost$|^127\\.0\\.0\\.1$|^…",
+      "laneLabel": "VidBolt (source-1 family)",
+      "origin": "https://vidbolt.xyz",
+      "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
+    },
+    {
+      "lane": "vidbolt",
+      "laneLabel": "VidBolt (source-1 family)",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidbolt",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://vidbolt.xyz/embed/tv/46260/1/1",
+          "status": 200,
+          "ms": 167,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 8873,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"robots\" content=\"noindex\"><link rel=\"icon\" href=\"data:,\"> <title>Naruto — VidBolt</title> <script>(function(){var dev=/(^|\\.)localhost$|^127\\.0\\.0\\.1$|^\\[::1\\]$/…",
+      "laneLabel": "VidBolt (source-1 family)",
+      "origin": "https://vidbolt.xyz",
+      "note": "source-1: vidbolt/vidrift/vidrock. The biggest lane on the old board."
+    },
+    {
+      "lane": "vidbolt",
+      "laneLabel": "VidBolt (source-1 family)",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "tgvidx",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://tgvidx.lovable.app/?type=movie&tmdb=550",
+          "status": 200,
+          "ms": 1090,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 23675,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Audiowide&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=Lexend+Deca:wght@400;500&amp;famil…",
+      "laneLabel": "TGVIDX",
+      "origin": "https://tgvidx.lovable.app",
+      "note": "source-17: dynamic server inventory, aggregates other upstreams"
+    },
+    {
+      "lane": "tgvidx",
+      "laneLabel": "TGVIDX",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "tgvidx",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://tgvidx.lovable.app/?type=movie&tmdb=27205",
+          "status": 200,
+          "ms": 370,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 23675,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Audiowide&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=Lexend+Deca:wght@400;500&amp;famil…",
+      "laneLabel": "TGVIDX",
+      "origin": "https://tgvidx.lovable.app",
+      "note": "source-17: dynamic server inventory, aggregates other upstreams"
+    },
+    {
+      "lane": "tgvidx",
+      "laneLabel": "TGVIDX",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "tgvidx",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://tgvidx.lovable.app/?type=tv&tmdb=1399&s=1&e=1",
+          "status": 200,
+          "ms": 246,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 23675,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Audiowide&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=Lexend+Deca:wght@400;500&amp;famil…",
+      "laneLabel": "TGVIDX",
+      "origin": "https://tgvidx.lovable.app",
+      "note": "source-17: dynamic server inventory, aggregates other upstreams"
+    },
+    {
+      "lane": "tgvidx",
+      "laneLabel": "TGVIDX",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "tgvidx",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://tgvidx.lovable.app/?type=tv&tmdb=46260&s=1&e=1",
+          "status": 200,
+          "ms": 259,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 23675,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Audiowide&amp;family=Space+Grotesk:wght@400;500;600;700&amp;family=Lexend+Deca:wght@400;500&amp;famil…",
+      "laneLabel": "TGVIDX",
+      "origin": "https://tgvidx.lovable.app",
+      "note": "source-17: dynamic server inventory, aggregates other upstreams"
+    },
+    {
+      "lane": "tgvidx",
+      "laneLabel": "TGVIDX",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "xpass",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "signed-proxy",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/movie/550",
+          "status": 0,
+          "ms": 61,
+          "contentType": "",
+          "bytes": 0,
+          "media": [],
+          "error": "fetch failed",
+          "cause": "ENOTFOUND"
+        }
+      ],
+      "result": "unreachable",
+      "laneLabel": "Xpass",
+      "origin": "https://freakyniki.elaxo.lol",
+      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+    },
+    {
+      "lane": "xpass",
+      "laneLabel": "Xpass",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "xpass",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "signed-proxy",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/movie/27205",
+          "status": 0,
+          "ms": 29,
+          "contentType": "",
+          "bytes": 0,
+          "media": [],
+          "error": "fetch failed",
+          "cause": "ENOTFOUND"
+        }
+      ],
+      "result": "unreachable",
+      "laneLabel": "Xpass",
+      "origin": "https://freakyniki.elaxo.lol",
+      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+    },
+    {
+      "lane": "xpass",
+      "laneLabel": "Xpass",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "xpass",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "signed-proxy",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/tv/1399/1/1",
+          "status": 0,
+          "ms": 43,
+          "contentType": "",
+          "bytes": 0,
+          "media": [],
+          "error": "fetch failed",
+          "cause": "ENOTFOUND"
+        }
+      ],
+      "result": "unreachable",
+      "laneLabel": "Xpass",
+      "origin": "https://freakyniki.elaxo.lol",
+      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+    },
+    {
+      "lane": "xpass",
+      "laneLabel": "Xpass",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "xpass",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "signed-proxy",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://player-4aq.pages.dev/embed/tv/46260/1/1",
+          "status": 0,
+          "ms": 19,
+          "contentType": "",
+          "bytes": 0,
+          "media": [],
+          "error": "fetch failed",
+          "cause": "ENOTFOUND"
+        }
+      ],
+      "result": "unreachable",
+      "laneLabel": "Xpass",
+      "origin": "https://freakyniki.elaxo.lol",
+      "note": "source-13: signed /proxyv2 to vip.1x2.space etc."
+    },
+    {
+      "lane": "xpass",
+      "laneLabel": "Xpass",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "nxsha",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://nxsha.space/watch/movie/550",
+          "status": 200,
+          "ms": 335,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 50610,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "laneLabel": "Nxsha",
+      "origin": "https://nxsha.space",
+      "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
+    },
+    {
+      "lane": "nxsha",
+      "laneLabel": "Nxsha",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "nxsha",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://nxsha.space/watch/movie/27205",
+          "status": 200,
+          "ms": 182,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 50614,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "laneLabel": "Nxsha",
+      "origin": "https://nxsha.space",
+      "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
+    },
+    {
+      "lane": "nxsha",
+      "laneLabel": "Nxsha",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "nxsha",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://nxsha.space/watch/tv/1399/1/1",
+          "status": 200,
+          "ms": 187,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 50942,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "laneLabel": "Nxsha",
+      "origin": "https://nxsha.space",
+      "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
+    },
+    {
+      "lane": "nxsha",
+      "laneLabel": "Nxsha",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "nxsha",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://nxsha.space/watch/tv/46260/1/1",
+          "status": 200,
+          "ms": 178,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 50893,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!DOCTYPE html><html lang=\"en\" class=\"H2HC7W_variable _1JuiMa_variable\"><head><meta charSet=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover\"/><link rel=\"preload\" href=\"/LogoTextHigh.png\" as=\"image\"/><link rel=\"stylesheet\" href=\"/_next/…",
+      "laneLabel": "Nxsha",
+      "origin": "https://nxsha.space",
+      "note": "source-5: scraper inventory (bkl-blast, rive, screenscape, ...)"
+    },
+    {
+      "lane": "nxsha",
+      "laneLabel": "Nxsha",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "blakite",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://blakiteapi.xyz/api/getAllAnime.php",
+          "status": 200,
+          "ms": 710,
+          "contentType": "application/json",
+          "bytes": 496281,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"success\":true,\"data\":{\"movies\":{\"0000615453\":{\"tmdbId\":\"0000615453\",\"originalTmdbId\":\"615453\",\"title\":\"Ne Zha (English Dubbed)\",\"language\":\"English Dubbed\",\"type\":\"Movie\",\"status\":\"Released\",\"createdAt\":\"2026-01-08 04:30:39\",\"updatedAt\":\"2026-01-08 04:30:39\",\"TMDB_DATA\":{\"genres\":[\"Animation\",\"Fan…",
+      "laneLabel": "Blakite",
+      "origin": "https://blakiteapi.xyz",
+      "note": "source-18: catalogue -> hugh.cdn.rumble.cloud HLS/MP4 (direct CDN)"
+    },
+    {
+      "lane": "blakite",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://blakiteapi.xyz/api/getAllAnime.php",
+          "status": 200,
+          "ms": 237,
+          "contentType": "application/json",
+          "bytes": 496281,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"success\":true,\"data\":{\"movies\":{\"0000615453\":{\"tmdbId\":\"0000615453\",\"originalTmdbId\":\"615453\",\"title\":\"Ne Zha (English Dubbed)\",\"language\":\"English Dubbed\",\"type\":\"Movie\",\"status\":\"Released\",\"createdAt\":\"2026-01-08 04:30:39\",\"updatedAt\":\"2026-01-08 04:30:39\",\"TMDB_DATA\":{\"genres\":[\"Animation\",\"Fan…",
+      "laneLabel": "Blakite",
+      "origin": "https://blakiteapi.xyz",
+      "note": "source-18: catalogue -> hugh.cdn.rumble.cloud HLS/MP4 (direct CDN)"
+    },
+    {
+      "lane": "blakite",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://blakiteapi.xyz/api/getAllAnime.php",
+          "status": 200,
+          "ms": 388,
+          "contentType": "application/json",
+          "bytes": 496281,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"success\":true,\"data\":{\"movies\":{\"0000615453\":{\"tmdbId\":\"0000615453\",\"originalTmdbId\":\"615453\",\"title\":\"Ne Zha (English Dubbed)\",\"language\":\"English Dubbed\",\"type\":\"Movie\",\"status\":\"Released\",\"createdAt\":\"2026-01-08 04:30:39\",\"updatedAt\":\"2026-01-08 04:30:39\",\"TMDB_DATA\":{\"genres\":[\"Animation\",\"Fan…",
+      "laneLabel": "Blakite",
+      "origin": "https://blakiteapi.xyz",
+      "note": "source-18: catalogue -> hugh.cdn.rumble.cloud HLS/MP4 (direct CDN)"
+    },
+    {
+      "lane": "blakite",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://blakiteapi.xyz/api/getAllAnime.php",
+          "status": 200,
+          "ms": 343,
+          "contentType": "application/json",
+          "bytes": 496281,
+          "media": []
+        }
+      ],
+      "result": "json-no-media",
+      "preview": "{\"success\":true,\"data\":{\"movies\":{\"0000615453\":{\"tmdbId\":\"0000615453\",\"originalTmdbId\":\"615453\",\"title\":\"Ne Zha (English Dubbed)\",\"language\":\"English Dubbed\",\"type\":\"Movie\",\"status\":\"Released\",\"createdAt\":\"2026-01-08 04:30:39\",\"updatedAt\":\"2026-01-08 04:30:39\",\"TMDB_DATA\":{\"genres\":[\"Animation\",\"Fan…",
+      "laneLabel": "Blakite",
+      "origin": "https://blakiteapi.xyz",
+      "note": "source-18: catalogue -> hugh.cdn.rumble.cloud HLS/MP4 (direct CDN)"
+    },
+    {
+      "lane": "vidora",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/movie/550",
+          "status": 200,
+          "ms": 598,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "laneLabel": "Vidora (moviesapi)",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidora",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/movie/27205",
+          "status": 200,
+          "ms": 341,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "laneLabel": "Vidora (moviesapi)",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidora",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/tv/1399/1/1",
+          "status": 200,
+          "ms": 181,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "laneLabel": "Vidora (moviesapi)",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "vidora",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "js-player",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://moviesapi.to/tv/46260/1/1",
+          "status": 200,
+          "ms": 189,
+          "contentType": "text/html; charset=utf-8",
+          "bytes": 136591,
+          "media": []
+        }
+      ],
+      "result": "html-no-media",
+      "preview": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"UTF-8\" /> <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" /> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" /> <title>VidSpark</title> <!-- p1 GK --> <script type=\"application/javascript\">(()=>{var t={9662:(t,r,n…",
+      "laneLabel": "Vidora (moviesapi)",
+      "origin": "https://moviesapi.to",
+      "note": "source-20: MoviesAPI -> paretocdn.site or a worker relay"
+    },
+    {
+      "lane": "vidora",
+      "laneLabel": "Vidora (moviesapi)",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "watchout",
+      "title": "movie-550",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
+          "status": 404,
+          "ms": 615,
+          "contentType": "text/plain; charset=utf-8",
+          "bytes": 63,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Watchout",
+      "origin": "https://vidout.pages.dev",
+      "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
+    },
+    {
+      "lane": "watchout",
+      "laneLabel": "Watchout",
+      "title": "movie-550",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "watchout",
+      "title": "movie-27205",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
+          "status": 404,
+          "ms": 74,
+          "contentType": "text/plain; charset=utf-8",
+          "bytes": 63,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Watchout",
+      "origin": "https://vidout.pages.dev",
+      "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
+    },
+    {
+      "lane": "watchout",
+      "laneLabel": "Watchout",
+      "title": "movie-27205",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "watchout",
+      "title": "tv-1399-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
+          "status": 404,
+          "ms": 75,
+          "contentType": "text/plain; charset=utf-8",
+          "bytes": 63,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Watchout",
+      "origin": "https://vidout.pages.dev",
+      "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
+    },
+    {
+      "lane": "watchout",
+      "laneLabel": "Watchout",
+      "title": "tv-1399-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    },
+    {
+      "lane": "watchout",
+      "title": "anime-46260-1-1",
+      "method": "http",
+      "kind": "json-api",
+      "need": "media",
+      "requests": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/aliwahan/watchout@main/db.json",
+          "status": 404,
+          "ms": 77,
+          "contentType": "text/plain; charset=utf-8",
+          "bytes": 63,
+          "media": []
+        }
+      ],
+      "result": "no-media-in-html",
+      "laneLabel": "Watchout",
+      "origin": "https://vidout.pages.dev",
+      "note": "source-21: catalogue on jsDelivr/GitHub raw -> episode media host"
+    },
+    {
+      "lane": "watchout",
+      "laneLabel": "Watchout",
+      "title": "anime-46260-1-1",
+      "method": "browser",
+      "result": "skipped",
+      "why": "browser not installed"
+    }
+  ]
+}
