@@ -9,12 +9,18 @@
 
   mean 888MB over 2/2 measured, biggest 1376MB
   primary 1376MB is the biggest en stream listed
-[elfura-greybox] movie/550: still throttled after one retry
-[elfura-sources] source-2 movie/550: 0 candidates in 1934ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
 [elfura-greybox] movie/550: throttled, retrying once
+[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
+[elfura-sources] source-2 movie/550: 0 candidates in 2228ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
 [elfura-citadel] movie/550: 2 row(s)
-[elfura-greybox] movie/550: still throttled after one retry
-[elfura-sources] source-2 movie/550: 0 candidates in 1402ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+
+  "hi" request: 2 stream(s), primary "en"
+  reported fallback: requested "hi" (no-stream-in-language)
+[elfura-greybox] movie/550: throttled 44s ago, not re-asking
+[elfura-sources] source-2 movie/550: 0 candidates in 0ms :: 0 req (observed global fetch; lookup=fresh)
+[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
+[elfura-sources] source-2 movie/550: 0 candidates in 1702ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-citadel] movie/550: 2 row(s)
 
   "hi" request: 2 stream(s), primary Source 1 · English
 node:internal/modules/run_main:123
@@ -22,7 +28,7 @@ node:internal/modules/run_main:123
     ^
 
 AssertionError [ERR_ASSERTION]: asking for "hi" opened a "en" stream
-    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:175:3
+    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:202:3
     at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
   generatedMessage: false,
   code: 'ERR_ASSERTION',
