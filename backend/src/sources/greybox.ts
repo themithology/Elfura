@@ -69,8 +69,21 @@ const MAX_ROWS = 40;
  */
 const PROVIDER_TIMEOUT_MS = 8000;
 const MAX_BODY_BYTES = 512_000;
-/** 429 means "ask again", not "no streams". One backoff inside the deadline. */
-const THROTTLE_BACKOFF_MS = 900;
+/**
+ * 429 means "ask again", not "no streams" — but how long is the provider's
+ * window? Measured: a 6s backoff (the research harness) still answered 429, and
+ * so did a 900ms one. The block outlives a single request either way, so the
+ * retry is not the fix; the fix is not hammering it.
+ *
+ * The backoff is still worth one attempt inside the leash (it costs nothing and
+ * a shared edge may release sooner), but a second 429 is reported as THROTTLED,
+ * distinctly from empty and from failure, so the board does not silently show
+ * "this title has no streams" when the truth is "the provider refused us".
+ */
+const THROTTLE_BACKOFF_MS = 1200;
+
+/** How long a title's throttle is remembered, so the next request does not re-ask. */
+const THROTTLE_MEMORY_MS = 45_000;
 
 /**
  * A relay/proxy front in front of somebody else's media.
@@ -314,6 +327,12 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
   const env = sourceEnv();
   const origin = (options.origin ?? env.ELFURA_GREYBOX_ORIGIN?.trim() ?? DEFAULT_ORIGIN).replace(/\/+$/, '');
 
+  // A title that just refused us is not asked again immediately. This is the
+  // only state this adapter keeps, it is per-title, and it expires: it exists so
+  // that a throttled API is not turned into a request storm by the board's own
+  // retries, which would extend the block for everyone.
+  const throttledUntil = new Map<string, number>();
+
   return {
     id: 'source-2',
     label: 'Source 2',
@@ -326,6 +345,16 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
     async resolve(query: SourceQuery) {
       const url = greyboxUrl(query, origin);
       if (!url) return { candidates: [] };
+
+      const titleKey = `${query.type}:${query.tmdbId}:${query.season ?? 0}:${query.episode ?? 0}`;
+      const blockedUntil = throttledUntil.get(titleKey) ?? 0;
+      if (blockedUntil > Date.now()) {
+        console.warn(
+          `[elfura-greybox] ${query.type}/${query.tmdbId}: throttled ${Math.ceil((blockedUntil - Date.now()) / 1000)}s ago, not re-asking`,
+        );
+        return { candidates: [] };
+      }
+      throttledUntil.delete(titleKey);
 
       // The registry hands a lane that declares `aggregator` a signal sized by
       // `discoveryTimeoutMs`. Composing our own shorter deadline on top of it is
@@ -382,6 +411,15 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
         }
         if (!answer) {
           console.warn(`[elfura-greybox] ${query.type}/${query.tmdbId}: timed out after two attempts`);
+          return { candidates: [] };
+        }
+        if (answer.status === 429) {
+          // Remember the refusal per title. Not a source-level ban: other titles
+          // may well answer, and the provider is the one who decides that.
+          throttledUntil.set(titleKey, Date.now() + THROTTLE_MEMORY_MS);
+          console.warn(
+            `[elfura-greybox] ${query.type}/${query.tmdbId}: THROTTLED — provider refused us, not empty`,
+          );
           return { candidates: [] };
         }
         if (answer.status !== 200) {

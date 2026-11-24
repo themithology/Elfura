@@ -1238,12 +1238,34 @@ export class SourceRegistry {
         }
       : undefined;
 
+    // Did the request for a language actually land? Only meaningful when the
+    // caller asked for one and something is being offered.
+    let languageFallback: { requested: string; reason: 'no-stream-in-language' | 'nothing-played' } | undefined;
+    if (params.preferredLang && uniformOptions.length > 0) {
+      const requested = normalizeLang(params.preferredLang).code;
+      const requestedPrimary = requested.split('-')[0];
+      const carries = (option: UniformStreamOption): boolean => {
+        const lang = option.audioLang ?? option.claimedAudioLang;
+        if (!lang) return false;
+        if (lang.split('-')[0] === requestedPrimary) return true;
+        return !!option.availableAudioLangs?.some((l) => l.split('-')[0] === requestedPrimary);
+      };
+      const anyCarries = uniformOptions.some(carries);
+      const primaryCarries = carries(uniformOptions[0]);
+      if (!anyCarries) {
+        languageFallback = { requested, reason: 'no-stream-in-language' };
+      } else if (!primaryCarries) {
+        languageFallback = { requested, reason: 'nothing-played' };
+      }
+    }
+
     return {
       ok: true,
       media,
       primary: uniformOptions[0],
       sources: uniformOptions,
       ...(size ? { size } : {}),
+      ...(languageFallback ? { languageFallback } : {}),
       sourceGroups: activeAdapters.map(adapter => adapter.id),
       waveUpdates: true,
       // Sources that have not produced anything yet. The client uses this to

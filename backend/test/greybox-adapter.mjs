@@ -231,4 +231,35 @@ console.log('— a slow lane is given the time it was measured to need');
   assert.equal(resolved.candidates.length, 1, 'a slow answer still arrives');
 }
 
+console.log('— a title that just refused us is not asked again');
+{
+  // Two 429s in a row: the adapter reports a throttle, and remembers it per
+  // title so the board's own retries do not turn a block into a storm.
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response('nope', { status: 429 });
+  };
+  const { createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js');
+  const adapter = createGreyboxAdapter({ origin: ORIGIN });
+  const quiet = console.warn;
+  console.warn = () => {};
+
+  const first = await adapter.resolve({ type: 'tv', tmdbId: '1399', season: 1, episode: 1 });
+  assert.equal(first.candidates.length, 0, 'a throttle is not a stream list');
+  const afterFirst = calls;
+  assert.equal(afterFirst, 2, 'one backoff, then the throttle is accepted');
+
+  // The next request for the SAME title does not touch the network at all.
+  const second = await adapter.resolve({ type: 'tv', tmdbId: '1399', season: 1, episode: 1 });
+  assert.equal(second.candidates.length, 0);
+  assert.equal(calls, afterFirst, 'a recently-throttled title must not be re-asked immediately');
+
+  // A DIFFERENT title is still free to try: the block is per title, not a ban.
+  await adapter.resolve({ type: 'movie', tmdbId: '27205' });
+  assert.equal(calls, afterFirst + 2, 'another title is still asked');
+
+  console.warn = quiet;
+}
+
 console.log('\n✓ greybox: relative rows kept, relays refused, throttles retried, languages read');

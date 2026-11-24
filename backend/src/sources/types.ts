@@ -294,4 +294,19 @@ export interface UniformPlaybackResponse {
     /** Which language the mean is over, when the caller asked for one. */
     lang?: string;
   };
+  /**
+   * Set when the caller asked for a language and NOTHING carrying it could be
+   * played. The streams listed are the best available instead.
+   *
+   * This exists because the alternative is worse: the viewer asks for Hindi,
+   * receives an English stream, and nothing anywhere says the request was not
+   * honoured. A silent fallback is indistinguishable from a language filter that
+   * does not work, and the person it fails for has no way to tell.
+   */
+  languageFallback?: {
+    /** What was asked for. */
+    requested: string;
+    /** Why it could not be served. */
+    reason: 'no-stream-in-language' | 'nothing-played';
+  };
 }

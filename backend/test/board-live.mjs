@@ -68,11 +68,12 @@ const cfg = loadBackendConfig({
  * The manifest is the source of truth; overriding the adapter list is how the
  * other tests isolate a single lane.
  */
-async function resolveFor(lang) {
+async function resolveFor(lang, { allowEmpty = false } = {}) {
   const registry = new SourceRegistry(cfg);
   // The whole board, which is the thing the viewer is actually served.
   registry.adapters = adapters.map((lane) => lane.adapter);
   const body = await registry.resolvePlayback({ type: 'movie', tmdbId: '550', preferredLang: lang });
+  if (allowEmpty && !body) return null;
   assert(body && body.ok, `playback did not resolve for ${lang}`);
   assert(Array.isArray(body.sources) && body.sources.length > 0, `playback listed no stream for ${lang}`);
   return body;
@@ -165,7 +166,33 @@ quiet(
   `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${primaryLang} stream listed`,
 );
 
-// ── 5. a second language is a second ranking, not a copy of the first ──────
+// ── 5. asking for a language nobody has must SAY so ────────────────────────
+//
+// This is the case that produced a false pass and then a false failure on the
+// runner: asking citadel for Hindi on a title it only has in English returned
+// English with no indication anywhere that the request was not honoured. A
+// silent fallback looks exactly like a broken language filter.
+{
+  const absent = offered[0].split('-')[0] === 'hi' ? 'ta' : 'hi';
+  const miss = await resolveFor(absent, { allowEmpty: true });
+  if (miss && miss.sources.length > 0) {
+    const primaryLang = miss.primary?.audioLang ?? miss.primary?.claimedAudioLang;
+    const served = miss.languageFallback;
+    quiet(`\n  "${absent}" request: ${miss.sources.length} stream(s), primary "${primaryLang}"`);
+    if (served) {
+      quiet(`  reported fallback: requested "${served.requested}" (${served.reason})`);
+    }
+    assert(
+      served || primaryLang?.split('-')[0] === absent.split('-')[0],
+      `asked for "${absent}", served "${primaryLang}", and the response did not say so ` +
+        '— a silent fallback is indistinguishable from a broken language filter',
+    );
+  } else {
+    quiet(`\n  "${absent}" request: correctly served nothing`);
+  }
+}
+
+// ── 6. a language that IS published opens that language ────────────────────
 const other = offered.find((code) => code.split('-')[0] !== lang.split('-')[0]);
 if (other) {
   const second = await resolveFor(other);
