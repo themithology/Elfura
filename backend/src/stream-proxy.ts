@@ -950,7 +950,9 @@ export async function handleStreamProxy(
     // DNS-rebinding protection in the guarded dispatcher.
     let upstream: Response;
     if (restrictedOrigin) {
-      upstream = await restrictedFetchWithRedirects(parsedTarget.href, init, restrictedOrigin, mediaFetch);
+      // No `fetchImpl` here on purpose: the restricted dispatcher must be driven
+      // by the undici that built it (see restricted-fetch.ts).
+      upstream = await restrictedFetchWithRedirects(parsedTarget.href, init, restrictedOrigin);
     } else {
       let current = parsedTarget;
       let redirects = 0;

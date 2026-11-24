@@ -34,7 +34,7 @@ seconds. Render's native Node runtime is the cheapest way to get a real URL.
 
 | Key | Value | Why |
 | --- | --- | --- |
-| `NODE_VERSION` | `22` | Render's default may be older than the code needs |
+| `NODE_VERSION` | `22` | **required.** Without it Render uses its newest Node, and the app's bundled undici then disagrees with the runtime's — see “Every source returns 0 streams” below |
 | `ELFURA_SECRET` | a long random string (`openssl rand -hex 32`) | signs sessions + the sealed playback envelope |
 | `ALLOWED_ORIGINS` | `*` for testing, then `https://yoursite.com` | who may call the API |
 | `REQUIRE_PLAYBACK_TOKEN` | `0` for testing | `1` in production |
@@ -64,6 +64,37 @@ Step 4 is the important one: it must return `#EXTM3U` **and every child line mus
 `/api/proxy?u=...`**, never the provider hostname. Then open the embed in a browser
 and play something — the network tab should show only `/api/v1/playback` and
 `/api/proxy` requests, nothing pointing at a CDN.
+
+## Every source returns 0 streams, instantly
+
+If the boot log ends with every source reporting 0 candidates in single-digit
+milliseconds and `UND_ERR_INVALID_ARG` anywhere in the log, **the outbound HTTP
+stack refused the request before it left the process.** No provider was asked.
+The tell is the speed: a real refusal takes hundreds of milliseconds, this takes
+five.
+
+It happens when the Node version is not the one the app ships with. The app sends
+discovery requests through an undici dispatcher it builds itself; a dispatcher
+only works with the undici that created it. Hand it to the *runtime's* fetch — a
+newer undici — and the newer fetch's handler has no `onError`, so the older
+dispatcher rejects it and every request dies instantly.
+
+The code now sends through the undici that owns its dispatcher, so this cannot
+happen regardless of the Node version — but keep `NODE_VERSION=22` set anyway,
+because that is the version the app is tested on.
+
+Confirm with:
+
+```bash
+# a real provider answer is hundreds of ms; an instant UND_ERR_INVALID_ARG is not
+curl -s "$BASE/api/v1/health"
+curl -s "$BASE/api/v1/playback?type=movie&tmdb=550" | head -c 300; echo
+```
+
+The boot line to read is the egress verdict. It now says
+`egress-healthy` only when every probed host returned a real HTTP status, and
+says `https-connects-but-http-fails` when TLS completes but no HTTP response was
+captured — which is this failure.
 
 ## Known limits of the free plan
 

@@ -14,8 +14,10 @@ export function isPublicMediaAddress(address: string): boolean {
     (a === 203 && b === 0 && c === 113));
 }
 
-let agentPromise: Promise<import('undici').Dispatcher> | undefined;
-async function guardedAgent(): Promise<import('undici').Dispatcher> {
+type GuardedEgress = { undici: typeof import('undici'); dispatcher: import('undici').Dispatcher };
+
+let agentPromise: Promise<GuardedEgress> | undefined;
+async function guardedAgent(): Promise<GuardedEgress> {
   if (!agentPromise) agentPromise = (async () => {
     const undici = await loadUndici();
     if (!undici) throw new Error('restricted egress unavailable');
@@ -31,9 +33,39 @@ async function guardedAgent(): Promise<import('undici').Dispatcher> {
         else done(null, addresses[0].address, 4);
       });
     };
-    return new undici.Agent({connect:{lookup: lookup as never}, keepAliveTimeout: 10_000});
+    const dispatcher = new undici.Agent({connect:{lookup: lookup as never}, keepAliveTimeout: 10_000});
+    return { undici, dispatcher };
   })();
   return agentPromise;
+}
+
+/**
+ * The fetch that belongs to `dispatcher`.
+ *
+ * A Dispatcher only works with the undici that created it. Handing it to a
+ * different copy — for example Node's built-in fetch when the runtime bundles a
+ * newer undici than the one in node_modules — is refused before any bytes leave
+ * the process. undici 8's fetch hands its handler to a v6 Agent, v6's handler
+ * validation finds no `onError`, and every request dies in ~6 ms with
+ * `UND_ERR_INVALID_ARG: invalid onError method`, which reads exactly like every
+ * provider going down at once. `undici.fetch` is that dispatcher's own, so the
+ * pair always matches regardless of the Node version.
+ */
+function fetchForDispatcher(undici: typeof import('undici'), requested?: typeof fetch): typeof fetch {
+  return (requested ?? testOverride ?? undici.fetch) as unknown as typeof fetch;
+}
+
+/**
+ * Test seam, and nothing else.
+ *
+ * The restricted lane must always be driven by the undici that built its
+ * dispatcher, so it cannot be observed by replacing `globalThis.fetch` the way
+ * the rest of the app can. Tests that need to see these requests install their
+ * stub here instead. Production never calls this.
+ */
+let testOverride: typeof fetch | null = null;
+export function setRestrictedFetchForTests(impl: typeof fetch | null): void {
+  testOverride = impl;
 }
 
 /**
@@ -41,15 +73,28 @@ async function guardedAgent(): Promise<import('undici').Dispatcher> {
  * another machine where this check cannot control the destination address.
  * This is deliberately scoped to the new untrusted anime lanes.
  */
-export async function restrictedFetch(input: string | URL, init: RequestInit = {}, fetchImpl: typeof fetch = fetch): Promise<Response> {
+export async function restrictedFetch(
+  input: string | URL,
+  init: RequestInit = {},
+  fetchImpl?: typeof fetch,
+): Promise<Response> {
   const url = String(input);
   if (!isPublicMediaUrl(url)) throw new Error('blocked media target');
-  const dispatcher = await guardedAgent();
-  return fetchImpl(url, {...init, redirect: 'manual', dispatcher} as RequestInit);
+  const { undici, dispatcher } = await guardedAgent();
+  const send = fetchForDispatcher(undici, fetchImpl);
+  // The dispatcher comes from the npm undici package; a `RequestInit` that
+  // carries one is a superset of what the DOM lib declares, so the cast goes
+  // through `unknown` on purpose.
+  return send(url, {...init, redirect: 'manual', dispatcher} as unknown as RequestInit);
 }
 
 /** Follow at most three validated hops, never forwarding secrets cross-origin. */
-export async function restrictedFetchWithRedirects(raw: string, init: RequestInit, policy: string, fetchImpl: typeof fetch = fetch): Promise<Response> {
+export async function restrictedFetchWithRedirects(
+  raw: string,
+  init: RequestInit,
+  policy: string,
+  fetchImpl?: typeof fetch,
+): Promise<Response> {
   let current=raw;
   let headers=new Headers(init.headers);
   for(let hop=0;hop<=3;hop++) {

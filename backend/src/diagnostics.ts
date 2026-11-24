@@ -296,8 +296,29 @@ async function probeEgressStages(): Promise<{ targets: EgressStage[]; verdict: s
   if (providers.some((t) => t.tls?.ok && (t.http?.status ?? 0) >= 400)) {
     verdict.push('providers-answer-with-refusal: TLS works, the site refuses this server (challenge, 403 or 429)');
   }
-  if (allDnsOk && providers.every((t) => t.tls?.ok && (t.http?.status ?? 0) < 400)) {
+  // "No HTTP status" is not success. A missing status means the request never
+  // completed, and treating it as a pass printed "egress-healthy" over a log
+  // where every host had answered "http-?" — the opposite of the truth.
+  const answeredOk = (t: { tls?: EgressStage['tls']; http?: EgressStage['http'] }) =>
+    !!t.tls?.ok && typeof t.http?.status === 'number' && t.http.status < 400;
+  const tlsOkButNoHttpStatus = providers.some((t) => !!t.tls?.ok && typeof t.http?.status !== 'number');
+  if (allDnsOk && providers.every(answeredOk)) {
     verdict.push('egress-healthy: the server can reach the provider hosts, so re-check the adapters themselves');
+  } else if (tlsOkButNoHttpStatus) {
+    // Distinguish "the stack refused to send" from "the request went out and
+    // nothing came back": the first is a bug in this process, the second is the
+    // network. Only the INVALID_ARG case deserves the version advice.
+    const refusedInProcess = providers.some((t) =>
+      (t.http?.error ?? '').includes('UND_ERR_INVALID_ARG'),
+    );
+    verdict.push(
+      refusedInProcess
+        ? 'https-connects-but-http-fails: TCP and TLS complete, yet the outbound HTTP stack refused to send ' +
+          '(UND_ERR_INVALID_ARG — the dispatcher and the runtime fetch come from different undici copies; ' +
+          'not a provider refusal). Look for the elfura-egress line naming the versions.'
+        : 'https-connects-but-http-fails: TCP and TLS complete, yet no HTTP response was captured ' +
+          '(timed out, reset, or refused mid-request). Retest with: node backend/test/egress-profile.mjs',
+    );
   }
   return { targets, verdict };
 }

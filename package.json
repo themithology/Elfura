@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "description": "Elfura — a small, fast, embeddable HLS/DASH player with multi-audio, customisable subtitles, and a zero-disk uniform TMDB streaming backend.",
   "scripts": {
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "tweetnacl": "^1.0.3",
-    "undici": "^6.29.1",
+    "undici": "^7.30.2",
     "wreq-js": "3.2.0"
   },
   "devDependencies": {

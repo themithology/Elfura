@@ -60,6 +60,21 @@ export function installNetTap(): void {
   globalThis.fetch = wrapped;
 }
 
+/** Record one outgoing request into the caller's log, if there is one. */
+export function recordNetEntry(entry: NetRecord): void {
+  const bucket = storage.getStore();
+  if (bucket) bucket.push(entry);
+}
+
+/**
+ * Mark a call as "already being recorded" so a nested tap does not count the
+ * same logical request twice. Used when a later fetch layer records on its own
+ * because it does not go through this wrapper.
+ */
+export function withOwnRecording<T>(fn: () => Promise<T>): Promise<T> {
+  return recording.run(true, fn);
+}
+
 /** Run `fn` with its own request log. Returns the log alongside the result. */
 export async function tapRequests<T>(fn: () => Promise<T>): Promise<{ value: T; net: NetRecord[] }> {
   const bucket: NetRecord[] = [];

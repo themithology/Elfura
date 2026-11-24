@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import dns from 'node:dns';
-import {isPublicMediaAddress,restrictedFetch,restrictedFetchWithRedirects} from '../../dist/backend/restricted-fetch.js';
+import {
+  isPublicMediaAddress,
+  restrictedFetch,
+  restrictedFetchWithRedirects,
+  setRestrictedFetchForTests,
+} from '../../dist/backend/restricted-fetch.js';
 import {rewriteHlsManifest,handleStreamProxy,buildStreamProxyUrl,decodeProxyHeaders,decodeProxyTarget} from '../../dist/backend/stream-proxy.js';
 import {matchesRestrictedOrigin} from '../../dist/backend/security.js';
 import {verifyAndFilterCandidatesDetailed} from '../../dist/backend/sources/liveness.js';
@@ -37,15 +42,16 @@ assert.equal(childUrl.searchParams.get('h'), null, 'no header hint was supplied'
 
 // 3. A restricted liveness probe must never follow an unsafe redirect.
 const calls=[];
-const originalFetch=globalThis.fetch;
+// The restricted lane is driven by its own undici, so it is observed through
+// the module's test seam rather than by replacing globalThis.fetch.
+setRestrictedFetchForTests(async(input,init)=>{
+  calls.push({url:String(input),redirect:init?.redirect});
+  if(String(input).endsWith('/master')) {
+    return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');
+  }
+  return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}});
+});
 try {
-  globalThis.fetch=async(input,init)=>{
-    calls.push({url:String(input),redirect:init?.redirect});
-    if(String(input).endsWith('/master')) {
-      return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');
-    }
-    return new Response(null,{status:302,headers:{location:'http://169.254.169.254/'}});
-  };
   const cand={key:'restricted',url:origin+'/master',restrictedOrigin:origin,type:'hls',quality:'auto',rank:1};
   const result=await verifyAndFilterCandidatesDetailed([cand]);
   assert.equal(result.verifiedAliveCount,0);
@@ -53,14 +59,14 @@ try {
   assert(calls.every(c=>c.redirect==='manual'));
   assert(calls.every(c=>!c.url.includes('169.254')));
 } finally {
-  globalThis.fetch=originalFetch;
+  setRestrictedFetchForTests(null);
 }
 
 // 4. Proxy handler: restricted requests enforce the origin before any fetch,
 //    reject unsafe redirects, and still stream real media (including the
 //    mislabelled/PNG-wrapped shapes seen in the wild).
 const proxyCalls=[];
-globalThis.fetch=async(input,init)=>{
+const proxyFake=async(input,init)=>{
   const url=String(input);
   proxyCalls.push({url,redirect:init?.redirect});
   if(url.endsWith('/master')) return new Response('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttp://169.254.169.254/secret');
@@ -94,6 +100,12 @@ globalThis.fetch=async(input,init)=>{
   }
   return new Response(null,{status:404});
 };
+// One fake observes both lanes: the open lane still goes through
+// globalThis.fetch, the restricted lane through its own undici (it must never
+// be driven by the runtime's fetch, or the dispatcher would be refused).
+const originalFetch=globalThis.fetch;
+globalThis.fetch=proxyFake;
+setRestrictedFetchForTests(proxyFake);
 
 const server=http.createServer((req,res)=>handleStreamProxy(req,res,{allowOrigin:'*'}));
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -161,6 +173,7 @@ try {
 } finally {
   await new Promise(r=>server.close(r));
   globalThis.fetch=originalFetch;
+  setRestrictedFetchForTests(null);
 }
 
 // 5. Restricted egress rejects every private/loopback shape and accepts public v4.

@@ -24,6 +24,7 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { normalizeFetchInput, rescueLookup, isRescueActive } from './dns-rescue.js';
+import { describeFailure, recordNetEntry, withOwnRecording } from './sources/net-tap.js';
 import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
@@ -38,6 +39,39 @@ import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-
  * call as "this is the media path, leave it alone".
  */
 const bypassStorage = new AsyncLocalStorage<boolean>();
+
+/**
+ * `UND_ERR_INVALID_ARG` means undici refused the request before it left the
+ * process. Every source then reports 0 candidates and the console looks exactly
+ * like a provider outage, which sends people chasing the wrong thing.
+ *
+ * The classic cause: a Dispatcher built by the undici in node_modules handed to
+ * the *runtime's* fetch, which is a different undici release. undici 8's fetch
+ * gives its handler to a v6 Agent, v6 finds no `onError`, and every request dies
+ * in single-digit milliseconds — including to hosts that are perfectly up. This
+ * is why discovery uses `undici.fetch` rather than `globalThis.fetch`: the
+ * dispatcher and the fetch that drives it must come from the same copy.
+ *
+ * Say it once, with the versions, because the version pair is the whole answer.
+ */
+let warnedInvalidArg = false;
+function warnIfInvalidArgument(error: unknown): void {
+  if (warnedInvalidArg) return;
+  const code = (error as { code?: string } | null)?.code;
+  if (code !== 'UND_ERR_INVALID_ARG') return;
+  warnedInvalidArg = true;
+  const chain: string[] = [];
+  for (let c = error, depth = 0; c && depth < 5; c = (c as { cause?: unknown }).cause, depth += 1) {
+    const link = c as { code?: string; message?: string };
+    chain.push(`${link.code ?? 'Error'}: ${link.message ?? ''}`.trim());
+  }
+  console.error(
+    `[elfura-egress] THE OUTBOUND HTTP STACK REFUSED A REQUEST BEFORE IT LEFT THE PROCESS: ${chain.join(' <- ')}. ` +
+      `Every source will now report 0 candidates; this is not a provider refusal. ` +
+      `Runtime undici ${process.versions.undici ?? 'unknown'} on Node ${process.version}` +
+      ` vs the installed copy. Discovery must send through the undici that built its dispatcher.`,
+  );
+}
 
 export function bypassEgressProfile<T>(fn: () => Promise<T>): Promise<T> {
   return bypassStorage.run(true, fn);
@@ -285,13 +319,19 @@ export async function installEgressProfile(log: (line: string) => void = console
   }
 
 
-  // Delegate to whatever global fetch is installed right now (in production the
-  // per-adapter network tap) instead of undici's fetch directly: calling
-  // undici.fetch here silently bypassed the tap, so every resolve log said
-  // "0 req" no matter how many providers were asked. Node's global fetch accepts
-  // the same `dispatcher` option, so the agent below still owns the connection.
-  const baseFetch = globalThis.fetch as typeof undici.fetch;
-  type FetchResult = Awaited<ReturnType<typeof baseFetch>>;
+  // Two fetches, deliberately.
+  //
+  //   undici.fetch      every request that carries `dispatcher: directAgent`.
+  //                     It MUST be the same undici that built that agent: handing
+  //                     a v6 Dispatcher to a different undici (for example the one
+  //                     bundled with a newer Node) is rejected outright with
+  //                     UND_ERR_INVALID_ARG, and then every source reports
+  //                     0 candidates while the console looks like a provider outage.
+  //   globalThis.fetch  requests with no dispatcher of ours: media serving and
+  //                     the hop to the discovery Worker. Those keep whatever the
+  //                     host installed, including the per-adapter network tap.
+  const discoveryFetch = undici.fetch;
+  type FetchResult = Awaited<ReturnType<typeof discoveryFetch>>;
 
   /**
    * One discovery request through the Worker. The target URL and the method go
@@ -331,7 +371,7 @@ export async function installEgressProfile(log: (line: string) => void = console
     }
     let response: FetchResult;
     try {
-      response = (await baseFetch(base, {
+      response = (await previousFetch(base, {
         headers,
         redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
@@ -356,6 +396,27 @@ export async function installEgressProfile(log: (line: string) => void = console
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
     if (bypassStorage.getStore()) return previousFetch(input as never, init as never);
+    const started = Date.now();
+    let host = 'unknown';
+    try {
+      host = new URL(
+        typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url,
+      ).host;
+    } catch {
+      /* keep 'unknown' */
+    }
+    try {
+      const response = await withOwnRecording(() => profiledRequest(input as never, init as never));
+      recordNetEntry({ host, status: (response as Response).status, ms: Date.now() - started });
+      return response;
+    } catch (error) {
+      recordNetEntry({ host, error: describeFailure(error), ms: Date.now() - started });
+      warnIfInvalidArgument(error);
+      throw error;
+    }
+  }) as typeof fetch;
+
+  const profiledRequest = (async (input: unknown, init?: unknown) => {
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
 
@@ -426,7 +487,7 @@ export async function installEgressProfile(log: (line: string) => void = console
     // configured proxy when there is one, and directly otherwise.
     let response: FetchResult | null;
     try {
-      response = await baseFetch(normalized.url, {
+      response = await discoveryFetch(normalized.url, {
         ...firstInit,
         dispatcher: directAgent,
       } as never);
@@ -451,7 +512,7 @@ export async function installEgressProfile(log: (line: string) => void = console
           /* fall through to the local retry */
         }
       }
-      response = await baseFetch(normalized.url, {
+      response = await discoveryFetch(normalized.url, {
         ...firstInit,
         headers: retryHeaders,
         dispatcher: directAgent,
