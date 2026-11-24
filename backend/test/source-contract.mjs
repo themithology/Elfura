@@ -100,28 +100,42 @@ for (const source of APPROVED_SOURCES) {
 
     // Seal through the real code path, against this server's origin. Hand-building
     // the ticket is how a bare upstream URL ended up in a manifest assertion.
-    const sealed = buildStreamProxyUrl(result.candidates[0].url, result.candidates[0].headers, base);
+    // Third argument is the proxy PATH ('/api/proxy'), not an origin: passing the
+    // origin produced '/http://127.0.0.1:PORT/api/proxy?...' and 404'd.
+    // Every candidate gets a turn. A single rendition can be refused while the
+    // lane as a whole is fine, and calling that lane dead is the mistake the
+    // research runs already made once.
+    const sealedCandidates = result.candidates.map(
+      (c) => base + buildStreamProxyUrl(c.url, c.headers),
+    );
 
     try {
       let manifest = null;
       let manifestUrl = null;
-      for (const candidate of [{ url: sealed }]) {
-        const response = await fetch(candidate.url.startsWith('http') ? candidate.url : base + candidate.url, {
+      const refusals = [];
+      for (const candidate of sealedCandidates) {
+        const response = await fetch(candidate, {
           headers: { accept: '*/*' },
           signal: AbortSignal.timeout(30_000),
         });
         if (!response.ok) {
+          refusals.push(`${response.status} ${candidate.slice(0, 40)}`);
           await response.body?.cancel().catch(() => {});
           continue;
         }
         const text = await response.text();
         if (text.length > 0 && !/^\s*<(?:!doctype|html)/i.test(text)) {
           manifest = text;
-          manifestUrl = candidate.url.startsWith('http') ? candidate.url : base + candidate.url;
+          manifestUrl = candidate;
           break;
         }
+        refusals.push(`${text.length}B non-manifest ${candidate.slice(0, 40)}`);
       }
-      assert(manifest, `${source.id}: no candidate returned a readable manifest through /api/proxy`);
+      assert(
+        manifest,
+        `${source.id}: no candidate returned a readable manifest through /api/proxy` +
+          (refusals.length ? `\n    ${refusals.join('\n    ')}` : ''),
+      );
 
       // 4. a media segment behind the manifest must return real bytes.
       const firstMedia = manifest
