@@ -16,6 +16,10 @@ on:
       - 'backend/test/source-contract.mjs'
       - '.github/workflows/source-contract.yml'
 
+# The verdict is committed back to the branch, which needs a write token.
+permissions:
+  contents: write
+
 jobs:
   contract:
     name: every approved source produces bytes
