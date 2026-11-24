@@ -1,25 +1,36 @@
-object overlap probe, 2026-11-24T18:35:43.875Z
+object overlap probe, 2026-11-24T18:40:00.307Z
+[elfura-citadel] movie/550: 2 row(s)
+  fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/550: 9 row(s), langs=7
-  fight-club source-2-greybox: 9 candidate(s), 0 object id(s), duckdns.org,hscow.com
+  fight-club source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
 [elfura-vidlink] movie/550: 3 row(s)
-  fight-club source-3-vidlink: 3 candidate(s), 0 object id(s), hakunaymatata.com
-[elfura-greybox] movie/27205: throttled, retrying once
-[elfura-greybox] movie/27205: THROTTLED — provider refused us, not empty
-  inception source-2-greybox: 0 candidate(s), 0 object id(s), no domain
+  fight-club source-3-vidlink: 3 candidate(s), 3 object id(s), hakunaymatata.com
+[elfura-citadel] movie/27205: 6 row(s)
+  inception source-1-citadel: 6 candidate(s), 1 object id(s), hscow.com
+[elfura-greybox] movie/27205: 9 row(s), langs=7
+  inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
 [elfura-vidlink] movie/27205: 3 row(s)
-  inception source-3-vidlink: 3 candidate(s), 0 object id(s), hakunaymatata.com
-[elfura-greybox] tv/1399: throttled, retrying once
-[elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
-  got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
+  inception source-3-vidlink: 3 candidate(s), 3 object id(s), hakunaymatata.com
+[elfura-citadel] tv/1399: 2 row(s)
+  got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), fcxmb.com,hscow.com
+[elfura-greybox] tv/1399: 7 row(s), langs=5
+  got-s1e1 source-2-greybox: 7 candidate(s), 0 object id(s), duckdns.org,fcxmb.com,hscow.com
 [elfura-vidlink] tv/1399: 4 row(s)
-  got-s1e1 source-3-vidlink: 4 candidate(s), 0 object id(s), hakunaymatata.com
+  got-s1e1 source-3-vidlink: 4 candidate(s), 4 object id(s), hakunaymatata.com
+[elfura-citadel] tv/46260: 1 row(s)
+  naruto-s1e1 source-1-citadel: 1 candidate(s), 0 object id(s), hscow.com
 [elfura-greybox] tv/46260: throttled, retrying once
 [elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
   naruto-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
 [elfura-vidlink] tv/46260: 2 row(s)
-  naruto-s1e1 source-3-vidlink: 2 candidate(s), 0 object id(s), hakunaymatata.com
+  naruto-s1e1 source-3-vidlink: 2 candidate(s), 2 object id(s), hakunaymatata.com
 
 wrote research/object-overlap.json
-verdict: NO OBJECT IDS — neither lane named an object; this probe measured nothing
-objects — shared 0, greybox-only 0, vidlink-only 0
-domains — duckdns.org:source-2-greybox, hscow.com:source-2-greybox, hakunaymatata.com:source-3-vidlink
+verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
+  source-1-citadel & source-2-greybox: 2 shared object(s) on fight-club,inception
+     hsc:78164859
+     hsc:210544560
+  source-1-citadel: 11 url(s), 2 named object(s)
+  source-2-greybox: 31 url(s), 2 named object(s)
+  source-3-vidlink: 12 url(s), 12 named object(s)
+domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, hakunaymatata.com:source-3-vidlink, fcxmb.com:source-1-citadel+source-2-greybox
