@@ -56,12 +56,18 @@ const UA =
 
 const MAX_ROWS = 40;
 /**
- * The API assembles a 12–21 row payload from several upstreams before it
- * answers; 32–64 KB measured, and a TV call that was throttled took 6s to
- * become answerable. This lane is declared `aggregator`, and a lane that
- * aggregates is the one case where a longer leash is earned.
+ * The first call for a cold title was MEASURED at 7.4s (movie/550, 64 KB); a
+ * warm one at 245 ms and another at 2991 ms. This lane assembles a 12–21 row
+ * payload from several upstreams before it answers, which is exactly why it is
+ * declared `aggregator`.
+ *
+ * 8s, not 8s-by-guess: the previous value was 3800 ms, chosen before reading
+ * the timings, and it cut the lane off at half its own measured response time —
+ * which reads in the log as "TimeoutError", i.e. exactly like a dead source.
+ * A timeout that is shorter than the measured answer turns a slow lane into a
+ * lie.
  */
-const PROVIDER_TIMEOUT_MS = 3800;
+const PROVIDER_TIMEOUT_MS = 8000;
 const MAX_BODY_BYTES = 512_000;
 /** 429 means "ask again", not "no streams". One backoff inside the deadline. */
 const THROTTLE_BACKOFF_MS = 900;
@@ -321,8 +327,12 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
       const url = greyboxUrl(query, origin);
       if (!url) return { candidates: [] };
 
-      const deadline = AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
-      const signal = query.signal ? AbortSignal.any([query.signal, deadline]) : deadline;
+      // The registry hands a lane that declares `aggregator` a signal sized by
+      // `discoveryTimeoutMs`. Composing our own shorter deadline on top of it is
+      // what made a measured 7.4s lane report TimeoutError, so the caller's
+      // signal IS the budget here; the local timer exists only for the case
+      // where no caller signal was supplied at all.
+      const signal = query.signal ?? AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
       const headers = {
         'User-Agent': UA,
         Accept: 'application/json, text/plain, */*',
@@ -331,7 +341,15 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
       };
 
       const ask = async (): Promise<{ status: number; body: unknown } | null> => {
-        const response = await fetch(url, { headers, signal });
+        let response: Response;
+        try {
+          response = await fetch(url, { headers, signal });
+        } catch (error) {
+          // A timeout is "nothing came back", which the caller may retry once.
+          // Anything else — a reset, a refused connection — is final.
+          if ((error as Error)?.name === 'TimeoutError' || signal.aborted) return null;
+          throw error;
+        }
         if (response.status === 429) {
           await response.body?.cancel().catch(() => {});
           return { status: 429, body: null };
@@ -345,6 +363,14 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
 
       try {
         let answer = await ask();
+        // One retry for a cold timeout: the first call for a title is the one
+        // that assembles everything (7.4s measured), and a second attempt
+        // usually lands inside the leash. Only when NOTHING came back — a real
+        // answer, even an error, is never re-asked.
+        if (answer === null && !signal.aborted) {
+          console.warn(`[elfura-greybox] ${query.type}/${query.tmdbId}: cold timeout, asking once more`);
+          answer = await ask();
+        }
         if (answer?.status === 429) {
           // A throttle is not a dead lane. One backoff without the raw 429
           // reaching the caller, and say so, because a silent retry hides a
@@ -354,7 +380,11 @@ export function createGreyboxAdapter(options: GreyboxOptions = {}): SourceAdapte
           if (signal.aborted) return { candidates: [] };
           answer = await ask();
         }
-        if (!answer || answer.status !== 200) {
+        if (!answer) {
+          console.warn(`[elfura-greybox] ${query.type}/${query.tmdbId}: timed out after two attempts`);
+          return { candidates: [] };
+        }
+        if (answer.status !== 200) {
           if (answer?.status === 429) {
             console.warn(`[elfura-greybox] ${query.type}/${query.tmdbId}: still throttled after one retry`);
           } else if (answer) {

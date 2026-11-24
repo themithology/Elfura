@@ -206,4 +206,29 @@ console.log('— a hard failure is not retried and reports empty');
   assert.equal(resolved.candidates.length, 0);
 }
 
+console.log('— a slow lane is given the time it was measured to need');
+{
+  // The real measured first call was 7424 ms. A leash shorter than that reports
+  // "TimeoutError", which is indistinguishable from a dead source.
+  const calls = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push(init?.signal);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    return Response.json({ sources: [row({ url: '/api/media?u=slow', language: 'hi' })] });
+  };
+  const { createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js');
+  const adapter = createGreyboxAdapter({ origin: ORIGIN });
+  assert.equal(adapter.discoveryTimeoutMs, 8000, 'the lane declares the leash its measured timings need');
+  assert.ok(
+    adapter.discoveryTimeoutMs > 7424,
+    'the leash must exceed the slowest measured answer, or the lane reports itself dead',
+  );
+
+  const quiet = console.log;
+  console.log = () => {};
+  const resolved = await adapter.resolve({ type: 'movie', tmdbId: '550' });
+  console.log = quiet;
+  assert.equal(resolved.candidates.length, 1, 'a slow answer still arrives');
+}
+
 console.log('\n✓ greybox: relative rows kept, relays refused, throttles retried, languages read');
