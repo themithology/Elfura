@@ -424,6 +424,16 @@ for (const e of byLane.values()) {
   console.log(`${pad(e.lane, 18)}${pad(`${e.playable}/${e.attempts}`, 10)}${pad(`${e.media}/${e.attempts}`, 8)}${[...e.results].sort().join(', ')}`);
 }
 
+/**
+ * A machine-readable block printed to the log.
+ *
+ * Results have to survive a host that cannot fetch workflow artifacts or logs
+ * (this sandbox downloads both as EOF). A marker line in the transcript is
+ * readable from the run itself, so the numbers are never trapped on the runner.
+ */
+const MARKER = 'ELFURA-MEASURE-JSON:';
+console.log(`\n${MARKER}${JSON.stringify({ measuredAt: new Date().toISOString(), summary, rows: results.length })}`);
+
 const payload = {
   measuredAt: new Date().toISOString(),
   node: process.version,

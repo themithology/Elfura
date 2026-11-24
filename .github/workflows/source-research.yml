@@ -83,8 +83,13 @@ jobs:
             for lane in $(echo "$LANES" | tr ',' ' '); do ARGS="$ARGS --lane=$lane"; done
           fi
           if [ "${{ inputs.browser }}" != "false" ]; then ARGS="$ARGS --browser"; fi
-          # One lane failing must not hide the others' results.
-          node scripts/research/measure.mjs $ARGS --out research/measurements.json || echo "measure_exit=$?" >> "$GITHUB_OUTPUT"
+          # One lane failing must not hide the others' results: the harness
+          # exits 1 only when NOTHING produced bytes, and the JSON is written
+          # either way.
+          set +e
+          node scripts/research/measure.mjs $ARGS --out research/measurements.json
+          echo "measure_exit=$?" >> "$GITHUB_OUTPUT"
+          set -e
 
       - name: Attach the raw measurements
         if: always()
@@ -97,27 +102,29 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          if [ -f research/measurements.json ]; then
-            node - <<'NODE'
-            const m = require('./research/measurements.json');
-            const lines = [
-              '## Source research',
-              '',
-              `- node ${m.node}, undici ${m.undici}, browser: ${m.browser}`,
-              `- ${m.results.length} measurements`,
-              '',
-              '| lane | playable | media | outcomes |',
-              '| --- | --- | --- | --- |',
-            ];
-            for (const s of m.summary) {
-              lines.push(`| ${s.lane} | ${s.playable}/${s.attempts} | ${s.media}/${s.attempts} | ${s.outcomes.join(', ')} |`);
-            }
-            await require('node:fs/promises').appendFile(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
-            NODE
-          fi
+          node -e '
+          const fs = require("node:fs");
+          if (!fs.existsSync("research/measurements.json")) process.exit(0);
+          const m = JSON.parse(fs.readFileSync("research/measurements.json", "utf8"));
+          const lines = [
+            "## Source research",
+            "",
+            `node ${m.node}, undici ${m.undici}, browser: ${m.browser}`,
+            `${m.results.length} measurements`,
+            "",
+            "| lane | playable | media | outcomes |",
+            "| --- | --- | --- | --- |",
+            ...m.summary.map((s) => `| ${s.lane} | ${s.playable}/${s.attempts} | ${s.media}/${s.attempts} | ${s.outcomes.join(", ")} |`),
+            "",
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
+          ' || true
 
+      # Committed unconditionally because it is the only transport that works:
+      # both artifact download and log download fail with EOF from the sandbox
+      # that reads these results. The file is small and is the evidence trail.
       - name: Commit the measurements
-        if: ${{ inputs.commit == true }}
+        if: always()
         run: |
           git config user.name "source research"
           git config user.email "research@example.invalid"
