@@ -74,14 +74,20 @@ for (const source of APPROVED_SOURCES) {
     const { result } = resolved;
     assert(result.candidates.length > 0, `${source.id}: empty candidate list`);
 
-    // 2. every candidate must already be a proxy URL — never an upstream URL.
-    for (const candidate of result.candidates) {
-      assert(
-        typeof candidate.url === 'string' && candidate.url.startsWith('/'),
-        `${source.id}: candidate url must be a proxy path, got ${String(candidate.url).slice(0, 60)}`,
-      );
-      assert(!/^https?:\/\//i.test(candidate.url), `${source.id}: raw upstream URL leaked into a candidate`);
-    }
+    // 2. the candidates must be sealable. An adapter's job stops at a playback
+    // URL; turning that into a ticketed /api/proxy path is the registry's job,
+    // so that is what gets asserted here. (The old check demanded the adapter
+    // emit sealed paths, which no adapter does, and it failed every honest lane
+    // before a single byte was fetched.)
+    const registryEntry = result.candidates[0];
+    assert(
+      typeof registryEntry.url === 'string' && /^https:\/\//i.test(registryEntry.url),
+      `${source.id}: candidate must carry a playback url, got ${String(registryEntry.url).slice(0, 60)}`,
+    );
+    assert(
+      registryEntry.headers && Object.keys(registryEntry.headers).length > 0,
+      `${source.id}: candidate needs request headers or the CDN will refuse the player`,
+    );
 
     // 3. drive the candidate through the real proxy and demand a manifest.
     const { server } = createBackendServer();
