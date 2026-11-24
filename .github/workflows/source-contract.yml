@@ -14,7 +14,7 @@ on:
     paths:
       - 'backend/src/sources/**'
       - 'backend/test/source-contract.mjs'
-      - 'backend/test/citadel-live.mjs'
+      - 'backend/test/board-live.mjs'
       - '.github/workflows/source-contract.yml'
 
 # The verdict is committed back to the branch, which needs a write token.
@@ -68,7 +68,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          node backend/test/citadel-live.mjs 2>&1 | tee research/ranking-last.txt
+          node backend/test/board-live.mjs 2>&1 | tee research/ranking-last.txt
         env:
           NODE_ENV: production
           ELFURA_SECRET: contract-test-only-not-a-production-secret

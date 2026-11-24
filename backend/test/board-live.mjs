@@ -4,10 +4,14 @@
  * ---------------------------------------------------------------------------
  * This is the check that matters. The unit test proves the comparator sorts by
  * size; it cannot prove that a real stream ever *produces* a size. This asks
- * citadel for the same title in two languages and requires that every listed
- * stream arrived with bytes behind it, that the mean is over measured streams,
- * and that the biggest stream of the requested language is the one the player
- * opens on.
+ * EVERY lane on the board for the same title and requires that the listed
+ * streams arrived with bytes behind them, that the mean is over measured
+ * streams, and that the biggest stream of the requested language is the one the
+ * player opens on.
+
+ * With one source this proved the rule. With two it proves the thing the rule
+ * exists for: two independent lanes competing on the same title, and the bigger
+ * stream winning regardless of which lane it came from.
  *
  * It needs egress, so it runs on a runner, not in the editing sandbox.
  * ---------------------------------------------------------------------------
@@ -18,24 +22,38 @@ import { APPROVED_SOURCES } from '../../dist/backend/sources/index.js';
 import { SourceRegistry } from '../../dist/backend/sources/registry.js';
 
 const MB = 1024 * 1024;
-const source = APPROVED_SOURCES[0];
-assert(source, 'a source must be approved before its ranking can be measured');
+assert(APPROVED_SOURCES.length > 0, 'a source must be approved before its ranking can be measured');
 
-const adapter = source.create();
+// Every lane on the board, not just the first. When this file only exercised
+// APPROVED_SOURCES[0] it silently stopped testing the board the moment a second
+// source was added - and the second source is where lanes actually compete.
+const adapters = APPROVED_SOURCES.map((source) => ({ id: source.id, adapter: source.create() }));
 const probe = { type: 'movie', tmdbId: '550' };
 
 const quiet = console.log;
-console.log = () => {}; // the adapter narrates; the verdict below is the point
-const resolved = await adapter.resolve({ ...probe, signal: AbortSignal.timeout(25_000) });
+console.log = () => {}; // the adapters narrate; the verdict below is the point
+const perLane = [];
+for (const lane of adapters) {
+  try {
+    const resolved = await lane.adapter.resolve({ ...probe, signal: AbortSignal.timeout(25_000) });
+    perLane.push({ ...lane, candidates: resolved.candidates ?? [] });
+  } catch {
+    perLane.push({ ...lane, candidates: [] });
+  }
+}
 console.log = quiet;
 
-assert(resolved.candidates.length > 0, 'the provider returned no rows for the probe title');
+const resolved = { candidates: perLane.flatMap((lane) => lane.candidates) };
+const answering = perLane.filter((lane) => lane.candidates.length > 0);
+quiet(
+  `  lanes answering: ${answering.map((l) => `${l.id}=${l.candidates.length}`).join(', ') || 'none'}`,
+);
+assert(resolved.candidates.length > 0, 'no lane on the board returned a row for the probe title');
 
 // NOTE: adapter.resolve() deliberately returns unmeasured candidates. Sizes are
 // produced by the liveness pass inside the registry, which is the only place a
 // segment is actually fetched. Asserting a size here would be asserting on a
 // layer that never measures anything — it did exactly that on the first run.
-quiet(`  adapter returned ${resolved.candidates.length} candidate(s); sizes come from the registry`);
 
 // ── 1 + 2 + 3. end to end, through the registry the player is served by ────
 const cfg = loadBackendConfig({
@@ -52,7 +70,8 @@ const cfg = loadBackendConfig({
  */
 async function resolveFor(lang) {
   const registry = new SourceRegistry(cfg);
-  registry.adapters = [adapter];
+  // The whole board, which is the thing the viewer is actually served.
+  registry.adapters = adapters.map((lane) => lane.adapter);
   const body = await registry.resolvePlayback({ type: 'movie', tmdbId: '550', preferredLang: lang });
   assert(body && body.ok, `playback did not resolve for ${lang}`);
   assert(Array.isArray(body.sources) && body.sources.length > 0, `playback listed no stream for ${lang}`);
@@ -166,4 +185,4 @@ if (other) {
   quiet(`  (this title is published in one language only; cross-language ranking not exercised)`);
 }
 
-console.log('\n✓ citadel live: real sizes measured, requested language ranked biggest-first');
+console.log('\n✓ board live: real sizes measured, requested language ranked biggest-first');
