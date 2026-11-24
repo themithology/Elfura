@@ -54,16 +54,24 @@ const TITLES = [
 /**
  * The library's own object id, pulled out of a media path.
  *
- * The shapes this board has actually seen:
- *   /dash/<19-digit id>_<...>/master.m3u8      hakunaymatata family
- *   /api/media?u=https://.../dash/<id>_.../    greybox's own proxy, upstream in the query
- *   /<something>/index.m3u8
+ * These are the shapes the two live lanes ACTUALLY hand out, read off a run
+ * rather than assumed. The first version of this probe guessed a
+ * `/dash/<19 digits>_.../` shape and matched nothing at all, then reported
+ * "no object ids" as if that were a finding about the sources.
  *
- * The digit run is the id that matters: it is assigned by whichever library
- * encoded the file, so two lanes serving the same object carry the same number
- * and two lanes serving different libraries do not.
+ *   hakunaymatata (vidlink today)
+ *     /bt/<32 hex>.mp4
+ *     /resource/h265/<32 hex>.mp4
+ *     /tran-audio/<date>/<32 hex>.mp4
+ *   hscow (citadel, and greybox's river rows)
+ *     /hls/<8-10 digit title id>/<height>/index_<n>.m3u8
+ *     /hls_mps/<id>/<height>/index_<n>.m3u8
+ *
+ * Two different id spaces, which is itself the finding: these are not one
+ * library reached two ways.
  */
-const OBJECT_ID = /\/(\d{15,22})_/;
+const HEX_OBJECT = /\/(?:[a-z0-9-]+\/)?(?:[a-z0-9-]+\/)?([0-9a-f]{32})\.(?:mp4|m3u8|mpd)(?:[?#]|$)/i;
+const HSC_TITLE = /\/hls(?:_mps)?\/(\d{6,12})\//i;
 
 function objectId(rawUrl) {
   let url;
@@ -83,12 +91,14 @@ function objectId(rawUrl) {
     }
   }
   for (const path of candidates) {
-    const hit = path.match(OBJECT_ID);
-    if (hit) return hit[1];
+    const hex = path.match(HEX_OBJECT);
+    if (hex) return `hex:${hex[1].toLowerCase()}`;
+    const hsc = path.match(HSC_TITLE);
+    if (hsc) return `hsc:${hsc[1]}`;
+    const uuid = path.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
+    if (uuid) return `uuid:${uuid[1].toLowerCase()}`;
   }
-  // Some rows use a UUID-ish name instead of a digit run.
-  const uuid = url.pathname.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
-  return uuid ? uuid[1].toLowerCase() : null;
+  return null;
 }
 
 function mediaDomain(rawUrl) {
@@ -151,9 +161,11 @@ async function runway(adapter, title) {
 async function main() {
   console.log('object overlap probe,', new Date().toISOString());
 
+  let createCitadelAdapter;
   let createGreyboxAdapter;
   let createVidlinkAdapter;
   try {
+    ({ createCitadelAdapter } = await import('../../dist/backend/sources/citadel.js'));
     ({ createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js'));
     ({ createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js'));
   } catch (error) {
@@ -161,7 +173,11 @@ async function main() {
     throw error;
   }
 
+  // All three, including the two already approved. The board's own internal
+  // overlap matters as much as a candidate's: if source-1 and source-2 serve the
+  // same object, the board is smaller than it says it is.
   const lanes = {
+    'source-1-citadel': createCitadelAdapter(),
     'source-2-greybox': createGreyboxAdapter(),
     'source-3-vidlink': createVidlinkAdapter(),
   };
@@ -176,20 +192,48 @@ async function main() {
         : `${perLane[id].candidateCount} candidate(s), ${perLane[id].objects.length} object id(s), ${perLane[id].domains.join(',') || 'no domain'}`;
       console.log(`  ${title.key} ${id}: ${summary}`);
     }
-    const a = new Set(perLane['source-2-greybox'].objects);
-    const b = new Set(perLane['source-3-vidlink'].objects);
-    const shared = [...a].filter((id) => b.has(id));
-    rows.push({ title: title.key, perLane, sharedObjects: shared });
+    const laneIds = Object.keys(lanes);
+    const pairs = {};
+    for (let i = 0; i < laneIds.length; i += 1) {
+      for (let j = i + 1; j < laneIds.length; j += 1) {
+        const a = new Set(perLane[laneIds[i]].objects);
+        const b = new Set(perLane[laneIds[j]].objects);
+        const shared = [...a].filter((id) => b.has(id));
+        if (shared.length > 0) pairs[`${laneIds[i]} & ${laneIds[j]}`] = shared;
+      }
+    }
+    rows.push({ title: title.key, perLane, pairs });
   }
 
-  // Across every title, is there a single object both lanes serve?
-  const allShared = [...new Set(rows.flatMap((row) => row.sharedObjects))];
-  const greyboxOnly = [...new Set(rows.flatMap((r) => r.perLane['source-2-greybox'].objects))].filter(
-    (id) => !allShared.includes(id),
+  // Across every title, which lane pairs serve a byte-identical object?
+  const byPair = {};
+  for (const row of rows) {
+    for (const [pair, ids] of Object.entries(row.pairs)) {
+      byPair[pair] ??= { objects: new Set(), titles: new Set() };
+      for (const id of ids) byPair[pair].objects.add(id);
+      byPair[pair].titles.add(row.title);
+    }
+  }
+  const pairSummary = Object.fromEntries(
+    Object.entries(byPair).map(([pair, data]) => [
+      pair,
+      { sharedObjects: [...data.objects], titles: [...data.titles] },
+    ]),
   );
-  const vidlinkOnly = [...new Set(rows.flatMap((r) => r.perLane['source-3-vidlink'].objects))].filter(
-    (id) => !allShared.includes(id),
-  );
+
+  // How opaque was each lane? Greybox hands out `?u=m1.<base64>` rows whose
+  // upstream cannot be read from the URL at all - those rows hide their object,
+  // which caps what this probe can conclude about them.
+  const opacity = {};
+  for (const laneId of Object.keys(lanes)) {
+    let total = 0;
+    let named = 0;
+    for (const row of rows) {
+      total += row.perLane[laneId].urls.length;
+      named += row.perLane[laneId].objects.length;
+    }
+    opacity[laneId] = { urls: total, distinctObjects: named };
+  }
 
   const domainsSeen = {};
   for (const row of rows) {
@@ -206,15 +250,17 @@ async function main() {
     titles: TITLES.map((t) => t.key),
     rows,
     summary: {
-      sharedObjects: allShared,
-      greyboxOnly: greyboxOnly.length,
-      vidlinkOnly: vidlinkOnly.length,
+      pairs: pairSummary,
+      opacity,
       verdict:
-        allShared.length > 0
-          ? `SAME LIBRARY — ${allShared.length} media object(s) served by both lanes`
-          : greyboxOnly.length + vidlinkOnly.length > 0
-            ? 'DIFFERENT LIBRARIES — no media object is served by both lanes'
-            : 'NO OBJECT IDS — neither lane named an object; this probe measured nothing',
+        Object.keys(pairSummary).length > 0
+          ? `OVERLAP — ${Object.keys(pairSummary)
+              .map((pair) => `${pair} share ${pairSummary[pair].sharedObjects.length} object(s)`)
+              .join('; ')}`
+          : 'NO SHARED OBJECTS — no lane pair served a byte-identical media object',
+      caveat: Object.values(pairSummary).length === 0
+        ? 'Absence of a shared id is not proof of different libraries: a lane whose rows are opaque (?u=m1.…) hides its object, and that lane could still be serving what another lane names.'
+        : null,
       domains: Object.fromEntries(
         Object.entries(domainsSeen).map(([domain, set]) => [domain, [...set].sort()]),
       ),
@@ -230,9 +276,14 @@ async function main() {
   await fs.writeFile(OUT, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   console.log(`\nwrote ${OUT}`);
   console.log(`verdict: ${report.summary.verdict}`);
-  console.log(
-    `objects — shared ${allShared.length}, greybox-only ${report.summary.greyboxOnly}, vidlink-only ${report.summary.vidlinkOnly}`,
-  );
+  for (const [pair, data] of Object.entries(report.summary.pairs)) {
+    console.log(`  ${pair}: ${data.sharedObjects.length} shared object(s) on ${data.titles.join(',')}`);
+    for (const id of data.sharedObjects) console.log(`     ${id}`);
+  }
+  for (const [laneId, counts] of Object.entries(report.summary.opacity)) {
+    console.log(`  ${laneId}: ${counts.urls} url(s), ${counts.distinctObjects} named object(s)`);
+  }
+  if (report.summary.caveat) console.log(`  caveat: ${report.summary.caveat}`);
   console.log(
     `domains — ${Object.entries(report.summary.domains)
       .map(([d, lanes]) => `${d}:${lanes.join('+')}`)
