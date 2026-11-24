@@ -27,10 +27,32 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci --no-audit --no-fund
       - run: npm run build:backend
+      # The verdict is written to a file, not just to the log: log download from
+      # the sandbox that reads this repo fails with EOF, so the only way to see
+      # what the gate decided is to commit it.
       - name: Contract
-        run: node backend/test/source-contract.mjs
+        id: contract
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node backend/test/source-contract.mjs 2>&1 | tee research/contract-last.txt
         env:
           NODE_ENV: production
           ELFURA_SECRET: contract-test-only-not-a-production-secret
           RESOLVE_TIMEOUT_MS: '20000'
           TMDB_TIMEOUT_MS: '8000'
+
+      - name: Record the verdict on the branch
+        if: always()
+        run: |
+          git config user.name "source contract"
+          git config user.email "contract@example.invalid"
+          git add research/contract-last.txt
+          git diff --cached --quiet || git commit -m "Source contract verdict for $(git rev-parse --short HEAD)"
+          git push
+
+      - name: Enforce the verdict
+        if: steps.contract.outcome == 'failure'
+        run: |
+          echo "The gate is red; the verdict above is committed to research/contract-last.txt."
+          exit 1
