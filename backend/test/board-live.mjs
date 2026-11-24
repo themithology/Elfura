@@ -92,7 +92,7 @@ const offered = [
 ];
 assert(offered.length > 0, 'the lane published no language at all — nothing can be ranked');
 const lang = offered[0];
-quiet(`  languages published: ${offered.join(', ')}; ranking inside "${lang}"`);
+quiet(`  languages any adapter returned: ${offered.join(', ')}; ranking inside "${lang}"`);
 
 const wanted = await resolveFor(lang);
 const MB_ = MB;
@@ -166,6 +166,20 @@ quiet(
   `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${primaryLang} stream listed`,
 );
 
+// What the board can actually PLAY, by language. Raw adapter rows are not proof:
+// a lane whose rows all failed the probe publishes nothing, and counting its
+// labels here made an unavailable language look available — which is what made
+// this file demand a Hindi stream that no lane could serve.
+const playableLangs = [
+  ...new Set(
+    wanted.sources
+      .flatMap((s) => [s.audioLang, s.claimedAudioLang, ...(s.availableAudioLangs ?? [])])
+      .filter((code) => typeof code === 'string' && code !== 'und')
+      .map((code) => code.split('-')[0]),
+  ),
+];
+quiet(`\n  playable languages on this title: ${playableLangs.join(', ') || 'none declared'}`);
+
 // ── 5. asking for a language nobody has must SAY so ────────────────────────
 //
 // This is the case that produced a false pass and then a false failure on the
@@ -173,7 +187,7 @@ quiet(
 // English with no indication anywhere that the request was not honoured. A
 // silent fallback looks exactly like a broken language filter.
 {
-  const absent = offered[0].split('-')[0] === 'hi' ? 'ta' : 'hi';
+  const absent = playableLangs.includes('hi') ? 'ta' : 'hi';
   const miss = await resolveFor(absent, { allowEmpty: true });
   if (miss && miss.sources.length > 0) {
     const primaryLang = miss.primary?.audioLang ?? miss.primary?.claimedAudioLang;
@@ -193,7 +207,7 @@ quiet(
 }
 
 // ── 6. a language that IS published opens that language ────────────────────
-const other = offered.find((code) => code.split('-')[0] !== lang.split('-')[0]);
+const other = playableLangs.find((code) => code.split('-')[0] !== lang.split('-')[0]);
 if (other) {
   const second = await resolveFor(other);
   const secondPrimary = second.primary;
