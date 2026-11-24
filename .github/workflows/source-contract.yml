@@ -14,6 +14,7 @@ on:
     paths:
       - 'backend/src/sources/**'
       - 'backend/test/source-contract.mjs'
+      - 'backend/test/citadel-live.mjs'
       - '.github/workflows/source-contract.yml'
 
 # The verdict is committed back to the branch, which needs a write token.
