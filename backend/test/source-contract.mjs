@@ -23,6 +23,7 @@
 import assert from 'node:assert/strict';
 import { APPROVED_SOURCES } from '../../dist/backend/sources/index.js';
 import { createBackendServer } from '../../dist/backend/index.js';
+import { buildStreamProxyUrl } from '../../dist/backend/stream-proxy.js';
 
 const passed = [];
 const failed = [];
@@ -97,11 +98,15 @@ for (const source of APPROVED_SOURCES) {
     const { port } = server.address();
     const base = `http://127.0.0.1:${port}`;
 
+    // Seal through the real code path, against this server's origin. Hand-building
+    // the ticket is how a bare upstream URL ended up in a manifest assertion.
+    const sealed = buildStreamProxyUrl(result.candidates[0].url, result.candidates[0].headers, base);
+
     try {
       let manifest = null;
       let manifestUrl = null;
-      for (const candidate of result.candidates) {
-        const response = await fetch(base + candidate.url, {
+      for (const candidate of [{ url: sealed }]) {
+        const response = await fetch(candidate.url.startsWith('http') ? candidate.url : base + candidate.url, {
           headers: { accept: '*/*' },
           signal: AbortSignal.timeout(30_000),
         });
@@ -112,7 +117,7 @@ for (const source of APPROVED_SOURCES) {
         const text = await response.text();
         if (text.length > 0 && !/^\s*<(?:!doctype|html)/i.test(text)) {
           manifest = text;
-          manifestUrl = candidate.url;
+          manifestUrl = candidate.url.startsWith('http') ? candidate.url : base + candidate.url;
           break;
         }
       }
@@ -124,7 +129,7 @@ for (const source of APPROVED_SOURCES) {
         .map((line) => line.trim())
         .find((line) => line !== '' && !line.startsWith('#'));
       assert(firstMedia, `${source.id}: manifest contained no media or child playlist line`);
-      const segmentUrl = new URL(firstMedia, `${base}${manifestUrl}`).href;
+      const segmentUrl = new URL(firstMedia, manifestUrl).href;
       const segment = await fetch(segmentUrl, {
         headers: { range: 'bytes=0-65535' },
         signal: AbortSignal.timeout(30_000),
