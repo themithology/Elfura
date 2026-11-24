@@ -74,21 +74,23 @@ assert(offered.length > 0, 'the lane published no language at all — nothing ca
 const lang = offered[0];
 quiet(`  languages published: ${offered.join(', ')}; ranking inside "${lang}"`);
 
-const hindi = await resolveFor(lang);
+const wanted = await resolveFor(lang);
 const MB_ = MB;
-quiet(`\n  Hindi request: ${hindi.sources.length} stream(s), primary ${hindi.primary?.label ?? '?'}`);
-for (const source_ of hindi.sources) {
-  const label = `${source_.label} [${source_.lang ?? source_.audioLang ?? '?'}]`;
+quiet(`\n  "${lang}" request: ${wanted.sources.length} stream(s), primary ${wanted.primary?.label ?? '?'}`);
+for (const stream of wanted.sources) {
+  const label = `${stream.label} [${
+    stream.audioLang ? `${stream.audioLang} verified` : `${stream.claimedAudioLang} label`
+  }]`;
   quiet(
     `    ${label.padEnd(38)} ` +
-      (Number.isFinite(source_.measuredBytes)
-        ? `${(source_.measuredBytes / MB_).toFixed(0)}MB`
+      (Number.isFinite(stream.measuredBytes)
+        ? `${(stream.measuredBytes / MB_).toFixed(0)}MB`
         : 'unmeasured'),
   );
 }
 
 // ── 1. the streams carry measured sizes, and they are plausible ─────────────
-const measured = hindi.sources.filter((s) => Number.isFinite(s.measuredBytes) && s.measuredBytes > 0);
+const measured = wanted.sources.filter((s) => Number.isFinite(s.measuredBytes) && s.measuredBytes > 0);
 assert(
   measured.length > 0,
   'not one stream measured a size — the byte-range probe never reached a segment',
@@ -102,18 +104,18 @@ for (const stream of measured) {
 }
 
 // ── 2. the response's own summary is honest ────────────────────────────────
-assert(hindi.size, 'the response carried no size summary');
+assert(wanted.size, 'the response carried no size summary');
 quiet(
-  `\n  mean ${(hindi.size.meanBytes / MB_).toFixed(0)}MB over ${hindi.size.measured}/${hindi.size.total} measured, ` +
-    `biggest ${(hindi.size.maxBytes / MB_).toFixed(0)}MB`,
+  `\n  mean ${(wanted.size.meanBytes / MB_).toFixed(0)}MB over ${wanted.size.measured}/${wanted.size.total} measured, ` +
+    `biggest ${(wanted.size.maxBytes / MB_).toFixed(0)}MB`,
 );
-assert(hindi.size.measured <= hindi.size.total, 'the mean cannot cover more streams than exist');
-assert(hindi.size.measured === measured.length, 'the summary disagrees with the streams it summarises');
-assert(hindi.size.meanBytes > 0, 'a reported mean of zero bytes is not a measurement');
-assert(hindi.size.maxBytes >= hindi.size.meanBytes, 'the biggest stream cannot be smaller than the mean');
+assert(wanted.size.measured <= wanted.size.total, 'the mean cannot cover more streams than exist');
+assert(wanted.size.measured === measured.length, 'the summary disagrees with the streams it summarises');
+assert(wanted.size.meanBytes > 0, 'a reported mean of zero bytes is not a measurement');
+assert(wanted.size.maxBytes >= wanted.size.meanBytes, 'the biggest stream cannot be smaller than the mean');
 
 // ── 3. every stream tells the player what language it is ───────────────────
-for (const stream of hindi.sources) {
+for (const stream of wanted.sources) {
   assert(
     stream.audioLang || stream.claimedAudioLang,
     `${stream.label} reached the player with no language at all`,
@@ -121,18 +123,18 @@ for (const stream of hindi.sources) {
 }
 
 // ── 4. THE RULE: within the requested language, the biggest stream opens ────
-const primary = hindi.primary;
+const primary = wanted.primary;
 assert(Number.isFinite(primary?.measuredBytes), 'the stream the player opens on carries no measured size');
 const primaryLang = primary.audioLang ?? primary.claimedAudioLang;
 assert(
   primaryLang && primaryLang.split('-')[0] === lang.split('-')[0],
   `the primary stream is "${primaryLang}", not the requested "${lang}"`,
 );
-const biggerSameLang = hindi.sources.filter(
+const biggerSameLang = wanted.sources.filter(
   (s) =>
     Number.isFinite(s.measuredBytes) &&
     s.measuredBytes > primary.measuredBytes &&
-    (s.lang ?? s.audioLang ?? s.claimedAudioLang) === primaryLang,
+    (s.audioLang ?? s.claimedAudioLang) === primaryLang,
 );
 assert.equal(
   biggerSameLang.length,
@@ -144,12 +146,24 @@ quiet(
   `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${primaryLang} stream listed`,
 );
 
-// ── 5. and the same title in another language ranks its own biggest ────────
-const english = await resolveFor('en');
-quiet(`\n  English request: ${english.sources.length} stream(s), primary ${english.primary?.label ?? '?'}`);
-const englishPrimary = english.primary;
-if (Number.isFinite(englishPrimary?.measuredBytes)) {
-  quiet(`  primary ${(englishPrimary.measuredBytes / MB_).toFixed(0)}MB`);
+// ── 5. a second language is a second ranking, not a copy of the first ──────
+const other = offered.find((code) => code.split('-')[0] !== lang.split('-')[0]);
+if (other) {
+  const second = await resolveFor(other);
+  const secondPrimary = second.primary;
+  const secondLang = secondPrimary?.audioLang ?? secondPrimary?.claimedAudioLang;
+  quiet(`\n  "${other}" request: ${second.sources.length} stream(s), primary ${secondPrimary?.label ?? '?'}`);
+  assert(
+    secondLang && secondLang.split('-')[0] === other.split('-')[0],
+    `asking for "${other}" opened a "${secondLang}" stream`,
+  );
+  if (Number.isFinite(secondPrimary?.measuredBytes)) {
+    quiet(`  primary ${(secondPrimary.measuredBytes / MB_).toFixed(0)}MB, language "${secondLang}"`);
+  }
+} else {
+  // Honest about what was proven: one language cannot show that the rule
+  // discriminates between languages, only that it sorts inside one.
+  quiet(`  (this title is published in one language only; cross-language ranking not exercised)`);
 }
 
 console.log('\n✓ citadel live: real sizes measured, requested language ranked biggest-first');
