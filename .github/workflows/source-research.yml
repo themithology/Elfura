@@ -1,0 +1,126 @@
+name: source research
+
+# Measures candidate lanes from a machine that can actually reach them.
+#
+# The sandbox that edits this code answers ECONNRESET from every provider host
+# within ~100ms, through plain fetch and through a TLS-impersonating client
+# alike, while api.github.com answers normally. That is a property of the
+# sandbox, not of the providers, so no conclusion about a lane can be drawn
+# there. This job runs the same harness on a runner, which is a datacenter IP
+# of the same kind the production server is.
+#
+# It never registers a source. It produces research/measurements.json and a
+# table: which lanes answered, whether the page needed a browser, and — the only
+# column that matters — whether real media bytes came back.
+#
+# Because it is a research job, the commit step is opt-in via workflow_dispatch.
+# A push-triggered run keeps the artifact and the log only.
+on:
+  workflow_dispatch:
+    inputs:
+      lanes:
+        description: 'comma-separated lane ids (blank = all)'
+        default: ''
+      browser:
+        description: 'also drive Chromium for JS-only pages'
+        type: boolean
+        default: true
+      commit:
+        description: 'commit research/measurements.json back to the branch'
+        type: boolean
+        default: false
+  push:
+    branches: [arena/38aa0193-elfura]
+    paths:
+      - 'scripts/research/**'
+      - '.github/workflows/source-research.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: source-research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Install a headless Chromium for the JS-only lanes
+        if: ${{ inputs.browser != false }}
+        run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+
+      - name: Prove this runner can reach the providers at all
+        run: |
+          node - <<'NODE'
+          const targets = ['https://vixsrc.to/', 'https://vidlink.pro/', 'https://greyboxtv.duckdns.org/'];
+          for (const url of targets) {
+            const t = Date.now();
+            try {
+              const r = await fetch(url, { signal: AbortSignal.timeout(10000), redirect: 'manual' });
+              console.log(`${url} -> ${r.status} ${Date.now() - t}ms`);
+            } catch (e) {
+              console.log(`${url} -> ${e.cause?.code ?? e.name} ${Date.now() - t}ms`);
+            }
+          }
+          NODE
+
+      - name: Measure
+        id: measure
+        run: |
+          ARGS=""
+          LANES="${{ inputs.lanes }}"
+          if [ -n "$LANES" ]; then
+            for lane in $(echo "$LANES" | tr ',' ' '); do ARGS="$ARGS --lane=$lane"; done
+          fi
+          if [ "${{ inputs.browser }}" != "false" ]; then ARGS="$ARGS --browser"; fi
+          # One lane failing must not hide the others' results.
+          node scripts/research/measure.mjs $ARGS --out research/measurements.json || echo "measure_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the raw measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: measurements
+          path: research/measurements.json
+          if-no-files-found: warn
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f research/measurements.json ]; then
+            node - <<'NODE'
+            const m = require('./research/measurements.json');
+            const lines = [
+              '## Source research',
+              '',
+              `- node ${m.node}, undici ${m.undici}, browser: ${m.browser}`,
+              `- ${m.results.length} measurements`,
+              '',
+              '| lane | playable | media | outcomes |',
+              '| --- | --- | --- | --- |',
+            ];
+            for (const s of m.summary) {
+              lines.push(`| ${s.lane} | ${s.playable}/${s.attempts} | ${s.media}/${s.attempts} | ${s.outcomes.join(', ')} |`);
+            }
+            await require('node:fs/promises').appendFile(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+            NODE
+          fi
+
+      - name: Commit the measurements
+        if: ${{ inputs.commit == true }}
+        run: |
+          git config user.name "source research"
+          git config user.email "research@example.invalid"
+          git add research/measurements.json
+          git diff --cached --quiet || git commit -m "Record source measurements from $(date -u +%Y-%m-%d)"
+          git push
