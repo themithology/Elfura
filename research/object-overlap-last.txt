@@ -1,0 +1,25 @@
+object overlap probe, 2026-11-24T18:35:43.875Z
+[elfura-greybox] movie/550: 9 row(s), langs=7
+  fight-club source-2-greybox: 9 candidate(s), 0 object id(s), duckdns.org,hscow.com
+[elfura-vidlink] movie/550: 3 row(s)
+  fight-club source-3-vidlink: 3 candidate(s), 0 object id(s), hakunaymatata.com
+[elfura-greybox] movie/27205: throttled, retrying once
+[elfura-greybox] movie/27205: THROTTLED — provider refused us, not empty
+  inception source-2-greybox: 0 candidate(s), 0 object id(s), no domain
+[elfura-vidlink] movie/27205: 3 row(s)
+  inception source-3-vidlink: 3 candidate(s), 0 object id(s), hakunaymatata.com
+[elfura-greybox] tv/1399: throttled, retrying once
+[elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
+  got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
+[elfura-vidlink] tv/1399: 4 row(s)
+  got-s1e1 source-3-vidlink: 4 candidate(s), 0 object id(s), hakunaymatata.com
+[elfura-greybox] tv/46260: throttled, retrying once
+[elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
+  naruto-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
+[elfura-vidlink] tv/46260: 2 row(s)
+  naruto-s1e1 source-3-vidlink: 2 candidate(s), 0 object id(s), hakunaymatata.com
+
+wrote research/object-overlap.json
+verdict: NO OBJECT IDS — neither lane named an object; this probe measured nothing
+objects — shared 0, greybox-only 0, vidlink-only 0
+domains — duckdns.org:source-2-greybox, hscow.com:source-2-greybox, hakunaymatata.com:source-3-vidlink
