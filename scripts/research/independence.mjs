@@ -118,7 +118,32 @@ const CANDIDATES = [
         });
         return [];
       }
-      return sanitize([row.url]);
+      return sanitize([row.url]).map((url) => ({ url, headers: ATLANTIC_HEADERS }));
+    },
+  },
+  {
+    id: 'vidlink',
+    label: 'VidLink',
+    note: '/api/b/<locally minted token> -> stream.playlist + qualities (source24 protocol, no third party)',
+    async discover(title) {
+      // Uses the REAL adapter module, so what is measured is what would ship.
+      const { createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js');
+      const adapter = createVidlinkAdapter();
+      const result = await adapter.resolve({
+        type: title.type,
+        tmdbId: title.tmdbId,
+        season: title.season,
+        episode: title.episode,
+        signal: AbortSignal.timeout(20_000),
+      });
+      const candidates = result?.candidates ?? [];
+      if (candidates.length === 0) {
+        reportDiscovery(this.id, title, { status: 'adapter returned no candidate', topLevelKeys: [] });
+        return [];
+      }
+      // Every candidate, and the headers the adapter chose: the media hosts are
+      // the point, and they are measured with the headers that actually ship.
+      return candidates.map((c) => ({ url: c.url, headers: c.headers }));
     },
   },
   {
@@ -148,7 +173,7 @@ const CANDIDATES = [
         });
         return [];
       }
-      return sanitize([master]);
+      return sanitize([master]).map((url) => ({ url, headers: ATLANTIC_HEADERS }));
     },
   },
 ];
@@ -369,12 +394,18 @@ for (const lane of CANDIDATES) {
     } catch (error) {
       entry.error = error?.name ?? 'discover-failed';
     }
+    // A lane may return bare URL strings or {url, headers} pairs. The headers
+    // matter: a CDN that requires a Referer refuses a probe that forgets it, and
+    // that refusal looks exactly like a dead stream.
+    found = found
+      .map((item) => (typeof item === 'string' ? { url: item, headers: null } : item))
+      .filter((item) => typeof item?.url === 'string');
     entry.mediaUrls = found.length;
     if (found.length > 0) {
-      // Probe up to two URLs per title; a lane that only has one is still a lane.
       const titleHosts = new Set();
-      for (const mediaUrl of found.slice(0, 2)) {
-        const walk = await walkPlaylist(mediaUrl, ATLANTIC_HEADERS);
+      for (const media of found.slice(0, 3)) {
+        const mediaUrl = media.url;
+        const walk = await walkPlaylist(mediaUrl, media.headers ?? ATLANTIC_HEADERS);
         entry.bytes += walk.bytes;
         entry.segments += walk.segments;
         entry.error = entry.error ?? walk.error;
