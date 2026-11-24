@@ -56,8 +56,12 @@ jobs:
       - run: npm ci --no-audit --no-fund
 
       - name: Install a headless Chromium for the JS-only lanes
-        if: ${{ inputs.browser != false }}
-        run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+        # `inputs` is empty on a push, so a bare `if: inputs.browser` silently
+        # skipped this and the run measured nothing but HTTP. Default to on.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.browser != false }}
+        run: |
+          npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+          node -e "import('@sparticuz/chromium').then(async (m) => console.log('chromium ready:', await (m.default ?? m).executablePath()))"
 
       - name: Prove this runner can reach the providers at all
         run: |
@@ -82,7 +86,11 @@ jobs:
           if [ -n "$LANES" ]; then
             for lane in $(echo "$LANES" | tr ',' ' '); do ARGS="$ARGS --lane=$lane"; done
           fi
-          if [ "${{ inputs.browser }}" != "false" ]; then ARGS="$ARGS --browser"; fi
+          # Same default as the install step: browser on unless explicitly off.
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ inputs.browser }}" != "false" ]; then
+            ARGS="$ARGS --browser"
+          fi
+          echo "measure args: $ARGS"
           # One lane failing must not hide the others' results: the harness
           # exits 1 only when NOTHING produced bytes, and the JSON is written
           # either way.

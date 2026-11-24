@@ -190,7 +190,16 @@ async function measureHttp(lane, title) {
   }
 
   for (const attempt of attempts) {
-    const r = await request(attempt.url, attempt.headers);
+    let r = await request(attempt.url, attempt.headers);
+    // 429 is "you are going too fast", not "this lane is dead": a lane that is
+    // only ever measured once per run would be judged on the first-call burst
+    // rate limit. Back off once and say so in the row.
+    if (r.status === 429) {
+      row.rateLimited = true;
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+      r = await request(attempt.url, attempt.headers);
+      row.retriedAfter429 = true;
+    }
     const text = r.response ? await bodyText(r.response) : '';
     const media = text ? findMedia(text) : [];
     const entry = {
@@ -207,6 +216,7 @@ async function measureHttp(lane, title) {
     if (!r.ok) continue;
 
     if (media.length > 0) {
+      // `media-found` only means a URL was present; `proof.ok` is the verdict.
       row.result = 'media-found';
       row.proof = await provePlayable(media[0], attempt.headers, base(attempt.url) || attempt.url);
       row.headersSeen = Object.fromEntries(
@@ -405,7 +415,9 @@ for (const row of results) {
   entry.attempts += 1;
   entry.results.add(row.result);
   if (row.proof?.ok) entry.playable += 1;
-  if (row.result === 'media-found' || row.result === 'playable') entry.media += 1;
+  // A lane that yields a URL whose manifest answers 502 has not "found media";
+  // that is how greybox looked healthy while serving nothing.
+  if ((row.result === 'media-found' && row.proof?.ok) || row.result === 'playable') entry.media += 1;
   byLane.set(row.lane, entry);
 }
 
