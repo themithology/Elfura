@@ -1208,11 +1208,29 @@ export class SourceRegistry {
       );
     }
 
+    // What the board is actually made of. Mean over the streams that produced a
+    // measurement — an unmeasured lane is unknown, and counting it as zero would
+    // report a library as tiny when the truth is "nobody measured it".
+    const sized = uniformOptions.filter(
+      (option) => typeof option.measuredBytes === 'number' && option.measuredBytes > 0,
+    );
+    const sizeBytes = sized.map((option) => option.measuredBytes as number);
+    const size = sizeBytes.length
+      ? {
+          meanBytes: Math.round(sizeBytes.reduce((sum, value) => sum + value, 0) / sizeBytes.length),
+          maxBytes: Math.max(...sizeBytes),
+          measured: sizeBytes.length,
+          total: uniformOptions.length,
+          ...(params.preferredLang ? { lang: params.preferredLang } : {}),
+        }
+      : undefined;
+
     return {
       ok: true,
       media,
       primary: uniformOptions[0],
       sources: uniformOptions,
+      ...(size ? { size } : {}),
       sourceGroups: activeAdapters.map(adapter => adapter.id),
       waveUpdates: true,
       // Sources that have not produced anything yet. The client uses this to
@@ -1337,6 +1355,15 @@ export class SourceRegistry {
         : {}),
       fingerprint: opaqueFingerprint,
       ...(latencyHintMs !== undefined ? { latencyHintMs } : {}),
+      // The measured whole-stream size. The player shows it, and the ranking
+      // above already used it; sending it keeps the console honest about *why*
+      // a lane came first.
+      ...(typeof cand.measuredBytes === 'number' && cand.measuredBytes > 0
+        ? { measuredBytes: cand.measuredBytes }
+        : {}),
+      ...(typeof cand.declaredBitrateBps === 'number' && cand.declaredBitrateBps > 0
+        ? { declaredBitrateBps: cand.declaredBitrateBps }
+        : {}),
       ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
       ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
       ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),

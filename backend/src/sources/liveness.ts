@@ -36,6 +36,12 @@ const DEFAULT_PROBE_UA =
 const MAX_LIVENESS_CACHE = 512;
 const ALIVE_TTL_MS = 150_000;
 const DEAD_TTL_MS = 45_000;
+/** Ceiling for the one segment fetched to size a stream: 2 MiB is plenty. */
+const MAX_SIZE_PROBE_BYTES = 2 * 1024 * 1024;
+const SIZE_PROBE_TIMEOUT_MS = 3000;
+/** No legitimate single title is larger than this; guards a bogus EXTINF. */
+const MAX_PLAUSIBLE_STREAM_BYTES = 200 * 1024 * 1024 * 1024;
+
 const MAX_PROBE_MANIFEST_BYTES = 512 * 1024;
 
 export interface LivenessProbeOutcome {
@@ -52,6 +58,25 @@ export interface LivenessProbeOutcome {
   qualityOptions?: number;
   /** Total runtime of the stream when it can be measured from a VOD playlist. */
   durationSec?: number;
+  /**
+   * Highest video bitrate the manifest itself declares, in bits/second.
+   *
+   * From `#EXT-X-STREAM-INF:BANDWIDTH=` (HLS) or `<Representation bandwidth=>`
+   * (DASH). This is the provider's own declaration, so it is the cheapest and
+   * most honest quality signal available — but it is still a claim until the
+   * bytes are counted, which is what `measuredBytes` is for.
+   */
+  declaredBitrateBps?: number;
+  /**
+   * Bytes actually observed for this stream, scaled to the whole runtime.
+   *
+   * Measured, not claimed: for a VOD playlist with a known duration, one media
+   * segment is fetched, its byte length and duration are read, and the result is
+   * scaled. `null` when it cannot be measured; a null never ranks anything.
+   */
+  measuredBytes?: number;
+  /** How `measuredBytes` was obtained, so the panel can say what it knows. */
+  sizeSource?: 'segment' | 'content-length' | 'bitrate';
 }
 
 /**
@@ -75,6 +100,31 @@ export function sumHlsDurationSec(bodyText: string): number | null {
   }
   if (!segments || !Number.isFinite(total) || total <= 0) return null;
   return Math.round(total);
+}
+
+/**
+ * Highest video bitrate the manifest declares, in bits/second.
+ *
+ * `BANDWIDTH` in HLS includes audio; `<Representation bandwidth=>` in DASH is
+ * the representation's own. Both are provider declarations, so this is compared
+ * against the measured bytes rather than trusted on its own.
+ */
+export function extractDeclaredBitrateBps(text: string, isDash: boolean): number | undefined {
+  const values: number[] = [];
+  if (isDash) {
+    for (const m of text.matchAll(/<Representation\b[^>]*\bbandwidth="(\d+)"/gi)) {
+      const v = Number(m[1]);
+      if (Number.isFinite(v) && v > 0) values.push(v);
+    }
+  } else {
+    for (const line of text.split(/\r?\n/)) {
+      if (!/^#EXT-X-STREAM-INF\b/i.test(line.trim())) continue;
+      const m = line.match(/\bBANDWIDTH=(\d+)/i) ?? line.match(/\bAVERAGE-BANDWIDTH=(\d+)/i);
+      const v = m ? Number(m[1]) : 0;
+      if (Number.isFinite(v) && v > 0) values.push(v);
+    }
+  }
+  return values.length ? Math.max(...values) : undefined;
 }
 
 /** Extract the ABR ladder (distinct heights, desc) from an HLS master or DASH MPD. */
@@ -325,6 +375,97 @@ async function verifyChildHlsPlaylist(
   return { state: 'alive', bodyText: text };
 }
 
+/**
+ * How big is this stream, actually?
+ *
+ * One media segment is fetched with a `Range` limit, its byte length and its
+ * `#EXTINF` duration are read, and the pair is scaled to the stream's runtime.
+ * That is a measurement of the bytes the provider is really sending, not the
+ * `BANDWIDTH=` claim in the master playlist — the claim is what we compare
+ * against, and the panel can show when they disagree.
+ *
+ * Deliberately cheap: one request, a hard byte ceiling, and a hard timeout. It
+ * runs after the liveness verdict is already decided, so a failure here can
+ * never turn a live stream into a dead one. It returns `null` rather than a
+ * guess.
+ */
+async function measureStreamBytes(
+  variantUrl: string,
+  variantText: string,
+  headers: Record<string, string>,
+  runtimeSec: number | undefined,
+  signal: AbortSignal,
+  restrictedOrigin?: string,
+): Promise<{ measuredBytes: number; sizeSource: 'segment' } | null> {
+  if (!runtimeSec || runtimeSec <= 0) return null;
+  const lines = variantText.split(/\r?\n/);
+  let segmentDuration = 0;
+  let segmentUri = '';
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    const extinf = line.match(/^#EXTINF:\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (extinf && !segmentDuration) segmentDuration = Number(extinf[1]);
+    if (!line || line.startsWith('#')) continue;
+    if (segmentDuration > 0) {
+      segmentUri = line;
+      break;
+    }
+  }
+  // A playlist with a MAP but no timed segments cannot be sized this way.
+  if (!segmentUri || segmentDuration <= 0) return null;
+
+  let segmentTarget: string;
+  try {
+    segmentTarget = new URL(segmentUri, variantUrl).href;
+  } catch {
+    return null;
+  }
+  if (!isSafeUpstreamUrl(segmentTarget)) return null;
+  if (restrictedOrigin && !matchesRestrictedOrigin(segmentTarget, restrictedOrigin)) return null;
+
+  try {
+    const init: RequestInit = {
+      method: 'GET',
+      headers: { ...headers, Range: `bytes=0-${MAX_SIZE_PROBE_BYTES - 1}` },
+      redirect: restrictedOrigin ? 'manual' : 'follow',
+      signal: AbortSignal.any([signal, AbortSignal.timeout(SIZE_PROBE_TIMEOUT_MS)]),
+    };
+    const res = restrictedOrigin
+      ? await restrictedFetchWithRedirects(segmentTarget, init, restrictedOrigin)
+      : await fetch(segmentTarget, init);
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (!res.ok && res.status !== 206) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    // A 200 that is a web page is not a segment.
+    if (contentType.includes('text/html')) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    // Prefer the declared full segment length; a ranged read only gives us a
+    // prefix, and scaling a prefix would understate the stream.
+    const declaredLength = Number(res.headers.get('content-length') || 0);
+    const isPartial = res.status === 206 || /bytes\s+\d+-\d+\//i.test(res.headers.get('content-range') || '');
+    let observedBytes: number;
+    if (declaredLength > 0 && !isPartial) {
+      observedBytes = declaredLength;
+      await res.body?.cancel().catch(() => {});
+    } else {
+      const buf = Buffer.from(await res.arrayBuffer());
+      observedBytes = buf.byteLength;
+    }
+    if (!Number.isFinite(observedBytes) || observedBytes <= 0) return null;
+    // Scale one segment to the whole runtime; clamp to something physical so a
+    // bogus EXTINF cannot produce a nonsense ranking value.
+    const scaled = Math.round((observedBytes / segmentDuration) * runtimeSec);
+    if (!Number.isFinite(scaled) || scaled <= 0) return null;
+    return { measuredBytes: Math.min(scaled, MAX_PLAUSIBLE_STREAM_BYTES), sizeSource: 'segment' };
+  } catch {
+    return null;
+  }
+}
+
 // A caller with a shorter deadline must not wait for an existing shared
 // in-flight probe whose own network timeout is longer.
 function awaitProbe(task: Promise<LivenessProbeOutcome>, signal?: AbortSignal): Promise<LivenessProbeOutcome> {
@@ -539,15 +680,19 @@ async function runSingleProbe(
       // Verify child variant & default audio playlists so master-alive / child-dead streams
       // (e.g. `cdn.mhbdtv.top` redirecting `audio0.m3u8` to an HTML page) are caught immediately.
       let masterDurationSec: number | undefined;
+      // Held outside the block because the size measurement below needs the
+      // variant playlist and URL the child check already fetched.
+      let childTargets: string[] = [];
+      let childChecks: Awaited<ReturnType<typeof verifyChildHlsPlaylist>>[] = [];
       if (isMaster) {
-        const childTargets = pickHlsChildCheckTargets(bodyText, finalUrl);
+        childTargets = pickHlsChildCheckTargets(bodyText, finalUrl);
         if (cand.restrictedOrigin && childTargets.length === 0) {
           const dead = { alive: false, confirmedDead: true };
           setCachedLiveness(key, dead);
           return dead;
         }
         if (childTargets.length > 0) {
-          const childChecks = await Promise.all(
+          childChecks = await Promise.all(
             childTargets.map((cu) =>
               verifyChildHlsPlaylist(cu, manifestHeaders, sig, cand.restrictedOrigin).catch(
                 () => ({ state: 'unknown' as const, bodyText: undefined }),
@@ -586,6 +731,27 @@ async function runSingleProbe(
       const hlsLadder = isMaster
         ? extractQualityLadder(bodyText, false)
         : { ladder: [] as number[], options: 1 };
+      const declaredBitrateBps = extractDeclaredBitrateBps(bodyText, false);
+
+      // Size, measured rather than claimed. The variant playlist is already in
+      // hand from the child check above, so this costs one extra ranged request
+      // and never gates the liveness verdict that has already been reached.
+      const runtimeSec = isMaster ? masterDurationSec : sumHlsDurationSec(bodyText) ?? undefined;
+      const variantText = isMaster
+        ? childChecks.find((c) => c.state === 'alive' && c.bodyText)?.bodyText
+        : bodyText;
+      const variantUrl = isMaster ? childTargets[0] : finalUrl;
+      const size = variantText && runtimeSec
+        ? await measureStreamBytes(
+            variantUrl,
+            variantText,
+            manifestHeaders,
+            runtimeSec,
+            sig,
+            cand.restrictedOrigin,
+          ).catch(() => null)
+        : null;
+
       const ok: LivenessProbeOutcome = {
         alive: true,
         confirmedDead: false,
@@ -596,10 +762,9 @@ async function runSingleProbe(
         qualityOptions: hlsLadder.options,
         ...(hlsLadder.ladder.length ? { qualityLadder: hlsLadder.ladder } : {}),
         ...(hlsLangs.length ? { discoveredAudioLangs: hlsLangs } : {}),
-        ...(() => {
-          const measured = isMaster ? masterDurationSec : sumHlsDurationSec(bodyText) ?? undefined;
-          return measured ? { durationSec: measured } : {};
-        })(),
+        ...(runtimeSec ? { durationSec: runtimeSec } : {}),
+        ...(declaredBitrateBps ? { declaredBitrateBps } : {}),
+        ...(size ? size : {}),
       };
       setCachedLiveness(key, ok);
       return ok;
@@ -745,6 +910,16 @@ export async function verifyAndFilterCandidatesDetailed(
       };
     }
 
+    // Measured size, not a claim. Once measured, it outranks whatever an
+    // adapter guessed, and it is what the viewer's stream is chosen on when two
+    // lanes carry the same language.
+    if (outcome.measuredBytes !== undefined) {
+      updated = { ...updated, measuredBytes: outcome.measuredBytes };
+    }
+    if (outcome.declaredBitrateBps !== undefined) {
+      updated = { ...updated, declaredBitrateBps: outcome.declaredBitrateBps };
+    }
+
     if (outcome.qualityOptions !== undefined) {
       // The measured manifest is the ONLY ladder authority. Provider/API
       // metadata (e.g. an `availableQualities` family list) must never
@@ -767,9 +942,12 @@ export async function verifyAndFilterCandidatesDetailed(
       ...updated,
       measuredThisRequest: {
         alive: true,
+        ...(outcome.discoveredAudioLangs?.length === 1 ? { audioLang: outcome.discoveredAudioLangs[0] } : {}),
         ...(outcome.rttMs !== undefined ? { rttMs: outcome.rttMs } : {}),
         ...(outcome.discoveredAudioLangs?.length ? { discoveredAudioLangs: outcome.discoveredAudioLangs } : {}),
         ...(outcome.durationSec !== undefined ? { durationSec: outcome.durationSec } : {}),
+        ...(outcome.measuredBytes !== undefined ? { measuredBytes: outcome.measuredBytes } : {}),
+        ...(outcome.declaredBitrateBps !== undefined ? { declaredBitrateBps: outcome.declaredBitrateBps } : {}),
       },
     };
   };

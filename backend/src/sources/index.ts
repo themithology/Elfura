@@ -38,6 +38,7 @@
  */
 
 import type { SourceAdapter } from './types.js';
+import { createCitadelAdapter } from './citadel.js';
 
 /**
  * What a source may read: `process.env`, already carrying the `.env` overlay.
@@ -78,7 +79,21 @@ export interface SourceDefinition {
  * Approved sources. Empty on purpose: the board starts at zero and every entry
  * has to earn its place through source-contract.mjs.
  */
-export const APPROVED_SOURCES: SourceDefinition[] = [];
+export const APPROVED_SOURCES: SourceDefinition[] = [
+  {
+    id: 'source-1',
+    envFlag: 'ELFURA_CITADEL_ENABLED',
+    create: () => createCitadelAdapter(),
+    website: { name: 'RiveStream', url: 'https://www.rivestream.app' },
+    // Probed on GitHub runners on 2026-11-24: both titles resolved and both
+    // returned real segment bytes, twice, with no browser involved. They are the
+    // titles the contract test must keep reproducing.
+    probes: [
+      { type: 'movie', tmdbId: '550' },
+      { type: 'tv', tmdbId: '1399', season: 1, episode: 1 },
+    ],
+  },
+];
 
 /** Ids of the approved sources, for logs and for the contract test. */
 export function approvedSourceIds(): string[] {

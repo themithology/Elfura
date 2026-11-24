@@ -78,6 +78,21 @@ export interface RawStreamCandidate {
   diagnosticLane?: string;
   /** Upstream-reported or adapter-measured edge latency in milliseconds. */
   latencyMs?: number;
+  /**
+   * Whole-stream size in bytes, measured from a real segment (see
+   * `LivenessProbeOutcome.measuredBytes`). Never a provider claim: the size
+   * decides which stream a viewer gets when two carry the same language, so a
+   * guess here would quietly prefer the wrong copy of the film.
+   */
+  measuredBytes?: number;
+  /** Highest bitrate the manifest declares, for comparison with `measuredBytes`. */
+  declaredBitrateBps?: number;
+  /**
+   * The runtime this title should have, in seconds, when an adapter or the
+   * registry knows it from metadata. Only used to turn a declared bitrate into
+   * an estimated size when no real measurement exists.
+   */
+  expectedRuntimeSec?: number;
   type: 'hls' | 'dash' | 'mp4';
   url: string;
   headers?: Record<string, string>;
@@ -116,7 +131,16 @@ export interface RawStreamCandidate {
    * measured latency ordering. Carrying it here keeps correctness independent
    * of whether any cache is switched on.
    */
-  measuredThisRequest?: { alive: boolean; rttMs?: number; discoveredAudioLangs?: string[]; durationSec?: number };
+  measuredThisRequest?: {
+    alive: boolean;
+    /** Single verified audio language, when this request measured one. */
+    audioLang?: string;
+    rttMs?: number;
+    discoveredAudioLangs?: string[];
+    durationSec?: number;
+    measuredBytes?: number;
+    declaredBitrateBps?: number;
+  };
   /** Direct non-manifest external audio files (m4a/mp3/aac) for ExternalAudioSync. */
   audioTracks?: RawTrackRef[];
   /** Subtitle files (VTT / SRT / ASS). */
@@ -214,6 +238,10 @@ export interface UniformStreamOption {
   animeUnverified?: boolean;
   /** Optional edge latency hint in ms for initial candidate ordering */
   latencyHintMs?: number;
+  /** Measured whole-stream size in bytes, when one could be measured. */
+  measuredBytes?: number;
+  /** Provider-declared peak bitrate in bits/second, when the manifest states one. */
+  declaredBitrateBps?: number;
   audioLang?: string;
   /**
    * Structural traits of the lane that produced this option (see SourceTrait).
@@ -243,4 +271,21 @@ export interface UniformPlaybackResponse {
   /** Source ids that had not produced anything when this response was sealed. */
   pendingSources?: string[];
   segments?: SkipSegments;
+  /**
+   * What the streams in THIS response are actually made of, in bytes.
+   *
+   * `mean` is the average across every listed stream that could be measured,
+   * `max` is the best one (which is also `primary` unless language ranked above
+   * it). `measured`/`total` says how many lanes actually produced a number, so a
+   * mean over one stream out of twenty is not read as an average. Streams that
+   * could not be measured are excluded, never counted as zero.
+   */
+  size?: {
+    meanBytes: number;
+    maxBytes: number;
+    measured: number;
+    total: number;
+    /** Which language the mean is over, when the caller asked for one. */
+    lang?: string;
+  };
 }

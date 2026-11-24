@@ -80,12 +80,70 @@ export function selectPlaybackCandidates(
       tier:rankHint ? rankHint(c.url) : 0});
   }
   const preferred = preferredLang ? normalizeLang(preferredLang).code : 'und';
-  const matches = (item: typeof single[number]) => preferred !== 'und' &&
-    !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
+  /**
+   * Does this lane carry the language the viewer asked for?
+   *
+   * The measured/verified `audioLang` wins. Failing that, a provider label that
+   * names exactly one language is still usable *for ordering* — a citadel row
+   * says "Hindi" and the manifest confirms a single audio rendition, and that
+   * pair is the whole reason the lane exists. It is deliberately NOT promoted to
+   * `audioLang` in the response: ordering may use a label, presentation may not
+   * claim one.
+   */
+  const languageOf = (item: typeof single[number]): string => {
+    const verified = item.candidate.audioLang ?? item.candidate.measuredThisRequest?.audioLang;
+    if (verified) return verified;
+    return item.candidate.claimedAudioLang ?? 'und';
+  };
+  const matches = (item: typeof single[number]) => {
+    if (preferred === 'und') return false;
+    const lang = languageOf(item);
+    return !!lang && lang.split('-')[0] === preferred.split('-')[0];
+  };
+
+  /**
+   * How big is this stream, in bytes? Measured beats declared, and an unmeasured
+   * stream is not zero — it is unknown, and unknown must never outrank known.
+   *
+   * The owner's rule: when several streams carry the requested language, the
+   * largest one wins, because the largest one is the highest-quality copy. That
+   * is why `measuredBytes` is a whole-runtime figure scaled from a real segment
+   * rather than the provider's `BANDWIDTH=` claim: two mirrors of the same film
+   * at the same label routinely differ by 2x in actual size, and the label is
+   * exactly what the old board trusted.
+   */
+  const sizeOf = (item: typeof single[number]): number => {
+    const measured = item.candidate.measuredBytes;
+    if (typeof measured === 'number' && Number.isFinite(measured) && measured > 0) return measured;
+    const bitrate = item.candidate.declaredBitrateBps;
+    const runtime = item.candidate.measuredThisRequest?.durationSec ?? item.candidate.expectedRuntimeSec;
+    if (typeof bitrate === 'number' && bitrate > 0 && typeof runtime === 'number' && runtime > 0) {
+      // bits/s * seconds / 8 = bytes. A declaration, used only as a tiebreak
+      // beneath any real measurement.
+      return (bitrate * runtime) / 8;
+    }
+    return 0;
+  };
+
   const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
-  // Correctness before speed: a duration-verified lane outranks an unmeasured
-  // one, and latency only decides between lanes of equal standing.
-  single.sort((a,b)=>Number(b.alive)-Number(a.alive)||Number(matches(b))-Number(matches(a))||a.tier-b.tier||a.latency-b.latency||a.order-b.order);
+  // The order the owner asked for, in one line:
+  //   1. alive before unverified (never open on a stream we could not reach)
+  //   2. the requested language before anything else
+  //   3. the right runtime before the wrong one
+  //   4. the biggest stream before the smaller one (highest quality)
+  //   5. latency, then discovery order
+  //
+  // Runtime sits above size on purpose. A 70-minute file where the episode is 47
+  // minutes is not a higher-quality copy of anything — it is the wrong content,
+  // and it measures "bigger" only because it is wrong. Ranking it first would let
+  // the size rule reward exactly the failure it is supposed to avoid.
+  single.sort((a,b)=>
+    Number(b.alive)-Number(a.alive) ||
+    Number(matches(b))-Number(matches(a)) ||
+    a.tier-b.tier ||
+    sizeOf(b)-sizeOf(a) ||
+    a.latency-b.latency ||
+    a.order-b.order);
   const ordinarySingle = single.filter(item => !item.candidate.audioVariant);
   const ordered: typeof single = [];
   const orderedSet = new Set<typeof single[number]>();
@@ -95,12 +153,18 @@ export function selectPlaybackCandidates(
   // on a host that already answered: max coverage, ordered by confidence.
   for (const alive of [true, false]) {
     const tier = ordinarySingle.filter(item => item.alive === alive);
-    for (const item of tier) {
-      if (hosts.has(item.host)) continue;
-      ordered.push(item); orderedSet.add(item); hosts.add(item.host);
-    }
-    for (const item of tier) {
-      if (!orderedSet.has(item)) { ordered.push(item); orderedSet.add(item); }
+    // The requested language keeps its priority inside each confidence class:
+    // host variety may decide between rows of equal standing, but it must never
+    // push a 6 GB English copy above the Hindi the viewer asked for.
+    for (const wanted of [true, false]) {
+      const group = tier.filter(item => matches(item) === wanted);
+      for (const item of group) {
+        if (hosts.has(item.host)) continue;
+        ordered.push(item); orderedSet.add(item); hosts.add(item.host);
+      }
+      for (const item of group) {
+        if (!orderedSet.has(item)) { ordered.push(item); orderedSet.add(item); }
+      }
     }
   }
   const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);
