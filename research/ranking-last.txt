@@ -1,10 +1,13 @@
   lanes answering: source-1=2, source-2=9, source-3=12, source-4=1
   languages any adapter returned: en, hi, fr, uk, ru, es, pt; ranking inside "en"
+[elfura-greybox] movie/550: throttled, retrying once
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-greybox] movie/550: 9 row(s), langs=7
+[elfura-resolve] movie/550: listed 9 extra lane(s) beyond the verified set (per-source cap 200, verified first).
 
-  "en" request: 23 stream(s), primary Source 4 · Multi-Audio
+  "en" request: 22 stream(s), primary Source 4 · Multi-Audio
     Source 4 · Multi-Audio [undefined label] 2023MB
+    Source 3 · Multi-Audio [undefined label] 1668MB
     Source 1 · English [en label]          1376MB
     Source 1 · English #2 [en label]       400MB
     Source 2 · 720P [en label]             unmeasured
@@ -12,29 +15,29 @@
     Source 3 · 1080P [undefined label]     unmeasured
     Source 3 · 1080P #2 [undefined label]  unmeasured
     Source 3 · 1080P #3 [undefined label]  unmeasured
+    Source 3 · 720P [undefined label]      unmeasured
+    Source 3 · 480P [undefined label]      unmeasured
     Source 2 · 1080P [hi label]            unmeasured
     Source 2 · 1080P #2 [fr label]         unmeasured
     Source 2 · 360P [uk label]             unmeasured
-    Source 3 · 1080P #4 [undefined label]  unmeasured
-    Source 3 · 720P [undefined label]      unmeasured
-    Source 3 · 480P [undefined label]      unmeasured
-    Source 2 [ru label]                    unmeasured
     Source 3 [undefined label]             unmeasured
     Source 3 #2 [undefined label]          unmeasured
     Source 3 #3 [undefined label]          unmeasured
     Source 3 #4 [undefined label]          unmeasured
+    Source 2 [ru label]                    unmeasured
     Source 2 #2 [es label]                 unmeasured
-    Source 2 #3 [pt label]                 unmeasured
-    Source 2 #4 [es label]                 unmeasured
-    Source 3 #5 [undefined label]          unmeasured
+    Source 2 #3 [es label]                 unmeasured
+    Source 2 #4 [pt label]                 unmeasured
 
-  mean 1266MB over 3/23 measured, biggest 2023MB
+  mean 1367MB over 4/22 measured, biggest 2023MB
 node:internal/modules/run_main:123
     triggerUncaughtException(
     ^
 
 AssertionError [ERR_ASSERTION]: Source 4 · Multi-Audio reached the player with no language at all
-    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:139:3 {
+    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:139:3
+    at runNextTicks (node:internal/process/task_queues:64:5)
+    at process.processTimers (node:internal/timers:518:9) {
   generatedMessage: false,
   code: 'ERR_ASSERTION',
   actual: undefined,
