@@ -28,6 +28,7 @@ on:
       - 'scripts/research/vidly-streams.mjs'
       - 'scripts/research/vidly-stream-bytes.mjs'
       - 'scripts/research/vidly-page-lang.mjs'
+      - 'scripts/research/nxsha-row-fields.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -70,6 +71,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # source-3 went to 0 candidates the moment a rule depended on row.language.
+      # Either the rows are unlabelled or that is not the field. Dump every field.
+      - name: Dump nxsha row fields
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-row-fields.mjs 2>&1 | tee research/nxsha-row-fields-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -173,7 +184,8 @@ jobs:
                   research/vidly-deep.json research/vidly-deep-last.txt \
                   research/vidly-streams.json research/vidly-streams-last.txt \
                   research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt \
-                  research/vidly-page-lang.json research/vidly-page-lang-last.txt
+                  research/vidly-page-lang.json research/vidly-page-lang-last.txt \
+                  research/nxsha-row-fields.json research/nxsha-row-fields-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
