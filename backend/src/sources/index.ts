@@ -41,6 +41,7 @@ import type { SourceAdapter } from './types.js';
 import { createCitadelAdapter } from './citadel.js';
 import { createGreyboxAdapter } from './greybox.js';
 import { createNxshaAdapter } from './nxsha.js';
+import { createVidlyAdapter } from './vidly.js';
 
 /**
  * What a source may read: `process.env`, already carrying the `.env` overlay.
@@ -120,14 +121,31 @@ export const APPROVED_SOURCES: SourceDefinition[] = [
     // source-1, and of its 30 own scrapers only 6 were observed serving media —
     // those 6 are the whole allowlist.
     //
-    // NOTE: this entry is present but NOT yet proven by the contract. It was
-    // added on the user's instruction to ship it as source 3; the contract run
-    // on the next push is what decides whether it stays. An entry that cannot
-    // pull real segment bytes does not belong in this array, and will be removed
-    // again rather than left to look like coverage.
     probes: [
       { type: 'movie', tmdbId: '550' },
       { type: 'tv', tmdbId: '46260', season: 1, episode: 1 },
+    ],
+  },
+  {
+    id: 'source-4',
+    envFlag: 'ELFURA_VIDLY_ENABLED',
+    create: () => createVidlyAdapter(),
+    website: { name: 'Vidly', url: 'https://vidly.pro' },
+    // Measured on a runner 2026-11-25: the manifest URL is in the watch page
+    // markup, with no token and no decryption, on img./gzip.rousav.tech — hosts
+    // that appear in no other source. Both titles were followed master → variant
+    // → segment (206, 128 KiB each), and the TV master declares five TYPE=AUDIO
+    // renditions including Hindi, Telugu, Tamil and Kannada.
+    //
+    // Its `/api/sources` answers 403 to a runner; that gate is real and this lane
+    // does not use it. The page carries the stream.
+    //
+    // The third host these pages sometimes embed, dash-hls-bridge.john1mc
+    // .workers.dev, is a refused third-party bridge (502) and is excluded by the
+    // adapter's host allowlist, not by a preference rule.
+    probes: [
+      { type: 'movie', tmdbId: '550' },
+      { type: 'tv', tmdbId: '1399', season: 1, episode: 1 },
     ],
   },
 ];
