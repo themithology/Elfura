@@ -6,7 +6,75 @@ coverage. Measured 2026-11-25 on a runner; raw rows in
 
 ---
 
-# Vidly — the subtitle index works, but not for the language that matters
+# Vidly — CORRECTED. The first pass was wrong, and the correction matters
+
+> **This section was rewritten after a deeper probe.** The first version said
+> "no Hindi", from a sample of eight mostly Western titles read on the `lang`
+> field alone. Both choices were wrong: the sample could not answer the question,
+> and the method ignored four of the five fields each row carries. The corrected
+> findings are below; the original claim is kept only in the commit history.
+
+## What the deeper probe measured
+
+Fourteen titles, chosen as ones an Indian viewer would actually search.
+**Twelve of fourteen carry subtitles.**
+
+**50 distinct language codes** across the catalogue — not a narrow index at all.
+
+| Indian language | code | titles carrying it |
+| — | — | — |
+| Bengali | `bn` | **6** |
+| Malayalam | `ml` | **3** |
+| Tamil | `ta` | **2** |
+| **Hindi** | `hi` | **1** |
+| Telugu, Kannada, Urdu | `te`, `kn`, `ur` | 1 each |
+| Punjabi, Marathi, Gujarati | `pa`, `mr`, `gu` | 0 |
+
+## Hindi exists — on Kalki 2898 AD
+
+The title that carries it is exact, and it is a whole Indic set, not a stray row:
+
+```
+lang=hi  group='Hindi'      label='Hindi'
+lang=ta  group='Tamil'      label='Tamil'
+lang=ml  group='Malayalam'  label='Malayalam', 'Malayalam 2'
+lang=kn  group='Kannada'    label='Kannada'
+lang=bn  group='Bengali'    label='Bengali', 'Bengali 2', 'Bengali 3', 'Bengali 4'
+```
+
+So `Kalki 2898 AD` — a Telugu film that released in Hindi — carries the Hindi
+subtitle. Most titles do not, including several Indian ones: RRR, Jawan, Animal
+and Baahubali 2 have Bengali, Tamil, Telugu, Malayalam or Urdu but no Hindi.
+
+**What that means:** the index does carry Hindi, but not dependably, and not on
+the titles an Indian viewer is most likely to want. It is not a Hindi subtitle
+service. It is an international subtitle service that occasionally includes it.
+
+## The "(HI)" trap, quantified
+
+`(HI)` appears on many labels and means **hearing impaired**, never Hindi:
+
+| title | "(HI)" labels | real Hindi rows |
+| — | — | — |
+| Animal | 16 | 0 |
+| Baahubali 2 | 11 | 0 |
+| Pathaan | 4 | 0 |
+| Jawan | 3 | 0 |
+| Kalki 2898 | 0 | **1** |
+
+Pathaan is the sharpest case: 14 tracks, 8 language codes, 4 of them labelled
+`(HI)`, and not one Hindi row. A probe that treated `(HI)` as Hindi would have
+reported four dialects of nothing.
+
+## Streams: still gated
+
+`vidly.pro/api/sources` answers **403**, and the site's bundle is present and
+fetchable. Unchanged from the original finding — the subtitle index is open, the
+stream API is not.
+
+## The original section, superseded
+
+
 
 ## What it is
 
