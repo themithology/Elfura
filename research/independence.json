@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T08:52:40.942Z",
+  "measuredAt": "2026-11-25T08:56:34.286Z",
   "titles": [
     "fight-club",
     "inception",
@@ -19,9 +19,7 @@
       "id": "source-1",
       "hosts": [
         "img1.hscow.com",
-        "img.hscow.com",
-        "img1.fcxmb.com",
-        "img.fcxmb.com"
+        "img.hscow.com"
       ],
       "rows": [
         {
@@ -34,7 +32,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 1
         },
         {
           "title": "naruto-s1e1",
@@ -58,7 +56,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 0
         },
         {
           "title": "naruto-s1e1",
