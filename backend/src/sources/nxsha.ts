@@ -281,6 +281,13 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
       if (!/^(?:dash|mpd)$/i.test(String(row.type ?? '')) && !/\.mpd(?:[?#]|$)/i.test(url.href)) continue;
     }
     if (seen.has(url.href)) continue;
+    // A row that names no language is not offered: it can win a
+    // language-filtered race by accident and then play audio the viewer did not
+    // ask for, which is precisely the silent fallback this board refuses. This
+    // is the rule source-2 already states, and the live board test is what
+    // showed it was missing here: a "Source 3 · 1080P" stream reached the player
+    // with no language evidence at all.
+    if (typeof row.language !== 'string' || !row.language.trim()) continue;
     seen.add(url.href);
     const type = /\.mpd(?:[?#]|$)/i.test(url.href) || /^(?:dash|mpd)$/i.test(String(row.type ?? '')) ? 'dash' : 'hls';
     const quality = qualityOf(row.quality ?? row.label);

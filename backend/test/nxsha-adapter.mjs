@@ -69,14 +69,19 @@ console.log('— the provider’s own edge is kept; somebody else’s is not');
       // castle and vixolity, measured: six real rows on two titles, 1080p and
       // Japanese among them. This is nxsha's own Cloudflare edge, the same case
       // source-2 documents for its own proxy - NOT a relay.
-      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P' },
-      { url: 'https://twilight-lake-fd5c.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls' },
+      //
+      // Every fixture carries a language, and that is not cosmetic: a row that
+      // names no language is now refused on its own account, so an unlabelled
+      // fixture would pass these assertions for the wrong reason and stop
+      // testing the host rule at all.
+      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P', language: 'English' },
+      { url: 'https://twilight-lake-fd5c.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls', language: 'Japanese' },
       // Somebody else's bridge - greybox's dash-hls-bridge is exactly this shape.
-      { url: 'https://dash-hls-bridge.john1mc.workers.dev/?url=x', type: 'hls' },
-      { url: 'https://random.someoneelse.workers.dev/a.m3u8', type: 'hls' },
+      { url: 'https://dash-hls-bridge.john1mc.workers.dev/?url=x', type: 'hls', language: 'English' },
+      { url: 'https://random.someoneelse.workers.dev/a.m3u8', type: 'hls', language: 'English' },
       // A host that literally names itself a proxy.
-      { url: 'https://proxy.7movie.ws/a.m3u8', type: 'hls' },
-      { url: 'https://relay7.example.net/a.m3u8', type: 'hls' },
+      { url: 'https://proxy.7movie.ws/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://relay7.example.net/a.m3u8', type: 'hls', language: 'English' },
     ],
   });
   const urls = rows.map((r) => r.url);
@@ -87,10 +92,32 @@ console.log('— the provider’s own edge is kept; somebody else’s is not');
     assert.ok(!urls.some((u) => u.includes(bad)), `a foreign bridge is still refused: ${bad}`);
   }
   // An 'edge-' prefix is a name, not evidence. The old regex refused these.
-  const named = nxCandidates({ sources: [{ url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls' }] });
+  const named = nxCandidates({ sources: [{ url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', language: 'English' }] });
   assert.equal(named.length, 0, 'a self-declared proxy is still refused');
-  const plain = nxCandidates({ sources: [{ url: 'https://edge12.cdn.example.com/a.m3u8', type: 'hls' }] });
+  const plain = nxCandidates({ sources: [{ url: 'https://edge12.cdn.example.com/a.m3u8', type: 'hls', language: 'English' }] });
   assert.equal(plain.length, 1, 'but a CDN node merely named edge12 is not');
+}
+
+console.log('— a row that names no language is not offered at all');
+{
+  const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
+  // This is the case the live board test found: a perfectly good 1080p row on
+  // nxsha's own edge, with nothing saying what audio it carries. On a board
+  // where the viewer asks for a language, that row can win the race and play
+  // something they did not ask for.
+  const unlabelled = nxCandidates({
+    sources: [
+      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P' },
+      { url: 'https://catflix.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls', language: '   ' },
+      { url: 'https://catflix.nxstreamhub.workers.dev/c/index.m3u8', type: 'hls', language: null },
+      { url: 'https://catflix.nxstreamhub.workers.dev/d/index.m3u8', type: 'hls', language: 'Hindi' },
+    ],
+  });
+  assert.equal(unlabelled.length, 1, 'only the labelled row survives');
+  assert.equal(unlabelled[0].claimedAudioLang, 'Hindi');
+  // It is a CLAIM and must stay one: the manifest is the only thing that can
+  // verify what a file actually carries.
+  assert.equal(unlabelled[0].audioLang, undefined, 'a provider label is never promoted to a verified language');
 }
 
 console.log('— media rows are filtered the way the board filters them');
@@ -98,26 +125,29 @@ console.log('— media rows are filtered the way the board filters them');
   const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
   const payload = {
     sources: [
+      //
+      // Every row names a language, so whatever this block refuses, it refuses
+      // for the URL/type reason it is asserting and not for silence about audio.
       { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '1080P', language: 'Hindi' },
       // source-2 refuses these, so source-3 must too
-      { url: 'https://bad.workers.dev/manifest.m3u8', type: 'hls' },
-      { url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls' },
-      { url: 'https://proxy.relay.example.net/a.m3u8', type: 'hls' },
+      { url: 'https://bad.workers.dev/manifest.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://proxy.relay.example.net/a.m3u8', type: 'hls', language: 'English' },
       // Drive pages: refused for six sources already
-      { url: 'https://drive.google.com/file/d/abc/view', type: 'hls' },
-      { url: 'https://drive.usercontent.google.com/download?id=abc', type: 'hls' },
+      { url: 'https://drive.google.com/file/d/abc/view', type: 'hls', language: 'English' },
+      { url: 'https://drive.usercontent.google.com/download?id=abc', type: 'hls', language: 'English' },
       // somebody else's player
-      { url: 'https://cdn.example.com/embed/player.m3u8', type: 'embed', isEmbed: true },
+      { url: 'https://cdn.example.com/embed/player.m3u8', type: 'embed', isEmbed: true, language: 'English' },
       // not media
-      { url: 'https://cdn.example.com/film.mp4', type: 'mp4' },
-      { url: 'http://plain.example.com/a.m3u8', type: 'hls' },
-      { url: 'https://user:pass@cdn.example.com/a.m3u8', type: 'hls' },
-      { url: 'not a url', type: 'hls' },
+      { url: 'https://cdn.example.com/film.mp4', type: 'mp4', language: 'English' },
+      { url: 'http://plain.example.com/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://user:pass@cdn.example.com/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'not a url', type: 'hls', language: 'English' },
       // a genuine DASH row and a genuine HLS row with no extension
-      { url: 'https://cdn.example.com/a.mpd', type: 'dash' },
-      { url: 'https://cdn.example.com/stream', type: 'hls' },
-      // duplicate of the first
-      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '720P' },
+      { url: 'https://cdn.example.com/a.mpd', type: 'dash', language: 'English' },
+      { url: 'https://cdn.example.com/stream', type: 'hls', language: 'English' },
+      // the same stream again, labelled differently - only the URL decides
+      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '720P', language: 'Tamil' },
     ],
   };
   const rows = nxCandidates(payload);
@@ -147,11 +177,13 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
         type: 'hls',
         // The CDN checks these two; the contract failed this adapter when they
         // were dropped, so they are asserted rather than assumed.
+        language: 'English',
         headers: { Referer: 'https://nxsha.space/', Origin: 'https://nxsha.space' },
       },
       {
         url: 'https://cdn.example.com/b/index.m3u8',
         type: 'hls',
+        language: 'English',
         // A provider must not be able to inject an arbitrary header.
         headers: { 'X-Injected': 'yes', Cookie: 'session=1', Referer: 'https://ok.example/' },
       },
@@ -166,7 +198,7 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
 
   // A header value that tries to split the request is refused outright.
   const hostile = nxCandidates({
-    sources: [{ url: 'https://cdn.example.com/c/index.m3u8', headers: { Referer: 'https://a/\r\nX: y' } }],
+    sources: [{ url: 'https://cdn.example.com/c/index.m3u8', language: 'English', headers: { Referer: 'https://a/\r\nX: y' } }],
   });
   assert.equal(hostile[0].headers.Referer, undefined, 'a CRLF in a header value is not forwarded');
 }
@@ -191,7 +223,11 @@ console.log('— a resolve asks only lanes that exist, and never source-1’s');
     }
     const { seal } = await import('../../dist/backend/sources/nxsha.js');
     return new Response(
-      JSON.stringify({ _hash: seal({ sources: [{ url: 'https://wts.itsnitrox.tech/a/index.m3u8', type: 'hls' }] }) }),
+      JSON.stringify({
+        _hash: seal({
+          sources: [{ url: 'https://wts.itsnitrox.tech/a/index.m3u8', type: 'hls', language: 'English' }],
+        }),
+      }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );
   };
