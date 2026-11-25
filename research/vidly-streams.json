@@ -1,11 +1,11 @@
 {
-  "measuredAt": "2026-11-25T16:25:44.581Z",
+  "measuredAt": "2026-11-25T17:53:12.465Z",
   "steps": [
     {
       "step": "watch-page",
       "url": "https://vidly.pro/watch/movie/550",
       "status": 200,
-      "bytes": 50545,
+      "bytes": 50547,
       "contentType": "text/html; charset=utf-8",
       "isNextJs": true,
       "tokenLike": 0
@@ -39,7 +39,7 @@
         {
           "url": "/api/sources?tmdb=550&kind=movie",
           "status": 403,
-          "bytes": 4545,
+          "bytes": 4546,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
@@ -47,7 +47,7 @@
         {
           "url": "/api/sources?kind=movie&tmdb=550&type=movie",
           "status": 403,
-          "bytes": 4545,
+          "bytes": 4546,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"

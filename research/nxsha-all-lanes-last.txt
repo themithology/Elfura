@@ -24,13 +24,13 @@ titles: rrr, kalki-2898, jawan, baahubali-2, pathaan, mirzapur-s1e1, sacred-game
       jawan            "[Hindi] - FHD 1080P"                        catflix.nxstreamhub.workers.dev
       jawan            "[Tamil] - FHD 1080P"                        catflix.nxstreamhub.workers.dev
       jawan            "[Telugu] - FHD 1080P"                       catflix.nxstreamhub.workers.dev
-  streamflix          6 row(s) on 2/3 title(s)  mp4.verna15c343.workers.dev,mp4.haletta15ddd2.workers.dev,mp4.hikeloh549.workers.dev,mp4.sarobo2914.workers.dev,mp4.mivev89368.workers.dev,mp4.lettie15dd77.workers.dev
-      rrr              "Auto"                                       mp4.verna15c343.workers.dev
-      rrr              "Auto"                                       mp4.haletta15ddd2.workers.dev
-      rrr              "Auto"                                       mp4.hikeloh549.workers.dev
-      jawan            "Auto"                                       mp4.sarobo2914.workers.dev
-      jawan            "Auto"                                       mp4.mivev89368.workers.dev
+  streamflix          6 row(s) on 2/3 title(s)  mp4.yitit11623.workers.dev,mp4.hedwig15e4cf.workers.dev,mp4.bagley15e2f2.workers.dev,mp4.lettie15dd77.workers.dev,mp4.nolana15c4ad.workers.dev,mp4.fiorenze15c115.workers.dev
+      rrr              "Auto"                                       mp4.yitit11623.workers.dev
+      rrr              "Auto"                                       mp4.hedwig15e4cf.workers.dev
+      rrr              "Auto"                                       mp4.bagley15e2f2.workers.dev
       jawan            "Auto"                                       mp4.lettie15dd77.workers.dev
+      jawan            "Auto"                                       mp4.nolana15c4ad.workers.dev
+      jawan            "Auto"                                       mp4.fiorenze15c115.workers.dev
   xdownloader         0 row(s) on 0/8 title(s)  —
   purstream           2 row(s) on 2/5 title(s)  free.finepulfe.xyz
       rrr              "Purstream · pulse · 1080p · MULTI"          free.finepulfe.xyz
@@ -59,20 +59,19 @@ titles: rrr, kalki-2898, jawan, baahubali-2, pathaan, mirzapur-s1e1, sacred-game
       pathaan          "HubDrive | 1080p | 21.86 GB | BluRay | HD   hubdrive.blog
       fight-club       "HubCloud | 1080p | 26.39 GB | BluRay | Hi   hubcloud.mov
       fight-club       "HubCloud | 1080p | 20.26 GB | BluRay | Hi   hubcloud.mov
-  k4khdhub           18 row(s) on 2/8 title(s)  pixel.hubcloud.mov,snowy-dust-0180.dejecik4652547.workers.dev,calm-waterfall-fdfd.terapiyo2248503.workers.dev,gpdl.hubcloud.mov,nameless-mountain-a418.babafe7002.workers.dev,misty-queen-2a4c.rijati18085062.workers.dev,pixeldrain.dev,tgcdn.xabopih256.workers.dev,long-mud-40f7.terapiyo251.workers.dev,shiny-scene-663c.terapiyo246.workers.dev,index.cdn-utube.workers.dev
+  k4khdhub           14 row(s) on 2/8 title(s)  pixel.hubcloud.mov,snowy-dust-0180.dejecik4652547.workers.dev,calm-waterfall-fdfd.terapiyo2248503.workers.dev,gpdl.hubcloud.mov,nameless-mountain-a418.babafe7002.workers.dev,misty-queen-2a4c.rijati18085062.workers.dev,pixeldrain.dev,filexdcn.google-cdn.workers.dev,lingering-shadow-83ae.naceral3284500.workers.dev
       pathaan          "HubCloud 10Gbps | 1080p | 40.16 GB | BluR   pixel.hubcloud.mov
       pathaan          "Direct R2 | 1080p | 40.16 GB | BluRay | H   snowy-dust-0180.dejecik4652547.workers.dev
       pathaan          "HubCloud 10Gbps | 1080p | 21.86 GB | BluR   pixel.hubcloud.mov
-      fight-club       "HubCloud 10Gbps | 4K | 66.39 GB | BluRay    pixel.hubcloud.mov
-      fight-club       "Direct R2 | 4K | 66.39 GB | BluRay | HDR    tgcdn.xabopih256.workers.dev
       fight-club       "HubCloud 10Gbps | 4K | 41.84 GB | BluRay    gpdl.hubcloud.mov
+      fight-club       "Direct R2 | 4K | 41.84 GB | BluRay | HDR    filexdcn.google-cdn.workers.dev
+      fight-club       "HubCloud 10Gbps | 1080p | 18.66 GB | BluR   pixel.hubcloud.mov
   filmyfly            0 row(s) on 0/8 title(s)  —
   filmyfly-direct     0 row(s) on 0/8 title(s)  —
   moviesdrive         0 row(s) on 0/8 title(s)  —
-  movone             25 row(s) on 2/8 title(s)  a.111477.xyz
-      pathaan          "2160p"                                      a.111477.xyz
-      pathaan          "1080p"                                      a.111477.xyz
-      pathaan          "2160p"                                      a.111477.xyz
+  movone             16 row(s) on 2/8 title(s)  a.111477.xyz
+      jawan            "1080p"                                      a.111477.xyz
+      jawan            "1080p"                                      a.111477.xyz
       fight-club       "1080p"                                      a.111477.xyz
       fight-club       "1080p"                                      a.111477.xyz
       fight-club       "1080p"                                      a.111477.xyz
@@ -83,7 +82,7 @@ titles: rrr, kalki-2898, jawan, baahubali-2, pathaan, mirzapur-s1e1, sacred-game
       kalki-2898       "HD"                                         gemma416okl.com
 
 RiveStream providers (source-1 asks ONE of these):
-  citadel        9 row(s) on 2 title(s)  img1.fcxmb.com,img1.hscow.com
+  citadel        8 row(s) on 2 title(s)  img1.hscow.com,img1.fcxmb.com
   primevids      4 row(s) on 2 title(s)  cdn.ngcloud.app,cdn2.ngcloud.app,cdn1.ngcloud.app
   flowcast       0 row(s) on 0 title(s)  —
   quasar         0 row(s) on 0 title(s)  —

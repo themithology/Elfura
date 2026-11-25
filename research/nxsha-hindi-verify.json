@@ -1,0 +1,439 @@
+{
+  "measuredAt": "2026-11-25T17:47:15.671Z",
+  "rows": [
+    {
+      "url": "https://wts.itsnitrox.tech/pitro/9h1ufQBqMT2LOF9MAZRvP1-TtQcBNvRITtMjy2o/3d6754647a306d4c795647647a465762764d6a4e77637a4d3145544d76676a4e31676a4e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a7168326261706d594631455543465653796b6a5a3578555272394554763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first=<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+      "lane": "nitro",
+      "title": "jawan",
+      "label": "hguider | 1080P | Hindi"
+    },
+    {
+      "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c35416a656b646b55595646644752455630515462614648635839304d4270575936705562553945617a6f314c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 2450202
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 171149,
+        "type": "image/png"
+      },
+      "lane": "nitro",
+      "title": "jawan",
+      "label": "Auto | Hindi"
+    },
+    {
+      "url": "https://wts.itsnitrox.tech/pitro/K_OO3wEjW6U-30ZYxNXyPItsBBa30CNc15mNDZQ/3455334d743569636c5233636831324c7759444d7741444f30497a4c3459544e34596a4e316b7a4e7838695a6b6857616e68576470685759316c47616f7032617663584e5635455668356d655164544e56686d626b686c5957686a62595a324c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first=<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+      "lane": "nitro",
+      "title": "jawan",
+      "label": "hguider | 1080P | Hindi"
+    },
+    {
+      "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT21kaRdXTqlUMN1WUzkleFdnWtVleORlUp90VVVTWtVleZpWVy0kenNTTUlUP:1795627339:188.221.72.48:bea864d8c6daa80b8e60d3546557eed51ac25b66c97901785e822aa4b790ce9b:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 404,
+      "reason": "http=404 first=<html> <head><title>404 Not Found</titl",
+      "lane": "awsind",
+      "title": "rrr",
+      "label": "Hindi"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503945305130386b59704e6b4e4a4e444e494e46555a6c6e6335396d4e735a6b5566356d5779417a563045556352467a4e345248655539305379595857344148554e64565976686d525439575532523153334d454d61466c647a6b3263574e4564337355597368575356746b54434e32637873555539556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434d336b6a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444d7838794e336b544f3355444e30497a4c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 274248
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 477708,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "rrr",
+      "label": "[Hindi] - FHD 1080P"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039455651666c6d6235426c55714e6d634342565956683356696c6c59684e58573642544d6952544d717857547a6744626c316953314e445744563051484e33517a4e4663554a33524d4a4463544a445279646e5577556a52426c325a526856617845444e4e5a58517a78305331636a624370575439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434d336b6a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e76637a4e356b7a4e3151444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 900689
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 253236,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "rrr",
+      "label": "[Hindi] - HD 720P"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396332514e4a576235596e59474246656e3179646e4657627a6b3252665a6b646d42335a7734475a7152475330635655767857524e786b5932646c4e595a575546647a51794e5564564a4865774947624a5633635870335231676d4d4f68466433634652497048536852474d557057623556315439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434d336b6a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444e76637a4e356b7a4e3151444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 896319
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 179728,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "rrr",
+      "label": "[Hindi] - SD 480P"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503963325172527a4e707047556d56566554646e4d576c54526a39575231456d4e69686c514c686a574f6c6b524231435735426e61504a44574e68304e77594864785130535370485348565557514e56646d7832637a736d537a4a545530386b517473575332706c6233306b5930566c56556c336239556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444d7838534d3167444d7a59444e30497a4c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 251649
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 407772,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "jawan",
+      "label": "[Hindi] - FHD 1080P"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396348524e706d53365644624731305476566b545731435a315a324d366830623555574c33306d627a55475336783056555a3255684a574f4346484e7838326373526c5332593352684e6b5753565563345a565332745552776b454e494a544d42566d636d466c567574305366526c623155444f39556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e7645544e34417a4d3251444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 857913
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 175404,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "jawan",
+      "label": "[Hindi] - HD 720P"
+    },
+    {
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503963335174386c65585a55654242584c6b5a4554354a6e627a55444d4c6c5755496c485a513947566e6c6e654552444e764a32516f52314e73396d654c564864346f6e53324e6b535068565a745555534d4e55613530474f7452476470686e533156334d31596b536d52554c334a444d72786d5939556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444e7645544e34417a4d3251444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "verdict": "SINGLE-TRACK",
+      "renditions": [],
+      "kinds": {
+        "isMaster": false,
+        "bytes": 858425
+      },
+      "status": 200,
+      "segment": {
+        "status": 200,
+        "bytes": 124644,
+        "type": "video/mp2t"
+      },
+      "lane": "castle",
+      "title": "jawan",
+      "label": "[Hindi] - SD 480P"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/bp2xymfqlml10as",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Oppenheimer (2023) ",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubCloud | 4K | 35.64 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/uw5wucb1a6qy5y7",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Oppenheimer (2023) ",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubCloud | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://hubdrive.blog/file/12457154065",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <hea",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubDrive | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://hubdrive.blog/file/17342502583",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <hea",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubDrive | 1080p | 16.69 GB | BluRay | x264 | Hindi | English"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/pcyp2ffpffpyapy",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Oppenheimer (2023) ",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubCloud | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://hubdrive.blog/file/9155815372",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <hea",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubDrive | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://hubdrive.blog/file/5401412802",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <hea",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubDrive | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/zdipi12a91di9xd",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Oppenheimer (2023) ",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubCloud | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC"
+    },
+    {
+      "url": "https://hubdrive.blog/file/1956994584",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <hea",
+      "lane": "k4khdhub-direct",
+      "title": "pathaan",
+      "label": "HubDrive | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/nhfpxzp4kkxkkfe",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Fight Club (1999) 1",
+      "lane": "k4khdhub-direct",
+      "title": "fight-club",
+      "label": "HubCloud | 1080p | 26.39 GB | BluRay | Hindi | English | x264"
+    },
+    {
+      "url": "https://hubcloud.mov/drive/1sasl06wglq10ef",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<html> <head> <title>Fight Club (1999) 1",
+      "lane": "k4khdhub-direct",
+      "title": "fight-club",
+      "label": "HubCloud | 1080p | 20.26 GB | BluRay | Hindi | English | x264"
+    },
+    {
+      "url": "https://pixel.hubcloud.mov/?id=12dd7092f3bb953a56c9064b1b60674491b9aa1a674ed07b3b2a936348f1f3c23483c83b8e56161a8a1ad127ac1054f2721ab9378d2331bfe3ea7ac5d3b196bea5a1048ab10fe08d16677c58672fc87bfe9f5298c70fee28500b1e9c9b46699c::7bfa639ddc8599d53854141e9149e026",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 1080p | 40.16 GB | BluRay | Hindi | English | x265"
+    },
+    {
+      "url": "https://snowy-dust-0180.dejecik4652547.workers.dev/df899f3205d827d2f3f00221da61bdea3da68dbd653279ef47b0b64e37d31a14540e1f294f08bdce550114a74f3cb6a9::130713dfb71350a18e6574e72109f134/1398017625/Oppenheimer (2023) IMAX 1080p BluRay REMUX AVC [Hindi DDP 5.1 + English DTS-HDMA 5.1] x265 (FraMeSToR-4kHdHub).mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 403, \"mes",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "Direct R2 | 1080p | 40.16 GB | BluRay | Hindi | English | x265"
+    },
+    {
+      "url": "https://pixel.hubcloud.mov/?id=0dae0502ea47e144e0324d4a99ccaacc54391af5a52fac4bd3bdd054367855daeb464332726657e309b5fa80b129c7748ae1534284073944a77e02f395b3aaa98c5717650c7bf64b41a0babc8855302647cbdae06d13d5df0241fc64e949777d::acb121a778631a185fcd9e615892cee7",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://calm-waterfall-fdfd.terapiyo2248503.workers.dev/a899a8fa560113e91a42bfbf09dbf5e2de4d5a1bdfa0ef771f42e6b944c3fb059d1cd7af23ee69cc93e35c0b8be51b21::f934cf468d4020a601b58f1077cc05e7/1398017625/Oppenheimer (2023) IMAX 1080p UHD BluRay HDR 10bit HEVC [Hindi DDP 5.1 + English DTS-HDMA 5.1] x265 (c0kE-4kHdHub).mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 403, \"mes",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "Direct R2 | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://gpdl.hubcloud.mov/?id=004b90cce15bbbc7e9c4d57a18f46ad4a535e9ab8124dd1cce9e9657108fc363e28f9f39fb6d4156e1237d7940d176d29eaecd23c76c5911e1ff91d483be954378cae9d27a15faae38387622329fb9e4ef19d0159ea073720f5b904db1a755c02df777332b583ab767396bc024075997::69b34165daf67b3a928df29239f1db9c",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 400,
+      "reason": "http=400 first=404 ! .. ",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://nameless-mountain-a418.babafe7002.workers.dev/75ffe7820e988acd5ef459ee9f85cd827dcc58dcd52f5211e57f11e4674c906462dadb0a3ca0cad93e288451b525cd70::0057745af40f8c3aa24dda7b08e854cf/1398017625/Oppenheimer (2023) IMAX DS4K 1080p 10bit BluRay HEVC x265 [Hindi NF DDP 5.1 640kbps + English DDP 5.1] ESub-(RAGA-NmCT)-4kHdHub.mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 404, \"mes",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "Direct R2 | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://gpdl.hubcloud.mov/?id=98e1ee24d989aaa40ce8985fad33fcd7fd6cde5303a163ac6587f1c0da74e3bd1daa6292a09fb8f572384d8996b16dab0a881b5ac5c7ce7e62566718bb8e29fbfd36b185bf47c48137cf5fe998f40685447cd88a99db0033aa093b3ca21a412c8469c701311c41a55acc11ae7027fb99::49e884760c4d0bffb5b9c11fa13fa633",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 400,
+      "reason": "http=400 first=404 ! .. ",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://misty-queen-2a4c.rijati18085062.workers.dev/4a765d47958c7786f9d08a598de29d265af0d15c216982bd875494d04c2cc1587a8da6251a5bdb27af93a369614db04a::0b71ac83ee607dde49faced77b16ffb6/1398017625/Oppenheimer (2023) IMAX 2160p 10bit HDR BluRay HEVC x265 [Hindi NF DDP 5.1 640kbps + English DDP 5.1] ESub-(RAGA-PSA)-4kHdHub.mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 404, \"mes",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "Direct R2 | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English"
+    },
+    {
+      "url": "https://pixeldrain.dev/u/negn6f",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 404,
+      "reason": "http=404 first=<!DOCTYPE html> <html lang=\"en\"> <head>",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC"
+    },
+    {
+      "url": "https://gpdl.hubcloud.mov/?id=67738e058218ffd45fd648c1ab8a4b081188c8e87ec190eb31d7d52a9a2e7d5393c39d4e745e5ccc4678fea9cc8861ead2db3f6e75df10acfbc00c776b956a71f68d56338187838349500c99b8a1db66184fb1817c94eab4529b6f8a2b5547227f105b6bd9b05b5b41fe350fbb477eae::cca96591a6b0728b31e8093043dcd4f7",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 400,
+      "reason": "http=400 first=404 ! .. ",
+      "lane": "k4khdhub",
+      "title": "pathaan",
+      "label": "HubCloud 10Gbps | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC"
+    },
+    {
+      "url": "https://gpdl.hubcloud.mov/?id=5270a6d4f5c169b5578eeb7d85142655bce7a35240ea2a4eccdba7fe994f8224b61fc4b727fd22583fe5bad4fac8bf77706fdc7a83cbf74547e0b20a1558e9affbe7b46838e4f81a882502881c0a45dc10a9b39a7dcb17dd60a3d431f646147b8209044b969e13b586e84c8bbd952f6f::782fffc7ea6aaef80fb93a9f71aadfc6",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "lane": "k4khdhub",
+      "title": "fight-club",
+      "label": "HubCloud 10Gbps | 4K | 41.84 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://filexdcn.google-cdn.workers.dev/904f79650e60e9360e78b221f40bbaca727a1467070217b0e2e389452d08542a6710b460b5815ef77b475aa9ca03226e::5e338f99c003a2439d2dc7fa11b7781b/1398017625/Fight Club (1999) 2160p UHD BluRay HDR 10bit HEVC [Hindi DDP 2.0 + English DTS-HD MA 5.1] x265 (j3rico-LUMiX).mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 403, \"mes",
+      "lane": "k4khdhub",
+      "title": "fight-club",
+      "label": "Direct R2 | 4K | 41.84 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://pixel.hubcloud.mov/?id=a8980e830b7f0eee9ee3636b1ab23ab1b04c72088509a96cc3b90ba5af87c5ea1510ef5341b65c82165520e2ea53d6895a5390577d78a086ca14b694e9a758a53198b7a6a7f2126afa034c6f43acb8f8b9de0adb89b3b2bdb5a3e6bd4abbc9cc::9fc03a27e1c380048c44ea4a47c4f9c6",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 200,
+      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "lane": "k4khdhub",
+      "title": "fight-club",
+      "label": "HubCloud 10Gbps | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    },
+    {
+      "url": "https://lingering-shadow-83ae.naceral3284500.workers.dev/e51cb78e708c30f5c68c4fa00b9c038ce4086bfe114ffc1f240e941715582a4119de909d5c3063c7bfd1ff435739e3dd::8c49a57dba1d6e1c2c5b1302626042db/1398017625/Fight Club (1999) 1080p UHD BluRay HDR 10bit HEVC [Hindi DDP 2.0 + English DDP 5.1] x265 (HiDt-LUMiX).mkv",
+      "verdict": "NO BYTES",
+      "renditions": [],
+      "kinds": {},
+      "status": 403,
+      "reason": "http=403 first={ \"error\": { \"code\": 403, \"mes",
+      "lane": "k4khdhub",
+      "title": "fight-club",
+      "label": "Direct R2 | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
+    }
+  ]
+}

@@ -27,8 +27,8 @@ lanes on offer: nitro, castle, watchout, awsind, vixolity, purstream, ophim, zok
 fields present on real rows (non-empty count, samples):
   id              46  nitro-0 | nitro-1 | nitro-2 | castle-0 | castle-1
   provider        46  nitro | nitro | nitro | castle | castle
-  url             46  https://wts.itsnitrox.tech/pitro/tF2Q6O0 | https://wts.itsnitrox.tech/pitro/LxkONWl | https://wts.itsnitrox.tech/pitro/iBqCTgn | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
-  org_uri         46  https://wts.itsnitrox.tech/pitro/tF2Q6O0 | https://wts.itsnitrox.tech/pitro/LxkONWl | https://wts.itsnitrox.tech/pitro/iBqCTgn | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
+  url             46  https://wts.itsnitrox.tech/pitro/ISgrJ72 | https://wts.itsnitrox.tech/pitro/3wKjVG6 | https://wts.itsnitrox.tech/pitro/D7cyKxw | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
+  org_uri         46  https://wts.itsnitrox.tech/pitro/ISgrJ72 | https://wts.itsnitrox.tech/pitro/3wKjVG6 | https://wts.itsnitrox.tech/pitro/D7cyKxw | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
   headers         46  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
   quality         46  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
   label           46  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P

@@ -1,5 +1,5 @@
-vidly stream probe, 2026-11-25T16:25:44.581Z
-  watch-page           200 50545B tokens=0 nextjs=true
+vidly stream probe, 2026-11-25T17:53:12.465Z
+  watch-page           200 50547B tokens=0 nextjs=true
   bundle               7 chunk(s)  endpoints=[/api/thumbs,/api/episodes,/api/sources,/api/subtitles]
   key candidates       8
   /api/sources?tmdb=550&kind=movie                 403 CHALLENGE
