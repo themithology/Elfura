@@ -31,16 +31,28 @@ on:
         default: false
   push:
     branches: [arena/38aa0193-elfura]
+    # NOT 'scripts/research/**'. That fired this job on every research-script push,
+    # including the independence probe's own scripts, and its commit step then
+    # raced the independence recorder for the branch - which is how a successful
+    # Stremio survey step ended up with its output missing.
     paths:
-      - 'scripts/research/**'
       - '.github/workflows/source-research.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: source-research-${{ github.ref }}
-  cancel-in-progress: true
+  # SHARED group on purpose. These two workflows both commit measurement files to
+  # the same branch, and they used to use different group names with
+  # cancel-in-progress: true - so whichever was pushed second CANCELLED the other
+  # mid-run. That is why a run would show "Survey every nxsha lane: cancelled" with
+  # no explanation, and why measured data kept disappearing after the step that
+  # produced it had already succeeded.
+  #
+  # Serialize instead: wait your turn, never cancel. A cancellation throws away
+  # everything the run has measured so far.
+  group: elfura-measurements
+  cancel-in-progress: false
 
 jobs:
   measure:
@@ -138,4 +150,17 @@ jobs:
           git config user.email "research@example.invalid"
           git add research/measurements.json
           git diff --cached --quiet || git commit -m "Record source measurements from $(date -u +%Y-%m-%d)"
-          git push
+          # This pushed once, bare. When another run committed first the push was
+          # rejected and the measurements - the whole point of the job - were
+          # dropped silently. Rebase and retry like the independence recorder does.
+          for attempt in 1 2 3 4 5 6; do
+            if git push 2>&1 | tee /tmp/push.log; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "::warning::push attempt $attempt failed: $(tail -2 /tmp/push.log | tr '\n' ' ')"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $((attempt * 10))
+          done
+          echo "::error::measurements were produced but could not be pushed"
+          exit 1
