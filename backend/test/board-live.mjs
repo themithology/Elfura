@@ -94,6 +94,28 @@ assert(offered.length > 0, 'the lane published no language at all — nothing ca
 const lang = offered[0];
 quiet(`  languages any adapter returned: ${offered.join(', ')}; ranking inside "${lang}"`);
 
+// ── the one way this file asks "what languages does this stream carry" ────────
+//
+// A stream can say it in four different fields, and this file used to read one or
+// two of them depending on where you looked. That was not harmless: a multi-audio
+// stream has NO single language by definition — the selection layer deliberately
+// clears `audioLang` on it and publishes the set instead — so every check that
+// read only `audioLang ?? claimedAudioLang` demanded a single language from
+// exactly the streams that carry several. It went red on source-3, then on
+// source-4, then again at line 248, each time for doing the right thing.
+//
+// Same mistake as the vidly subtitle pass and the nxsha `row.language` rule:
+// read one field, conclude about the whole row. Every language question in this
+// file now goes through here.
+const langsOf = (stream) =>
+  [
+    stream?.audioLang,
+    stream?.claimedAudioLang,
+    ...(stream?.availableAudioLangs ?? []),
+  ]
+    .filter((code) => typeof code === 'string' && code !== 'und')
+    .map((code) => code.split('-')[0]);
+
 const wanted = await resolveFor(lang);
 const MB_ = MB;
 quiet(`\n  "${lang}" request: ${wanted.sources.length} stream(s), primary ${wanted.primary?.label ?? '?'}`);
@@ -135,22 +157,6 @@ assert(wanted.size.meanBytes > 0, 'a reported mean of zero bytes is not a measur
 assert(wanted.size.maxBytes >= wanted.size.meanBytes, 'the biggest stream cannot be smaller than the mean');
 
 // ── 3. every stream tells the player what language it is ───────────────────
-//
-// A stream can tell the player its language in four different ways, and this
-// check used to read two of them. That was not a harmless omission: a
-// multi-audio stream has NO single language by definition — the selection layer
-// deliberately clears `audioLang` on it and publishes the set instead — so the
-// check demanded a single language from exactly the streams that carry several,
-// and went red on source-3, then on source-4, for doing the right thing.
-//
-// This is the same mistake the vidly subtitle pass made: read one field, draw a
-// conclusion about the whole row.
-const langsOf = (stream) => [
-  stream.audioLang,
-  stream.claimedAudioLang,
-  ...(stream.availableAudioLangs ?? []),
-].filter((code) => typeof code === 'string' && code !== 'und');
-
 for (const stream of wanted.sources) {
   const known = langsOf(stream);
   assert(
@@ -159,8 +165,8 @@ for (const stream of wanted.sources) {
       'no claimedAudioLang and an empty availableAudioLangs',
   );
   if (stream.multiAudio) {
-    // Multi-audio must name more than one, or the flag is a lie the player will
-    // act on (it offers a language switch that changes nothing).
+    // Multi-audio must name more than one, or the flag is a lie the player acts
+    // on by offering a language switch that changes nothing.
     assert(
       known.length > 1,
       `${stream.label} is advertised multi-audio but names only ${JSON.stringify(known)}`,
@@ -172,9 +178,9 @@ for (const stream of wanted.sources) {
 const primary = wanted.primary;
 assert(Number.isFinite(primary?.measuredBytes), 'the stream the player opens on carries no measured size');
 // The primary carries the requested language if ANY of its language evidence
-// matches it. For a multi-audio stream that means the set contains it, which is
+// matches — for a multi-audio stream that means the set contains it, which is
 // the honest meaning of "this stream can play English".
-const primaryLangs = langsOf(primary ?? {}).map((code) => code.split('-')[0]);
+const primaryLangs = langsOf(primary);
 assert(
   primaryLangs.includes(lang.split('-')[0]),
   `the primary stream carries "${primaryLangs.join(',') || 'nothing'}", not the requested "${lang}"`,
@@ -186,9 +192,7 @@ const biggerSameLang = wanted.sources.filter(
   (s) =>
     Number.isFinite(s.measuredBytes) &&
     s.measuredBytes > primary.measuredBytes &&
-    langsOf(s)
-      .map((code) => code.split('-')[0])
-      .some((code) => primarySet.has(code)),
+    langsOf(s).some((code) => primarySet.has(code)),
 );
 assert.equal(
   biggerSameLang.length,
@@ -201,16 +205,9 @@ quiet(
 );
 
 // What the board can actually PLAY, by language. Raw adapter rows are not proof:
-// a lane whose rows all failed the probe publishes nothing, and counting its
-// labels here made an unavailable language look available — which is what made
-// this file demand a Hindi stream that no lane could serve.
+// a lane whose rows all failed the probe publishes nothing.
 const playableLangs = [
-  ...new Set(
-    wanted.sources
-      .flatMap((s) => [s.audioLang, s.claimedAudioLang, ...(s.availableAudioLangs ?? [])])
-      .filter((code) => typeof code === 'string' && code !== 'und')
-      .map((code) => code.split('-')[0]),
-  ),
+  ...new Set(wanted.sources.flatMap((s) => langsOf(s))),
 ];
 quiet(`\n  playable languages on this title: ${playableLangs.join(', ') || 'none declared'}`);
 
@@ -224,14 +221,15 @@ quiet(`\n  playable languages on this title: ${playableLangs.join(', ') || 'none
   const absent = playableLangs.includes('hi') ? 'ta' : 'hi';
   const miss = await resolveFor(absent, { allowEmpty: true });
   if (miss && miss.sources.length > 0) {
-    const primaryLang = miss.primary?.audioLang ?? miss.primary?.claimedAudioLang;
+    const primaryLangs = langsOf(miss.primary);
+    const primaryLang = primaryLangs[0];
     const served = miss.languageFallback;
     quiet(`\n  "${absent}" request: ${miss.sources.length} stream(s), primary "${primaryLang}"`);
     if (served) {
       quiet(`  reported fallback: requested "${served.requested}" (${served.reason})`);
     }
     assert(
-      served || primaryLang?.split('-')[0] === absent.split('-')[0],
+      served || primaryLangs.includes(absent.split('-')[0]),
       `asked for "${absent}", served "${primaryLang}", and the response did not say so ` +
         '— a silent fallback is indistinguishable from a broken language filter',
     );
@@ -245,10 +243,11 @@ const other = playableLangs.find((code) => code.split('-')[0] !== lang.split('-'
 if (other) {
   const second = await resolveFor(other);
   const secondPrimary = second.primary;
-  const secondLang = secondPrimary?.audioLang ?? secondPrimary?.claimedAudioLang;
+  const secondLangs = langsOf(secondPrimary);
+  const secondLang = secondLangs[0];
   quiet(`\n  "${other}" request: ${second.sources.length} stream(s), primary ${secondPrimary?.label ?? '?'}`);
   assert(
-    secondLang && secondLang.split('-')[0] === other.split('-')[0],
+    secondLangs.includes(other.split('-')[0]),
     `asking for "${other}" opened a "${secondLang}" stream`,
   );
   if (Number.isFinite(secondPrimary?.measuredBytes)) {
