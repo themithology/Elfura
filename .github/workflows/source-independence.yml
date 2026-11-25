@@ -22,6 +22,7 @@ on:
       - 'scripts/research/object-overlap.mjs'
       - 'scripts/research/nxsha-probe.mjs'
       - 'scripts/research/nxsha-lanes.mjs'
+      - 'scripts/research/anivortex-426.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -54,6 +55,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/independence.mjs 2>&1 | tee research/independence-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # The anivortex audit says TV is blocked. Its own probe output shows six
+      # reachable rows on a different host family. Find out which is true.
+      - name: Re-test anivortex TV
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/anivortex-426.mjs 2>&1 | tee research/anivortex-426-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -101,7 +112,8 @@ jobs:
           git add research/independence.json research/independence.md research/independence-last.txt \
                   research/object-overlap.json research/object-overlap-last.txt \
                   research/nxsha-probe.json research/nxsha-probe-last.txt \
-                  research/nxsha-lanes.json research/nxsha-lanes-last.txt
+                  research/nxsha-lanes.json research/nxsha-lanes-last.txt \
+                  research/anivortex-426.json research/anivortex-426-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
