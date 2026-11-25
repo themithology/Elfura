@@ -1,14 +1,14 @@
-upstream lookup, 2026-11-25T11:45:24.568Z
+upstream lookup, 2026-11-25T12:05:07.919Z
 
 — vidly (index, not streams)
-  vidly fight-club         200   43 track(s) 14 lang(s)
-  vidly inception          200   97 track(s) 29 lang(s)
-  vidly dune-2             200   94 track(s) 28 lang(s) indic=bn
-  vidly rrr                200   96 track(s) 30 lang(s) indic=bn,te
-  vidly pathaan            200   14 track(s) 8 lang(s)
-  vidly got-s1e1           200   95 track(s) 26 lang(s) indic=ml,ta
-  vidly naruto-s1e1        200   40 track(s) 22 lang(s) indic=bn
-  vidly breaking-bad-s1e1  200   89 track(s) 23 lang(s)
+  vidly fight-club         200   43 track(s) langs=[en,br,cs,da,fi,el,is,no,pt,ru,sr,sl,es,sv]
+  vidly inception          200   97 track(s) langs=[en,sq,ar,br,bg,zh,hr,cs,da,nl,et,fr,el,he,it,ja,ko,ms,no,fa,pt,ro,ru,sr,sl,es,sv,tr,vi]
+  vidly dune-2             200   94 track(s) langs=[en,ar,bn,bs,bg,zh,hr,cs,nl,fr,de,el,hu,id,ja,ko,mk,fa,pt,ro,ru,sr,sk,es,sv,tr,uk,vi] indic=bn
+  vidly rrr                200   96 track(s) langs=[en,ar,bn,zh,hr,cs,da,nl,fi,fr,de,el,he,id,it,ja,kh,ko,ms,fa,pl,pt,ro,ru,si,es,te,th,tr,vi] indic=bn,te
+  vidly pathaan            200   14 track(s) langs=[en,hr,el,he,id,pt,ro,es]
+  vidly got-s1e1           200   95 track(s) langs=[en,ar,bg,hr,cs,da,nl,fi,fr,el,he,hu,id,it,ml,no,pl,pt,ro,ru,sr,sl,es,sv,ta,tr] indic=ml,ta
+  vidly naruto-s1e1        200   40 track(s) langs=[en,ar,bn,hr,nl,fr,de,el,he,hu,id,it,ja,fa,pl,pt,ro,ru,sr,es,tr,vi] indic=bn
+  vidly breaking-bad-s1e1  200   89 track(s) langs=[en,ar,bg,hr,cs,nl,et,fr,de,el,he,hu,it,ko,mk,fa,pl,pt,ro,sl,es,sv,tr]
 
 — bingr
   bingr https://bingr.st home=200 watch=403 CHALLENGE

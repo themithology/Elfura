@@ -1,22 +1,22 @@
-independence probe 2026-11-25T11:44:39.274Z
+independence probe 2026-11-25T12:04:28.734Z
 
 — reading the board
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-citadel] movie/27205: 6 row(s)
-[elfura-citadel] tv/1399: 4 row(s)
+[elfura-citadel] tv/1399: 1 row(s)
 [elfura-citadel] tv/46260: 1 row(s)
 [elfura-greybox] movie/550: 10 row(s), langs=7
-[elfura-greybox] movie/27205: 11 row(s), langs=8
-[elfura-greybox] tv/1399: 7 row(s), langs=5
+[elfura-greybox] movie/27205: 12 row(s), langs=8
+[elfura-greybox] tv/1399: 10 row(s), langs=6
 [elfura-greybox] tv/46260: throttled, retrying once
 [elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
   source-1: 4 media host(s) :: img1.hscow.com, img.hscow.com, img1.fcxmb.com, img.fcxmb.com
   source-2: 1 media host(s) :: greyboxtv.duckdns.org
-  source-3: 3 media host(s) :: wts.itsnitrox.tech, silent-frost-f2dbv.nxstreamhub.workers.dev, s14-s1001604.97bf1.com
+  source-3: 0 media host(s) :: none
 
 — probing candidates
   atlantic-vidbox: no bytes, 0 host(s), 0 shared -> no media at all — not a source yet
-  atlantic-q62: 262144B proven, 1 host(s), 0 shared -> independent of the board; RELAY-SHAPED host(s): proxy.7movie.ws — the board refuses relay fronts
+  atlantic-q62: no bytes, 1 host(s), 0 shared -> media found but no bytes (http=429, http=429)
 
 wrote research/independence.json
 wrote research/independence.md
