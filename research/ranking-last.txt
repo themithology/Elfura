@@ -1,36 +1,43 @@
   lanes answering: source-1=2, source-2=9, source-3=5, source-4=1
   languages any adapter returned: en, hi, fr, uk, ru, es, pt; ranking inside "en"
-[elfura-greybox] movie/550: throttled, retrying once
 [elfura-citadel] movie/550: 2 row(s)
-[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
-[elfura-sources] source-2 movie/550: 0 candidates in 1661ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-greybox] movie/550: 9 row(s), langs=7
 
-  "en" request: 7 stream(s), primary Source 4 · Multi-Audio
+  "en" request: 16 stream(s), primary Source 3
+    Source 3 [en label]                    5302MB
     Source 4 · Multi-Audio [undefined label] 2023MB
     Source 3 · Multi-Audio [undefined label] 1668MB
-    Source 3 [en label]                    5302MB
     Source 3 #2 [en label]                 1378MB
     Source 1 · English [en label]          1376MB
     Source 1 · English #2 [en label]       400MB
+    Source 2 · 720P [en label]             unmeasured
+    Source 2 · 480P [en label]             unmeasured
     Source 3 #3 [en label]                 unmeasured
+    Source 2 · 1080P [hi label]            unmeasured
+    Source 2 · 1080P #2 [fr label]         unmeasured
+    Source 2 · 360P [uk label]             unmeasured
+    Source 2 [ru label]                    unmeasured
+    Source 2 #2 [es label]                 unmeasured
+    Source 2 #3 [pt label]                 unmeasured
+    Source 2 #4 [es label]                 unmeasured
 
-  mean 2024MB over 6/7 measured, biggest 5302MB
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
+  mean 2024MB over 6/16 measured, biggest 5302MB
+  primary 5302MB is the biggest en stream listed
 
-AssertionError [ERR_ASSERTION]: a 5302MB de/en/es/fr/it/ja/pl/pt/tr stream outranks the 2023MB primary in the same language
+  playable languages on this title: en, de, es, fr, it, ja, pl, pt, tr, hi, uk, ru
+[elfura-greybox] movie/550: throttled, retrying once
+[elfura-citadel] movie/550: 2 row(s)
 
-1 !== 0
+  "ta" request: 7 stream(s), primary "en"
+  reported fallback: requested "ta" (no-stream-in-language)
+[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
+[elfura-sources] source-2 movie/550: 0 candidates in 1687ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-greybox] movie/550: throttled, retrying once
+[elfura-citadel] movie/550: 2 row(s)
 
-    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:214:8
-    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
-  generatedMessage: false,
-  code: 'ERR_ASSERTION',
-  actual: 1,
-  expected: 0,
-  operator: 'strictEqual',
-  diff: 'simple'
-}
+  "de" request: 7 stream(s), primary Source 4 · Multi-Audio
+  primary 2023MB, language "de"
 
-Node.js v22.23.5
+✓ board live: real sizes measured, requested language ranked biggest-first
+[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
+[elfura-sources] source-2 movie/550: 0 candidates in 1679ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
