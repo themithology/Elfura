@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T09:59:56.304Z",
+  "measuredAt": "2026-11-25T11:10:12.773Z",
   "titles": [
     "fight-club",
     "inception",
@@ -34,7 +34,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 2
         },
         {
           "title": "naruto-s1e1",
@@ -58,7 +58,33 @@
         },
         {
           "title": "got-s1e1",
+          "candidates": 3
+        },
+        {
+          "title": "naruto-s1e1",
           "candidates": 0
+        }
+      ]
+    },
+    {
+      "id": "source-3",
+      "hosts": [
+        "wts.itsnitrox.tech",
+        "silent-frost-f2dbv.nxstreamhub.workers.dev",
+        "s14-s1001604.97bf1.com"
+      ],
+      "rows": [
+        {
+          "title": "fight-club",
+          "candidates": 3
+        },
+        {
+          "title": "inception",
+          "candidates": 3
+        },
+        {
+          "title": "got-s1e1",
+          "candidates": 3
         },
         {
           "title": "naruto-s1e1",

@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T10:04:27.226Z",
+  "measuredAt": "2026-11-25T11:15:33.435Z",
   "origin": "https://nxsha.space",
   "summary": {
     "listed": 34,
@@ -415,7 +415,7 @@
           "languages": [],
           "drive": [],
           "relay": false,
-          "error": null
+          "error": "TypeError: fetch failed (ECONNRESET)"
         },
         {
           "title": "naruto-s1e1",
