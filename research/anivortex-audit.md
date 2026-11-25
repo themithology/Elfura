@@ -140,6 +140,41 @@ corroborate the language, which is why the operator decided on 2026-11-15 that t
 the documented exception in `RULES.md` §5.1, and it does mean a mislabelled upstream row would be offered
 as that language.
 
+## RE-TEST 2026-11-25 — the "TV is blocked" conclusion was a dead end, not a blocker
+
+The section above says TV dies on `sbcdnw.hakunaymatata.com` and that "TV support
+needs a different upstream lane". Re-measured on a runner, with the TGVIDX
+inventory read directly rather than through the retired adapter:
+
+| title | rows | hosts |
+| — | — | — |
+| Breaking Bad S1E1 | **0** | — |
+| Game of Thrones S1E1 | 6 | `greyboxtv.duckdns.org`, `old-mode-b611.fykko14.workers.dev`, `dash-hls-bridge.john1mc.workers.dev` |
+| Naruto S1E1 | 6 | `greyboxtv.duckdns.org` |
+
+**The 426 host did not appear at all this run**, and the rows that did appear are
+not a fix:
+
+1. `greyboxtv.duckdns.org` is **source-2** — the board's own greybox lane. An
+   "independent" anivortex TV row is a re-export of a source already on the
+   board, the same finding that refused vidlink.
+2. `dash-hls-bridge.john1mc.workers.dev` is the **third-party bridge** in front
+   of `sacdn.hakunaymatata.com` — refused by this board for two independent
+   reasons.
+3. `old-mode-b611.fykko14.workers.dev` answers **502**.
+4. Every reachable manifest declared **no audio** (`AdaptationSet` count 0). A
+   picture with no sound is not a source.
+
+So the honest verdict is not "the CDN blocks datacenter IPs, needs another lane".
+It is that **anivortex's TV rows resolve to sources this board already has, to
+refused relays, or to media with no audio** — and on one of the three titles it
+returned nothing at all. There is no lane to switch to.
+
+That also corrects a framing mistake in the audit: it read a host-level 426 as an
+absence of alternatives, while its own movie probe had already recorded six
+reachable rows on other hosts. The alternatives existed; they were simply not
+worth having.
+
 ## Open questions / next steps
 
 1. **TV playback is blocked from datacenter IPs.** Episode rows resolve correctly (the season/episode
