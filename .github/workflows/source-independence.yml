@@ -31,6 +31,7 @@ on:
       - 'scripts/research/nxsha-row-fields.mjs'
       - 'scripts/research/nxsha-row-liveness.mjs'
       - 'scripts/research/nxsha-breaking-bad.mjs'
+      - 'scripts/research/nxsha-castle-headers.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -73,6 +74,15 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # castle answered 403 bare and 200 with four headers at once. Isolate which.
+      - name: Isolate nxsha castle headers
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-castle-headers.mjs 2>&1 | tee research/nxsha-castle-headers-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -209,7 +219,8 @@ jobs:
                   research/vidly-page-lang.json research/vidly-page-lang-last.txt \
                   research/nxsha-row-fields.json research/nxsha-row-fields-last.txt \
                   research/nxsha-row-liveness.json research/nxsha-row-liveness-last.txt \
-                  research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt
+                  research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt \
+                  research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
