@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T13:16:18.429Z",
+  "measuredAt": "2026-11-25T13:26:33.972Z",
   "titles": [
     "fight-club",
     "inception",
@@ -19,7 +19,9 @@
       "id": "source-1",
       "hosts": [
         "img1.hscow.com",
-        "img.hscow.com"
+        "img.hscow.com",
+        "img1.fcxmb.com",
+        "img.fcxmb.com"
       ],
       "rows": [
         {
@@ -32,7 +34,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 1
+          "candidates": 2
         },
         {
           "title": "naruto-s1e1",
@@ -56,29 +58,33 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 0
+          "candidates": 3
         },
         {
           "title": "naruto-s1e1",
-          "candidates": 0
+          "candidates": 3
         }
       ]
     },
     {
       "id": "source-3",
-      "hosts": [],
+      "hosts": [
+        "i-arch-400.asrmo449ddj.com",
+        "wts.itsnitrox.tech",
+        "silent-frost-f2dbv.nxstreamhub.workers.dev"
+      ],
       "rows": [
         {
           "title": "fight-club",
-          "candidates": 0
+          "candidates": 1
         },
         {
           "title": "inception",
-          "candidates": 0
+          "candidates": 3
         },
         {
           "title": "got-s1e1",
-          "candidates": 0
+          "candidates": 2
         },
         {
           "title": "naruto-s1e1",
@@ -166,94 +172,129 @@
         {
           "title": "fight-club",
           "mediaUrls": 1,
-          "bytes": 0,
-          "segments": 0,
+          "bytes": 131072,
+          "segments": 1392,
           "hosts": [
-            "zstream-proxy.bluevelvet.space"
+            "proxy.7movie.ws"
           ],
-          "error": "http=429"
+          "error": null
         },
         {
           "title": "inception",
           "mediaUrls": 1,
-          "bytes": 0,
-          "segments": 0,
+          "bytes": 131072,
+          "segments": 1481,
           "hosts": [
-            "zstream-proxy.bluevelvet.space"
+            "proxy.7movie.ws"
           ],
-          "error": "http=429"
+          "error": null
         },
         {
           "title": "got-s1e1",
-          "mediaUrls": 1,
+          "mediaUrls": 0,
           "bytes": 0,
           "segments": 0,
-          "hosts": [
-            "zstream-proxy.bluevelvet.space"
-          ],
-          "error": "http=429"
+          "hosts": [],
+          "error": null
         },
         {
           "title": "naruto-s1e1",
-          "mediaUrls": 1,
+          "mediaUrls": 0,
           "bytes": 0,
           "segments": 0,
-          "hosts": [
-            "zstream-proxy.bluevelvet.space"
-          ],
-          "error": "http=429"
+          "hosts": [],
+          "error": null
         }
       ],
       "hosts": [
-        "zstream-proxy.bluevelvet.space"
+        "proxy.7movie.ws"
       ],
-      "bytes": 0,
-      "playable": false,
+      "bytes": 262144,
+      "playable": true,
       "shared": [],
       "independent": true,
-      "verdict": "media found but no bytes (http=429, http=429)"
+      "relayShaped": [
+        "proxy.7movie.ws"
+      ],
+      "verdict": "independent of the board; RELAY-SHAPED host(s): proxy.7movie.ws — the board refuses relay fronts"
     }
   ],
   "discoveryNotes": {
     "atlantic-vidbox:fight-club": {
-      "status": 200,
+      "status": 502,
       "topLevelKeys": [
-        "sources"
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
       ],
-      "sourceKeys": [
-        "Tik"
-      ],
+      "sourceKeys": [],
       "rowShape": null
     },
     "atlantic-vidbox:inception": {
-      "status": 200,
+      "status": 502,
       "topLevelKeys": [
-        "sources"
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
       ],
-      "sourceKeys": [
-        "Tik"
-      ],
+      "sourceKeys": [],
       "rowShape": null
     },
     "atlantic-vidbox:got-s1e1": {
-      "status": 200,
+      "status": 502,
       "topLevelKeys": [
-        "sources"
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
       ],
-      "sourceKeys": [
-        "Tik"
-      ],
+      "sourceKeys": [],
       "rowShape": null
     },
     "atlantic-vidbox:naruto-s1e1": {
-      "status": 200,
+      "status": 502,
       "topLevelKeys": [
-        "sources"
+        "type",
+        "title",
+        "status",
+        "detail",
+        "instance",
+        "error_code",
+        "error_name",
+        "error_category"
       ],
-      "sourceKeys": [
-        "Tik"
-      ],
+      "sourceKeys": [],
       "rowShape": null
+    },
+    "atlantic-q62:got-s1e1": {
+      "status": 404,
+      "topLevelKeys": [
+        "detail",
+        "error"
+      ],
+      "releases": null
+    },
+    "atlantic-q62:naruto-s1e1": {
+      "status": 404,
+      "topLevelKeys": [
+        "detail",
+        "error"
+      ],
+      "releases": null
     }
   }
 }

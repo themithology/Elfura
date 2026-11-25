@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T13:19:40.991Z",
+  "measuredAt": "2026-11-25T13:30:49.456Z",
   "origins": [
     {
       "origin": "https://nxsha.space",
@@ -15,7 +15,7 @@
           "status": 200,
           "bytes": 11106,
           "contentType": "application/json",
-          "body": "{\"_hash\":\"U2FsdGVkX19kZrGgAXDmOUR7D83ryTpMGEjw1-sujAuEh40C8v93Jc1Q_YaGeQQd0gM5zNHxWkItNH9Vl26yTKQ7tCEr8wOw7C9b8kuTVxaeMt"
+          "body": "{\"_hash\":\"U2FsdGVkX1_wY5P7yrkpwqZWGlO9Qhw5kfqlsnLxVx-RyruhyKEmcogpPH3HtIeSjP52a6VMJfCHlPCIA2kGPXBZmfQB8dwTnAtcouOQqlwVes"
         },
         {
           "step": "passphrase",
@@ -50,7 +50,7 @@
         {
           "step": "api/servers",
           "status": 403,
-          "bytes": 6495,
+          "bytes": 6517,
           "contentType": "text/html; charset=UTF-8",
           "body": "<!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/htm"
         }
