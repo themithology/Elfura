@@ -1,10 +1,10 @@
-anivortex 426 probe, 2026-11-25T13:40:42.187Z
+anivortex 426 probe, 2026-11-25T13:55:29.761Z
   breaking-bad-s1e1  6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
       OTHER   greyboxtv.duckdns.org              200 2210B 
       OTHER   dash-hls-bridge.john1mc.workers.dev 200 3333B 
   got-s1e1           6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
       OTHER   greyboxtv.duckdns.org              200 2210B 
-      OTHER   dash-hls-bridge.john1mc.workers.dev 502  
+      OTHER   dash-hls-bridge.john1mc.workers.dev 200 3333B 
   naruto-s1e1        6 row(s) on 1 host(s): greyboxtv.duckdns.org
       OTHER   greyboxtv.duckdns.org              200 2208B 
 

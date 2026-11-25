@@ -1,6 +1,6 @@
 # Is it a new source, or the same pipe?
 
-Measured 2026-11-25T13:36:11.760Z. Raw rows in [independence.json](independence.json).
+Measured 2026-11-25T13:50:40.745Z. Raw rows in [independence.json](independence.json).
 
 A candidate is independent when **none of the hosts behind its media** — the URL it
 hands out, the child playlists, the segments, the key URIs — appear in the media

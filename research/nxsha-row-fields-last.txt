@@ -1,5 +1,5 @@
 lanes on offer: nitro, castle, watchout, awsind, vixolity, purstream, ophim, zoko
-  fight-club    nitro      3 row(s)
+  fight-club    nitro      1 row(s)
   fight-club    castle     3 row(s)
   fight-club    watchout   1 row(s)
   fight-club    awsind     1 row(s)
@@ -25,14 +25,14 @@ lanes on offer: nitro, castle, watchout, awsind, vixolity, purstream, ophim, zok
   got-s1e1      zoko       1 row(s)
 
 fields present on real rows (non-empty count, samples):
-  id              47  nitro-0 | nitro-1 | nitro-2 | castle-0 | castle-1
-  provider        47  nitro | nitro | nitro | castle | castle
-  url             47  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
-  org_uri         47  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
-  headers         47  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
-  quality         47  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
-  label           47  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
-  isEmbed         47  false | false | false | false | false
-  type            47  m3u8 | m3u8 | m3u8 | m3u8 | m3u8
+  id              45  nitro-0 | castle-0 | castle-1 | castle-2 | watchout-0
+  provider        45  nitro | castle | castle | castle | watchout
+  url             45  https://wts.itsnitrox.tech/pitro/32jng4L | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/ | https://suw.halcyoncreative.site/v4/us/n
+  org_uri         45  https://wts.itsnitrox.tech/pitro/32jng4L | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/ | https://suw.halcyoncreative.site/v4/us/n
+  headers         45  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
+  quality         45  hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P | [English] - SD 480P | watchout
+  label           45  hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P | [English] - SD 480P | watchout
+  isEmbed         45  false | false | false | false | false
+  type            45  m3u8 | m3u8 | m3u8 | m3u8 | m3u8
 
 wrote research/nxsha-row-fields.json

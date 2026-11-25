@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T13:38:33.696Z",
+  "measuredAt": "2026-11-25T13:53:19.181Z",
   "titles": [
     {
       "title": "fight-club",
@@ -10,28 +10,6 @@
           "provider": "nitro",
           "url": "https://wts.itsnitrox.tech/pitro/32jng4LJsceBlu4orp1tMut6RWXF6wTqIeXsYYA/3455334d743569636c5233636831324c30596a4d3463544d78517a4c7a63444e30556a4e316b7a4e78385364325a47616e68576131686d637270476176456c5435633056765a4653786847526e7046653552555a61566d525368324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
           "org_uri": "https://wts.itsnitrox.tech/pitro/32jng4LJsceBlu4orp1tMut6RWXF6wTqIeXsYYA/3455334d743569636c5233636831324c30596a4d3463544d78517a4c7a63444e30556a4e316b7a4e78385364325a47616e68576131686d637270476176456c5435633056765a4653786847526e7046653552555a61566d525368324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
-          "headers": {},
-          "quality": "hguider | 1080P",
-          "label": "hguider | 1080P",
-          "isEmbed": false,
-          "type": "m3u8"
-        },
-        {
-          "id": "nitro-1",
-          "provider": "nitro",
-          "url": "https://wts.itsnitrox.tech/pitro/yaQD09POZPcSGzpcimtGskr6TKD8kueBqTwRmsM/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e76416a4e7851544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355793430514631434f31566a557764465a35686e62523557616a4e6b56763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
-          "org_uri": "https://wts.itsnitrox.tech/pitro/yaQD09POZPcSGzpcimtGskr6TKD8kueBqTwRmsM/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e76416a4e7851544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355793430514631434f31566a557764465a35686e62523557616a4e6b56763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
-          "headers": {},
-          "quality": "hguider",
-          "label": "hguider",
-          "isEmbed": false,
-          "type": "m3u8"
-        },
-        {
-          "id": "nitro-2",
-          "provider": "nitro",
-          "url": "https://wts.itsnitrox.tech/pitro/-IhnnZA_D0SSUu3Ja9Wd_NMkqFDmRB1gNhHI0vw/3455334d743569636c5233636831324c334d544e3541444d79637a4c3555544d30556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176454665774d334d336f6c596c706e577977456442467a59554a325854647a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
-          "org_uri": "https://wts.itsnitrox.tech/pitro/-IhnnZA_D0SSUu3Ja9Wd_NMkqFDmRB1gNhHI0vw/3455334d743569636c5233636831324c334d544e3541444d79637a4c3555544d30556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176454665774d334d336f6c596c706e577977456442467a59554a325854647a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
           "headers": {},
           "quality": "hguider | 1080P",
           "label": "hguider | 1080P",
@@ -238,8 +216,8 @@
         {
           "id": "castle-0",
           "provider": "castle",
-          "url": "https://catflix.nxstreamhub.workers.dev/stream/3d30545052526b5248567a53684a556231526d5255316b656a4a33626a644452343079536a5258514931455673396d576874576133565661325a7a613363315832455851705a6c56365a31634956465572566c65344a6b5a766c6c51555a6e5a725a32555152315659706c57766c31545a644463745955506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d49444d7a496a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c324d6a4e6b4a544e6d52544d6b647a4d6a64544f7a596d4e6a4a6a59334d6d5978676a5a3251575a6c4e324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
-          "org_uri": "https://catflix.nxstreamhub.workers.dev/stream/3d30545052526b5248567a53684a556231526d5255316b656a4a33626a644452343079536a5258514931455673396d576874576133565661325a7a613363315832455851705a6c56365a31634956465572566c65344a6b5a766c6c51555a6e5a725a32555152315659706c57766c31545a644463745955506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d49444d7a496a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c324d6a4e6b4a544e6d52544d6b647a4d6a64544f7a596d4e6a4a6a59334d6d5978676a5a3251575a6c4e324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+          "url": "https://catflix.nxstreamhub.workers.dev/stream/3d30545033466b597855546449526d647a4e564f57645751465a33546a526b64364a585333496b54794648525068445a616c325549463256715a575a31675552344e334d34526d566d70555268426e544d6c316434566b52356c3164524a565730746d53506c58573034554d3467305833315761346355506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d51444e30556a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c324d6a4e6b4a544e6d52544d6b647a4d6a64544f7a596d4e6a4a6a59334d6d5978676a5a3251575a6c4e324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+          "org_uri": "https://catflix.nxstreamhub.workers.dev/stream/3d30545033466b597855546449526d647a4e564f57645751465a33546a526b64364a585333496b54794648525068445a616c325549463256715a575a31675552344e334d34526d566d70555268426e544d6c316434566b52356c3164524a565730746d53506c58573034554d3467305833315761346355506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d51444e30556a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c324d6a4e6b4a544e6d52544d6b647a4d6a64544f7a596d4e6a4a6a59334d6d5978676a5a3251575a6c4e324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
           "headers": {},
           "quality": "[Japanese] - SD 480P",
           "label": "[Japanese] - SD 480P",
@@ -320,8 +298,8 @@
         {
           "id": "nitro-1",
           "provider": "nitro",
-          "url": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=62bac6fe75c4d6838620c07fa0ee0f73-1795639193-104.28.196.55-2817502dd4130746e6e3fbc839b0c9ab300b4a9a1a6dbb01edb0706d07934a57",
-          "org_uri": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=62bac6fe75c4d6838620c07fa0ee0f73-1795639193-104.28.196.55-2817502dd4130746e6e3fbc839b0c9ab300b4a9a1a6dbb01edb0706d07934a57",
+          "url": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=0bf571edd0f751b8ccabdb75d58552d2-1795643152-104.28.196.57-366da02ee3621e36cf0809bea262bddb02a9f5e6b552f1e1495ee56b76653063",
+          "org_uri": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=0bf571edd0f751b8ccabdb75d58552d2-1795643152-104.28.196.57-366da02ee3621e36cf0809bea262bddb02a9f5e6b552f1e1495ee56b76653063",
           "headers": {},
           "quality": "1080P",
           "label": "1080P",
@@ -661,47 +639,47 @@
   ],
   "fields": {
     "id": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "nitro-0",
-        "nitro-1",
-        "nitro-2",
         "castle-0",
-        "castle-1"
+        "castle-1",
+        "castle-2",
+        "watchout-0"
       ]
     },
     "provider": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "nitro",
-        "nitro",
-        "nitro",
         "castle",
-        "castle"
+        "castle",
+        "castle",
+        "watchout"
       ]
     },
     "url": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "https://wts.itsnitrox.tech/pitro/32jng4L",
-        "https://wts.itsnitrox.tech/pitro/yaQD09P",
-        "https://wts.itsnitrox.tech/pitro/-IhnnZA",
         "https://catflix.nxstreamhub.workers.dev/",
-        "https://catflix.nxstreamhub.workers.dev/"
+        "https://catflix.nxstreamhub.workers.dev/",
+        "https://catflix.nxstreamhub.workers.dev/",
+        "https://suw.halcyoncreative.site/v4/us/n"
       ]
     },
     "org_uri": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "https://wts.itsnitrox.tech/pitro/32jng4L",
-        "https://wts.itsnitrox.tech/pitro/yaQD09P",
-        "https://wts.itsnitrox.tech/pitro/-IhnnZA",
         "https://catflix.nxstreamhub.workers.dev/",
-        "https://catflix.nxstreamhub.workers.dev/"
+        "https://catflix.nxstreamhub.workers.dev/",
+        "https://catflix.nxstreamhub.workers.dev/",
+        "https://suw.halcyoncreative.site/v4/us/n"
       ]
     },
     "headers": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "[object Object]",
         "[object Object]",
@@ -711,27 +689,27 @@
       ]
     },
     "quality": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "hguider | 1080P",
-        "hguider",
-        "hguider | 1080P",
         "[English] - FHD 1080P",
-        "[English] - HD 720P"
+        "[English] - HD 720P",
+        "[English] - SD 480P",
+        "watchout"
       ]
     },
     "label": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "hguider | 1080P",
-        "hguider",
-        "hguider | 1080P",
         "[English] - FHD 1080P",
-        "[English] - HD 720P"
+        "[English] - HD 720P",
+        "[English] - SD 480P",
+        "watchout"
       ]
     },
     "isEmbed": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "false",
         "false",
@@ -741,7 +719,7 @@
       ]
     },
     "type": {
-      "nonEmpty": 47,
+      "nonEmpty": 45,
       "samples": [
         "m3u8",
         "m3u8",

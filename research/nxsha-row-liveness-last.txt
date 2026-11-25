@@ -1,6 +1,4 @@
   fight-club   nitro     label=hguider | 1080P            plain=403 MARKUP hdr=403
-  fight-club   nitro     label=hguider                    plain=403 MARKUP hdr=403
-  fight-club   nitro     label=hguider | 1080P            plain=403 MARKUP hdr=403
   fight-club   watchout  label=watchout                   plain=TypeError: fetch failed  hdr=TypeError: fetch failed
   fight-club   awsind    label=Hindi                      plain=404 MARKUP hdr=404
   fight-club   purstream label=Purstream · pulse · 1080p  plain=200 M3U8 hdr=200

@@ -1,4 +1,4 @@
-object overlap probe, 2026-11-25T13:45:36.391Z
+object overlap probe, 2026-11-25T14:00:18.144Z
 [elfura-citadel] movie/550: 2 row(s)
   fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/550: 9 row(s), langs=7
@@ -10,11 +10,10 @@ object overlap probe, 2026-11-25T13:45:36.391Z
   inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
   inception candidate-nxsha: 5 candidate(s), 0 object id(s), itsnitrox.tech,workers.dev
 [elfura-citadel] tv/1399: 2 row(s)
-  got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), hscow.com
-[elfura-greybox] tv/1399: throttled, retrying once
-[elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
-  got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
-  got-s1e1 candidate-nxsha: 6 candidate(s), 0 object id(s), itsnitrox.tech,wealthmanagementplan.cfd
+  got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), hscow.com,fcxmb.com
+[elfura-greybox] tv/1399: 7 row(s), langs=5
+  got-s1e1 source-2-greybox: 7 candidate(s), 0 object id(s), duckdns.org,hscow.com,fcxmb.com
+  got-s1e1 candidate-nxsha: 7 candidate(s), 0 object id(s), itsnitrox.tech,97bf1.com,wealthmanagementplan.cfd
 [elfura-citadel] tv/46260: 1 row(s)
   naruto-s1e1 source-1-citadel: 1 candidate(s), 0 object id(s), hscow.com
 [elfura-greybox] tv/46260: 6 row(s), langs=6
@@ -27,6 +26,6 @@ verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
      hsc:78164859
      hsc:210544560
   source-1-citadel: 11 url(s), 2 named object(s)
-  source-2-greybox: 29 url(s), 2 named object(s)
-  candidate-nxsha: 19 url(s), 0 named object(s)
-domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, workers.dev:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha
+  source-2-greybox: 38 url(s), 2 named object(s)
+  candidate-nxsha: 20 url(s), 0 named object(s)
+domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, workers.dev:candidate-nxsha, fcxmb.com:source-1-citadel+source-2-greybox, 97bf1.com:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha
