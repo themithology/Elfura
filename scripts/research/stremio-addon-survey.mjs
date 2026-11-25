@@ -48,28 +48,71 @@ const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
  * instances only -- anything needing a debrid key or a paid tier cannot serve a
  * zero-budget, zero-disk board and is not worth measuring.
  */
+// Config-aware. Stremio addons are usually CONFIGURED: the bare domain serves a
+// setup page, and the real manifest lives at /{base64-encoded-json}/manifest.json.
+// Fetching the bare domain and reporting "not JSON" is a measurement of nothing —
+// which is exactly what the first version of this probe did.
+const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64').replace(/=+$/, '');
+
 const ADDONS = [
+  // ── bare-domain addons ────────────────────────────────────────────────────
+  {
+    id: 'mediafusion',
+    base: 'https://mediafusion.elfhosted.com',
+    note: 'Widest catalogue — Tamil/Hindi/Malayalam/Kannada scrapers. Torrent+debrid expected; the direct ratio is the question.',
+  },
   {
     id: 'ggplay',
     base: 'https://ggplay-gf.vercel.app',
-    note: 'HTTP/HLS only, claims 4K + multi-audio. README lists its upstreams as Vidlink/Videasy/Cinejoy/VixSrc/VAPlayer/DirectWeb — three of which this board has already measured and rejected, so the interesting question is whether anything is left.',
+    note: 'HTTP/HLS only. Returned 402 to the bare manifest: paid tier.',
+  },
+  {
+    id: 'nodebrid',
+    base: 'https://nodebrid.fly.dev',
+    note: 'HTTP direct, no debrid, claims 13+ sources / 100k movies / 70k shows / 10k anime.',
+  },
+  {
+    id: 'stremify',
+    base: 'https://stremify.hayd.uk',
+    note: 'HTTP streams from streaming sites.',
+  },
+  // ── config-in-path addons ─────────────────────────────────────────────────
+  {
+    id: 'webstreamr',
+    base: 'https://webstreamr.hayd.uk',
+    // 15+ regional sources by language. The Indian/Hindi angle is `multi`.
+    config: { en: 'on', multi: 'on' },
+    note: 'HTTP from streaming sites, 15+ regional sources grouped by language.',
+  },
+  {
+    id: 'webstreamr-all',
+    base: 'https://webstreamr.hayd.uk',
+    config: { de: 'on', es: 'on', fr: 'on', it: 'on', pt: 'on', en: 'on', multi: 'on' },
+    note: 'Same instance with every language group enabled.',
   },
   {
     id: 'nuviostreams',
     base: 'https://nuviostreams.hayd.uk',
-    note: 'HTTP direct, multi-provider, TMDB+IMDb ids.',
+    config: {},
+    note: 'HTTP direct, multi-provider.',
   },
   {
-    id: 'mediafusion',
-    base: 'https://mediafusion.elfhosted.com',
-    note: 'Widest catalogue of the set — Tamil/Hindi/Malayalam/Kannada scrapers. Expected to be torrent-heavy; the direct ratio is the whole question.',
-  },
-  {
-    id: 'webstreamr',
-    base: 'https://webstreamr.hayd.uk',
-    note: 'HTTP from streaming sites. MediaFlow proxy reportedly needed for some hosters.',
+    id: 'multiscraper',
+    base: 'https://multiscraper.vercel.app',
+    // The scraper list is the whole point: these are the Indian catalogue names.
+    config: { scrapers: ['4KHDHub', 'Castle', 'HDHub4u', 'AnimeKai', 'CineVibe', 'DVDPlay', 'DahmerMovies', 'HDRey'] },
+    note: 'Aggregates named scrapers — this is the one whose config we can actually read.',
   },
 ];
+
+// Some addons put the config in the path, some as a query string. Try both.
+const basesFor = (a) => {
+  const out = [`${a.base}/manifest.json`];
+  if (a.config) {
+    out.unshift(`${a.base}/${b64(a.config)}/manifest.json`);
+  }
+  return out;
+};
 
 const TITLES = [
   { id: 'tt0137523', type: 'movie', label: 'fight-club', cat: 'western' },
@@ -128,8 +171,13 @@ for (const addon of ADDONS) {
   console.log(`  ${addon.note}`);
 
   // ── manifest ──────────────────────────────────────────────────────────────
+  let base = addon.base;
   try {
-    const { status, body } = await get(`${addon.base}/manifest.json`);
+    let status = 0, body = '';
+    for (const url of basesFor(addon)) {
+      ({ status, body } = await get(url));
+      if (status === 200 && body.trimStart().startsWith('{')) { base = url.slice(0, -'/manifest.json'.length); break; }
+    }
     if (status !== 200) {
       console.log(`  manifest: HTTP ${status}`);
       perAddon[addon.id].manifest = { status };
@@ -139,7 +187,7 @@ for (const addon of ADDONS) {
     try { m = JSON.parse(body); } catch { console.log(`  manifest: not JSON (${body.length}B)`); perAddon[addon.id].manifest = { status, parseError: true }; continue; }
     const resources = Array.isArray(m.resources) ? m.resources : [];
     const streamRes = resources.filter((r) => (typeof r === 'string' ? r : r?.name) === 'stream');
-    console.log(`  manifest: ${m.id ?? '?'} v${m.version ?? '?'}  types=${(m.types ?? []).join(',')}  stream=${streamRes.length > 0}`);
+    console.log(`  manifest@${base.replace(addon.base, '') || '(bare)'}: ${m.id ?? '?'} v${m.version ?? '?'}  types=${(m.types ?? []).join(',')}  stream=${streamRes.length > 0}`);
     console.log(`  manifest languages: ${(m.catalogs ?? []).map((c) => c?.extra?.[0]?.options ?? '').filter(Boolean).slice(0, 3).join(' | ') || '(none declared)'}`);
     perAddon[addon.id].manifest = { status, id: m.id, version: m.version, types: m.types, hasStream: streamRes.length > 0 };
     if (streamRes.length === 0) { console.log('  -> declares no stream resource; nothing to ask'); continue; }
@@ -151,7 +199,7 @@ for (const addon of ADDONS) {
 
   // ── streams, per title ────────────────────────────────────────────────────
   for (const t of TITLES) {
-    const url = `${addon.base}/stream/${t.type}/${streamId(t)}.json`;
+    const url = `${base}/stream/${t.type}/${streamId(t)}.json`;
     let line = `  ${t.label.padEnd(11)} ${t.cat.padEnd(8)}`;
     try {
       const { status, body } = await get(url);
