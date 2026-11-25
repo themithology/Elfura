@@ -35,6 +35,7 @@ on:
       - 'scripts/research/nxsha-all-lanes.mjs'
       - 'scripts/research/nxsha-castle-proof.mjs'
       - 'scripts/research/nxsha-hindi-verify.mjs'
+      - 'scripts/research/stremio-addon-survey.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -92,6 +93,11 @@ jobs:
 
       # The board treated 22 lanes as dead on a 2-title sample. Ask all 30 against
       # Indian-weighted titles, and all six RiveStream providers, not just citadel.
+      - name: Survey Stremio addons for direct streams
+        continue-on-error: true
+        run: |
+          node scripts/research/stremio-addon-survey.mjs 2>&1 | tee research/stremio-addon-survey-last.txt
+
       - name: Survey all lanes of both multi-lane sources
         continue-on-error: true
         run: |
@@ -255,7 +261,8 @@ jobs:
                   research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt \
                   research/nxsha-all-lanes.json research/nxsha-all-lanes-last.txt \
                   research/nxsha-castle-proof.json research/nxsha-castle-proof-last.txt \
-                  research/nxsha-hindi-verify.json research/nxsha-hindi-verify-last.txt
+                  research/nxsha-hindi-verify.json research/nxsha-hindi-verify-last.txt \
+                  research/stremio-addon-survey.json research/stremio-addon-survey-last.txt
           # Report what was actually staged. A silent `git add` of a file the
           # probe never wrote leaves the commit empty and looks like success.
           echo "staged files:"
