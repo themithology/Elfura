@@ -104,9 +104,12 @@ async function probeVidly() {
       indic,
       error: answer.error ?? null,
     });
+    // Every code, not the first few. The first version printed a subset and the
+    // stored JSON happened to hold the rest - which made a shortcut look like a
+    // finding.
     console.log(
       `  vidly ${title.key.padEnd(18)} ${String(answer.status).padEnd(4)} ${String(tracks.length).padStart(3)} track(s) ` +
-        `${langs.length} lang(s)${indic.length ? ` indic=${indic.join(',')}` : ''}`,
+        `langs=[${langs.join(',')}]${indic.length ? ` indic=${indic.join(',')}` : ''}`,
     );
   }
   return out;
