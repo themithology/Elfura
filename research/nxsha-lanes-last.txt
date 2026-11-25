@@ -1,22 +1,2 @@
-nxsha lane survey, 2026-11-25T17:54:51.731Z origin=https://nxsha.space
-34 scraper(s) listed, 30 not RiveStream, key 38c8cd65…
-  nitro                 7 row(s)  media        wts.itsnitrox.tech
-  mahalala              0 row(s)  nothing      -
-  watchout              1 row(s)  media        suw.halcyoncreative.site
-  awsind                1 row(s)  media        i-arch-400.asrmo449ddj.com
-  castle                4 row(s)  relay-shaped catflix.nxstreamhub.workers.dev
-  streamflix            0 row(s)  nothing      -
-  xdownloader           0 row(s)  nothing      -
-  purstream             2 row(s)  media        free.finepulfe.xyz
-  vixolity              2 row(s)  relay-shaped twilight-lake-fd5c.nxstreamhub.workers.dev
-  mhbox                 0 row(s)  nothing      -
-  bdxs                  0 row(s)  nothing      -
-  stvv                  0 row(s)  nothing      -
-  imovr                 0 row(s)  nothing      -
-  ophim                 1 row(s)  media        v7.kkphimplayer7.com
-  yomovies              0 row(s)  nothing      -
-  showbox-online        0 row(s)  nothing      -
-  vidapi                0 row(s)  nothing      -
-  levi                  0 row(s)  nothing      -
-  toonstream            0 row(s)  nothing      -
-  tamilblasters         0 row(s)  nothing      -
+nxsha lane survey, 2026-11-25T19:21:07.836Z origin=https://nxsha.space
+could not list scrapers: http=403

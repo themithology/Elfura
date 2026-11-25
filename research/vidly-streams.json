@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T17:53:12.465Z",
+  "measuredAt": "2026-11-25T19:19:44.446Z",
   "steps": [
     {
       "step": "watch-page",
@@ -39,7 +39,7 @@
         {
           "url": "/api/sources?tmdb=550&kind=movie",
           "status": 403,
-          "bytes": 4546,
+          "bytes": 4543,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
@@ -47,7 +47,7 @@
         {
           "url": "/api/sources?kind=movie&tmdb=550&type=movie",
           "status": 403,
-          "bytes": 4546,
+          "bytes": 4543,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
@@ -58,7 +58,7 @@
           "bytes": 10530,
           "looksLikeJson": false,
           "challenge": false,
-          "body": "<!DOCTYPE html><!--BQaW_0Od0OwKLsJFpoMwj--><html lang=\"en\" class=\"__variable_d8ebd1\"><head><meta charSet=\"utf-8\"/><meta "
+          "body": "<!DOCTYPE html><!--CvOZ7Tg4rI6MIEnl5HZbw--><html lang=\"en\" class=\"__variable_d8ebd1\"><head><meta charSet=\"utf-8\"/><meta "
         }
       ]
     },

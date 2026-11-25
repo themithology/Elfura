@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T17:47:15.671Z",
+  "measuredAt": "2026-11-25T19:17:26.185Z",
   "rows": [
     {
       "url": "https://wts.itsnitrox.tech/pitro/9h1ufQBqMT2LOF9MAZRvP1-TtQcBNvRITtMjy2o/3d6754647a306d4c795647647a465762764d6a4e77637a4d3145544d76676a4e31676a4e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a7168326261706d594631455543465653796b6a5a3578555272394554763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
@@ -286,8 +286,8 @@
       "verdict": "NO BYTES",
       "renditions": [],
       "kinds": {},
-      "status": 200,
-      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "status": 400,
+      "reason": "http=400 first=404 !",
       "lane": "k4khdhub",
       "title": "pathaan",
       "label": "HubCloud 10Gbps | 1080p | 40.16 GB | BluRay | Hindi | English | x265"
@@ -308,8 +308,8 @@
       "verdict": "NO BYTES",
       "renditions": [],
       "kinds": {},
-      "status": 200,
-      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "status": 400,
+      "reason": "http=400 first=404 !",
       "lane": "k4khdhub",
       "title": "pathaan",
       "label": "HubCloud 10Gbps | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
@@ -429,8 +429,7 @@
       "verdict": "NO BYTES",
       "renditions": [],
       "kinds": {},
-      "status": 403,
-      "reason": "http=403 first={ \"error\": { \"code\": 403, \"mes",
+      "reason": "TimeoutError: The operation was aborted due to timeout",
       "lane": "k4khdhub",
       "title": "fight-club",
       "label": "Direct R2 | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"

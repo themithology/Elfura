@@ -1,0 +1,36 @@
+
+==========================================================================
+ggplay  https://ggplay-gf.vercel.app
+  HTTP/HLS only, claims 4K + multi-audio. README lists its upstreams as Vidlink/Videasy/Cinejoy/VixSrc/VAPlayer/DirectWeb — three of which this board has already measured and rejected, so the interesting question is whether anything is left.
+  manifest: HTTP 402
+
+==========================================================================
+nuviostreams  https://nuviostreams.hayd.uk
+  HTTP direct, multi-provider, TMDB+IMDb ids.
+  manifest: not JSON (24060B)
+
+==========================================================================
+mediafusion  https://mediafusion.elfhosted.com
+  Widest catalogue of the set — Tamil/Hindi/Malayalam/Kannada scrapers. Expected to be torrent-heavy; the direct ratio is the whole question.
+  manifest: stremio.addons.mediafusion|elfhosted v6.2.0  types=movie,series,tv,events  stream=true
+  manifest languages: (none declared)
+  fight-club  western    0 streams  (none)
+  rrr         indian     0 streams  (none)
+  jawan       indian     0 streams  (none)
+  squid-game  kdrama     0 streams  (none)
+
+==========================================================================
+webstreamr  https://webstreamr.hayd.uk
+  HTTP from streaming sites. MediaFlow proxy reportedly needed for some hosters.
+  manifest: not JSON (24322B)
+
+==========================================================================
+STREAM-OBJECT TALLY ACROSS ALL ADDONS AND TITLES
+
+addons returning at least one DIRECT stream: 0/4
+  ggplay         direct   0/0    indian-titles direct: 0
+  nuviostreams   direct   0/0    indian-titles direct: 0
+  mediafusion    direct   0/0    indian-titles direct: 0
+  webstreamr     direct   0/0    indian-titles direct: 0
+
+wrote research/stremio-addon-survey.json (anyManifestFetched=true)

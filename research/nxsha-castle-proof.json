@@ -1,8 +1,8 @@
 {
-  "measuredAt": "2026-11-25T17:34:10.843Z",
+  "measuredAt": "2026-11-25T19:17:09.607Z",
   "tried": [
     {
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450424e6b57364a7a4e4c6c30516d746d4d437…",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450524a5559426447556c564561505a5453797…",
       "status": 200,
       "bytes": 70182,
       "kind": "media",
@@ -14,7 +14,7 @@
       "verdict": "PLAYS - real bytes"
     },
     {
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039636e5136744753444e464d7730575a774…",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396357514839465a3259325978644652314…",
       "status": 200,
       "bytes": 121139,
       "kind": "media",
@@ -26,7 +26,7 @@
       "verdict": "PLAYS - real bytes"
     },
     {
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054506e4e6b637052575530686a5a6b5246636f4…",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054505252554d6d5a46576a686d5450686a4e6a6…",
       "status": 200,
       "bytes": 234202,
       "kind": "media",

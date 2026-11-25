@@ -1,12 +1,12 @@
 {
-  "measuredAt": "2026-11-25T17:48:47.330Z",
-  "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450424e6b57364a7a4e4c6c30516d746d4d43706b593474304e6b313059424e54534742584d6f394654364a6d5130566b4d505a4463786b3261304e6e514b6c44645768455a7442584f736454545270315178633054794e6b61524a325576646e627a426a56516447644d426c5a5a463064774254506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d456a4e30517a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d3441544d7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+  "measuredAt": "2026-11-25T19:19:13.210Z",
+  "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450524a5559426447556c564561505a545379744557737847564e4646533141445571646c5a534e474d77636c55483930546a4e446571314556596431636d5a564d58464462776f6c6242687a5258466c564e5a6d567046315a6846564f425a554e7a4930565a4633546a426c646f4e7a55484a55506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d55544d33637a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d3441544d7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
   "attempts": [
     {
       "name": "bare (User-Agent only)",
       "headers": {},
       "status": 403,
-      "ms": 92,
+      "ms": 105,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -17,7 +17,7 @@
         "Referer": "https://nxsha.space/"
       },
       "status": 200,
-      "ms": 189,
+      "ms": 176,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -28,7 +28,7 @@
         "Origin": "https://nxsha.space"
       },
       "status": 403,
-      "ms": 19,
+      "ms": 33,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -39,7 +39,7 @@
         "Accept": "*/*"
       },
       "status": 403,
-      "ms": 140,
+      "ms": 48,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -50,7 +50,7 @@
         "Range": "bytes=0-1023"
       },
       "status": 403,
-      "ms": 26,
+      "ms": 17,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -62,7 +62,7 @@
         "Origin": "https://nxsha.space"
       },
       "status": 200,
-      "ms": 110,
+      "ms": 146,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -71,7 +71,7 @@
       "name": "+ row headers only",
       "headers": {},
       "status": 403,
-      "ms": 19,
+      "ms": 22,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -84,7 +84,7 @@
         "Accept": "*/*"
       },
       "status": 200,
-      "ms": 85,
+      "ms": 124,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -98,7 +98,7 @@
         "Range": "bytes=0-1023"
       },
       "status": 200,
-      "ms": 125,
+      "ms": 106,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"

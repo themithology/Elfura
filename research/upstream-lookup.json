@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T17:34:10.810Z",
+  "measuredAt": "2026-11-25T19:17:09.570Z",
   "summary": {
     "vidly": {
       "titlesIndexed": 8,
@@ -298,7 +298,7 @@
       {
         "step": "home",
         "status": 200,
-        "bytes": 52267
+        "bytes": 52270
       }
     ]
   },
@@ -309,28 +309,28 @@
       {
         "step": "home:https://bingr.st",
         "status": 200,
-        "bytes": 409783,
+        "bytes": 409139,
         "contentType": "text/html; charset=utf-8",
         "challenge": false
       },
       {
         "step": "watch:https://bingr.st",
         "status": 403,
-        "bytes": 5796,
+        "bytes": 5774,
         "contentType": "text/html; charset=UTF-8",
         "challenge": true
       },
       {
         "step": "home:https://bingr.one",
         "status": 200,
-        "bytes": 409783,
+        "bytes": 409182,
         "contentType": "text/html; charset=utf-8",
         "challenge": false
       },
       {
         "step": "watch:https://bingr.one",
         "status": 403,
-        "bytes": 5797,
+        "bytes": 5775,
         "contentType": "text/html; charset=UTF-8",
         "challenge": true
       }
