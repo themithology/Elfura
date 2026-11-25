@@ -52,8 +52,6 @@ const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 // setup page, and the real manifest lives at /{base64-encoded-json}/manifest.json.
 // Fetching the bare domain and reporting "not JSON" is a measurement of nothing —
 // which is exactly what the first version of this probe did.
-const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64').replace(/=+$/, '');
-
 const ADDONS = [
   // ── bare-domain addons ────────────────────────────────────────────────────
   {
@@ -101,17 +99,34 @@ const ADDONS = [
     base: 'https://multiscraper.vercel.app',
     // The scraper list is the whole point: these are the Indian catalogue names.
     config: { scrapers: ['4KHDHub', 'Castle', 'HDHub4u', 'AnimeKai', 'CineVibe', 'DVDPlay', 'DahmerMovies', 'HDRey'] },
+    encoding: 'base64',
     note: 'Aggregates named scrapers — this is the one whose config we can actually read.',
   },
 ];
 
-// Some addons put the config in the path, some as a query string. Try both.
+// Addons disagree about how config travels. Measured, from source:
+//
+//   webstreamr    JSON.parse(req.params.config)   -> RAW JSON, URL-encoded path
+//                 (src/controller/ManifestController.ts, route '/:config/manifest.json')
+//   multiscraper  {"scrapers":[...]}              -> BASE64 path (seen live)
+//
+// Base64 against webstreamr produces JSON.parse('eyJlbiI6...') which throws, and
+// the instance answers with its config page - 24KB of HTML. That is exactly what
+// the last run measured, and it was my bug, not the addon's.
+//
+// So try every encoding a real addon uses, and keep whichever returns JSON.
+const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64').replace(/=+$/, '');
+const rawJson = (obj) => encodeURIComponent(JSON.stringify(obj));
+
 const basesFor = (a) => {
-  const out = [`${a.base}/manifest.json`];
-  if (a.config) {
-    out.unshift(`${a.base}/${b64(a.config)}/manifest.json`);
-  }
-  return out;
+  if (!a.config) return [`${a.base}/manifest.json`];
+  const forms = a.encoding === 'base64' ? [b64(a.config)] : [rawJson(a.config), b64(a.config)];
+  // also a query-string form, which some addons use
+  return [
+    ...forms.map((f) => `${a.base}/${f}/manifest.json`),
+    `${a.base}/manifest.json?${new URLSearchParams(a.config)}`,
+    `${a.base}/manifest.json`,
+  ];
 };
 
 const TITLES = [
