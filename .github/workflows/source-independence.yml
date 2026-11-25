@@ -25,6 +25,7 @@ on:
       - 'scripts/research/anivortex-426.mjs'
       - 'scripts/research/upstream-lookup.mjs'
       - 'scripts/research/vidly-deep.mjs'
+      - 'scripts/research/vidly-streams.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -67,6 +68,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # Nobody has ever measured vidly's STREAMS - only its subtitles. This is
+      # the part that decides whether it is a source.
+      - name: Probe vidly streams
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/vidly-streams.mjs 2>&1 | tee research/vidly-streams-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -137,7 +148,8 @@ jobs:
                   research/nxsha-lanes.json research/nxsha-lanes-last.txt \
                   research/anivortex-426.json research/anivortex-426-last.txt \
                   research/upstream-lookup.json research/upstream-lookup-last.txt \
-                  research/vidly-deep.json research/vidly-deep-last.txt
+                  research/vidly-deep.json research/vidly-deep-last.txt \
+                  research/vidly-streams.json research/vidly-streams-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
