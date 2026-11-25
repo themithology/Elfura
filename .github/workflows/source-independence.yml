@@ -34,6 +34,7 @@ on:
       - 'scripts/research/nxsha-castle-headers.mjs'
       - 'scripts/research/nxsha-all-lanes.mjs'
       - 'scripts/research/nxsha-castle-proof.mjs'
+      - 'scripts/research/nxsha-hindi-verify.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -76,6 +77,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # The product question: does the Hindi on this board actually play Hindi,
+      # or is it only a word in a provider's label?
+      - name: Verify nxsha Hindi rows
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-hindi-verify.mjs 2>&1 | tee research/nxsha-hindi-verify-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -243,7 +254,8 @@ jobs:
                   research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt \
                   research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt \
                   research/nxsha-all-lanes.json research/nxsha-all-lanes-last.txt \
-                  research/nxsha-castle-proof.json research/nxsha-castle-proof-last.txt
+                  research/nxsha-castle-proof.json research/nxsha-castle-proof-last.txt \
+                  research/nxsha-hindi-verify.json research/nxsha-hindi-verify-last.txt
           # Report what was actually staged. A silent `git add` of a file the
           # probe never wrote leaves the commit empty and looks like success.
           echo "staged files:"
