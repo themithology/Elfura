@@ -21,6 +21,7 @@ on:
       - 'scripts/research/independence.mjs'
       - 'scripts/research/object-overlap.mjs'
       - 'scripts/research/nxsha-probe.mjs'
+      - 'scripts/research/nxsha-lanes.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -66,6 +67,18 @@ jobs:
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
+      # Every one of its own scrapers, so the lane list is measured rather than
+      # inherited. The question it exists for: which lanes are Google Drive, and
+      # would adding them re-admit what six sources were already refused for?
+      - name: Survey every nxsha lane
+        continue-on-error: true
+        timeout-minutes: 14
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-lanes.mjs 2>&1 | tee research/nxsha-lanes-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
       # The host probe cannot tell two libraries on one CDN from a re-export.
       # This one compares the media OBJECT ids, which can.
       - name: Probe content overlap
@@ -87,7 +100,8 @@ jobs:
           git config user.email "research@example.invalid"
           git add research/independence.json research/independence.md research/independence-last.txt \
                   research/object-overlap.json research/object-overlap-last.txt \
-                  research/nxsha-probe.json research/nxsha-probe-last.txt
+                  research/nxsha-probe.json research/nxsha-probe-last.txt \
+                  research/nxsha-lanes.json research/nxsha-lanes-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
