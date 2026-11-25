@@ -1,17 +1,5 @@
-vidlink bytes probe, 2026-11-25T01:08:45.980Z
-[elfura-vidlink] movie/550: 3 row(s)
-  fight-club: waiting 15s before one retry, as asked
-  fight-club: adapter-headers=429 bare=429 after-wait=429
-[elfura-vidlink] movie/27205: 3 row(s)
-  inception: waiting 15s before one retry, as asked
-  inception: adapter-headers=429 bare=428 after-wait=429
-[elfura-vidlink] tv/1399: 4 row(s)
-  got-s1e1: waiting 15s before one retry, as asked
-  got-s1e1: adapter-headers=429 bare=428 after-wait=429
-[elfura-vidlink] tv/46260: 2 row(s)
-  naruto-s1e1: waiting 15s before one retry, as asked
-  naruto-s1e1: adapter-headers=429 bare=428 after-wait=429
-
-wrote research/vidlink-bytes.json
-verdict: THROTTLED THROUGHOUT — 429 on every attempt including a delayed retry; nothing credits this lane
-gate: cannot be registered — no measured bytes
+vidlink bytes probe, 2026-11-25T08:38:22.273Z
+The vidlink adapter is archived at backend/attic/sources/source3-vidlink.ts.
+To re-test the source:
+  git mv backend/attic/sources/source3-vidlink.ts backend/src/sources/vidlink.ts
+  npm run build:backend && node scripts/research/vidlink-bytes.mjs
