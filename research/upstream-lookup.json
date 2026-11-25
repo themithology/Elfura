@@ -1,0 +1,340 @@
+{
+  "measuredAt": "2026-11-25T11:45:55.060Z",
+  "summary": {
+    "vidly": {
+      "titlesIndexed": 8,
+      "ofTitles": 8,
+      "withHindi": [],
+      "withIndic": [
+        "dune-2:bn",
+        "rrr:bn+te",
+        "got-s1e1:ml+ta",
+        "naruto-s1e1:bn"
+      ],
+      "minTracks": 14,
+      "maxTracks": 97
+    },
+    "bingr": {
+      "verdict": "reachable — 2 step(s) returned a real page; the old 403 was not universal",
+      "steps": 4
+    }
+  },
+  "vidly": {
+    "site": "vidly.pro",
+    "kind": "subtitle-index",
+    "titles": [
+      {
+        "title": "fight-club",
+        "status": 200,
+        "tracks": 43,
+        "languages": [
+          "en",
+          "br",
+          "cs",
+          "da",
+          "fi",
+          "el",
+          "is",
+          "no",
+          "pt",
+          "ru",
+          "sr",
+          "sl",
+          "es",
+          "sv"
+        ],
+        "hasHindi": false,
+        "indic": [],
+        "error": null
+      },
+      {
+        "title": "inception",
+        "status": 200,
+        "tracks": 97,
+        "languages": [
+          "en",
+          "sq",
+          "ar",
+          "br",
+          "bg",
+          "zh",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "et",
+          "fr",
+          "el",
+          "he",
+          "it",
+          "ja",
+          "ko",
+          "ms",
+          "no",
+          "fa",
+          "pt",
+          "ro",
+          "ru",
+          "sr",
+          "sl",
+          "es",
+          "sv",
+          "tr",
+          "vi"
+        ],
+        "hasHindi": false,
+        "indic": [],
+        "error": null
+      },
+      {
+        "title": "dune-2",
+        "status": 200,
+        "tracks": 94,
+        "languages": [
+          "en",
+          "ar",
+          "bn",
+          "bs",
+          "bg",
+          "zh",
+          "hr",
+          "cs",
+          "nl",
+          "fr",
+          "de",
+          "el",
+          "hu",
+          "id",
+          "ja",
+          "ko",
+          "mk",
+          "fa",
+          "pt",
+          "ro",
+          "ru",
+          "sr",
+          "sk",
+          "es",
+          "sv",
+          "tr",
+          "uk",
+          "vi"
+        ],
+        "hasHindi": false,
+        "indic": [
+          "bn"
+        ],
+        "error": null
+      },
+      {
+        "title": "rrr",
+        "status": 200,
+        "tracks": 96,
+        "languages": [
+          "en",
+          "ar",
+          "bn",
+          "zh",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "fi",
+          "fr",
+          "de",
+          "el",
+          "he",
+          "id",
+          "it",
+          "ja",
+          "kh",
+          "ko",
+          "ms",
+          "fa",
+          "pl",
+          "pt",
+          "ro",
+          "ru",
+          "si",
+          "es",
+          "te",
+          "th",
+          "tr",
+          "vi"
+        ],
+        "hasHindi": false,
+        "indic": [
+          "bn",
+          "te"
+        ],
+        "error": null
+      },
+      {
+        "title": "pathaan",
+        "status": 200,
+        "tracks": 14,
+        "languages": [
+          "en",
+          "hr",
+          "el",
+          "he",
+          "id",
+          "pt",
+          "ro",
+          "es"
+        ],
+        "hasHindi": false,
+        "indic": [],
+        "error": null
+      },
+      {
+        "title": "got-s1e1",
+        "status": 200,
+        "tracks": 95,
+        "languages": [
+          "en",
+          "ar",
+          "bg",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "fi",
+          "fr",
+          "el",
+          "he",
+          "hu",
+          "id",
+          "it",
+          "ml",
+          "no",
+          "pl",
+          "pt",
+          "ro",
+          "ru",
+          "sr",
+          "sl",
+          "es",
+          "sv",
+          "ta",
+          "tr"
+        ],
+        "hasHindi": false,
+        "indic": [
+          "ml",
+          "ta"
+        ],
+        "error": null
+      },
+      {
+        "title": "naruto-s1e1",
+        "status": 200,
+        "tracks": 40,
+        "languages": [
+          "en",
+          "ar",
+          "bn",
+          "hr",
+          "nl",
+          "fr",
+          "de",
+          "el",
+          "he",
+          "hu",
+          "id",
+          "it",
+          "ja",
+          "fa",
+          "pl",
+          "pt",
+          "ro",
+          "ru",
+          "sr",
+          "es",
+          "tr",
+          "vi"
+        ],
+        "hasHindi": false,
+        "indic": [
+          "bn"
+        ],
+        "error": null
+      },
+      {
+        "title": "breaking-bad-s1e1",
+        "status": 200,
+        "tracks": 89,
+        "languages": [
+          "en",
+          "ar",
+          "bg",
+          "hr",
+          "cs",
+          "nl",
+          "et",
+          "fr",
+          "de",
+          "el",
+          "he",
+          "hu",
+          "it",
+          "ko",
+          "mk",
+          "fa",
+          "pl",
+          "pt",
+          "ro",
+          "sl",
+          "es",
+          "sv",
+          "tr"
+        ],
+        "hasHindi": false,
+        "indic": [],
+        "error": null
+      }
+    ],
+    "steps": [
+      {
+        "step": "home",
+        "status": 200,
+        "bytes": 52273
+      }
+    ]
+  },
+  "bingr": {
+    "site": "bingr",
+    "kind": "watch-page-api",
+    "steps": [
+      {
+        "step": "home:https://bingr.st",
+        "status": 200,
+        "bytes": 409177,
+        "contentType": "text/html; charset=utf-8",
+        "challenge": false
+      },
+      {
+        "step": "watch:https://bingr.st",
+        "status": 403,
+        "bytes": 5796,
+        "contentType": "text/html; charset=UTF-8",
+        "challenge": true
+      },
+      {
+        "step": "home:https://bingr.one",
+        "status": 200,
+        "bytes": 409177,
+        "contentType": "text/html; charset=utf-8",
+        "challenge": false
+      },
+      {
+        "step": "watch:https://bingr.one",
+        "status": 403,
+        "bytes": 5797,
+        "contentType": "text/html; charset=UTF-8",
+        "challenge": true
+      }
+    ],
+    "verdict": "reachable — 2 step(s) returned a real page; the old 403 was not universal"
+  }
+}

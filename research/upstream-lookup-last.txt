@@ -1,0 +1,20 @@
+upstream lookup, 2026-11-25T11:45:24.568Z
+
+— vidly (index, not streams)
+  vidly fight-club         200   43 track(s) 14 lang(s)
+  vidly inception          200   97 track(s) 29 lang(s)
+  vidly dune-2             200   94 track(s) 28 lang(s) indic=bn
+  vidly rrr                200   96 track(s) 30 lang(s) indic=bn,te
+  vidly pathaan            200   14 track(s) 8 lang(s)
+  vidly got-s1e1           200   95 track(s) 26 lang(s) indic=ml,ta
+  vidly naruto-s1e1        200   40 track(s) 22 lang(s) indic=bn
+  vidly breaking-bad-s1e1  200   89 track(s) 23 lang(s)
+
+— bingr
+  bingr https://bingr.st home=200 watch=403 CHALLENGE
+  bingr https://bingr.one home=200 watch=403 CHALLENGE
+
+wrote research/upstream-lookup.json
+  vidly indexed 8/8 titles, 14-97 tracks each
+  vidly hindi on: none
+  bingr: reachable — 2 step(s) returned a real page; the old 403 was not universal
