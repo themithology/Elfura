@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T12:07:04.975Z",
+  "measuredAt": "2026-11-25T12:32:36.336Z",
   "titles": [
     "fight-club",
     "inception",
@@ -14,8 +14,8 @@
           "error": null,
           "candidateCount": 2,
           "urls": [
-            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795619215&KeyName=Signature&Signature=m-P5XLaKnzeUSK3WUMnpZ0ZjD0DHFGeCnnUl-xZLeEflWTkSWwCRkwszN0C57tHxN2_xKA-YTslEmLXbSFT0Bg==",
-            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795619215&KeyName=Signature&Signature=BulXt3EkZaCSqkNvpjwS3R5MSf5sEkirHDNbsqI-e4jp5_MzkMcVTEs-U7MWkalVRENLC0d8Gq_e9btW7Zh2Bw=="
+            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795620740&KeyName=Signature&Signature=Zu891rrM-3fVIfJKfnG3vbpF7wJ3wjDfBcxnt0G4n9-nwct_ndyGmF-Dx00As3dtdusdOhyj6GwQs_Rc4iqdDg==",
+            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795620740&KeyName=Signature&Signature=4WkdNgp-1U5cg2c3woBso8gfJca1YHBxjcWSLVlysvTdr8nft9qDmM6aTxNRz2jq1Dd0QktvwrkN4I-Bw27xAw=="
           ],
           "objects": [
             "hsc:78164859"
@@ -26,38 +26,42 @@
         },
         "source-2-greybox": {
           "error": null,
-          "candidateCount": 10,
+          "candidateCount": 9,
           "urls": [
-            "https://greyboxtv.duckdns.org/api/media?u=m1.mq2GkMzlpsmOZ2qGv5Ya_V4pu321kHl6Lz-mpqPNbekC-9mMNkgsIWq_rstNQwgJywoL4CgB1DgvNQ6D1vnEOkb82TiOWeO_e80Kf2C9ga3szVUIEl_JOrVbPNBIU50R5Dn9S-gWiZGMmBqYz27-bItUsf4KT0Pb4QZAjZrP61mdXvek9EEDO8bAMi9inFNqaOGoDUrYKsOKNtl0af7piBmUITH91HSxCNVVaCXT_iK2KrzG1_VTbAr18h6yh_pUJsk7I3g2dOCapf0A7DbyprorKUlRUEDBTT49PrVntFPzLDYhXcMEyb-Xip-7SL9SZOwc6ICX8SyMREDfjE2hd17PZ2j4gbsngW8tIX8Gyj8PnyTAmN3IkIu9WQVfrlDw1M6RKfh3yEYFsr2ARg_RYfi6S_cF-XQ9xtRilvPd_zS4tw",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.fsmlqEnVpCl35mzJKm1nxu-zYnbn4cDSCSt2b2etTws4Suklje_ZCdL84RDGh8_7mZZNb5Tstyrq9IQW5heIjfCRqGaMqXVnSRubZh_29Ab1XduCQtLIBimKzGiwD1yWOvOi-3gKBw2VehixesjWX9U6B2C_E17Dr5b-iKP37LlS3jYkxQbRpo1-hc7q6X-wdBdv_U4h-r-yOvCL4NwQOAZIFzYAhMwehfDX29K-_DWJUhJiWBeL1mL3GvjzxC1jq1M4NKZCbp2-7qjZpx27GTsb97_iksQEva2e1iVHzQQvoMUfstxvLeoGpcTxTe2ie9k6wc4FR36_V4ru6QQekLHAu67vRhPuR8BGcTGfSlBGfIOfpHd01djHr9zuEb2e_hX9pkw6uFdg-0nVeuyaL--_MU7sGVmLHSkYfx5CSG9PTQ",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.Je_WedQfHwSM4VRXEmbmkQFTW9jYJqRQl5iyG8XQy4ppxdS7gFiJnTq21mNyzYIxhd80PxXZrh3Zs4I0JTtuH_y-DiByV0Wyx3WDsYJ2LbA0yh20-ZcrLWh8uSHXoJXBUV9EIZEiIQI3IcW_ZRHLajkirkuZoNo8CGERpDO_R2KHyTWyF5ZxwYDVus_hKK-x2-5qT7kSryrnNNTZYD4O5EXc8KJhTBVlPIqy3F1vGrGxWa9N5TApmsQETXTjMAbgbj-df5JQQOuHg6mXYFO5I70iFusrPtmcUVxAS6i3S5L0vPERMNUTqueRmT3md8amFQGPTq2w-8hcDaTuAzsPrUhS5_T3uK276uJyPT6BXY9tcTk2PSZ_Qy4viSUCEL_BFgB7xcSuKGpdGeSIXOlQhuC1gBq6HIGp8hHeqDpntIeIjA",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.C8sgYqxSjRpwHnOyGWVlRrz-HGH7PhHmIOui8qej1kC0pQj2RsulWa3CaoMevKyyXTFxd5bnCoIW3HGE17Ci05g9T882XNvTyPw6YtNeyjLLXQBE9oMP1Eyc-_IGqqcDEgLmGtKtLgygUYc-JZV3ZIo-opJnTYaxqYBdmCdG_Bfg_l2a-Oo7N0Q9IfH9Fl6ho5YiUHWNmYYnYEMt_y1VtueKEUnClYiK7lY7EHHJzj5RCT18ZKXV3R93HZM4qppdjUHW2XnpOs0ILvqCQe9UofXnIfVSGLEfV84tbu7Um_aCsn45BorHY0yJTsPIJkOgRk1VNuBjje68cFyrjHa_GTwQ3CVSyA1375c2ODMUT0oZOLdUQ_RCYTrbG8LbFZudYrOEk2HjReLtaEdhB5WJdoOZMScINmw8i_KvtzSCLPo",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.1wl7n3U1kCb70Mt4svF6Wjc8EcpAXAYkb5XEF4e-2hfkztqyCI-vAavIesbxoklYGWIWxNiejrC7lAnVYKk-WQvc75d2ctygjLJx4fLOjTzOEQpSYB210cjZ2sCkK96QUIF4OR4_-gR_7TtOa8gzh7lsolkFupWp4r9mTshkYXLRCMeid4OazGI8tD1-KAaIgP_DfVsHc-eyoaZ8XCn44FCztoKYfue_q7gzwJNdxovsvrnsietN7X8SLkXZoz2OfxWplvmCJlO6f3W_pb90ou2wiCftKAHkBzZfZUKUY4ORVnQKcyLvemI1e3xOTQGFK1e9FBaSjo3ZCLteCWXv6bCta85vvFEb4FTwnlXwrgr7RprZ9H8M9ewpSWdduNWI5RUaUaB50hT9SsTDP0s2WBfXFJQ_zdGrFB4670Q8Ryw",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.4oi6R1YDa7-f7w-mWdn3gZIsOAXnfHJl7MJxzvRQ9k50ES_Kg4C4C-th5wNZaTg3Y114BTe58XwPIhX6yT5v28yIT1ABZVDjc0CDijFMQwvW8ieS39Qqxvt6o1y_1yi3ron9cjXHS4Arovmr22eYY4E4mFUWLYNsCAyUR5IL90ZnzCjOAPCSt5apHNLYAZCWQscKAI4R6Ys--Py0iieRiQ0ygP3hfX-VZJP7N1xiT_gkOLKik7zB0wZNQkVByk7eRtLNC7qRGle2hQd6yT3oY91WfyyaKe6XlDZfnGUu-Xf5TyD96NlDLnWZ7hNluyG6kOnk_M6ayQlQi0ugw0Efvsgo1yeekK8Pv2BzwCKB_crIVwZ-4v3gKkM8omyd8Pa0UL0QNy0J-NbaXug-SsKJFmcLIf1wOuyNY9ZLjxPTFbo",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.lMLMYO4vU8pCeGOYgXo6yMRN9gFePQ1rQeT760oMOK4ok_-sU1vuCcji4Ma6-VRJx4W92HnbsXuHlIjvMg4WtIeyoeAOxc2GW2xaDofa2HLihkngqVzBz8je6FB_mj5WzO7nnexAUXtL7K7Ak2NwTp7XduVzJWnoEMAIRjLVM4m99OxarMjvMh_iyZO8YwAda4gnYq13NIXdzSarLd0KLWMZa5T_1LxdO-y72xRFMuXidaibT137KhkCBpwBxMrh-BJ6LK9wRFQk9v5TJImDaLASn6S4hnUoL7Bx1kQNU08nCr1TpvdzRp7sQVpNkuYIMUZ_Yk8sS7bnJ06RnDKVnNY3h7MNloivChJqw83TlEG6le1fZcOEtqZLILPWLfXhLpf6v_V-Gvs8_gDJWAhtE1TqFH2qrkt_GMLxLdCe5cA",
-            "https://hakunamatata.streamrip.fun/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F4405177628915894056_0_0_1080_h265_572%2Fmaster.m3u8&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zYWNkbi5oYWt1bmF5bWF0YXRhLmNvbS9kYXNoLzQ0MDUxNzc2Mjg5MTU4OTQwNTZfMF8wXzEwODBfaDI2NV81NzIvKiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5NjIxMjgzNX19fV19&Signature=oj-G0EUd7JLbPRc-Wq0Wvza3QEMepq3Xt3jOTW0KHaqTS9q-J4hVH93NanOOe2N7BS8hvYGY90UH72lcgiRiibXFHxfhrkP4ULkcQWvQLVxoKZkl9-eNzK5l%7ELNr0OC69uLrsMZt3G082M9-QnlfXHkYhUsXULiG18VM2%7E2LflGIYSRaPcv0Fxfc7oS4wFN1y0EF%7EmPrBgIal7EsBTJbm8jcYI4BgxtOOXiwGeDEOjkvGf0YsS1NitFt50jc7mFoakuzr6r2bmt6uFPui9OQOy9noL3Y%7En4TkJ0yJrU6psPLhezaEKUMQcjPWDq9MEgftI7%7Ei58Eq2DuyBRmDMeBfA__&Key-Pair-Id=KMHN1LQ1HEUPL",
-            "https://sacdn.hakunaymatata.com/dash/4405177628915894056_0_0_1080_h265_572/master.m3u8",
-            "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls%2F78164859%2F720%2Findex_287.m3u8%3FExpires%3D1795599670%26KeyName%3DSignature%26Signature%3DUri1ZLAEA3HycvMYSqv9fDoBuk6a4b7P26f1DJg2HEFgNsEqnkGlBNlK_sB1nIQbrs-_nkdojTl_Gi2cNuC6DA%3D%3D&s=8637b022deb1d9647c10bf20b93e5be32e900446f8fbf01811ba1269022f1639",
-            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795599670&KeyName=Signature&Signature=Uri1ZLAEA3HycvMYSqv9fDoBuk6a4b7P26f1DJg2HEFgNsEqnkGlBNlK_sB1nIQbrs-_nkdojTl_Gi2cNuC6DA==",
-            "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls_mps%2F78164859%2F480%2Findex_287.m3u8%3FExpires%3D1795599670%26KeyName%3DSignature%26Signature%3DTga1pQNgRx05SUbtebnP-nVEvBnNuVpPLe9hfkthj1--IOaaOZTbwPYotYoMOUPZFLKsBdDi-oSfj6Perm4zCA%3D%3D&s=2ef3d3af5d103e79667c7e8ec50cf5921c6ba4fd3c3e2eac1cb2e80ddb5465b6",
-            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795599670&KeyName=Signature&Signature=Tga1pQNgRx05SUbtebnP-nVEvBnNuVpPLe9hfkthj1--IOaaOZTbwPYotYoMOUPZFLKsBdDi-oSfj6Perm4zCA=="
+            "https://greyboxtv.duckdns.org/api/media?u=m1.Kh2EOe9i_vU7Aeqx_Ll932ypsy_pKKSbI4VA9fRBkKJ09hKVOQDokV5mOfoTe7j0btK2VSfOVqBmT5e2QG4_3nhJ48zd1C9_IjqKCV0wdb9JJfAatanwQSvx8QhaIQwzTFvoXPyNm-73IcmcQD1tL4noCsQxaM17GSuASx9EIncRHFMY0KqpLvroN8-nNwGF1jJhUf9ZKAcUwwSfjfEiNqEzMwgIGnGn60jxS-bAEnn67tpZSut0j9l-UCxEUdkj9qwRcr-rnPTVYwuCQYRkIrzz0sf8jfLjwTZhiunT0GxMFq8oT8cjezqfaphw47FrTU-rY8SUGHNQyByrXbABQ4IDfUyW8UNwpsr6YdM7uPjREEMQWoi75xfRqNaQE_3JRZAxs03cqPG5Ak2J4YNQe2YkuNy3kTZkYCMJtOsLAoSsrg",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.seS4nB5hEU-S701IN30TcRFnlD6RH1tHLKCTVmsEvjWxRhoRrAQn7vUYAwuj6MxqTjOQEDWFw2K_Llx07wTj2mO5hExXlA7ifReHiSQZq3llLhpEkU-W3o7aVX6QRaZUfL2_O4uE6KxtwWJK_fT3e3eXWeuUtZCa1BXE08Yb9kgEo8sgRm9dZlG9sqJwKHuJXSKVIBl2ebKJ1894hpSONSs0KSD3MJUrfHsF8jDhi9SvoLvpWdvkG57duHbOX-ESaxfv-qgbqC2MkzMcqFr8BeCudV-tcdSmOVNnUbSNhG_ztDr8Owg8EylD_5740XwidQ5D31W4UIsftu2CDGE6lBazFjJqkrxhorg_EnRtVudcphz7uHtuui5gTkNmvzcu8dHOEZp_RjGObiNbZxswK-z2e8wxiIwhC5H0pdnJ6z9YEQ",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.UDdO8VcaHrzOIB7CZJ-MJ6VLiBJOq6yHqISjZTk8G-Nru6ntw_8HJ6IpzzK1a3UuKlxH9JFO5JnWbmY_Lp0IgZQ0FVrRxX53I5o6S2GBvtUMho26y22ZkYgovuiXS4_pCWrPBO3rzga4oa5083OrWFtu30u2j3Errlu4n6qjKsiKwKRuEdh0LO3CB6qR7sO1c_drNPSDOR6QXUrzg4nzm5VqD-f23fgYXhY8xtGRR9x7zpeT4ctXOMFxhtMnQdcdXmsPqTkrEB1XkPQ6Q8_LJVfIL_tHaMv5RW8-OSpHFF45GZIVAB6RoqoCN6JDHHvSV6her8JhVX9JPb74kKjJaLNxz9TqUbsmDn84wfqsFFRbjGle-VDqCIORQKUvUkTXd_xLvRlItmvGN6K2S3hxuushgRGcaOQJ61YY3XwZ81b5Nw",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.Q50vzbgAA_JxDzkuEVrRIy8VnD-6L5yMv01Nf-DDyInDpZ1x1wYXl9pYFYWl5YsrEi_qEGLNrliMn1CHl9eSt2iTF0LPGiHeLoZFqjwk_bOzdv4scu8o1wlGaO9kQK6-Gl7yuOjg2micVSOZIw4FjnciTko5Iz9BvPcEm80c0DfFL0pohFvH-2iNdYvrfvmPdNHlb8eN_-JEi8ihXw6EkKCSIDZ9RUx0tFSH9bGUwQxSr6nMP114ZgQvp2hvWU_Bd67yKD_qrvE6YsLhKA-f67ZcQsaUaxiLKCoPhprMcYFLTbbSxy8UeWDs20XHcKV5QBnQY7VmZWozOGkS-HFTY0mFBlr6yEG0LjUwUHxvyXt8tauycolHwyvdfrvm7y8RSd5ULM6hMuSu_g3BwGuhK4Wu2me0YZ6Evnix7jg67Dw",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.aqaDHl1DOhir_Sn9SsvJBqTHlk3U9Jimz76n_AxukkmiJCdUHaXbgZOU6fYas21sfkJvKZYZORByVVfJw-4UlPXvqkkWi2Yzq3255DtMWQO_vU-1i8XrqMxGgCj705Wm7_5P0QK-35gN4Sp2ABrSecxkmRQ2Jgw72EdTfPE7BGPs3PGN_I4_VDLVF_hvOH3D3d2Xq1_CcHsSm-azG0cWK1aNADAF0_ADZzCfbotPfPeaZ60AeqaDBAA0TLPc40eW17wuHdSrfgV3_HIB7_VzM4b2qSkEhuoxazXSjE4i9fh47j-OWwUa70voVKT51ZpaP-oNsJReEmKsK8V-MS-SwtO32Nyp9QeBh9WD8-irFewodQIxNCEx253sXVM0WaK4fX6vVCnhtKBEQyqqpNU4ZfeRbw-rEc3ysZdfmfsJOC8",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.qHhR-idhzxcIh9xJBsaHqZXx-48GeVkBPxud9SQkLHlJuSGTRfU4PvYfEf04_n_Yp7QLRB-7iEsFKmYl0YKehmd0pqWOCPVf7JrOvH3SdnyZ0xO2tA8e3QX3GY9Mia8jNHrftPlnytyk02rwW4HATqVxqEgclFcWv63FwvavEGKyOXXwEko0zLNYgDr7zomLTslh1urFjCfIv37i1kigkEE-5wkMV9IA_2Bel5vKoXE_6GJH9rz1zeu-_LmXCYbzf-uzjQJ5ESuXJ0j9Geb5LydAZTMypXuzk6BI_UQhLj03Wg8FjN1kp-fyuQqiuHwoJ6W5vfP-aoTzC0kp0WcSDXhdc5I5L9jv8pV4jEmh3TLfxDfKtYOgnApR_OgyVItZoce5UC8TDUzK342bUcsgJZgqwfv4laoF_Qw4jmY2PJc",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.NQEy6_bK2gSK81yGhn1XYXd12j6BEHXUYQhuQXnQQIhzCJA0Rf6yhxaJFq_03m_qJ2aZIhGvJ2d-6lzaTW0oNA_3AJCZ0bhOaWVK2NBlo2tbt_nuduIGyRrdjjxXGxuKP7FwYF_hFnwsc_Dbfn38NgvU1AIyJzIEOJusW4-7fmQWvWyqHA3eaSJYGhUZpN1CIOiF6a_qv4nFSP9wzkFz2bp1_Y0SHeOaiLaTnnfycrqIh44b2oIESHPK4A8D969785OFNQGPP6XrRxgTNLRdcrnMo2J2jPepL6qzWlAB17257rdb0wn3m5UZWip8tr_AvVggzOinsBsrgwAR2i6fw8HYBBNjIFn2RHCdM_F8P3xyA1d6yOQmZwOYJyVrb93QMdB_B36LXTFJQ_BnBRhVqpwgLwLRv2I4v3Nlcy9AxXg",
+            "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls%2F78164859%2F720%2Findex_287.m3u8%3FExpires%3D1795615320%26KeyName%3DSignature%26Signature%3DPTyU-SSP6eNMiIhwQM1Rq_Qbl_4tDD2uVTE9rxPRF0ay6z8njLcfOoepIWEGum-GKsO2DzvOLa_AZ39am5YwCA%3D%3D&s=8c960c8a918edbff9584a3b526e55e365f85b93d61fa6465f2acedae1fb57044",
+            "https://img1.hscow.com/hls/78164859/720/index_287.m3u8?Expires=1795615320&KeyName=Signature&Signature=PTyU-SSP6eNMiIhwQM1Rq_Qbl_4tDD2uVTE9rxPRF0ay6z8njLcfOoepIWEGum-GKsO2DzvOLa_AZ39am5YwCA==",
+            "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls_mps%2F78164859%2F480%2Findex_287.m3u8%3FExpires%3D1795615320%26KeyName%3DSignature%26Signature%3DzsPWP1Pd6fmyw9_wn7oZ2SKSAumnvfacRag7FAL0Tjx-q9ipLosNap7_FKb7sUPwoOccYzkT4yeQ9fwhZirVAA%3D%3D&s=642d80d7d0cffddb259ea113ca8d3e63a93be7d9130c0f0e10dad127f8996bfe",
+            "https://img1.hscow.com/hls_mps/78164859/480/index_287.m3u8?Expires=1795615320&KeyName=Signature&Signature=zsPWP1Pd6fmyw9_wn7oZ2SKSAumnvfacRag7FAL0Tjx-q9ipLosNap7_FKb7sUPwoOccYzkT4yeQ9fwhZirVAA=="
           ],
           "objects": [
             "hsc:78164859"
           ],
           "domains": [
             "duckdns.org",
-            "streamrip.fun",
-            "hakunaymatata.com",
             "hscow.com"
           ]
         },
         "candidate-nxsha": {
           "error": null,
-          "candidateCount": 0,
-          "urls": [],
+          "candidateCount": 4,
+          "urls": [
+            "https://wts.itsnitrox.tech/pitro/2BW8pnFMZpPojD77jqnOs15xq_a1s0GBW91_XaM/3455334d743569636c5233636831324c30596a4d3463544d78517a4c796b6a4e77556a4e316b7a4e78385364325a47616e68576131686d63727047617663475478596b616d6c6c536d705851486c335235636a52344645626e56304c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/ohM8xj70v8u1FUfX23egxjUIAiJwz0koJJ-5GFk/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e7645444f7a41544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39535136704864464e565958526b627959554d5342464f57467a617a4a4862763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/Z7VoRYsjVwzt6qS5Fnny5SIrWTFZBfqNIxbctoE/3455334d743569636c5233636831324c334d544e3541444d79637a4c78677a4d77556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f703261764556566c78576372394754346b5763355a4663734e3058785a4752764a334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://suw.halcyoncreative.site/v4/us/noyr5v/cf-master.1779275191.txt?e=/master.m3u8"
+          ],
           "objects": [],
-          "domains": []
+          "domains": [
+            "itsnitrox.tech",
+            "halcyoncreative.site"
+          ]
         }
       },
       "pairs": {
@@ -73,12 +77,12 @@
           "error": null,
           "candidateCount": 6,
           "urls": [
-            "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=PTssbYh1wfgqUeVvB6nEjV2da-XLnoitQ99w_dja11fTkwYAvR8pKIVl5ic_9m_-XCboMPNRPAhd3GZR5QlbAg==",
-            "https://img1.hscow.com/hls_mps/a67403cd9ac643c54c90244dba9ccede/720/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=jRnfvXj9vfAX4VVJEYI-hZtankqgwqrLuneFkyhSlMgEN6egMp-lhHqj1_c04Dfab32NRQf9_-mFzxMDhvMJAw==",
-            "https://img1.hscow.com/hls/2ab614e3fd237e215ca7a9eb4f645f78/720/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=9EMJIkXn5jEtCPBEV7gcoRC-7LhBxD3Gzha3q8LaQU1FDvvFGtTNWucGCshGjvSLnA2-nV285J4FOr6mbJHZDw==",
-            "https://img1.hscow.com/hls_mps/210544560/480/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=yXb94CBPx_TC8L_f6C2xQ0WxJq_O0l6ITCs_1Ej8SLtRqjphVV1SfK6eQhM1DnE0mjQhekziVzr5tOh7slGiBg==",
-            "https://img1.hscow.com/hls_mps/c451cc2a14a4d0e3edb35a1eaa363573/480/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=Ik7ZcsLas3FT8oV0pIG_1sf_T3KjAuGcKAGsm5CMwrOcfRUk1FliZXfY7-O_gD-TTzoJrL4JUbSSsr2giFdaAA==",
-            "https://img1.hscow.com/hls_mps/619903b14a833867d9cd1453e931cf21/480/index_287.m3u8?Expires=1795619218&KeyName=Signature&Signature=aU-jVy1piWCC_OsNCEpNIuQ1gm_hIkGxUpysiPaBS2veiKoguysdd9pSFyWq1kQMkoJEYK8vY-oxWXSOU1-1Dg=="
+            "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=MNNYPlprgWSzjTrlLAlf0iEBd52swipEy3myd_KakGTmEMfFRVUF9usLvlATRHjT4_BzA4vPnApkA1ftwgSmDQ==",
+            "https://img1.hscow.com/hls_mps/a67403cd9ac643c54c90244dba9ccede/720/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=1FnI3jlKxC5vLYY_p9HrIaAS-3_n8WSql2Kh1mJSVJu15wEZHrpgEdIWwIKLwzs8d8-PxYV7EeVaTgxnWjUhCw==",
+            "https://img1.hscow.com/hls/2ab614e3fd237e215ca7a9eb4f645f78/720/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=35zBux13OEuIKWBJjd2_tgF8-0tsKlGWTbuzyiIH8On-xbpW1Y0kEZu-1VwC8KfkbLLjTM-tJV4DqnHVHzqtBw==",
+            "https://img1.hscow.com/hls_mps/210544560/480/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=A6pSzUUYgLZksgz97JUtZ9p9qTEKXXAIIhC608upUHL7hDALvgzLKDtIJHroRC1Zz24jSYFQ5iyhUNOopKeVBg==",
+            "https://img1.hscow.com/hls_mps/c451cc2a14a4d0e3edb35a1eaa363573/480/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=LFxbiY8Yw2xmphRundYjxYSc0tnztIV7TdTzGdyK_XJ25ZygxGqpRZBxye7MGPdJU7stCpfjqJlhHJ_rq5frBQ==",
+            "https://img1.hscow.com/hls_mps/619903b14a833867d9cd1453e931cf21/480/index_287.m3u8?Expires=1795620744&KeyName=Signature&Signature=tz5bbmcT3sh6wFAcESwGDD89Yl47B3AL5I2ybmkYWheTReEWEND7AEJnkPD55a3TmOf84czpB4blihrArk_ICw=="
           ],
           "objects": [
             "hsc:210544560"
@@ -89,21 +93,15 @@
         },
         "source-2-greybox": {
           "error": null,
-          "candidateCount": 12,
+          "candidateCount": 9,
           "urls": [
-            "https://greyboxtv.duckdns.org/api/media?u=m1.xN0hVxpGNnC_cRkqKEXEbK3tKSB-_PujTrDLXo4uXRDCjU6vOryT5Pc48lb0PqnU_ew7fVXf5-whk8w9ua2VQ1Fi2b7e01068VYe8rmsjP_-2-nwJJpx8rWRASrbEK5xcFC6_Ytyx9WfjnMFBel_Fa981kdYP903Vx8ZCfOFBtz1xxcPNIWYkNl-sSHi3PJ6r54iHK60jfq5WlZiWgg4nUyRr26k6IsxEF8o48W8iRNMhO12ELbkxXJp8TpEhja78E7dL1Tdmpz2pRGP8gbQddH3cBVlnHCrFTJ1MqkyyU50tnxVMBFLQAFDWlULe3xQaChxAAUHcbMpLOCp_kXwVmLyjkl2jvUuaecHfjQb96YWmAH9q4cYgPTG3OesDnskclmkvQv3jiXODyGRmATrP7BCc0n6bFcsGrNCoQWYNtHjNQ",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.FOcGIbCv4mgPtFx89ZvuTg2K033O8mSw5jarqn-Um0k8dbDp16JO3yoxbFF6e3Ankvl6Zv2l-y7pwfDNshHOvSaBYg9e1s03_waLNR87FYLdhhDJuor56Pp8Bd1LHE4Z7LHTUYpu1x0jsbgihFr0zMCgG1J5FGPW39pizEiMZrXNZC0L9ByWN0uHpvjH1RrDppfmR-R-KmZDZRazHr-uX-7yJK2nLLNWdckBJMbVLIWdJOKZ6uLKe5lhSzBLFhYIGrdz8ZOj_9-M6p1kSWC5mfcwUF6pIpV9irx4_ZHn1vKUOhOgd6Wip8mjKp4onQgTyUgGdZ7t4JDveT0FPhem5v9Lj8dTZa7NpBEGaBjZrmLpnjHxz-SPLHsVvE7RSBSoYG8YU7y0FWDRp8d_-hs0Aqja30G0P3dLvoJt_wKfEmo7pw",
-            "https://greyboxtv.duckdns.org/api/media?u=m1._o2EU2CY2WnECSscM2P1qOD9Wx8YH0A_Xp6_TdUxAHuY1quoGwIDBi4zbbQU6oc6051AGstvJp6DaZx_b5IoJ86psjHcmyUPYX2iyFXn6DITqgXIgelYSD3N-m6Tcna5xExgBBLc56X9TWSrj-YnjAmTYPGO7ox7z3oy37E5OQVymJAEpci4bOHg45y76jTGnRoKF57EUU4e-fwMbqNa7JQyt2bvZ6MINCNXhg55UzSg1PaabOeDaTVmIXfe5mi8cTwv7ve7mpmrf7Mlsm4qUHA7deO_LGpQ-Q_7D-oyPnAWvXDD7Yx_7XrCFXpqDdPvs1VRIeU7IWzIk6KMVbNpV2V9wH1SOpFAZy4UpoH4-9VPjF9Bk_eMEeygDfRGO1Doo6u94MH3VXgVE_INBtjoDVs2cfSkYrLCgJ2Z_tM6vjrAkw",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.mWhN4RT9j4tUKURO9y88UFPh_-dOWB6VqMuge7DeSShtyuGWCCw2ggL_eMg17pJuxqcyWkpXFi1AxUr2kXhz6RT3ADVKmGU43YKl8do1nV6kDAYOMUsooYJz247ePs03tNabUPdzNVfOIlkd12T1yoseT3hhyRp4u-OzNHq10gedIIZi4l5htQn6rUFlcv2c96R0vPuPv5z-S8-oFRiclvLlpM5-yzwqRG-TiGbS2L5vFcg3f5VUB3XCQpq4tJ5D1RtaxlqqEVIMGGm99O4zH83quaXlacEb-dm2ehxT-nq8Qmt_hEWbeGwQFJBXUhg9kxpj2THXotpXp1DNOgNjUCmL_Z0OZW-aQbccvKD3ibFhk_sxstWB-vqVvhY_3ulKihgtgjRzXhdsrysS4bGGpGG7VUAyBxLlH3EncPknhoc",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.KmK7HflsuaV1-6r3QzPJUFIJN-wdThqSB0cGuoTNq9WkZAJOLTWe7EVaolWfNg2VKE-9mGXKtqnOxxgshdSQt9iG1kGPh5HTzwY0aN8V4Q6xS3suDYEfAYrUivjwxik560EK-sPZlYZ_QLYgs8eiKaXvhYU25_9gL0yi3BPYe5MTODXcJZmmd8JwW9yIRqAy4yf2eup2MbI5zoHiyMJZvhbuImGkaRIFhuXuebVhb0u_tbNNTsmzb-USVsjNCi6MxOzc2CGN4ypvwlKJd2V9c11boawkX3qezSEXUI_W9LterqgXLhNN-haON20pguXLxA4D5Fx-UdjiTheqDG0ahtLsM39lAHo5v0ZgfG_X_1Qx3hXmSzKlaDOrPoYrxtsPoY2P8qVWX4Hk_ZW-Tbd85_mvQBKAHqO9loh04CNz6rY",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.IYPIHLeXJxPTXm7HdubTdFPZFoT3PYoYbv_mfINT8PHBGeD_9NfZhPyIWhf4plY6zMctT-gKFHbOTBnAyxnDho2itafnQ4hSkmJ0Z71BTG4iBfa8LK7q_8EoHlX1a_9ulHGEVgT-MkqcQ96UhZiSrMdOD3ctnvG-ZST-TaHvqPK2lme9mp2gr4lIBc5ocE5lvDgomAw78BcWN3iFIUa1tEAqOCG0UZbiyNUOmSW6RE3o-VRKzyE86ZkJLKRgRBKiRp8i3GT85Z8BOu7jNXwPCO9vofSsFH299cOiQ-UVdhggcHZweHwBo1KRpzoZttT74WUbJRBLZfyk3jmy3ClV4ee17Hn7r8Z-PUBJ67tzFvcliof4n-EzkEJbKEX41r-UzWEbddo8xYQ3JXA1bsgSUDjCti9RrjAD4PSpb3D6b80",
-            "https://greyboxtv.duckdns.org/api/media?u=m1.iVUe1AodFT7kzCf4-6xRAavYi5Sfswkmvpt1f-viVfzFZjKBAhqbdMLOJSuz9nPKvr0EWF4mZ_yTKwu7oEtGg5r36Dc6gggRyxlG2Ma9wFLsWYyv2663eMf-zqvkCdF9eUvxT3xWB2PAxftLhVygileKtP6HGXSr38GA1e9fy-hCwMlrfZfcBX89mBzorZ-RWcb68kdop5rktktM7H_9Ev3ttWUw1UQ781w1hR_swJ_ELv2CVfwJIMYTKwp5DfKP4n9NnjOdo3ZRXGyrZAZAdwSfZiM1a0FBMS2SpYs0VS2u5OtdWyUZ-5lcn6CAVULkFw-Ih1gf9gJ6soiNANSbdq9vxBxKiqFCW-d1983OTDq6B9XFcFKndrc3sG8R_V0CjGmz3fCqEWfsfmZT6aVGIVwwdn2Z56ZKP3LOkLDxEHU",
-            "https://hakunamatata.streamrip.fun/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3053885418996466528_0_0_1080_h265_740%2Fmaster.m3u8&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zYWNkbi5oYWt1bmF5bWF0YXRhLmNvbS9kYXNoLzMwNTM4ODU0MTg5OTY0NjY1MjhfMF8wXzEwODBfaDI2NV83NDAvKiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5NjIwOTc4Nn19fV19&Signature=3tOd%7EcmGfTR%7EjuA9Se8EANk9j31jc4GeSLaFRqF40LC3K4iEt3hB2ocZUQbxixk%7EKdP-rT6KFyV9g8wMU5eu4vJ9%7EwrDsbYk2pZgqC05Jxd0Igs3E99Q%7EZkVVGZbL7Z-2Cu86nhQ%7Ef2uHSdwn9YW1uUTANbDeOy1Jc84G5qpE9YKzuBmXeaF3JLTwwqdRK%7EKfOHjdFwPbu1V82TCuIGHEY%7EBikgGq2ep6poHfn2KCHVu%7Ef-3TyK4F7TW1u6wm-ZyEzPmR2vEu-%7E8sWqAsLw00I1AH4nKLpSEi74dikELVsd1OsHki-4ECG-Qvgmr-3jvJE8MECLoYuqvf0t2w2n3TQ__&Key-Pair-Id=KMHN1LQ1HEUPL",
-            "https://sacdn.hakunaymatata.com/dash/3053885418996466528_0_0_1080_h265_740/master.m3u8",
-            "https://hakunamatata.streamrip.fun/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F6391474290696802080_0_0_1080_h265_884%2Fmaster.m3u8&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zYWNkbi5oYWt1bmF5bWF0YXRhLmNvbS9kYXNoLzYzOTE0NzQyOTA2OTY4MDIwODBfMF8wXzEwODBfaDI2NV84ODQvKiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5NjIxMTE3MH19fV19&Signature=LrK6DlvHCYK1K9pkqaJ55FGzqtsh-5UwHxGQ7zcPo85vlxs3PixVvyshFiGN5HedBEVp5NsCYYyrnLN3HicDSVV7qTAJZ4zgmEQFV4884eLpt37-1je1H2DJKZjkdJ8UeyWWuCDhQC4xfGHkeGPlTDHy02E5iXYvKzR5c-q1IIM7b7OwWbdMYmMDuXhmdKGB-M3dsKRFQ3jKR2p1sGEdpXqynrFEzbnE4l3t-OHp3ao9CpM5evIaAIW7ICAMnnpMVqqy3lgDN-8LoKZUmSRqHgZ1B6heukq%7E16sJRSFyBNbmJ19VLPArY0zCX5KNGIdRxpODNtJmh89QfiEat3m-lA__&Key-Pair-Id=KMHN1LQ1HEUPL",
-            "https://sacdn.hakunaymatata.com/dash/6391474290696802080_0_0_1080_h265_884/master.m3u8",
-            "https://hakunamatata.streamrip.fun/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F2460016364841487064_0_0_1080_h265_566%2Fmaster.m3u8&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9zYWNkbi5oYWt1bmF5bWF0YXRhLmNvbS9kYXNoLzI0NjAwMTYzNjQ4NDE0ODcwNjRfMF8wXzEwODBfaDI2NV81NjYvKiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5NjIxMTMxMX19fV19&Signature=S1tVfXefY5G7TTA65ZRu7th6v4zY1OVq1BVT9LG%7EqL%7EQ7ZWWwssTwOyRTgfsE5hY%7EDVf4qGeYkB33rQoeSn0f5SItBjYcUX54QHYiarNPQmW78sJw3CSJ0eUzG47nSTfWB027-pBItQv4OkOt4y6inoT84da1dojqyL5F377trsvWmk5TvwrhDQeI1zA1VSM87PUbysEVGYtTbQbz6o0LCPz6bJAuG9Uhs0wCHKPzTpFBKYvskv2EyuD1-DwGy-3f24Y2qQysU0TS0Rv5wVhbun6l534UEOUHOYneNrfqNldZGGb6MKlUq7qM6FZNZ-uq8FSOAI14NAPUc4gKLn7eQ__&Key-Pair-Id=KMHN1LQ1HEUPL",
-            "https://sacdn.hakunaymatata.com/dash/2460016364841487064_0_0_1080_h265_566/master.m3u8",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.4Qng2IswZ7WvX1gZqSfC15n0PMU9xe6UhMxLtTRXE_6gT6YagAizX3Odtub0gTEWtz_WGx67u_3d_HqNfqsKXIHL_Ib2xCYPE1F2-oPKiWqThwJKE1Tuyi-cPYZvKsSfOVzpT-AxNmLOpzafhrAMvX4J1UDgBdYdmTBXJOEEQDOflgD6dTevGpp_givD1i8gf0iquxQUwWJrjj2_4RuaB_BfTI0KHXtAnpaaJe132zqcyQI10nmbZzBLFAE8cBXOtxNB8zlx8o7JjT9JN3EzhQEyD_Q5ff_5bREX_qBKYB98HoDOWymtVQSOYuKVRKDEq3LO6W1XinjpgvWTOxT9aBK8oUiMMha-oTzmRbV7mFULk3-I5w642lVeoQb0pBqkuYdEbuBkelscIDWxWCswHdiJFfx7DezLrxboLLwj980GxQ",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.LI0Cl-gNa7K8-ttxWW2KTv_T0TUQdgEm_35NDI1NOxgIyM3qZNUqx_YcPYxajcrHmXrFiNJqDGsyYHlGCmzeKWshcIg9iGT4pwxKk_yZ9AAfte0LwLjYsEABR7YBri6gt3r-ZSM11UmNrf-2i1A3BKvMpFxT2t0gisfaQSGjEcfMq4M8_1EOOKJlJkg57c7NRzeSTByEHW9NfhuF9jiPxibb41qK4wiqYChLRX8djdzI38HazsUCHew0t7kxlE1PcqmN0wAeB3iUAc1Ss4fsb2b1mPLEPxx_77bPKlBjpZj78-AUNnBn8hDXkicHZ1pd_YLLvEYCXAiogqTQCzBmB8NdnUuzpkaufVJu3DaCsRKr7uyFjQz9GxD7bayKW5PR-Iqtbo7flr46f5wQHP8iEet7iLh-I3XgrEJ_4xapAaLmBg",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.7beiVsnXIGcBu_NZFjprgXfkkD6-paPnWI-fMbmpXtPt-znBkrHhcTpCnSd3W0Rktl7-zZHGj1G805uUxwE3q43zpxvOM1Uj6nF-kYPXlp5WqQ2_zjgAjQ48rKAy2hk-iIoToNM6UIJs9ca9QLQwzJCdkxhWRlquyKMWY1Sj2sAV101v1pAGHBU7ZWzPgFz5BY_4j954kjgPMIX9PofVhq36uacUCNa9EzE_WYY69KvSobWUbbseJ8HaEWeSJIRqh7elv3sFC_yb4JfyQTJmV2B1F0E9elsk1Qzwl-de9PJa5e9O4BJpUJUQhEm677ap8Q29XVvXaGDZjIqwdmBrfhsmDqCE7pEXL0tTbqq8Hkl9O7-97IwchCa3I8kTt5AJ_wKB0lxPOfumZ6PGxyfDxMNiDgGG5rV21N5dCZ3UOCHCkQ",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.eVpn0HSfL-cpikXqYl3zGTo_j6PWRel-4hvPpxDO41qWFe8kRttjOP1Z1yzSsG3gYZWMrx7SolmcNcXAHnYG_tAqAXWECuSlskkzdTwYXR4f_T0BZTCachVZL7xVE9j-1VBZbyBgNxo0dgk3gsTbX2J4m3D3gMLbJEvc-YMAAPPWcipnWx6TKC5_qELpktJTQ7KCeNMbMCpiiX4n8Dzu3Jv9TeE6GvRMnEaR_fIJIi6HKQLWOAwfv6oc3g5CcUbR_9l2O6Z-uTzoC0-CaqFLNOiYviIY311dYZIKXyH-HKj7KzKMqUOibPA13bAoY33T5RmFTUhwQmF5RfHCgPodq-nBrgK2nN99TwPJDQ2LJXXnfwfhK8V5SWNcewWCEOhsOYmtrnEmxNAloHIGz4TktCae6hUFLYh9BrFIBD65zwc",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.Mde0v6nRPJuFRm9EtRPOOJ8Lk71tDYCdQzbD9WgBdh8GubMrp7iDQxmpEmT0r0rWpes7CK77RBL1wrQEfJuvCLDQo5TsFTOmY_SN2g31MbHwFH1BxIL4uhRDt_vcVfuTdv4Ccwrc3Rp5Qd1POgU5z9xi1sqa9rVlVrRy-ah0MgBQuvWMyeQCEMExlo-okN9DeXfBFA9R30EeYrqFd6rv6mlWCZ4EGId-KnTpgVw-kfDxtOoCGweEaH8gQIsy3x-spJxkFbyqkHEjGQ8EK18GFWiQcnZ7pbenk1pJxJiB3qLDfvdj2a3wQa7SajV5AQW89SCqAigjsOhOpLwFhrwCyUcVWRbnw6BCCL1TIkU5LClsP_Rnn1vxRSUbeTlUAQ0zWUStELkOYxN4pr8NHftKc-MWL8m6qbCg0l69Pb7K_0I",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.V-VDRc1Dd3_PjBNhVgi2jTVbXMKpNuLuUAuGutG4dmlZB_cuUe9m7x0Q2qHk5cyAEGYSHdkj8Bjeocb0-keTgqwPIUlVBMHPuw9BJUb8_lU11K6BxtBHeBJ26ycNs7NgJsJLvcfWVWQ2SR9Av-b-F68SddVJhu9ZzvbuX62sbN92THDiRyKrLzs8DvAOsRn5u9CU0TrJlCvAida0NO1aZGINTRKTbrriLoVlC87x428x9NFC4qIiQlmEHbT8KNNnLxTDw4dsINo4HNc4Miv-XYEw_54_hwbfXvg9RqJzl4wWEp2sjdm9DEXRfpqsCFdVOjIgmd1rsjFMaXLSm6iZ9UzDHE9NNqpDXfIkMWdkOzIQXALl5835Me2abYmr8JWfXku2t9QnyBICJqYWb8umrhVqDenYGAHTHUbaCl5xtv4",
+            "https://greyboxtv.duckdns.org/api/media?u=m1.uh40gYK5GymLnT5HnOpnOYeUkJVrCr9Hkg_fs8GG1wumY6JckgGegnnDLr8MvoxMZ-_rZRps-cT438Q3vreuN5dMMx-oNA-TnwSvJ_4oCmEygIvIoVR3VfRsWU-j6OPoSR74v0uzU0LK_QB3-Ya244f65Rg6-IUKhJT8r1QrnL2j9RMbsCHm7fpSgrI5H16IRQJmucTgbOHTQa-SQnFllQTVwqKnlyIc7Qsj5s1FhDZjS_Ik9Q5-9oMH_sE4HfyyS-1LTx8pKd9ObOIFj7097SAV23A7uuTXqmuigWx9kDJ_F2d87SqOwmL4mewVvvK42rueGR6ldo9E0KkW6h8JtusUxi-46y-OxyF5fivkxCidrbAeEk6mFDJrEUEw3QzJWSgbMKfVmwLBADFbavSZqBjOtq-e72utotDUI7b4NEU",
             "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls_mps%2F210544560%2F720%2Findex_287.m3u8%3FExpires%3D1795606658%26KeyName%3DSignature%26Signature%3D-D9OVr3yL_90Nhy5J7X7Sb5lZ8C1og-664Yo54Fv-1KZkAAk_RrZSj0VXneMtIT4pJXdzbxb_FvtAjcAJNCLAQ%3D%3D&s=91ebe19130319b08c5bc1973355e64981b82705c2214220b9c363dc18507674d",
             "https://img1.hscow.com/hls_mps/210544560/720/index_287.m3u8?Expires=1795606658&KeyName=Signature&Signature=-D9OVr3yL_90Nhy5J7X7Sb5lZ8C1og-664Yo54Fv-1KZkAAk_RrZSj0VXneMtIT4pJXdzbxb_FvtAjcAJNCLAQ==",
             "https://greyboxtv.duckdns.org/api/player/river/media?u=https%3A%2F%2Fimg1.hscow.com%2Fhls%2F2ab614e3fd237e215ca7a9eb4f645f78%2F720%2Findex_287.m3u8%3FExpires%3D1795606658%26KeyName%3DSignature%26Signature%3DSBT06yAySyUTmbBnzLw80HCjgqido_w-fomHND0OJwWzaQq_FFQH02AuRB1A_V8gX5O-lG8t6h9-Q5GNaQQ0Bw%3D%3D&s=214ca6ef191902b503ff6c9df375387597e41de3931878fe87eede5cb0a55905",
@@ -114,17 +112,24 @@
           ],
           "domains": [
             "duckdns.org",
-            "streamrip.fun",
-            "hakunaymatata.com",
             "hscow.com"
           ]
         },
         "candidate-nxsha": {
           "error": null,
-          "candidateCount": 0,
-          "urls": [],
+          "candidateCount": 5,
+          "urls": [
+            "https://wts.itsnitrox.tech/pitro/FK-ml6IsLZXz681lFRRoThUcDMByM5ovEMvcD3g/3d6754647a306d4c795647647a4657627649444d77416a4d30556a4d7659544f3045544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a7131476371426a6377676b5671564455513957536d3957646d527a64763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/7jQP2PPb65LPsctXQPLG0MbnBkLqEsbe6MOIyk0/3455334d743569636c5233636831324c7941444d7749444e31497a4c356b444e78556a4e316b7a4e78385364325a47616e68576131686d6372704761764556526f744556305a6e5273705657435a556174425456367045614574324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c35414456525a6a55474e6c52577447564f706c566b316b56565632534f4a6a565742585268706e56746c314c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/WGK0dwyb5f5tuhXHn9Se1pMo8oNtg3BrMm1yhVk/3d6754647a306d4c795647647a4657627649444d77416a4d30556a4d7655544f3045544e3255544f33457a4c315a6e5a6f6447617056486179746d616f3979646e31476147356b524446454f7a6348617a6c546332566b626a31535a763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/BnX49Wr71VmrtlVGaQ05qbrwPcwJyGbmNBwOLmY/3455334d743569636c5233636831324c35417a4e7a49544e78557a4c316b444e78556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d5a494644566e464861774658616c566b624e5a3255724231536a39304c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+          ],
           "objects": [],
-          "domains": []
+          "domains": [
+            "itsnitrox.tech",
+            "workers.dev"
+          ]
         }
       },
       "pairs": {
@@ -138,12 +143,16 @@
       "perLane": {
         "source-1-citadel": {
           "error": null,
-          "candidateCount": 1,
+          "candidateCount": 4,
           "urls": [
-            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795619220&KeyName=Signature&Signature=vWCeKiqJgT743e8kwDJ3IEaVoEzyQOELhM3ku7wsDEWFw_M0yc05YaYTDvZX_v7M2vUlFalGJOvxU72fee5CDg=="
+            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_287.m3u8?Expires=1795620748&KeyName=Signature&Signature=9jJlcx6KDfSOCpHwXH5IjzsrULIMJl7Moco-k7GtQ7sZCKTd_DwKG6kv8ShBrzYDVtl7QUpCx1bvwsGzNz2MCQ==",
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/720/index_266.m3u8?Expires=1795620748&KeyName=Signature&Signature=FbR_wqbuZkWlRC9u3Of1-UeQQ6VyPIj0cpyG8DdHhpGTGfaNOKWS6zs3TK9GbMRu_whMzUmzZu1e47X7ffvDCA==",
+            "https://img1.hscow.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/480/index_287.m3u8?Expires=1795620748&KeyName=Signature&Signature=whAzU-GzVJ7B6aCOCCd8B4pYRUgKG2lxllZXpNmPZNDsAIy2AY6K_d5clr0PBeTyRPxw4OVYPTrr8Jei3K4EAw==",
+            "https://img1.fcxmb.com/hls_mps/7db09f7d75fb9f4e82e5c94a5c2cbf31eec22c56/480/index_266.m3u8?Expires=1795620748&KeyName=Signature&Signature=86zbOEgrV9KV31anvXSCJCv4QBTs01KY3x7IdoW-AlP-DwC9EpRW-w6lh_y_kpBx1MKWsvzPyqCTHWaxQYAmBg=="
           ],
           "objects": [],
           "domains": [
+            "hscow.com",
             "fcxmb.com"
           ]
         },
@@ -156,10 +165,22 @@
         },
         "candidate-nxsha": {
           "error": null,
-          "candidateCount": 0,
-          "urls": [],
+          "candidateCount": 7,
+          "urls": [
+            "https://wts.itsnitrox.tech/pitro/kMIzI1ysclkhebVXB4m_A057F9u-6EE9A5_K7do/3455334d743569636c5233636831324c7955444d3441444e31457a4c786b544e79556a4e316b7a4e78385364325a47616e68576131686d6372704761764545654952455775567a636c4a44556942564f6d644456594e4856326b7a4c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=99e73eee739e27d5553c2e643e2f3a7c-1795635355-104.28.228.57-4158728333dddc5973499e53ed392e65ad3f4ccba5f3c779a89b21f5820ef77a",
+            "https://wts.itsnitrox.tech/pitro/QHASCD0dWRVq-Vn3mvrvQQhDTkfQIDg4-_E2JeQ/3d6754647a306d4c795647647a4657627649544e7767444d3055544d7667444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39535131417a514668586377514555774e7a4d684e6b61326f485734643254763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/HZsTHo6b4_STmAq2JLf7TsE6YSVFZNn8Yt56Xmk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/9yH5CbcIR5Vk5-gczpCl6BhskJzEVEe2hkFvrrA/3d6754647a306d4c795647647a4657627649544e7767444d3055544d766b444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f3953514d78324d746848634564325a55566b656b3547613146474e33493055763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/yb0zlEPLDNOA9mJzOjSt8sdDDR5x30oUhGwh8Dk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://dd2stliwt0bc.wealthmanagementplan.cfd/sosNVcMrPrym/hls3/01/08534/vv8fvdwysiqc_n/master.txt?e=/master.m3u8"
+          ],
           "objects": [],
-          "domains": []
+          "domains": [
+            "itsnitrox.tech",
+            "97bf1.com",
+            "wealthmanagementplan.cfd"
+          ]
         }
       },
       "pairs": {}
@@ -171,7 +192,7 @@
           "error": null,
           "candidateCount": 1,
           "urls": [
-            "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795619223&KeyName=Signature&Signature=bA5XZHImmTksZEFBr8KDdCI5-uWOZ48NL3XIMTWmcIPjfOPunGqcVfVjaQ3vYuDMV2uk-ANKzZrUa7gbkrcuCA=="
+            "https://img1.hscow.com/hls/ceed6f81bc7b2c6f397c37d14f52d636/480/index_287.m3u8?Expires=1795620753&KeyName=Signature&Signature=6tWyZ2MWDoJ4Jc-l2f-ET1LpHT7hd1bIb0BHU9_fN72akWpthxpxf0rqF9mhboJTk0MSZiUKphDLv29c2j3PCA=="
           ],
           "objects": [],
           "domains": [
@@ -187,10 +208,17 @@
         },
         "candidate-nxsha": {
           "error": null,
-          "candidateCount": 0,
-          "urls": [],
+          "candidateCount": 4,
+          "urls": [
+            "https://wts.itsnitrox.tech/pitro/h6u5cnFUoHCyFOBdoIAJbyBrp6LEYWDJis1p0Jk/3455334d743569636c5233636831324c7a41444e354d444d77517a4c34596a4e78556a4e316b7a4e78385364325a47616e68576131686d6372704761766347564235325832493254455a6b656e466b524a566d636a316d4e3439324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/GrS36coPTdhgGhqu0qb9i3KxhAAG0heC28OAuVA/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d766b6a4e3245544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a34416e594a4a5763794e6b59425254556a7032584f4a316455316965763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/3drCtthjKZFSlNaNBroCkuuFVigUIphAVoBKT28/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d76417a4e3245544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39796457686a524b526e4e76706b656d686a5277566e575a4e45564b526d65763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+            "https://wts.itsnitrox.tech/pitro/aJrkpdlmlnFOhBcgQfJ0eEv8VIrXXO2UdnsbAfs/3455334d743569636c5233636831324c7863544e7a51444d32597a4c34596a4e78556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f703261764546616e74475358466e644c784563786f3055596c57624f466c5774687a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+          ],
           "objects": [],
-          "domains": []
+          "domains": [
+            "itsnitrox.tech"
+          ]
         }
       },
       "pairs": {}
@@ -211,15 +239,15 @@
     },
     "opacity": {
       "source-1-citadel": {
-        "urls": 10,
+        "urls": 13,
         "distinctObjects": 2
       },
       "source-2-greybox": {
-        "urls": 30,
+        "urls": 22,
         "distinctObjects": 2
       },
       "candidate-nxsha": {
-        "urls": 0,
+        "urls": 20,
         "distinctObjects": 0
       }
     },
@@ -233,14 +261,23 @@
       "duckdns.org": [
         "source-2-greybox"
       ],
-      "streamrip.fun": [
-        "source-2-greybox"
+      "itsnitrox.tech": [
+        "candidate-nxsha"
       ],
-      "hakunaymatata.com": [
-        "source-2-greybox"
+      "halcyoncreative.site": [
+        "candidate-nxsha"
+      ],
+      "workers.dev": [
+        "candidate-nxsha"
       ],
       "fcxmb.com": [
         "source-1-citadel"
+      ],
+      "97bf1.com": [
+        "candidate-nxsha"
+      ],
+      "wealthmanagementplan.cfd": [
+        "candidate-nxsha"
       ]
     }
   }

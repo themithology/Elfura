@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T12:06:42.637Z",
+  "measuredAt": "2026-11-25T12:28:24.662Z",
   "rows": [
     {
       "title": "breaking-bad-s1e1",
@@ -10,33 +10,33 @@
           "blamed": false,
           "probes": [
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.Kc8aqoGlUnzCkDcNZ5BWc5evk5215TGl2tBfuOskiQi2ISeAcAwDdy9T6AsUvgabv3i2hkJQzel",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.IK4PTUwby4m1gKLIJYCNL6PMSQzlt3v8udQZE4Wg3pLWPrzYbeDwFdO0hqjSygnmyiv-EIcEiNG",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
             },
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.03rstjtQliPFhCJXw0fH7DB35tFhxlUhoLLjfd4gwMe6PrPaFmfaK38u-IL1tH1K4T0vEpkqcyk",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.CaQZJleMz2TFHltdLrT-mySOafx-_6MsRJp-uHUCRBxvBXO_fv7PYkUDSzt-1tLd6xgQsvrh1zC",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
             }
           ]
         },
-        "dash-hls-bridge.johndoesjkc.workers.dev": {
+        "dash-hls-bridge.john1mc.workers.dev": {
           "rows": 2,
           "blamed": false,
           "probes": [
             {
-              "url": "https://dash-hls-bridge.johndoesjkc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F2498434134876504352_",
+              "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F2498434134876504352_1_1_",
               "status": 200,
-              "bytes": 3349,
+              "bytes": 3333,
               "contentType": "application/vnd.apple.mpegurl"
             },
             {
-              "url": "https://dash-hls-bridge.johndoesjkc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F5210915267466904360_",
+              "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F5210915267466904360_1_1_",
               "status": 200,
-              "bytes": 1692,
+              "bytes": 1684,
               "contentType": "application/vnd.apple.mpegurl"
             }
           ]
@@ -52,33 +52,21 @@
           "blamed": false,
           "probes": [
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.Gy2UFTJ2vF5EDaC2kgvm1aAEcdsDnGQdknrQ1QUyzIRpwpdKfkC1FNh7A16U8NBxIFGb0M4p_mJ",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.frWjQF2z9s2NaI0So0x0cgld4nGbYp-4REt_MVHmfedNv-ifdV0irZV5Ub9wBSjTGDQcpHCbO3L",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
             },
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.TvIdrlccPDjjuR7XWt8wj0FDdUuNkNy4nJoyuhtuYmRbSDiGbRG0GLJlBCZGNiy5y1ouHtUYYPn",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.F3rIsmS7PeEY7Ie_m1xXoZRcH6Xo5s4iINX1udDqcbBv_wo08uVh5SSi_M7XVMmgGA5cLyzS6Nw",
               "status": 200,
               "bytes": 2211,
               "contentType": "application/vnd.apple.mpegurl"
             }
           ]
         },
-        "hakunamatata.streamrip.fun": {
-          "rows": 1,
-          "blamed": false,
-          "probes": [
-            {
-              "url": "https://hakunamatata.streamrip.fun/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fhls%2F7555324121081861592-1-1-1080-904%2",
-              "status": 502,
-              "bytes": 0,
-              "contentType": "text/plain;charset=UTF-8"
-            }
-          ]
-        },
         "dash-hls-bridge.john1mc.workers.dev": {
-          "rows": 1,
+          "rows": 2,
           "blamed": false,
           "probes": [
             {
@@ -86,6 +74,12 @@
               "status": 200,
               "bytes": 3333,
               "contentType": "application/vnd.apple.mpegurl"
+            },
+            {
+              "url": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fhls%2F7555324121081861592-1-1-1",
+              "status": 502,
+              "bytes": 0,
+              "contentType": "text/plain;charset=UTF-8"
             }
           ]
         }
@@ -93,34 +87,13 @@
     },
     {
       "title": "naruto-s1e1",
-      "candidates": 6,
-      "perHost": {
-        "greyboxtv.duckdns.org": {
-          "rows": 6,
-          "blamed": false,
-          "probes": [
-            {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.TOhxIgvR-RbXE1GpKjtaDD8wNjkrzdhA5Kkk3Uutga8emxJXJF1C_BkxOFru3Gk270n8CFNKRi1",
-              "status": 200,
-              "bytes": 2208,
-              "contentType": "application/vnd.apple.mpegurl"
-            },
-            {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.3lB2_Jitgm30oVX-Vpv-Y0UAp_HYvV0knHoK2vhF3xUfUazeTjeP4fC1mtLheAHbUolIqCX29dv",
-              "status": 200,
-              "bytes": 2208,
-              "contentType": "application/vnd.apple.mpegurl"
-            }
-          ]
-        }
-      }
+      "candidates": 0,
+      "perHost": {}
     }
   ],
   "summary": {
     "otherHosts": [
       "greyboxtv.duckdns.org",
-      "dash-hls-bridge.johndoesjkc.workers.dev",
-      "hakunamatata.streamrip.fun",
       "dash-hls-bridge.john1mc.workers.dev"
     ],
     "reachableOutsideBlamedHost": [
@@ -130,7 +103,7 @@
       },
       {
         "title": "breaking-bad-s1e1",
-        "host": "dash-hls-bridge.johndoesjkc.workers.dev"
+        "host": "dash-hls-bridge.john1mc.workers.dev"
       },
       {
         "title": "got-s1e1",
@@ -139,10 +112,6 @@
       {
         "title": "got-s1e1",
         "host": "dash-hls-bridge.john1mc.workers.dev"
-      },
-      {
-        "title": "naruto-s1e1",
-        "host": "greyboxtv.duckdns.org"
       }
     ],
     "audioFound": false,

@@ -1,11 +1,17 @@
-nxsha probe, 2026-11-25T12:06:42.674Z
+nxsha probe, 2026-11-25T12:28:24.705Z
 
 — https://nxsha.space
-watch-page (the old verdict) 403
-api/servers                  403
+  scrapers: 34 (4 rive-family, 30 own)
+  own lanes: nitro, mahalala, watchout, awsind, castle, streamflix, xdownloader, purstream, vixolity, mhbox, bdxs, stvv, imovr, ophim, yomovies, showbox-online, vidapi, levi, toonstream, tamilblasters, hdhub4u, hdhub4u-direct, k4khdhub-direct, k4khdhub, filmyfly, filmyfly-direct, moviesdrive, movone, zoko, em-8
+  nitro: 3 row(s), hosts wts.itsnitrox.tech
+watch-page (the old verdict) 200
+api/servers                  200
+passphrase                   200 opened with 38c8cd65…
+payload                      200 34 scraper(s): 4 RiveStream-family, 30 its own
+sources:nitro                200
 
 — https://web.nxsha.app
 watch-page (the old verdict) 403
 api/servers                  403
 
-refusing to write a report: nothing answered. No egress, or both front-ends are down.
+wrote research/nxsha-probe.json

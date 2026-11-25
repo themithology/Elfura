@@ -1,14 +1,12 @@
-anivortex 426 probe, 2026-11-25T12:05:58.450Z
-  breaking-bad-s1e1  6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.johndoesjkc.workers.dev
+anivortex 426 probe, 2026-11-25T12:27:41.630Z
+  breaking-bad-s1e1  6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
       OTHER   greyboxtv.duckdns.org              200 2210B 
-      OTHER   dash-hls-bridge.johndoesjkc.workers.dev 200 3349B 
-  got-s1e1           6 row(s) on 3 host(s): greyboxtv.duckdns.org, hakunamatata.streamrip.fun, dash-hls-bridge.john1mc.workers.dev
-      OTHER   greyboxtv.duckdns.org              200 2210B 
-      OTHER   hakunamatata.streamrip.fun         502  
       OTHER   dash-hls-bridge.john1mc.workers.dev 200 3333B 
-  naruto-s1e1        6 row(s) on 1 host(s): greyboxtv.duckdns.org
-      OTHER   greyboxtv.duckdns.org              200 2208B 
+  got-s1e1           6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
+      OTHER   greyboxtv.duckdns.org              200 2210B 
+      OTHER   dash-hls-bridge.john1mc.workers.dev 200 3333B 
+  naruto-s1e1        0 row(s) on 0 host(s): 
 
 wrote research/anivortex-426.json
 verdict: TV rows are reachable outside the 426 host but declare NO audio — a picture with no sound is not a fix
-hosts other than the blamed one: greyboxtv.duckdns.org, dash-hls-bridge.johndoesjkc.workers.dev, hakunamatata.streamrip.fun, dash-hls-bridge.john1mc.workers.dev
+hosts other than the blamed one: greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev

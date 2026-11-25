@@ -1,0 +1,76 @@
+{
+  "measuredAt": "2026-11-25T12:27:13.929Z",
+  "steps": [
+    {
+      "step": "watch-page",
+      "url": "https://vidly.pro/watch/movie/550",
+      "status": 200,
+      "bytes": 50545,
+      "contentType": "text/html; charset=utf-8",
+      "isNextJs": true,
+      "tokenLike": 0
+    },
+    {
+      "step": "bundle",
+      "chunks": 7,
+      "ketcandles": [
+        "DetermineComponentFrameRoot",
+        "colorInterpolationFilters",
+        "color-interpolation-filters",
+        "glyphOrientationHorizontal",
+        "glyph-orientation-horizontal",
+        "glyphOrientationVertical",
+        "glyph-orientation-vertical",
+        "strikethroughPosition"
+      ],
+      "endpoints": [
+        "/api/thumbs",
+        "/api/episodes",
+        "/api/sources",
+        "/api/subtitles"
+      ],
+      "formats": [
+        "hls"
+      ]
+    },
+    {
+      "step": "stream-api",
+      "shapes": [
+        {
+          "url": "/api/sources?tmdb=550&kind=movie",
+          "status": 403,
+          "bytes": 4542,
+          "looksLikeJson": false,
+          "challenge": true,
+          "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
+        },
+        {
+          "url": "/api/sources?kind=movie&tmdb=550&type=movie",
+          "status": 403,
+          "bytes": 4542,
+          "looksLikeJson": false,
+          "challenge": true,
+          "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
+        },
+        {
+          "url": "/api/stream?tmdb=550&kind=movie",
+          "status": 404,
+          "bytes": 10530,
+          "looksLikeJson": false,
+          "challenge": false,
+          "body": "<!DOCTYPE html><!--BQaW_0Od0OwKLsJFpoMwj--><html lang=\"en\" class=\"__variable_d8ebd1\"><head><meta charSet=\"utf-8\"/><meta "
+        }
+      ]
+    },
+    {
+      "step": "media-in-page",
+      "count": 1,
+      "urls": [
+        "https://img.rousav.tech/media/84ba08366bab854da1bf/index.m3u8"
+      ],
+      "domains": [
+        "rousav.tech"
+      ]
+    }
+  ]
+}
