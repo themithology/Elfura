@@ -295,7 +295,11 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
     // among them. The first version of this rule read `row.language`, which is
     // why source-3 dropped from 12 candidates to zero in a single run.
     const langs = rowLanguages(row);
-    if (langs.length === 0) continue;
+    const multi = claimsMultiAudio(row);
+    // Admitted when the row names a language, OR when it claims to carry several
+    // and lets the manifest name them. Refused only when it says nothing at all -
+    // see claimsMultiAudio for why that distinction is measured, not stylistic.
+    if (langs.length === 0 && !multi) continue;
     seen.add(url.href);
     const type = /\.mpd(?:[?#]|$)/i.test(url.href) || /^(?:dash|mpd)$/i.test(String(row.type ?? '')) ? 'dash' : 'hls';
     const quality = qualityOf(row.quality ?? row.label);
@@ -315,6 +319,11 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
       // really carries more than one audio rendition.
       ...(langs.length === 1 ? { claimedAudioLang: langs[0] } : {}),
       ...(langs.length > 1 ? { availableAudioLangs: langs } : {}),
+      // A MULTI claim travels as the flag the registry already understands: the
+      // probe will attach the real set, and selection refuses the flag if the
+      // manifest turns out to carry one track.
+      ...(langs.length === 0 && multi ? { availableAudioLangs: undefined } : {}),
+      ...(multi ? { audioLabel: 'Multi-Audio' } : {}),
     });
   }
   return out;
@@ -353,6 +362,35 @@ export function rowLanguages(row: NxStream): string[] {
     if (code && code !== 'und' && !out.includes(code)) out.push(code);
   }
   return out;
+}
+
+/**
+ * A row that claims more than one audio track without naming them.
+ *
+ * Measured, and the reason this lane is not empty: purstream is the only supply
+ * on it that serves bytes, and its label is "Purstream · pulse · 1080p · MULTI".
+ * Its manifest then declares what the label would not:
+ *
+ *   #EXT-X-MEDIA:TYPE=AUDIO,...,NAME="Français",DEFAULT=YES,LANGUAGE="fr"
+ *   #EXT-X-MEDIA:TYPE=AUDIO,...,NAME="English",DEFAULT=NO,LANGUAGE="en"
+ *
+ * So "MULTI" is a real claim that happens to name no language, and refusing it as
+ * "unlabelled" threw away the one working stream on the lane while keeping rows
+ * that name a language and answer 404.
+ *
+ * It is admitted as a CLAIM of multiple audio, never as a language. The registry's
+ * probe reads the manifest and supplies the actual set; if the manifest has only
+ * one rendition, the claim collapses to that one language - which is what the
+ * liveness pass already does when a measured single track contradicts a provider.
+ */
+const MULTI_CLAIM = /\bmulti(?:-?audio)?\b/i;
+
+export function claimsMultiAudio(row: NxStream): boolean {
+  const text = `${row.label ?? ''} ${row.quality ?? ''}`;
+  if (!MULTI_CLAIM.test(text)) return false;
+  // "1. Multi Audio" style numbering is stripped by normalizeLang; for this test
+  // the words themselves are the signal, so no numbering handling is needed.
+  return true;
 }
 
 /* ── the adapter ───────────────────────────────────────────────────────────── */

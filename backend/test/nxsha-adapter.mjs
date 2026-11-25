@@ -146,6 +146,27 @@ console.log('— the language lives in the label, and every measured shape is re
   assert.deepEqual(pair.availableAudioLangs, ['hi', 'en'], 'two named languages are a set');
   assert.equal(pair.claimedAudioLang, undefined, 'and not a single claim');
   assert.notEqual(pair.multiAudio, true, 'a label is not a manifest — only the probe may declare multi-audio');
+
+  // ── the MULTI claim ────────────────────────────────────────────────────────
+  // Measured: purstream is the only supply on this lane that serves bytes, its
+  // label is "Purstream · pulse · 1080p · MULTI", and its manifest then declares
+  // Français (DEFAULT) and English by LANGUAGE=. Refusing that as "unlabelled"
+  // discarded the only working stream while keeping Hindi rows that answer 404.
+  const { claimsMultiAudio } = await import('../../dist/backend/sources/nxsha.js');
+  assert.equal(claimsMultiAudio({ label: 'Purstream · pulse · 1080p · MULTI' }), true);
+  assert.equal(claimsMultiAudio({ label: 'hguider | 1080P | Multi Audio' }), true);
+  assert.equal(claimsMultiAudio({ label: 'hguider | 1080P' }), false);
+  assert.equal(claimsMultiAudio({ label: 'Hindi' }), false);
+
+  const multi = nxCandidates({
+    sources: [{ url: 'https://free.finepulfe.xyz/movies/550/master.m3u8', type: 'hls', label: 'Purstream · pulse · 1080p · MULTI' }],
+  });
+  assert.equal(multi.length, 1, 'a MULTI claim is admitted');
+  // The claim is NOT a language and NOT an audio-language set: the probe supplies
+  // the set from the manifest, and nothing here may pre-empt it.
+  assert.equal(multi[0].claimedAudioLang, undefined, 'MULTI names no single language');
+  assert.equal(multi[0].availableAudioLangs, undefined, 'and no set either — the manifest owns that');
+  assert.equal(multi[0].audioLang, undefined, 'never a verified language');
 }
 
 console.log('— media rows are filtered the way the board filters them');
