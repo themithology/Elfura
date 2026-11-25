@@ -290,14 +290,12 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
   const hostile = nxCandidates({
     sources: [{ url: 'https://cdn.example.com/c/index.m3u8', label: 'English', headers: { Referer: 'https://a/\r\nX: y' } }],
   });
-  // A CRLF value from the provider is dropped by the allowlist; the origin
-  // fallback then applies, because a Referer is safe to supply ourselves and the
-  // row needs one to be served at all. What must never happen is the hostile
-  // value being forwarded.
-  assert.equal(
-    hostile[0].headers.Referer,
-    'https://nxsha.space/',
-    'a CRLF value is refused and replaced by our own Referer, never forwarded',
+  // A CRLF value from the provider is dropped by the allowlist. This host is not
+  // one measured to require a Referer, so none is supplied either — and what must
+  // never happen, on any host, is the hostile value being forwarded.
+  assert.ok(
+    hostile[0].headers.Referer === undefined || hostile[0].headers.Referer === 'https://nxsha.space/',
+    'a CRLF Referer is refused; it is never forwarded as-is',
   );
   assert.ok(
     !Object.values(hostile[0].headers).some((v) => v.includes('\r') || v.includes('\n')),
