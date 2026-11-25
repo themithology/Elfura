@@ -26,6 +26,7 @@ on:
       - 'scripts/research/upstream-lookup.mjs'
       - 'scripts/research/vidly-deep.mjs'
       - 'scripts/research/vidly-streams.mjs'
+      - 'scripts/research/vidly-stream-bytes.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -68,6 +69,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # A real media URL was found in the page with no token. Prove it plays, or
+      # find out that it does not, before anyone builds on it.
+      - name: Prove vidly stream bytes
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/vidly-stream-bytes.mjs 2>&1 | tee research/vidly-stream-bytes-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -149,7 +160,8 @@ jobs:
                   research/anivortex-426.json research/anivortex-426-last.txt \
                   research/upstream-lookup.json research/upstream-lookup-last.txt \
                   research/vidly-deep.json research/vidly-deep-last.txt \
-                  research/vidly-streams.json research/vidly-streams-last.txt
+                  research/vidly-streams.json research/vidly-streams-last.txt \
+                  research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
