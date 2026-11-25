@@ -87,9 +87,41 @@ Sites worth measuring this way, in order:
    MAL/AniList ids, so coverage is measurable rather than guessed.
 3. **yflix.to** — general movies and TV; check its host family before anything else.
 
+## Measured, then dropped
+
+The three were probed on a runner before any adapter was written. What came back:
+
+| site | what answered |
+| — | — |
+| kisskh.do | home 200 (22 KB); drama listing **400**; episode endpoint **403 with a zero-byte body** without `kkey` |
+| animekai.to | home 200; watch page 200; **episodes list answered 200 twice with no `enc` token at all** — so for this endpoint no third party is needed |
+| yflix.to / 1movies.bz / solarmovie.fi | **all three domains failed at transport** — no HTTP status at all |
+
+kisskh is the one that matters: its episode endpoint answers **403 with a
+zero-byte body** when no `kkey` is presented — a gate the site mints server-side,
+and no public implementation of that mint exists.
+
+**The animekai result contradicts the reason I gave for dropping it.** Its
+episodes list needed no `enc` token at all. It is not blocked by crypto; the
+unmeasured part is the later `links/view` response, which is a sealed payload. I
+had written that all three were "too hard to crack" before this run came back,
+which was a guess dressed as a conclusion.
+
+The owner's call stands regardless — the three were dropped as not wanted, and
+one endpoint answering without a token does not change whether the catalogue is
+desired. But the record should say what was measured, not what was assumed.
+
+All three yflix domains failed at transport (`ENOTFOUND` on two,
+`UND_ERR_CONNECT_TIMEOUT` on the third), which is a DNS/CDN block rather than a
+dead site.
+
 ## Verdict
 
-Take the databases and the documented call orders. Use the API once, on a runner,
-to measure a candidate's catalogue. Do not put it in the resolve path — a lane
-whose crypto only one closed-source service can solve is not a source this board
-can own, and the moment that service stops, every lane built on it stops with it.
+The databases and the documented call orders are worth keeping as reference. The
+service itself is not a dependency this board can take: a lane whose crypto only
+one closed-source VPS can solve is not a source the board owns, and the moment
+that VPS stops, every lane built on it stops with it.
+
+The archived probe at `backend/attic/test/catalogue-probe.mjs` is the measurement
+that led here. The adapter work was never started, which is the point — the probe
+answered the question for the price of one runner job instead of three adapters.

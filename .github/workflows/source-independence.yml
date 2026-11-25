@@ -20,9 +20,6 @@ on:
     paths:
       - 'scripts/research/independence.mjs'
       - 'scripts/research/object-overlap.mjs'
-      - 'scripts/research/vidlink-bytes.mjs'
-      - 'scripts/research/catalogue-probe.mjs'
-      - 'backend/src/sources/vidlink.ts'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -58,26 +55,6 @@ jobs:
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
-      # Three candidates this board has never measured, on category rather than
-      # host: kisskh (drama - a category the board has none of), animekai, yflix.
-      - name: Probe three untested catalogues
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          node scripts/research/catalogue-probe.mjs 2>&1 | tee research/catalogue-probe-last.txt
-        env:
-          NODE_OPTIONS: --dns-result-order=ipv4first
-
-      # Nothing has ever credited this lane a byte. Is that throttle, block, or
-      # hotlink protection? Those lead to different decisions, so measure it.
-      - name: Probe vidlink bytes and throttle behaviour
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          node scripts/research/vidlink-bytes.mjs 2>&1 | tee research/vidlink-bytes-last.txt
-        env:
-          NODE_OPTIONS: --dns-result-order=ipv4first
-
       # The host probe cannot tell two libraries on one CDN from a re-export.
       # This one compares the media OBJECT ids, which can.
       - name: Probe content overlap
@@ -98,10 +75,7 @@ jobs:
           git config user.name "source research"
           git config user.email "research@example.invalid"
           git add research/independence.json research/independence.md research/independence-last.txt \
-                  research/object-overlap.json research/object-overlap-last.txt \
-                  research/vidlink-bytes.json research/vidlink-bytes-last.txt \
-                  research/catalogue-probe.json research/catalogue-probe-last.txt 2>/dev/null || true
-          git add research/independence.json research/independence.md research/independence-last.txt
+                  research/object-overlap.json research/object-overlap-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then

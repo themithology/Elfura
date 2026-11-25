@@ -335,3 +335,17 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
+/*
+ * ARCHIVED 2026-11-25 — never used to build an adapter, and that is the result.
+ *
+ * Ran once against the three candidates. kisskh.do's home page answers 200 and
+ * its episode endpoint answers 403 with a zero-byte body when no `kkey` is
+ * presented, so the key is minted server-side and cannot be reproduced locally.
+ * animekai's content id no longer sits where enc-dec's sample reads it, so its
+ * ajax gate was never even reached. All three yflix domains failed at transport.
+ *
+ * Together with 'no public implementation of any of these mints exists', that is
+ * a permanent dependency on enc-dec.app for every one of them. Dropped by the
+ * owner as too hard to crack; see research/enc-dec-review.md.
+ */

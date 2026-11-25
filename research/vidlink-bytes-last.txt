@@ -1,5 +1,0 @@
-vidlink bytes probe, 2026-11-25T08:53:50.173Z
-The vidlink adapter is archived at backend/attic/sources/source3-vidlink.ts.
-To re-test the source:
-  git mv backend/attic/sources/source3-vidlink.ts backend/src/sources/vidlink.ts
-  npm run build:backend && node scripts/research/vidlink-bytes.mjs
