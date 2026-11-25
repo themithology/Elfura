@@ -1,0 +1,20 @@
+
+inception  status=200 50906B  pageLang=en
+  langAttrs  1: lang=en
+  jsonKeys   -
+  canonical  -
+  names      -
+
+govinda-naam-mere  status=200 47267B  pageLang=en
+  langAttrs  1: lang=en
+  jsonKeys   -
+  canonical  -
+  names      -
+
+got-s1e1  status=200 57013B  pageLang=en
+  langAttrs  1: lang=en
+  jsonKeys   -
+  canonical  -
+  names      -
+
+wrote research/vidly-page-lang.json

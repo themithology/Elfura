@@ -1,0 +1,41 @@
+{
+  "measuredAt": "2026-11-25T12:53:12.497Z",
+  "titles": [
+    {
+      "title": "inception",
+      "status": 200,
+      "bytes": 50906,
+      "langAttrs": [
+        "lang=en"
+      ],
+      "pageLang": "en",
+      "jsonKeys": [],
+      "canonical": null,
+      "namesLanguage": []
+    },
+    {
+      "title": "govinda-naam-mere",
+      "status": 200,
+      "bytes": 47267,
+      "langAttrs": [
+        "lang=en"
+      ],
+      "pageLang": "en",
+      "jsonKeys": [],
+      "canonical": null,
+      "namesLanguage": []
+    },
+    {
+      "title": "got-s1e1",
+      "status": 200,
+      "bytes": 57013,
+      "langAttrs": [
+        "lang=en"
+      ],
+      "pageLang": "en",
+      "jsonKeys": [],
+      "canonical": null,
+      "namesLanguage": []
+    }
+  ]
+}

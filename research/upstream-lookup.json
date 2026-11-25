@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T12:35:35.361Z",
+  "measuredAt": "2026-11-25T12:53:12.463Z",
   "summary": {
     "vidly": {
       "titlesIndexed": 8,
@@ -298,7 +298,7 @@
       {
         "step": "home",
         "status": 200,
-        "bytes": 52273
+        "bytes": 52198
       }
     ]
   },
@@ -316,7 +316,7 @@
       {
         "step": "watch:https://bingr.st",
         "status": 403,
-        "bytes": 5774,
+        "bytes": 5796,
         "contentType": "text/html; charset=UTF-8",
         "challenge": true
       },
@@ -330,7 +330,7 @@
       {
         "step": "watch:https://bingr.one",
         "status": 403,
-        "bytes": 5775,
+        "bytes": 5797,
         "contentType": "text/html; charset=UTF-8",
         "challenge": true
       }
