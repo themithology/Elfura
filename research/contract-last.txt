@@ -1,10 +1,9 @@
 [elfura-citadel] movie/550: 2 row(s)
-✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 1786ms
+✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2171ms
 [elfura-greybox] movie/550: 9 row(s), langs=7
-✓ source-2: resolved 9 candidate(s), 2100702 segment bytes, 3691ms
-✗ source-3: source-3: resolved no candidate for any probe
-    movie/550: 0 row(s) in 437ms
-    tv/46260: 0 row(s) in 1242ms
-✓ source-4: resolved 1 candidate(s), 819609 segment bytes, 776ms
+✓ source-2: resolved 9 candidate(s), 2100702 segment bytes, 7280ms
+✗ source-3: source-3: no candidate returned a readable manifest through /api/proxy
+    502 http://127.0.0.1:37831/api/proxy?u=aHR0c
+✓ source-4: resolved 1 candidate(s), 819609 segment bytes, 1500ms
 
 1 source(s) failed the contract: source-3. Remove them from APPROVED_SOURCES or fix the adapter — a lane that cannot produce bytes is not a source.
