@@ -1,4 +1,4 @@
-object overlap probe, 2026-11-25T09:13:23.152Z
+object overlap probe, 2026-11-25T10:04:27.272Z
 [elfura-citadel] movie/550: 2 row(s)
   fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/550: 9 row(s), langs=7
@@ -6,11 +6,11 @@ object overlap probe, 2026-11-25T09:13:23.152Z
   fight-club candidate-nxsha: 4 candidate(s), 0 object id(s), itsnitrox.tech,halcyoncreative.site
 [elfura-citadel] movie/27205: 6 row(s)
   inception source-1-citadel: 6 candidate(s), 1 object id(s), hscow.com
-[elfura-greybox] movie/27205: 9 row(s), langs=7
-  inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
+[elfura-greybox] movie/27205: 11 row(s), langs=7
+  inception source-2-greybox: 11 candidate(s), 1 object id(s), duckdns.org,rousav.tech,hakunaymatata.com,hscow.com
   inception candidate-nxsha: 5 candidate(s), 0 object id(s), itsnitrox.tech,workers.dev
-[elfura-citadel] tv/1399: 2 row(s)
-  got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), hscow.com
+[elfura-citadel] tv/1399: 4 row(s)
+  got-s1e1 source-1-citadel: 4 candidate(s), 0 object id(s), fcxmb.com,hscow.com
 [elfura-greybox] tv/1399: throttled, retrying once
 [elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
   got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
@@ -27,7 +27,7 @@ verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
   source-1-citadel & source-2-greybox: 2 shared object(s) on fight-club,inception
      hsc:78164859
      hsc:210544560
-  source-1-citadel: 11 url(s), 2 named object(s)
-  source-2-greybox: 22 url(s), 2 named object(s)
+  source-1-citadel: 13 url(s), 2 named object(s)
+  source-2-greybox: 26 url(s), 2 named object(s)
   candidate-nxsha: 20 url(s), 0 named object(s)
-domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, workers.dev:candidate-nxsha, 97bf1.com:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha
+domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, rousav.tech:source-2-greybox, hakunaymatata.com:source-2-greybox, workers.dev:candidate-nxsha, fcxmb.com:source-1-citadel, 97bf1.com:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha

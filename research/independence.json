@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T09:12:28.511Z",
+  "measuredAt": "2026-11-25T09:59:56.304Z",
   "titles": [
     "fight-club",
     "inception",
@@ -58,11 +58,11 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 0
         },
         {
           "title": "naruto-s1e1",
-          "candidates": 0
+          "candidates": 3
         }
       ]
     }

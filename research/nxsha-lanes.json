@@ -1,0 +1,933 @@
+{
+  "measuredAt": "2026-11-25T10:04:27.226Z",
+  "origin": "https://nxsha.space",
+  "summary": {
+    "listed": 34,
+    "own": 30,
+    "media": [
+      "nitro",
+      "watchout",
+      "awsind",
+      "purstream",
+      "ophim",
+      "zoko"
+    ],
+    "drive": [],
+    "relay": [
+      "castle",
+      "vixolity"
+    ],
+    "nothing": [
+      "mahalala",
+      "streamflix",
+      "xdownloader",
+      "mhbox",
+      "bdxs",
+      "stvv",
+      "imovr",
+      "yomovies",
+      "showbox-online",
+      "vidapi",
+      "levi",
+      "toonstream",
+      "tamilblasters",
+      "hdhub4u",
+      "hdhub4u-direct",
+      "k4khdhub-direct",
+      "k4khdhub",
+      "filmyfly",
+      "filmyfly-direct",
+      "moviesdrive",
+      "movone",
+      "em-8"
+    ]
+  },
+  "lanes": [
+    {
+      "lane": "nitro",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 3,
+          "hosts": [
+            "wts.itsnitrox.tech"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "hguider | 1080P",
+            "hguider"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 4,
+          "hosts": [
+            "wts.itsnitrox.tech"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "hguider | 1080P",
+            "hguider | 1080P | Multi "
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 7,
+      "kind": "media"
+    },
+    {
+      "lane": "mahalala",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "watchout",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "suw.halcyoncreative.site"
+          ],
+          "shapes": [
+            "other"
+          ],
+          "languages": [
+            "watchout"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 1,
+      "kind": "media"
+    },
+    {
+      "lane": "awsind",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "i-arch-400.asrmo449ddj.com"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Hindi"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 1,
+      "kind": "media"
+    },
+    {
+      "lane": "castle",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 3,
+          "hosts": [
+            "catflix.nxstreamhub.workers.dev"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "[English] - FHD 1080P",
+            "[English] - HD 720P",
+            "[English] - SD 480P"
+          ],
+          "drive": [],
+          "relay": true,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 1,
+          "hosts": [
+            "catflix.nxstreamhub.workers.dev"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "[Japanese] - SD 480P"
+          ],
+          "drive": [],
+          "relay": true,
+          "error": null
+        }
+      ],
+      "total": 4,
+      "kind": "relay-shaped"
+    },
+    {
+      "lane": "streamflix",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "xdownloader",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "purstream",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "free.finepulfe.xyz"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Purstream · pulse · 1080"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 1,
+          "hosts": [
+            "free.finepulfe.xyz"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Purstream · pulse · 1080"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 2,
+      "kind": "media"
+    },
+    {
+      "lane": "vixolity",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "twilight-lake-fd5c.nxstreamhub.workers.dev"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Vixolity"
+          ],
+          "drive": [],
+          "relay": true,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 1,
+          "hosts": [
+            "twilight-lake-fd5c.nxstreamhub.workers.dev"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Vixolity"
+          ],
+          "drive": [],
+          "relay": true,
+          "error": null
+        }
+      ],
+      "total": 2,
+      "kind": "relay-shaped"
+    },
+    {
+      "lane": "mhbox",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "bdxs",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "stvv",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "imovr",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "ophim",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "v7.kkphimplayer7.com"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "Vietsub (Full)"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 1,
+      "kind": "media"
+    },
+    {
+      "lane": "yomovies",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "showbox-online",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "vidapi",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "levi",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "toonstream",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "tamilblasters",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "hdhub4u",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "hdhub4u-direct",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "k4khdhub-direct",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "k4khdhub",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "filmyfly",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "filmyfly-direct",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "moviesdrive",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "movone",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    },
+    {
+      "lane": "zoko",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 1,
+          "hosts": [
+            "hls.dramahot.top"
+          ],
+          "shapes": [
+            "hls"
+          ],
+          "languages": [
+            "ZokoAnime"
+          ],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 1,
+      "kind": "media"
+    },
+    {
+      "lane": "em-8",
+      "titles": [
+        {
+          "title": "fight-club",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        },
+        {
+          "title": "naruto-s1e1",
+          "rows": 0,
+          "hosts": [],
+          "shapes": [],
+          "languages": [],
+          "drive": [],
+          "relay": false,
+          "error": null
+        }
+      ],
+      "total": 0,
+      "kind": "nothing"
+    }
+  ]
+}
