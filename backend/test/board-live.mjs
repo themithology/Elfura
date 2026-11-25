@@ -164,7 +164,22 @@ for (const stream of wanted.sources) {
     `${stream.label} reached the player with no language at all — no audioLang, ` +
       'no claimedAudioLang and an empty availableAudioLangs' +
       ` | multiAudio=${stream.multiAudio} audioLabel=${JSON.stringify(stream.audioLabel)} ` +
-      `quality=${JSON.stringify(stream.quality)} keys=${JSON.stringify(Object.keys(stream).sort())}`,
+      `quality=${JSON.stringify(stream.quality)} keys=${JSON.stringify(Object.keys(stream).sort())}` +
+      // The URL is proxied/opaque in production, but this is an operator-side
+      // gate: naming the host is the difference between "a stream is wrong" and
+      // "this lane is wrong", and the last two failures each cost a runner round
+      // because the message did not say which lane's row it was.
+      ` | sourceId=${stream.sourceId} host=${(() => {
+        try {
+          return new URL(stream.url, 'https://x/').searchParams.get('u')
+            ? Buffer.from(String(new URL(stream.url, 'https://x/').searchParams.get('u')), 'base64url')
+                .toString()
+                .slice(0, 80)
+            : new URL(String(stream.url), 'https://x/').hostname;
+        } catch {
+          return '?';
+        }
+      })()}`,
   );
   if (stream.multiAudio) {
     // Multi-audio must name more than one, or the flag is a lie the player acts
