@@ -82,15 +82,6 @@ jobs:
 
       # The product question: does the Hindi on this board actually play Hindi,
       # or is it only a word in a provider's label?
-      - name: Verify nxsha Hindi rows
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          node scripts/research/nxsha-hindi-verify.mjs 2>&1 | tee research/nxsha-hindi-verify-last.txt
-        env:
-          NODE_OPTIONS: --dns-result-order=ipv4first
-
-      # castle served a 70 KB playlist with one extra header. Prove it plays.
       - name: Prove nxsha castle plays
         continue-on-error: true
         run: |
@@ -110,6 +101,15 @@ jobs:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
       # castle answered 403 bare and 200 with four headers at once. Isolate which.
+      - name: Verify nxsha Hindi rows
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-hindi-verify.mjs 2>&1 | tee research/nxsha-hindi-verify-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # castle served a 70 KB playlist with one extra header. Prove it plays.
       - name: Isolate nxsha castle headers
         continue-on-error: true
         run: |
