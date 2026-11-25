@@ -244,16 +244,31 @@ jobs:
                   research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt \
                   research/nxsha-all-lanes.json research/nxsha-all-lanes-last.txt \
                   research/nxsha-castle-proof.json research/nxsha-castle-proof-last.txt
-          git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
-          for attempt in 1 2 3 4; do
-            if git push; then
+          # Report what was actually staged. A silent `git add` of a file the
+          # probe never wrote leaves the commit empty and looks like success.
+          echo "staged files:"
+          git diff --cached --name-only | sed 's/^/  /'
+          if git diff --cached --quiet; then
+            echo "::warning::nothing staged — the probes wrote no files this run"
+            exit 0
+          fi
+          git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
+
+          # The push is the fragile part: this ran during a GitHub outage and the
+          # measured data was lost with the job. Back off harder, and say plainly
+          # what happened if it still fails, so the next reader knows the run has
+          # results that simply are not on the branch.
+          for attempt in 1 2 3 4 5 6; do
+            if git push 2>&1 | tee /tmp/push.log; then
               echo "pushed on attempt $attempt"
               exit 0
             fi
-            echo "push rejected (attempt $attempt); rebasing onto the branch and retrying"
+            echo "::warning::push attempt $attempt failed: $(tail -2 /tmp/push.log | tr '\n' ' ')"
             git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
-            sleep $((attempt * 5))
+            sleep $((attempt * 15))
           done
+          echo "::error::the probes ran and wrote data, but six push attempts failed. The files are in this job's workspace; re-run the job to regenerate them."
+          exit 1
           echo "could not push the verdict after 4 attempts"
           exit 1
 
