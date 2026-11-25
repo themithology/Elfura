@@ -162,7 +162,9 @@ for (const stream of wanted.sources) {
   assert(
     known.length > 0,
     `${stream.label} reached the player with no language at all — no audioLang, ` +
-      'no claimedAudioLang and an empty availableAudioLangs',
+      'no claimedAudioLang and an empty availableAudioLangs' +
+      ` | multiAudio=${stream.multiAudio} audioLabel=${JSON.stringify(stream.audioLabel)} ` +
+      `quality=${JSON.stringify(stream.quality)} keys=${JSON.stringify(Object.keys(stream).sort())}`,
   );
   if (stream.multiAudio) {
     // Multi-audio must name more than one, or the flag is a lie the player acts

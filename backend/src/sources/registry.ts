@@ -1404,7 +1404,12 @@ export class SourceRegistry {
       ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
       ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
       ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),
-      ...(cand.multiAudio ? { multiAudio: true } : {}),
+      // Multi-audio with no named language is not a claim the player can act on:
+      // it offers a language switch with nothing to switch between, which is the
+      // unproven provider flag this file already refuses in selection.ts. The
+      // board-live gate caught it reaching the player, so it is dropped here at
+      // the boundary rather than trusted downstream.
+      ...(cand.multiAudio && (cand.availableAudioLangs?.length ?? 0) > 1 ? { multiAudio: true } : {}),
       audioTracks,
       subtitles,
     };
