@@ -163,13 +163,13 @@ async function main() {
 
   let createCitadelAdapter;
   let createGreyboxAdapter;
-  // nxsha is NOT approved, so it is imported from attic on purpose: this probe's
-  // job is to measure a candidate against the board before anyone registers it.
-  let fetchFromNxsha;
+  // nxsha is NOT approved, so it is reached through this repo's probe client
+  // rather than an adapter: measuring a candidate must not require shipping it.
+  let nxsha;
   try {
     ({ createCitadelAdapter } = await import('../../dist/backend/sources/citadel.js'));
     ({ createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js'));
-    ({ fetchFromNxsha } = await import('../../backend/attic/sources/source5.ts'));
+    nxsha = await import('./nxsha-client.mjs');
   } catch (error) {
     console.error('Build the backend first: npm run build:backend');
     throw error;
@@ -181,12 +181,22 @@ async function main() {
   const lanes = {
     'source-1-citadel': createCitadelAdapter(),
     'source-2-greybox': createGreyboxAdapter(),
-    // Same interface, so it is measured by exactly the same code.
+    // Same interface, so it is measured by exactly the same code. nxsha fans out
+    // across ~25 of its own scrapers; two are enough to establish whether their
+    // media objects overlap the board, and more would just multiply requests.
     'candidate-nxsha': {
       id: 'candidate-nxsha',
-      resolve: async (query) => ({
-        candidates: await fetchFromNxsha(query, undefined, {}),
-      }),
+      resolve: async (query) => {
+        const listed = await nxsha.scrapers(query);
+        if (listed.error) return { candidates: [] };
+        const own = listed.names.filter((name) => !/^rive-/i.test(name)).slice(0, 3);
+        const candidates = [];
+        for (const lane of own) {
+          const { rows } = await nxsha.laneSources(query, lane);
+          for (const row of rows) candidates.push({ ...row, diagnosticLane: lane });
+        }
+        return { candidates };
+      },
     },
   };
 
