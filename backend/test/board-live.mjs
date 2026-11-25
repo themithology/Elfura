@@ -220,6 +220,30 @@ assert.equal(
     `over ${(wanted.primary?.measuredBytes / MB_).toFixed(0)}MB — the size rule outranks label-vs-measurement`,
 );
 
+// ── separate streams per language are not duplicates ──────────────────────
+//
+// Most sources do not mux languages into one manifest; they publish one stream
+// per language, each with its own peak quality. Deduping by language alone threw
+// away every Hindi rendition but the first. Opening a playback that carries more
+// than one language must offer more than one stream for at least one of them.
+const byLang = new Map();
+for (const s of wanted.sources) {
+  for (const code of langsOf(s)) {
+    byLang.set(code, (byLang.get(code) ?? 0) + 1);
+  }
+}
+const multiPerLang = [...byLang.entries()].filter(([, n]) => n > 1);
+quiet(
+  `  copies per language: ${[...byLang.entries()].map(([l, n]) => `${l}=${n}`).join(', ') || 'none'}`,
+);
+if (byLang.size > 1) {
+  assert(
+    multiPerLang.length > 0,
+    'the response carries several languages but only one copy of each — a separate ' +
+      'stream per language is the norm, so at least one language should have more than one',
+  );
+}
+
 // The size rule still holds inside the language: no bigger stream may offer the
 // same language the primary offers, or the wrong copy won.
 const primarySet = new Set(primaryLangs);

@@ -168,15 +168,31 @@ export function selectPlaybackCandidates(
     }
   }
   const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);
-  // Preserve individually labelled dubs like the older working build. They
-  // remain separate streams, never synthetic tracks in a multi-audio manifest.
-  const languages = new Set(selected.map(item => normalizeLang(item.candidate.audioLang || 'und').code).filter(lang => lang !== 'und'));
+  // Individually labelled dubs are FIRST-CLASS on this board, not fallbacks.
+  //
+  // This loop used to dedupe by language alone: one Hindi copy, one Tamil copy,
+  // and every other rendition dropped. That is wrong for the shape most sources
+  // actually ship. A provider almost never muxes languages into one manifest —
+  // it publishes a SEPARATE STREAM PER LANGUAGE, each with its own peak quality.
+  // So of castle's Hindi 1080p/720p/480p only the first survived, and the 720p
+  // copy — which may be the one that actually plays — was never offered.
+  //
+  // "Different language, different stream" is the normal case, and the user was
+  // explicit: adjust for it rather than treating it as a defect.
+  //
+  // The key is now (language, host): one copy of each language from each host, so
+  // a lane that has both 1080p and a fallback rendition contributes both, while a
+  // genuine duplicate from the same host still collapses. Ordered by the sort
+  // above, so the biggest and most confident comes first.
+  const seenDub = new Set(selected.map(item => `${normalizeLang(item.candidate.audioLang || 'und').code}@${item.host}`));
   let dubsAdded = 0;
   for (const item of ordinarySingle) {
     if (!item.alive || selected.includes(item)) continue;
     const lang = normalizeLang(item.candidate.audioLang || 'und').code;
-    if (lang === 'und' || languages.has(lang)) continue;
-    selected.push(item); languages.add(lang);
+    if (lang === 'und') continue;
+    const key = `${lang}@${item.host}`;
+    if (seenDub.has(key)) continue;
+    selected.push(item); seenDub.add(key);
     if (++dubsAdded >= MAX_SEPARATE_DUBS) break;
   }
   // Variant-labelled streams are separate lanes, not manufactured manifest
