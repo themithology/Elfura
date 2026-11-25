@@ -193,8 +193,8 @@ const biggerSameLang = wanted.sources.filter(
 assert.equal(
   biggerSameLang.length,
   0,
-  `a ${(biggerSameLang[0]?.measuredBytes / MB_).toFixed(0)}MB ${primaryLang} stream outranks the ` +
-    `${(primary.measuredBytes / MB_).toFixed(0)}MB primary in the same language`,
+  `a ${((biggerSameLang[0]?.measuredBytes ?? 0) / MB_).toFixed(0)}MB ${[...primarySet].join('/')} stream ` +
+    `outranks the ${(primary.measuredBytes / MB_).toFixed(0)}MB primary in the same language`,
 );
 quiet(
   `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${[...primarySet].join('/')} stream listed`,

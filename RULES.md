@@ -98,7 +98,30 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
      (`source-1` / `Source 1`, etc.), never leaking internal upstream provider
      names.
    - A source reads its own settings from `sourceEnv()` (the real environment,
-     `.env` already merged) rather than growing a key in `BackendConfig`. A
+     `.env` already merged) rather than growing a key in `BackendConfig`.
+3. **Measure on a runner before claiming anything about a provider:**
+   - The editing sandbox reaches **none** of the providers. A `TypeError: fetch
+     failed` or `ECONNRESET` there says nothing about a source — it says the
+     sandbox has no egress. Never conclude a lane is dead, a field is absent, or
+     a manifest is empty from this environment.
+   - Anything factual about a provider is settled by a probe that runs on GitHub
+     Actions, writes its evidence to a committed file under `research/`, and is
+     read back from that file. Guesswork dressed as a probe is how a lane gets
+     judged on a field the API does not have.
+   - A probe must print **every** field of **every** row, verbatim. Truncating a
+     list to the first ten, or reading one field with a `??` chain that hides
+     which one matched, has already produced two wrong conclusions on this repo
+     (vidly "no Hindi", nxsha `row.language`). A `??` chain hides the question
+     being asked.
+   - Write the check before the fix. `scripts/check-before-push.sh` runs first in
+     `npm test` and catches the mistakes that do not need the network: a renamed
+     identifier still referenced, a malformed workflow `run:` block, a probe that
+     runs in a job but is missing from its trigger paths, a source module the
+     manifest does not import. Nearly every wasted runner round on this project
+     was one of those four.
+   - Do not wait blindly. Push, then read the run with
+     `gh run list --json` / `gh run watch`, and read the verdict from the file the
+     job commits. `sleep`-and-hope is not a test. A
      source that needs per-installation credentials must stay off unless both
      its switch and its credentials are present, keep those credentials in
      `.env` key/value form (never on disk, never in logs, never in diagnostics),
