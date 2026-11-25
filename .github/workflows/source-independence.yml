@@ -27,6 +27,7 @@ on:
       - 'scripts/research/vidly-deep.mjs'
       - 'scripts/research/vidly-streams.mjs'
       - 'scripts/research/vidly-stream-bytes.mjs'
+      - 'scripts/research/vidly-page-lang.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -69,6 +70,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # The board-live test requires language evidence. Measure what the page
+      # actually carries before writing an extractor for it.
+      - name: Measure vidly page language evidence
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/vidly-page-lang.mjs 2>&1 | tee research/vidly-page-lang-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -161,7 +172,8 @@ jobs:
                   research/upstream-lookup.json research/upstream-lookup-last.txt \
                   research/vidly-deep.json research/vidly-deep-last.txt \
                   research/vidly-streams.json research/vidly-streams-last.txt \
-                  research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt
+                  research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt \
+                  research/vidly-page-lang.json research/vidly-page-lang-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
