@@ -106,6 +106,13 @@ console.log('— the language lives in the label, and every measured shape is re
   // `language` field at all; the first version of this rule read one, and the
   // lane dropped from 12 candidates to zero in a single contract run.
   const measured = [
+    // castle's labels, measured on Breaking Bad S1E1. The brackets are a LABEL,
+    // not a caption flag, and cleanLanguageToken strips bracket groups before
+    // parsing — so these normalised to `und` and three working English rows were
+    // refused as unlabelled until this case existed.
+    ['[English] - FHD 1080P', ['en']],
+    ['[English] - HD 720P', ['en']],
+    ['[Japanese] - SD 480P', ['ja']],
     ['Hindi', ['hi']],
     ['English', ['en']],
     ['hguider | 1080P | Hindi | English', ['hi', 'en']],
@@ -239,6 +246,29 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
     ],
   });
   assert.equal(rows[0].headers.Referer, 'https://nxsha.space/', 'the Referer survives');
+
+  // ── the Referer fallback, measured ────────────────────────────────────────
+  // The API ships `{}` headers for every castle/vixolity/purstream/ophim row that
+  // was measured, so a row with no headers at all is the NORMAL case, not the
+  // edge case. Without a Referer those rows answer 403 to a 70 KB playlist that
+  // serves fine with one — one header at a time, on the runner.
+  const bare = nxCandidates({
+    sources: [{ url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'm3u8', label: '[English] - FHD 1080P' }],
+  });
+  assert.equal(bare.length, 1, 'a row with no headers is admitted');
+  assert.equal(bare[0].headers.Referer, 'https://nxsha.space/', 'and gets the provider origin as Referer');
+  assert.ok(bare[0].headers['User-Agent'], 'still carrying a UA');
+
+  // A row that DOES ship a Referer keeps its own; the fallback never overrides.
+  const own2 = nxCandidates({
+    sources: [{
+      url: 'https://wts.itsnitrox.tech/b/index.m3u8',
+      type: 'm3u8',
+      label: 'Hindi',
+      headers: { Referer: 'https://their-cdn.example/' },
+    }],
+  });
+  assert.equal(own2[0].headers.Referer, 'https://their-cdn.example/', 'a real Referer wins over the fallback');
   assert.equal(rows[0].headers.Origin, 'https://nxsha.space', 'the Origin survives');
   assert.ok(rows[0].headers['User-Agent'], 'a UA is always sent');
   assert.equal(rows[1].headers['X-Injected'], undefined, 'an injected header is dropped');
@@ -249,7 +279,19 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
   const hostile = nxCandidates({
     sources: [{ url: 'https://cdn.example.com/c/index.m3u8', label: 'English', headers: { Referer: 'https://a/\r\nX: y' } }],
   });
-  assert.equal(hostile[0].headers.Referer, undefined, 'a CRLF in a header value is not forwarded');
+  // A CRLF value from the provider is dropped by the allowlist; the origin
+  // fallback then applies, because a Referer is safe to supply ourselves and the
+  // row needs one to be served at all. What must never happen is the hostile
+  // value being forwarded.
+  assert.equal(
+    hostile[0].headers.Referer,
+    'https://nxsha.space/',
+    'a CRLF value is refused and replaced by our own Referer, never forwarded',
+  );
+  assert.ok(
+    !Object.values(hostile[0].headers).some((v) => v.includes('\r') || v.includes('\n')),
+    'no header value carries a line break',
+  );
 }
 
 console.log('— a resolve asks only lanes that exist, and never source-1’s');

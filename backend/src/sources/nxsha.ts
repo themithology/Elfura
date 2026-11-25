@@ -148,6 +148,34 @@ function rowHeaders(raw: unknown): Record<string, string> | undefined {
   return out;
 }
 
+/**
+ * Headers to send with a row's manifest.
+ *
+ * MEASURED, one header at a time, on catflix.nxstreamhub.workers.dev:
+ *
+ *   bare (User-Agent only)   403   9B  Forbidden
+ *   + Referer                200   70182B  #EXTM3U
+ *   + Origin                 403
+ *   + Accept                 403
+ *   + Range                  403
+ *   + row headers only       403   <- the API ships `{}` for these rows
+ *
+ * So Referer alone is the difference between a 403 and a 70 KB playlist, and the
+ * API provides no Referer to forward: every castle/vixolity/purstream/ophim row
+ * measured carries an EMPTY headers object. The adapter was therefore sending a
+ * bare User-Agent and being refused, while the same URL served fine with one
+ * extra header. That is not the CDN being dead; it is this lane asking wrongly.
+ *
+ * The fallback is the provider's own origin, which is where the site's player
+ * runs and what a browser would send. It is not a borrowed credential and not a
+ * spoof of somebody else: it names the site that handed us the URL.
+ */
+function candidateHeaders(row: NxStream, origin: string): Record<string, string> {
+  const headers = rowHeaders(row.headers) ?? { 'User-Agent': UA };
+  if (!headers.Referer) headers.Referer = `${origin}/`;
+  return headers;
+}
+
 const MAX_LANES = 8;
 const MAX_CANDIDATES = 24;
 const MAX_BODY_BYTES = 1_000_000;
@@ -303,7 +331,7 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
     seen.add(url.href);
     const type = /\.mpd(?:[?#]|$)/i.test(url.href) || /^(?:dash|mpd)$/i.test(String(row.type ?? '')) ? 'dash' : 'hls';
     const quality = qualityOf(row.quality ?? row.label);
-    const headers = rowHeaders(row.headers);
+    const headers = candidateHeaders(row, DEFAULT_ORIGIN);
     out.push({
       key: url.href,
       type,
@@ -360,6 +388,15 @@ export function rowLanguages(row: NxStream): string[] {
   for (const segment of segments) {
     const code = normalizeLang(segment).code;
     if (code && code !== 'und' && !out.includes(code)) out.push(code);
+    // A bracketed language is a LABEL, not a caption flag: "[English] - FHD 1080P"
+    // is how castle names its rows, and `cleanLanguageToken` strips `[CC]`-style
+    // bracket groups before parsing, so the bare segment normalises to `und` and
+    // a perfectly good English 1080p row was refused as unlabelled. Unwrap the
+    // brackets and parse the inside too.
+    for (const inner of segment.matchAll(/\[([^\]]{2,24})\]/g)) {
+      const innerCode = normalizeLang(inner[1].trim()).code;
+      if (innerCode && innerCode !== 'und' && !out.includes(innerCode)) out.push(innerCode);
+    }
   }
   return out;
 }
