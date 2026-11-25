@@ -81,6 +81,27 @@ const RELAY_HOST =
 /** Google Drive pages: not seekable, and refused for six sources already. */
 const DRIVE_HOST = /(?:^|\.)(?:drive|docs)\.google\.com$|googleusercontent\.com$|drive\.usercontent\.google\.com$/i;
 
+/**
+ * The headers a row may ask the player to send.
+ *
+ * nxsha hands out per-row headers because its media hosts check Referer/Origin,
+ * and dropping them makes every candidate unplayable — which is exactly how the
+ * contract failed this adapter the first time. The allowlist is narrow on
+ * purpose: a provider must not be able to inject an arbitrary header into the
+ * proxy, and only these three are ever consulted by a CDN.
+ */
+function rowHeaders(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, string> = { 'User-Agent': UA };
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== 'string' || !value || value.length > 2048 || /[\r\n]/.test(value)) continue;
+    if (/^referer$/i.test(key)) out.Referer = value;
+    else if (/^origin$/i.test(key)) out.Origin = value;
+    else if (/^user-agent$/i.test(key)) out['User-Agent'] = value;
+  }
+  return out;
+}
+
 const MAX_LANES = 8;
 const MAX_CANDIDATES = 24;
 const MAX_BODY_BYTES = 1_000_000;
@@ -214,6 +235,7 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
     seen.add(url.href);
     const type = /\.mpd(?:[?#]|$)/i.test(url.href) || /^(?:dash|mpd)$/i.test(String(row.type ?? '')) ? 'dash' : 'hls';
     const quality = qualityOf(row.quality ?? row.label);
+    const headers = rowHeaders(row.headers);
     out.push({
       key: url.href,
       type,
@@ -221,6 +243,7 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
       quality,
       // Later rows are later lanes in the site's own reliability order.
       rank: 30 + out.length,
+      ...(headers ? { headers } : {}),
       ...(typeof row.language === 'string' && row.language.trim()
         ? { claimedAudioLang: row.language.trim().slice(0, 40) }
         : {}),

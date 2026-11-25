@@ -105,6 +105,40 @@ console.log('— media rows are filtered the way the board filters them');
   assert.ok(rows.every((r) => typeof r.rank === 'number'), 'every row is ranked');
 }
 
+console.log('— a row’s own headers are forwarded, and nothing else is');
+{
+  const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
+  const rows = nxCandidates({
+    sources: [
+      {
+        url: 'https://wts.itsnitrox.tech/a/index.m3u8',
+        type: 'hls',
+        // The CDN checks these two; the contract failed this adapter when they
+        // were dropped, so they are asserted rather than assumed.
+        headers: { Referer: 'https://nxsha.space/', Origin: 'https://nxsha.space' },
+      },
+      {
+        url: 'https://cdn.example.com/b/index.m3u8',
+        type: 'hls',
+        // A provider must not be able to inject an arbitrary header.
+        headers: { 'X-Injected': 'yes', Cookie: 'session=1', Referer: 'https://ok.example/' },
+      },
+    ],
+  });
+  assert.equal(rows[0].headers.Referer, 'https://nxsha.space/', 'the Referer survives');
+  assert.equal(rows[0].headers.Origin, 'https://nxsha.space', 'the Origin survives');
+  assert.ok(rows[0].headers['User-Agent'], 'a UA is always sent');
+  assert.equal(rows[1].headers['X-Injected'], undefined, 'an injected header is dropped');
+  assert.equal(rows[1].headers.Cookie, undefined, 'a cookie is never forwarded');
+  assert.equal(rows[1].headers.Referer, 'https://ok.example/', 'a legitimate Referer still passes');
+
+  // A header value that tries to split the request is refused outright.
+  const hostile = nxCandidates({
+    sources: [{ url: 'https://cdn.example.com/c/index.m3u8', headers: { Referer: 'https://a/\r\nX: y' } }],
+  });
+  assert.equal(hostile[0].headers.Referer, undefined, 'a CRLF in a header value is not forwarded');
+}
+
 console.log('— a resolve asks only lanes that exist, and never source-1’s');
 {
   const { createNxshaAdapter } = await import('../../dist/backend/sources/nxsha.js');
