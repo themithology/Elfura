@@ -23,6 +23,7 @@ on:
       - 'scripts/research/nxsha-probe.mjs'
       - 'scripts/research/nxsha-lanes.mjs'
       - 'scripts/research/anivortex-426.mjs'
+      - 'scripts/research/upstream-lookup.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -55,6 +56,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/independence.mjs 2>&1 | tee research/independence-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # What does an upstream actually carry? The board keeps no catalogue, so
+      # this asks the one index that answers without a session.
+      - name: Look up vidly and bingr
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -113,7 +124,8 @@ jobs:
                   research/object-overlap.json research/object-overlap-last.txt \
                   research/nxsha-probe.json research/nxsha-probe-last.txt \
                   research/nxsha-lanes.json research/nxsha-lanes-last.txt \
-                  research/anivortex-426.json research/anivortex-426-last.txt
+                  research/anivortex-426.json research/anivortex-426-last.txt \
+                  research/upstream-lookup.json research/upstream-lookup-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
