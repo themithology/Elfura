@@ -1,16 +1,16 @@
-object overlap probe, 2026-11-25T14:00:18.144Z
+object overlap probe, 2026-11-25T14:59:03.865Z
 [elfura-citadel] movie/550: 2 row(s)
   fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/550: 9 row(s), langs=7
   fight-club source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
-  fight-club candidate-nxsha: 4 candidate(s), 0 object id(s), itsnitrox.tech,halcyoncreative.site
+  fight-club candidate-nxsha: 3 candidate(s), 0 object id(s), itsnitrox.tech,halcyoncreative.site
 [elfura-citadel] movie/27205: 6 row(s)
   inception source-1-citadel: 6 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/27205: 9 row(s), langs=7
   inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
   inception candidate-nxsha: 5 candidate(s), 0 object id(s), itsnitrox.tech,workers.dev
-[elfura-citadel] tv/1399: 2 row(s)
-  got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), hscow.com,fcxmb.com
+[elfura-citadel] tv/1399: 3 row(s)
+  got-s1e1 source-1-citadel: 3 candidate(s), 0 object id(s), hscow.com,fcxmb.com
 [elfura-greybox] tv/1399: 7 row(s), langs=5
   got-s1e1 source-2-greybox: 7 candidate(s), 0 object id(s), duckdns.org,hscow.com,fcxmb.com
   got-s1e1 candidate-nxsha: 7 candidate(s), 0 object id(s), itsnitrox.tech,97bf1.com,wealthmanagementplan.cfd
@@ -25,7 +25,7 @@ verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
   source-1-citadel & source-2-greybox: 2 shared object(s) on fight-club,inception
      hsc:78164859
      hsc:210544560
-  source-1-citadel: 11 url(s), 2 named object(s)
+  source-1-citadel: 12 url(s), 2 named object(s)
   source-2-greybox: 38 url(s), 2 named object(s)
-  candidate-nxsha: 20 url(s), 0 named object(s)
+  candidate-nxsha: 19 url(s), 0 named object(s)
 domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, workers.dev:candidate-nxsha, fcxmb.com:source-1-citadel+source-2-greybox, 97bf1.com:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha
