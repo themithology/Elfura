@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T13:26:33.972Z",
+  "measuredAt": "2026-11-25T13:36:11.760Z",
   "titles": [
     "fight-club",
     "inception",
@@ -34,7 +34,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 2
+          "candidates": 3
         },
         {
           "title": "naruto-s1e1",
@@ -58,11 +58,11 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 3
+          "candidates": 0
         },
         {
           "title": "naruto-s1e1",
-          "candidates": 3
+          "candidates": 0
         }
       ]
     },
@@ -84,7 +84,7 @@
         },
         {
           "title": "got-s1e1",
-          "candidates": 2
+          "candidates": 3
         },
         {
           "title": "naruto-s1e1",

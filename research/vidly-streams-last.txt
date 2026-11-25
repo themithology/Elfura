@@ -1,4 +1,4 @@
-vidly stream probe, 2026-11-25T13:29:37.124Z
+vidly stream probe, 2026-11-25T13:40:12.880Z
   watch-page           200 50545B tokens=0 nextjs=true
   bundle               7 chunk(s)  endpoints=[/api/thumbs,/api/episodes,/api/sources,/api/subtitles]
   key candidates       8

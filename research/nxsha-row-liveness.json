@@ -1,0 +1,463 @@
+{
+  "measuredAt": "2026-11-25T13:37:13.843Z",
+  "rows": [
+    {
+      "title": "fight-club",
+      "lane": "nitro",
+      "label": "hguider | 1080P",
+      "url": "https://wts.itsnitrox.tech/pitro/32jng4LJsceBlu4orp1tMut6RWXF6wTqIeXsYYA/3455334d743569636c5233636831324c30596a4d3463544d78517a4c7a63444e30556a4e316b7a4e78385364325a47616e68576131686d637270476176456c5435633056765a4653786847526e7046653552555a61566d525368324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "nitro",
+      "label": "hguider",
+      "url": "https://wts.itsnitrox.tech/pitro/yaQD09POZPcSGzpcimtGskr6TKD8kueBqTwRmsM/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e76416a4e7851544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355793430514631434f31566a557764465a35686e62523557616a4e6b56763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "nitro",
+      "label": "hguider | 1080P",
+      "url": "https://wts.itsnitrox.tech/pitro/-IhnnZA_D0SSUu3Ja9Wd_NMkqFDmRB1gNhHI0vw/3455334d743569636c5233636831324c334d544e3541444d79637a4c3555544d30556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176454665774d334d336f6c596c706e577977456442467a59554a325854647a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "watchout",
+      "label": "watchout",
+      "url": "https://suw.halcyoncreative.site/v4/us/noyr5v/cf-master.1779275191.txt?e=/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": null,
+        "error": "TypeError: fetch failed"
+      },
+      "withRowHeaders": {
+        "status": null,
+        "error": "TypeError: fetch failed"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "awsind",
+      "label": "Hindi",
+      "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT21keatWWqZkaNRUQzoFRBVjWEtGNapmSp10VNhXT6VkeZdVRz8EVoh2TXVVP:1795604239:188.221.72.48:c8b8b61125446a701c76e81faebc3c086c0d6dd31819a48e827dee5d8d961ca6:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "purstream",
+      "label": "Purstream · pulse · 1080p · MULTI",
+      "url": "https://free.finepulfe.xyz/movies/550-n4lvc/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 200,
+        "contentType": "application/vnd.apple.mpegurl",
+        "bytes": 823,
+        "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA:T",
+        "isManifest": true,
+        "isMarkup": false,
+        "finalHost": "free.finepulfe.xyz"
+      },
+      "withRowHeaders": {
+        "status": 200,
+        "contentType": "application/vnd.apple.mpegurl",
+        "bytes": 823,
+        "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA:T",
+        "isManifest": true,
+        "isMarkup": false,
+        "finalHost": "free.finepulfe.xyz"
+      }
+    },
+    {
+      "title": "fight-club",
+      "lane": "ophim",
+      "label": "Vietsub (Full)",
+      "url": "https://v7.kkphimplayer7.com/20260616/wxHYkHMr/index.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 892,
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "v7.kkphimplayer7.com"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 892,
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "v7.kkphimplayer7.com"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "hguider | 1080P",
+      "url": "https://wts.itsnitrox.tech/pitro/oLUFlj-MiZMXDs2b06azkBDrhEangZOZzz3iycA/3455334d743569636c5233636831324c7955444d3441444e31457a4c794d6a4d32556a4e316b7a4e78385364325a47616e68576131686d637270476176635764504a456371746d55354531564f6c31643355336354423353564e7a4c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "1080P",
+      "url": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=62bac6fe75c4d6838620c07fa0ee0f73-1795639193-104.28.196.55-2817502dd4130746e6e3fbc839b0c9ab300b4a9a1a6dbb01edb0706d07934a57",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html",
+        "bytes": 555,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "s14-s1001604.97bf1.com"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html",
+        "bytes": 555,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "s14-s1001604.97bf1.com"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "hguider | 1080P | Hindi | English",
+      "url": "https://wts.itsnitrox.tech/pitro/UUna7P3Cjasfxx9q5j8lyMQawsu8c0puo94lLoY/3d6754647a306d4c795647647a4657627649544e7767444d3055544d76417a4d7959544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355575247553477575373706e634d5a4852483946615152484f78426a62763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "hguider | 1080P | Hindi | English",
+      "url": "https://wts.itsnitrox.tech/pitro/yA34hgiOixUGhFx5NAzYWR5818VWa6aWuf9_WMc/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c35496a4d32556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636e56587830643031555a474a48524d46454e426447646d5245524d74324c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "hguider | 1080P | Hindi | English",
+      "url": "https://wts.itsnitrox.tech/pitro/iqKRIycTCPLh3sIN8-T1Eu7GE3YV5eS05X4uReI/3d6754647a306d4c795647647a4657627649544e7767444d3055544d76417a4d7959544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355575247553477575373706e634d5a4852483946615152484f78426a62763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "label": "hguider | 1080P | Hindi | English",
+      "url": "https://wts.itsnitrox.tech/pitro/xelLjuhZDWPItOmqg1B_-TaJfy5B3NYpy4c1h-c/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c774d6a4d32556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f703261764555524f56564d6f42334e4a4648534656544c704a565468466e515731794c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      },
+      "withRowHeaders": {
+        "status": 403,
+        "contentType": "text/html; charset=UTF-8",
+        "bytes": 4551,
+        "first": "<!DOCTYPE html> <!--[if lt IE 7]> <html ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "wts.itsnitrox.tech"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "watchout",
+      "label": "watchout",
+      "url": "https://dd2stliwt0bc.wealthmanagementplan.cfd/sosNVcMrPrym/hls3/01/08534/vv8fvdwysiqc_n/master.txt?e=/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "dd2stliwt0bc.wealthmanagementplan.cfd"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "dd2stliwt0bc.wealthmanagementplan.cfd"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "awsind",
+      "label": "Hindi",
+      "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2llMNVTTEZlaOdkUo5kaKpWTtlUMNpmRs5kMVNjTUFUeadVV49ERBBTTtVUP:1795611663:188.221.72.48:50cece746a54550d61b5f91b4aa5fdcec4a3cf3586e3ebdb31d1c42ad2e39d5c:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "awsind",
+      "label": "English",
+      "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT29ERrhXW6FkMPdUVy0EVslWWqlFNNpWQy0ERjVTWtl0MOJTR61ERRJjT6VUP:1795611663:188.221.72.48:5d15bb9f71e8b753fa5a24a932ca341d0a409505f9a16bb66e9acaa54dfd0a8b:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html; charset=utf8",
+        "bytes": 548,
+        "first": "<html> <head><title>404 Not Found</titl",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "cdn30091.asrmo449ddj.com"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "purstream",
+      "label": "Purstream · pulse · 1080p · MULTI",
+      "url": "https://free.finepulfe.xyz/tv/1399-u15cs/S01/E01/master.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 200,
+        "contentType": "application/vnd.apple.mpegurl",
+        "bytes": 675,
+        "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA:T",
+        "isManifest": true,
+        "isMarkup": false,
+        "finalHost": "free.finepulfe.xyz"
+      },
+      "withRowHeaders": {
+        "status": 200,
+        "contentType": "application/vnd.apple.mpegurl",
+        "bytes": 675,
+        "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA:T",
+        "isManifest": true,
+        "isMarkup": false,
+        "finalHost": "free.finepulfe.xyz"
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "ophim",
+      "label": "Vietsub (Tập 01)",
+      "url": "https://s3.phim1280.tv/20240730/up9im6mI/index.m3u8",
+      "orgUriSame": true,
+      "headers": {},
+      "plain": {
+        "status": 404,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 892,
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "s3.phim1280.tv"
+      },
+      "withRowHeaders": {
+        "status": 404,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 892,
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> ",
+        "isManifest": false,
+        "isMarkup": true,
+        "finalHost": "s3.phim1280.tv"
+      }
+    }
+  ]
+}

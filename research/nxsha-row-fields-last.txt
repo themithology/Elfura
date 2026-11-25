@@ -15,7 +15,7 @@ lanes on offer: nitro, castle, watchout, awsind, vixolity, purstream, ophim, zok
   naruto-s1e1   purstream  1 row(s)
   naruto-s1e1   ophim      0 row(s)
   naruto-s1e1   zoko       0 row(s)
-  got-s1e1      nitro      1 row(s)
+  got-s1e1      nitro      6 row(s)
   got-s1e1      castle     15 row(s)
   got-s1e1      watchout   1 row(s)
   got-s1e1      awsind     2 row(s)
@@ -25,14 +25,14 @@ lanes on offer: nitro, castle, watchout, awsind, vixolity, purstream, ophim, zok
   got-s1e1      zoko       1 row(s)
 
 fields present on real rows (non-empty count, samples):
-  id              42  nitro-0 | nitro-1 | nitro-2 | castle-0 | castle-1
-  provider        42  nitro | nitro | nitro | castle | castle
-  url             42  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
-  org_uri         42  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
-  headers         42  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
-  quality         42  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
-  label           42  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
-  isEmbed         42  false | false | false | false | false
-  type            42  m3u8 | m3u8 | m3u8 | m3u8 | m3u8
+  id              47  nitro-0 | nitro-1 | nitro-2 | castle-0 | castle-1
+  provider        47  nitro | nitro | nitro | castle | castle
+  url             47  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
+  org_uri         47  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://catflix.nxstreamhub.workers.dev/ | https://catflix.nxstreamhub.workers.dev/
+  headers         47  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
+  quality         47  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
+  label           47  hguider | 1080P | hguider | hguider | 1080P | [English] - FHD 1080P | [English] - HD 720P
+  isEmbed         47  false | false | false | false | false
+  type            47  m3u8 | m3u8 | m3u8 | m3u8 | m3u8
 
 wrote research/nxsha-row-fields.json
