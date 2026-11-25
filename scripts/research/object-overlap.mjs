@@ -163,9 +163,13 @@ async function main() {
 
   let createCitadelAdapter;
   let createGreyboxAdapter;
+  // nxsha is NOT approved, so it is imported from attic on purpose: this probe's
+  // job is to measure a candidate against the board before anyone registers it.
+  let fetchFromNxsha;
   try {
     ({ createCitadelAdapter } = await import('../../dist/backend/sources/citadel.js'));
     ({ createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js'));
+    ({ fetchFromNxsha } = await import('../../backend/attic/sources/source5.ts'));
   } catch (error) {
     console.error('Build the backend first: npm run build:backend');
     throw error;
@@ -177,6 +181,13 @@ async function main() {
   const lanes = {
     'source-1-citadel': createCitadelAdapter(),
     'source-2-greybox': createGreyboxAdapter(),
+    // Same interface, so it is measured by exactly the same code.
+    'candidate-nxsha': {
+      id: 'candidate-nxsha',
+      resolve: async (query) => ({
+        candidates: await fetchFromNxsha(query, undefined, {}),
+      }),
+    },
   };
 
   const rows = [];
