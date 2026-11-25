@@ -84,18 +84,57 @@ of.
    its lane list to HLS lanes and excluded embed-only hosts, season packs and
    unbounded fan-out. Any rebuild must keep those refusals.
 
-## Verdict
+## The lane survey (all 30, measured 2026-11-25)
 
-**It is a genuine candidate for source 3** — the first one that has cleared
-"different objects, not a different name for the same pipe". The measured
-numbers support building it far more than vidlink's ever did.
+| result | lanes |
+| — | — |
+| **serves media (6)** | `nitro`, `watchout`, `awsind`, `purstream`, `ophim`, `zoko` |
+| **relay-shaped (2)** | `castle`, `vixolity` — both `*.nxstreamhub.workers.dev` |
+| **nothing (22)** | the rest |
+| **Google Drive (0)** | — |
 
-It is **not registered**, and should not be until an adapter exists with:
+The relay finding is the one worth having: `castle` reads like a normal scraper
+name and is a `workers.dev` front. It is refused twice — off the allowlist, and
+again by the host filter.
 
-- the four `rive-*` lanes filtered out by construction (they are source-1),
-- `workers.dev` and relay-shaped hosts refused, as source-2 already does,
-- the same measured-bytes contract gate as the board,
-- a lane allowlist rather than all 30, tuned to what actually plays.
+The six media lanes carry genuinely different catalogues:
 
-The retired adapter is a reference for the protocol, not a thing to restore: it
-predates the zero-disk rule, the language fallback and the size ranking.
+| lane | host | label |
+| — | — | — |
+| `nitro` | `wts.itsnitrox.tech` | 1080P |
+| `watchout` | `suw.halcyoncreative.site` | watchout |
+| `awsind` | `i-arch-400.asrmo449ddj.com` | **Hindi** |
+| `purstream` | `free.finepulfe.xyz` | pulse · 1080 |
+| `ophim` | `v7.kkphimplayer7.com` | Vietsub |
+| `zoko` | `hls.dramahot.top` | **ZokoAnime** |
+
+## Registered and proven
+
+Source 3 is on the board. The contract, on a runner:
+
+```
+✓ source-1: resolved 2 candidate(s),  65536 segment bytes, 1480ms
+✓ source-2: resolved 9 candidate(s), 2100702 segment bytes, 9224ms
+✓ source-3: resolved 8 candidate(s),  242803 segment bytes, 1951ms
+✓ source contract: 3/3 approved source(s) produced real bytes
+```
+
+Third lane on the board, 1.9 s, and the only one carrying anime.
+
+The first contract run failed it — `candidate needs request headers or the CDN
+will refuse the player` — because nxsha hands out per-row headers its media hosts
+check, and the adapter was dropping them. That is the gate doing its job: an
+adapter that looks right and cannot play was caught before it served anyone.
+
+## Rules the adapter enforces
+
+- `rive-*` filtered **by pattern**, not by a comment, because `rive-citadel` IS
+  source-1 and including it would request one catalogue twice per resolve.
+- `workers.dev`, relay-shaped hosts, Drive and `usercontent` pages refused — the
+  same rules source-2 applies and the same reason six sources were rejected.
+- per-row headers forwarded through an allowlist (UA, Referer, Origin only, no
+  CRLF), so a provider cannot inject a header into the proxy.
+- a rotated passphrase yields no candidates rather than an exception: a rotation
+  is a quiet lane, not an outage.
+- `query.signal ?? own timer`, never `AbortSignal.any` — which would make the
+  caller's deadline irrelevant the moment this lane's own timer fired.
