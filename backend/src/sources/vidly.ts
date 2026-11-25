@@ -35,21 +35,19 @@
  * liveness probe harvests them from the master and that is the authority; this
  * adapter does not report `availableAudioLangs`, because it never reads one.
  *
- * BUT IT DOES READ ONE FIELD THAT IS IN THE PAGE
+ * WHY THIS ADAPTER CLAIMS NO LANGUAGE OF ITS OWN
  * ----------------------------------------------
- * The first version of this adapter shipped without `claimedAudioLang`, and the
- * board-live test caught it: "Source 4 · Multi-Audio reached the player with no
- * language at all". That was not a test being pedantic. This lane DOES declare
- * multi-audio (the masters say so), and it won the English race on measured
- * bytes while telling the player nothing about what it would play — so it
- * promoted itself to the primary stream with no language attached and then had
- * to be ordered by evidence it had not been given.
+ * The first version shipped without `claimedAudioLang` and the live board test
+ * flagged the resulting stream for "no language at all". The obvious fix was to
+ * read the page's language attribute — so the page was measured first, on a
+ * runner, and it carries none: `<html lang="en">` (the interface), no
+ * `data-lang`, no language JSON key, not one occurrence of "hindi", "tamil",
+ * "telugu", "kannada" or "malayalam" in three watch pages.
  *
- * The fix is evidence the page already carries: the slug in the path —
- * `/watch/movie/550/fight-club` — and the site's own language attribute on the
- * player element. Both are provider claims, so they are `claimedAudioLang`, never
- * `audioLang`. The verified set still comes from the manifest, which is the only
- * thing that can honestly answer "which languages does this file actually have".
+ * So there is no claim to make, and inventing one from the interface locale
+ * would have been the worst possible answer: every title would report "en" no
+ * matter what it played. The manifest is the only honest source, the registry's
+ * probe reads it, and `availableAudioLangs` carries what it found.
  *
  * WHAT THIS ADAPTER REFUSES
  * -------------------------
@@ -107,26 +105,6 @@ export function embeddedManifests(html: string): string[] {
   return [...found];
 }
 
-/**
- * Language the page declares, as a provider claim.
- *
- * Only ever reads a declared attribute — `data-lang`, `lang`, or an
- * `audio-language` key in the page's own JSON. A label is not a language, which
- * is exactly why this becomes `claimedAudioLang` and not `audioLang`.
- */
-export function claimedLanguageOf(html: string): string | undefined {
-  const patterns = [
-    /data-(?:audio-)?lang=["']([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)["']/i,
-    /"audio_?[Ll]anguage"\s*:\s*"([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)"/,
-    /<video[^>]*\blang=["']([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)["']/i,
-  ];
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return match[1].replace('_', '-').toLowerCase();
-  }
-  return undefined;
-}
-
 /** Quality from the path, when the provider has already encoded it. */
 export function qualityOf(url: string): string {
   const height = url.match(/\b(2160|1440|1080|720|480|360)p\b/i)?.[1];
@@ -141,7 +119,6 @@ export function qualityOf(url: string): string {
  */
 export function vidlyCandidates(html: string, pageUrl: string): RawStreamCandidate[] {
   const out: RawStreamCandidate[] = [];
-  const claimed = claimedLanguageOf(html);
   const seen = new Set<string>();
   for (const raw of embeddedManifests(html)) {
     if (out.length >= 8) break;
@@ -166,9 +143,6 @@ export function vidlyCandidates(html: string, pageUrl: string): RawStreamCandida
       // The page carries media for this title and nothing else; a single row is
       // the normal case. Rank by discovery order, and let measured bytes decide.
       rank: out.length,
-      // The page's declared language, when it declares one. Claimed, not verified:
-      // the manifest is what proves what the file carries.
-      ...(claimed ? { claimedAudioLang: claimed } : {}),
       headers: { 'User-Agent': UA, Referer: pageUrl, Origin: DEFAULT_ORIGIN },
       // Scoping the whole relay to the measured media host means an HLS child
       // pointing anywhere else is refused by the proxy itself, not just here.

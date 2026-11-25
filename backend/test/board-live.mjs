@@ -135,26 +135,60 @@ assert(wanted.size.meanBytes > 0, 'a reported mean of zero bytes is not a measur
 assert(wanted.size.maxBytes >= wanted.size.meanBytes, 'the biggest stream cannot be smaller than the mean');
 
 // ── 3. every stream tells the player what language it is ───────────────────
+//
+// A stream can tell the player its language in four different ways, and this
+// check used to read two of them. That was not a harmless omission: a
+// multi-audio stream has NO single language by definition — the selection layer
+// deliberately clears `audioLang` on it and publishes the set instead — so the
+// check demanded a single language from exactly the streams that carry several,
+// and went red on source-3, then on source-4, for doing the right thing.
+//
+// This is the same mistake the vidly subtitle pass made: read one field, draw a
+// conclusion about the whole row.
+const langsOf = (stream) => [
+  stream.audioLang,
+  stream.claimedAudioLang,
+  ...(stream.availableAudioLangs ?? []),
+].filter((code) => typeof code === 'string' && code !== 'und');
+
 for (const stream of wanted.sources) {
+  const known = langsOf(stream);
   assert(
-    stream.audioLang || stream.claimedAudioLang,
-    `${stream.label} reached the player with no language at all`,
+    known.length > 0,
+    `${stream.label} reached the player with no language at all — no audioLang, ` +
+      'no claimedAudioLang and an empty availableAudioLangs',
   );
+  if (stream.multiAudio) {
+    // Multi-audio must name more than one, or the flag is a lie the player will
+    // act on (it offers a language switch that changes nothing).
+    assert(
+      known.length > 1,
+      `${stream.label} is advertised multi-audio but names only ${JSON.stringify(known)}`,
+    );
+  }
 }
 
 // ── 4. THE RULE: within the requested language, the biggest stream opens ────
 const primary = wanted.primary;
 assert(Number.isFinite(primary?.measuredBytes), 'the stream the player opens on carries no measured size');
-const primaryLang = primary.audioLang ?? primary.claimedAudioLang;
+// The primary carries the requested language if ANY of its language evidence
+// matches it. For a multi-audio stream that means the set contains it, which is
+// the honest meaning of "this stream can play English".
+const primaryLangs = langsOf(primary ?? {}).map((code) => code.split('-')[0]);
 assert(
-  primaryLang && primaryLang.split('-')[0] === lang.split('-')[0],
-  `the primary stream is "${primaryLang}", not the requested "${lang}"`,
+  primaryLangs.includes(lang.split('-')[0]),
+  `the primary stream carries "${primaryLangs.join(',') || 'nothing'}", not the requested "${lang}"`,
 );
+// The size rule still holds inside the language: no bigger stream may offer the
+// same language the primary offers, or the wrong copy won.
+const primarySet = new Set(primaryLangs);
 const biggerSameLang = wanted.sources.filter(
   (s) =>
     Number.isFinite(s.measuredBytes) &&
     s.measuredBytes > primary.measuredBytes &&
-    (s.audioLang ?? s.claimedAudioLang) === primaryLang,
+    langsOf(s)
+      .map((code) => code.split('-')[0])
+      .some((code) => primarySet.has(code)),
 );
 assert.equal(
   biggerSameLang.length,
@@ -163,7 +197,7 @@ assert.equal(
     `${(primary.measuredBytes / MB_).toFixed(0)}MB primary in the same language`,
 );
 quiet(
-  `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${primaryLang} stream listed`,
+  `  primary ${(primary.measuredBytes / MB_).toFixed(0)}MB is the biggest ${[...primarySet].join('/')} stream listed`,
 );
 
 // What the board can actually PLAY, by language. Raw adapter rows are not proof:
