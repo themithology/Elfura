@@ -59,8 +59,23 @@ async function get(url, headers = {}, timeout = 20_000) {
     const text = await response.text();
     return { status: response.status, text, headers: response.headers };
   } catch (error) {
-    return { status: null, text: '', error: error?.name ?? String(error) };
+    // The MESSAGE, not just the name: a TypeError covers DNS, TLS, a bad header
+    // and a refused connection, and 'TypeError' alone says nothing about which.
+    const cause = error?.cause?.code ?? error?.cause?.message ?? '';
+    return { status: null, text: '', error: `${error?.name ?? 'error'}: ${error?.message ?? ''}${cause ? ` (${cause})` : ''}` };
   }
+}
+
+/** What a step answered, so a 403 and a 400 are never the same row again. */
+function stepDetail(response, extra = {}) {
+  return {
+    status: response.status,
+    bytes: response.text.length,
+    body: response.text.slice(0, 180).replace(/\s+/g, ' ').trim(),
+    contentType: response.headers?.get?.('content-type')?.slice(0, 60) ?? null,
+    ...(response.error ? { error: response.error } : {}),
+    ...extra,
+  };
 }
 
 /** Every absolute media URL in a blob of JSON or HTML. */
@@ -92,28 +107,26 @@ async function probeKisskh() {
 
   // Is the site reachable at all?
   const home = await get(`${base}/`, {}, 20_000);
-  out.steps.push({ step: 'home', status: home.status, bytes: home.text.length, error: home.error });
+  out.steps.push({ step: 'home', ...stepDetail(home) });
 
   // A known drama id. 192143 is the id enc-dec's own sample uses.
   const listing = await get(`${base}/api/DramaList/Drama/192143?isq=false`, {}, 20_000);
+  let listingKeys = [];
+  try {
+    listingKeys = listing.text.startsWith('{') ? Object.keys(JSON.parse(listing.text)).slice(0, 12) : [];
+  } catch {
+    /* not JSON */
+  }
   out.steps.push({
     step: 'listing',
     url: `${base}/api/DramaList/Drama/192143?isq=false`,
-    status: listing.status,
-    bytes: listing.text.length,
-    keys: listing.text.startsWith('{') ? Object.keys(JSON.parse(listing.text || '{}')).slice(0, 10) : [],
-    error: listing.error,
+    keys: listingKeys,
+    ...stepDetail(listing),
   });
 
-  // The episode endpoint both with and without a key: does the site gate it?
+  // The episode endpoint with no key at all: does the site gate it?
   const noKey = await get(`${base}/api/DramaList/Episode/192143.png?err=false&ts=&time=`, {}, 20_000);
-  out.steps.push({
-    step: 'episode-no-key',
-    status: noKey.status,
-    bytes: noKey.text.length,
-    body: noKey.text.slice(0, 160),
-    error: noKey.error,
-  });
+  out.steps.push({ step: 'episode-no-key', ...stepDetail(noKey) });
 
   // If the site answers without a key, no third party is needed for this step.
   const urls = mediaUrls(noKey.text);
@@ -148,13 +161,19 @@ async function probeAnimekai() {
 
   // Cyberpunk Edgerunners' content id, taken from enc-dec's own sample page.
   const watch = await get(`${base}/watch/cyberpunk-edgerunners-x6qm`, headers, 20_000);
-  const contentId = watch.text.match(/id="anime-rating"[^>]*data-id="([^"]+)"/)?.[1] ?? null;
+  // The rating div is what enc-dec's sample read. The page may have moved it, so
+  // fall back to any data-id on the watch page rather than reporting 'unknown'.
+  const contentId =
+    watch.text.match(/id="anime-rating"[^>]*data-id="([^"]+)"/)?.[1] ??
+    watch.text.match(/data-id="(\d{3,10})"/)?.[1] ??
+    watch.text.match(/\/watch\/[^"]*?([a-z0-9]{4})(?:["'/]|$)/)?.[1] ??
+    null;
   out.steps.push({
     step: 'watch-page',
-    status: watch.status,
-    bytes: watch.text.length,
     contentId,
-    error: watch.error,
+    // Which shape the id was found in, so a null is diagnosable next run.
+    idSource: /id="anime-rating"/.test(watch.text) ? 'anime-rating div' : contentId ? 'fallback' : 'not found',
+    ...stepDetail(watch),
   });
 
   if (contentId) {
@@ -197,13 +216,13 @@ async function probeYflix() {
   // All three domains that enc-dec lists as the same service.
   for (const host of ['yflix.to', '1movies.bz', 'solarmovie.fi']) {
     const response = await get(`https://${host}/`, headers, 15_000);
-    out.steps.push({ step: `home:${host}`, status: response.status, bytes: response.text.length, error: response.error });
+    out.steps.push({ step: `home:${host}`, ...stepDetail(response) });
     if (host !== 'yflix.to') await sleep(2000);
   }
 
   const watch = await get('https://yflix.to/watch/cyberpunk-edgerunners.b4d24', headers, 20_000);
   const contentId = watch.text.match(/id="movie-rating"[^>]*data-id="([^"]+)"/)?.[1] ?? null;
-  out.steps.push({ step: 'watch-page', status: watch.status, bytes: watch.text.length, contentId, error: watch.error });
+  out.steps.push({ step: 'watch-page', contentId, ...stepDetail(watch) });
 
   if (contentId) {
     // Episodes list with no `_` token: does the ajax endpoint gate it?
@@ -212,13 +231,7 @@ async function probeYflix() {
       headers,
       20_000,
     );
-    out.steps.push({
-      step: 'episodes-bare',
-      status: bare.status,
-      bytes: bare.text.length,
-      body: bare.text.slice(0, 200),
-      error: bare.error,
-    });
+    out.steps.push({ step: 'episodes-bare', ...stepDetail(bare) });
     // Is the response plain HTML markup (parseable without enc-dec)?
     const looksLikeHtml = /<[a-z][\s\S]*>/i.test(bare.text);
     out.thirdParty = looksLikeHtml
@@ -278,9 +291,12 @@ async function main() {
       row = { site: name, probeError: String(error?.message ?? error).slice(0, 300) };
     }
     results.push({ id: name, ...row });
-    const reach = row.steps?.filter((s) => s.status === 200).length ?? 0;
-    const total = row.steps?.length ?? 0;
-    console.log(`  reachable ${reach}/${total} step(s)`);
+    for (const step of row.steps ?? []) {
+      const where = step.status ?? step.error ?? 'no answer';
+      console.log(`  ${step.step.padEnd(18)} ${String(where).slice(0, 70)}`);
+      if (step.contentType) console.log(`  ${''.padEnd(18)} content-type ${step.contentType}`);
+      if (step.body && step.status !== 200) console.log(`  ${''.padEnd(18)} said: ${step.body.slice(0, 100)}`);
+    }
     if (row.media?.length) console.log(`  media: ${row.media.length} url(s) on ${row.domains.join(', ')}`);
     if (row.languages?.length) console.log(`  declared languages: ${row.languages.join(',')}`);
     if (row.thirdParty) console.log(`  third party: ${row.thirdParty}`);
