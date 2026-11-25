@@ -100,36 +100,10 @@ async function inspectDash(url) {
 async function main() {
   console.log('anivortex 426 probe,', new Date().toISOString());
 
-  let anivortex;
-  try {
-    // The adapter is in attic: this measures what it WOULD return without
-    // registering it. Built on demand, the same way the vidlink re-test does it,
-    // because attic is deliberately not part of the shipped build.
-    const { createSource17Adapter } = await import('../../dist/attic/source17.js').catch(async () => {
-      const { execFileSync } = await import('node:child_process');
-      console.log('retired adapter not built — compiling it for this run');
-      execFileSync(
-        'npx',
-        [
-          'tsc',
-          'backend/attic/sources/source17.ts',
-          '--outDir', 'dist/attic',
-          '--module', 'NodeNext',
-          '--moduleResolution', 'NodeNext',
-          '--target', 'ES2022',
-          '--skipLibCheck',
-          '--esModuleInterop',
-        ],
-        { stdio: 'inherit' },
-      );
-      return import('../../dist/attic/source17.js');
-    });
-    const adapter = createSource17Adapter(() => true);
-    anivortex = async (query) => (await adapter.resolve(query)).candidates;
-  } catch (error) {
-    console.error(`cannot load the retired adapter: ${error?.message ?? error}`);
-    process.exit(2);
-  }
+  // Reach TGVIDX through this repo's probe client. Importing the retired adapter
+  // fails on the runner: attic is not compiled and its own imports were rewritten
+  // when it moved, so '../security.js' resolves nowhere. Same trap as nxsha.
+  const { inventory, mediaUrl } = await import('./tgvidx-client.mjs');
 
   const titles = [
     { key: 'breaking-bad-s1e1', type: 'tv', tmdbId: '1396', season: 1, episode: 1 },
@@ -140,13 +114,32 @@ async function main() {
   const rows = [];
   for (const title of titles) {
     await sleep(4000);
-    let candidates = [];
-    try {
-      candidates = (await anivortex({ ...title })) ?? [];
-    } catch (error) {
-      rows.push({ title: title.key, error: String(error?.message ?? error).slice(0, 120) });
+    const found = await inventory(title);
+    if (found.error) {
+      rows.push({ title: title.key, error: found.error });
+      console.log(`  ${title.key.padEnd(18)} ${found.error}`);
       continue;
     }
+    // Same admission rules the retired adapter applied, so nothing is credited
+    // here that the board would refuse: https only, a real media extension or a
+    // declared hls/dash type, and never the recursive TG "pirate" self-link.
+    const candidates = found.rows
+      .filter((row) => !/\b(?:tg\s*)?pirate\b/i.test(String(row?.server ?? '') + ' ' + String(row?.label ?? '')))
+      .map((row) => {
+        const url = mediaUrl(row?.url);
+        if (!url) return null;
+        const declared = String(row?.type ?? '').toLowerCase();
+        const kind =
+          /\.m3u8(?:[?#]|$)/i.test(url) || /hls|m3u8/.test(declared)
+            ? 'hls'
+            : /\.mpd(?:[?#]|$)/i.test(url) || /dash|mpd/.test(declared)
+              ? 'dash'
+              : null;
+        if (!kind) return null;
+        const label = String(row?.label ?? '');
+        return { url, type: kind, audioLang: /\bhindi\b/i.test(label) ? 'hi' : (/english/i.test(label) ? 'en' : undefined) };
+      })
+      .filter(Boolean);
     const perHost = {};
     for (const candidate of candidates) {
       let host;
