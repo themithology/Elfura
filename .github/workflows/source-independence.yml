@@ -32,6 +32,7 @@ on:
       - 'scripts/research/nxsha-row-liveness.mjs'
       - 'scripts/research/nxsha-breaking-bad.mjs'
       - 'scripts/research/nxsha-castle-headers.mjs'
+      - 'scripts/research/nxsha-all-lanes.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -74,6 +75,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # The board treated 22 lanes as dead on a 2-title sample. Ask all 30 against
+      # Indian-weighted titles, and all six RiveStream providers, not just citadel.
+      - name: Survey all lanes of both multi-lane sources
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-all-lanes.mjs 2>&1 | tee research/nxsha-all-lanes-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -220,7 +231,8 @@ jobs:
                   research/nxsha-row-fields.json research/nxsha-row-fields-last.txt \
                   research/nxsha-row-liveness.json research/nxsha-row-liveness-last.txt \
                   research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt \
-                  research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt
+                  research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt \
+                  research/nxsha-all-lanes.json research/nxsha-all-lanes-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
