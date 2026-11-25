@@ -1,31 +1,39 @@
-  lanes answering: source-1=2, source-2=9, source-3=2, source-4=1
+  lanes answering: source-1=2, source-2=9, source-3=5, source-4=1
   languages any adapter returned: en, hi, fr, uk, ru, es, pt; ranking inside "en"
-[elfura-greybox] movie/550: throttled, retrying once
 [elfura-citadel] movie/550: 2 row(s)
-[elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
-[elfura-sources] source-2 movie/550: 0 candidates in 1708ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-greybox] movie/550: 9 row(s), langs=7
 
-  "en" request: 4 stream(s), primary Source 4 · Multi-Audio
+  "en" request: 16 stream(s), primary Source 4 · Multi-Audio
     Source 4 · Multi-Audio [undefined label] 2023MB
-    Source 3 · Multi-Audio [undefined label] 1668MB
+    Source 3 [en label]                    5302MB
+    Source 3 #2 [en label]                 1378MB
     Source 1 · English [en label]          1376MB
     Source 1 · English #2 [en label]       400MB
+    Source 3 #3 [en label]                 unmeasured
+    Source 2 · 720P [en label]             unmeasured
+    Source 2 · 480P [en label]             unmeasured
+    Source 3 · Multi-Audio [undefined label] unmeasured
+    Source 2 · 1080P [hi label]            unmeasured
+    Source 2 · 1080P #2 [fr label]         unmeasured
+    Source 2 · 360P [uk label]             unmeasured
+    Source 2 [ru label]                    unmeasured
+    Source 2 #2 [es label]                 unmeasured
+    Source 2 #3 [pt label]                 unmeasured
+    Source 2 #4 [es label]                 unmeasured
 
-  mean 1367MB over 4/4 measured, biggest 2023MB
-  primary 2023MB is the biggest de/en/es/fr/it/ja/pl/pt/tr stream listed
+  mean 2096MB over 5/16 measured, biggest 5302MB
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
 
-  playable languages on this title: de, en, es, fr, it, ja, pl, pt, tr
-[elfura-greybox] movie/550: throttled 45s ago, not re-asking
-[elfura-sources] source-2 movie/550: 0 candidates in 0ms :: 0 req (observed global fetch; lookup=fresh)
-[elfura-citadel] movie/550: 2 row(s)
+AssertionError [ERR_ASSERTION]: Source 3 · Multi-Audio reached the player with no language at all — no audioLang, no claimedAudioLang and an empty availableAudioLangs
+    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:162:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
 
-  "hi" request: 4 stream(s), primary "de"
-  reported fallback: requested "hi" (no-stream-in-language)
-[elfura-greybox] movie/550: throttled 44s ago, not re-asking
-[elfura-sources] source-2 movie/550: 0 candidates in 1ms :: 0 req (observed global fetch; lookup=fresh)
-[elfura-citadel] movie/550: 2 row(s)
-
-  "de" request: 4 stream(s), primary Source 4 · Multi-Audio
-  primary 2023MB, language "de"
-
-✓ board live: real sizes measured, requested language ranked biggest-first
+Node.js v22.23.5
