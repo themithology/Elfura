@@ -1,8 +1,8 @@
 [elfura-citadel] movie/550: 2 row(s)
-✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 2169ms
+✓ source-1: resolved 2 candidate(s), 65536 segment bytes, 3111ms
 [elfura-greybox] movie/550: 9 row(s), langs=7
-✓ source-2: resolved 9 candidate(s), 2100702 segment bytes, 4283ms
-✓ source-3: resolved 5 candidate(s), 6999992 segment bytes, 1861ms
-✓ source-4: resolved 1 candidate(s), 819609 segment bytes, 1327ms
+✓ source-2: resolved 9 candidate(s), 2100702 segment bytes, 6451ms
+✓ source-3: resolved 5 candidate(s), 6999992 segment bytes, 2946ms
+✓ source-4: resolved 1 candidate(s), 819609 segment bytes, 1394ms
 
 ✓ source contract: 4/4 approved source(s) produced real bytes
