@@ -1,4 +1,4 @@
-vidlink bytes probe, 2026-11-25T08:38:22.273Z
+vidlink bytes probe, 2026-11-25T08:48:53.816Z
 The vidlink adapter is archived at backend/attic/sources/source3-vidlink.ts.
 To re-test the source:
   git mv backend/attic/sources/source3-vidlink.ts backend/src/sources/vidlink.ts

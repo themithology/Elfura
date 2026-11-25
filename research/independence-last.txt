@@ -1,16 +1,15 @@
-independence probe 2026-11-25T08:37:26.178Z
+independence probe 2026-11-25T08:47:44.839Z
 
 — reading the board
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-citadel] movie/27205: 6 row(s)
-[elfura-citadel] tv/1399: 4 row(s)
 [elfura-citadel] tv/46260: 1 row(s)
 [elfura-greybox] movie/550: 11 row(s), langs=8
 [elfura-greybox] movie/27205: 10 row(s), langs=7
-[elfura-greybox] tv/1399: throttled, retrying once
 [elfura-greybox] tv/1399: 9 row(s), langs=6
-[elfura-greybox] tv/46260: 9 row(s), langs=7
-  source-1: 4 media host(s) :: img1.hscow.com, img.hscow.com, img1.fcxmb.com, img.fcxmb.com
+[elfura-greybox] tv/46260: throttled, retrying once
+[elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
+  source-1: 2 media host(s) :: img1.hscow.com, img.hscow.com
   source-2: 1 media host(s) :: greyboxtv.duckdns.org
 
 — probing candidates

@@ -1,0 +1,117 @@
+{
+  "measuredAt": "2026-11-25T08:48:53.772Z",
+  "candidates": [
+    {
+      "id": "kisskh",
+      "site": "kisskh.do",
+      "category": "kdrama",
+      "steps": [
+        {
+          "step": "home",
+          "status": 200,
+          "bytes": 21929
+        },
+        {
+          "step": "listing",
+          "url": "https://kisskh.do/api/DramaList/Drama/192143?isq=false",
+          "status": 400,
+          "bytes": 135,
+          "keys": [
+            "type",
+            "title",
+            "status",
+            "traceId"
+          ]
+        },
+        {
+          "step": "episode-no-key",
+          "status": 403,
+          "bytes": 0,
+          "body": ""
+        }
+      ],
+      "thirdParty": "kkey required — the site gates the endpoint; minting it locally is unproven",
+      "media": [],
+      "domains": [],
+      "languages": []
+    },
+    {
+      "id": "animekai",
+      "site": "animekai.to",
+      "category": "anime",
+      "steps": [
+        {
+          "step": "home",
+          "status": 200,
+          "bytes": 27603
+        },
+        {
+          "step": "watch-page",
+          "status": 200,
+          "bytes": 27732,
+          "contentId": null
+        }
+      ],
+      "thirdParty": "unknown — could not read the content id, so the gate was never tested"
+    },
+    {
+      "id": "yflix",
+      "site": "yflix.to",
+      "category": "movies-tv",
+      "steps": [
+        {
+          "step": "home:yflix.to",
+          "status": null,
+          "bytes": 0,
+          "error": "TypeError"
+        },
+        {
+          "step": "home:1movies.bz",
+          "status": null,
+          "bytes": 0,
+          "error": "TypeError"
+        },
+        {
+          "step": "home:solarmovie.fi",
+          "status": null,
+          "bytes": 0,
+          "error": "TypeError"
+        },
+        {
+          "step": "watch-page",
+          "status": null,
+          "bytes": 0,
+          "contentId": null,
+          "error": "TypeError"
+        }
+      ],
+      "thirdParty": "unknown — could not read the content id, so the gate was never tested"
+    }
+  ],
+  "summary": {
+    "kisskh": {
+      "category": "kdrama",
+      "mediaFound": 0,
+      "domains": [],
+      "declaredLanguages": [],
+      "thirdParty": "kkey required — the site gates the endpoint; minting it locally is unproven",
+      "reachable": 1
+    },
+    "animekai": {
+      "category": "anime",
+      "mediaFound": 0,
+      "domains": [],
+      "declaredLanguages": [],
+      "thirdParty": "unknown — could not read the content id, so the gate was never tested",
+      "reachable": 2
+    },
+    "yflix": {
+      "category": "movies-tv",
+      "mediaFound": 0,
+      "domains": [],
+      "declaredLanguages": [],
+      "thirdParty": "unknown — could not read the content id, so the gate was never tested",
+      "reachable": 0
+    }
+  }
+}
