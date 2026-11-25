@@ -61,6 +61,38 @@ console.log('— RiveStream lanes are excluded by construction, not by comment')
   assert.equal(ownLanes().filter((lane) => /^rive/i.test(lane)).length, 0);
 }
 
+console.log('— the provider’s own edge is kept; somebody else’s is not');
+{
+  const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
+  const rows = nxCandidates({
+    sources: [
+      // castle and vixolity, measured: six real rows on two titles, 1080p and
+      // Japanese among them. This is nxsha's own Cloudflare edge, the same case
+      // source-2 documents for its own proxy - NOT a relay.
+      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P' },
+      { url: 'https://twilight-lake-fd5c.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls' },
+      // Somebody else's bridge - greybox's dash-hls-bridge is exactly this shape.
+      { url: 'https://dash-hls-bridge.john1mc.workers.dev/?url=x', type: 'hls' },
+      { url: 'https://random.someoneelse.workers.dev/a.m3u8', type: 'hls' },
+      // A host that literally names itself a proxy.
+      { url: 'https://proxy.7movie.ws/a.m3u8', type: 'hls' },
+      { url: 'https://relay7.example.net/a.m3u8', type: 'hls' },
+    ],
+  });
+  const urls = rows.map((r) => r.url);
+  assert.ok(urls.some((u) => u.includes('catflix.nxstreamhub.workers.dev')), 'its own edge is kept');
+  assert.ok(urls.some((u) => u.includes('twilight-lake-fd5c.nxstreamhub.workers.dev')), 'both of them');
+  assert.equal(urls.length, 2, 'and nothing else survives');
+  for (const bad of ['john1mc', 'someoneelse', 'proxy.7movie', 'relay7']) {
+    assert.ok(!urls.some((u) => u.includes(bad)), `a foreign bridge is still refused: ${bad}`);
+  }
+  // An 'edge-' prefix is a name, not evidence. The old regex refused these.
+  const named = nxCandidates({ sources: [{ url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls' }] });
+  assert.equal(named.length, 0, 'a self-declared proxy is still refused');
+  const plain = nxCandidates({ sources: [{ url: 'https://edge12.cdn.example.com/a.m3u8', type: 'hls' }] });
+  assert.equal(plain.length, 1, 'but a CDN node merely named edge12 is not');
+}
+
 console.log('— media rows are filtered the way the board filters them');
 {
   const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
@@ -70,7 +102,7 @@ console.log('— media rows are filtered the way the board filters them');
       // source-2 refuses these, so source-3 must too
       { url: 'https://bad.workers.dev/manifest.m3u8', type: 'hls' },
       { url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls' },
-      { url: 'https://relay7.example.net/a.m3u8', type: 'hls' },
+      { url: 'https://proxy.relay.example.net/a.m3u8', type: 'hls' },
       // Drive pages: refused for six sources already
       { url: 'https://drive.google.com/file/d/abc/view', type: 'hls' },
       { url: 'https://drive.usercontent.google.com/download?id=abc', type: 'hls' },
@@ -192,4 +224,4 @@ console.log('— a rotated key is reported, not guessed at');
   assert.deepEqual(result.candidates, [], 'a key rotation yields no candidates rather than an exception');
 }
 
-console.log('\n✓ nxsha: sealed envelope, RiveStream excluded by construction, relays and Drive refused');
+console.log('\n✓ nxsha: sealed envelope, RiveStream excluded, own edge kept, foreign bridges and Drive refused');

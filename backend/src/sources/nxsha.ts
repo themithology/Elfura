@@ -69,14 +69,59 @@ export const PASSES = [
  * this list cannot re-admit them by accident. That is belt and braces on
  * purpose: `castle` looks like a normal scraper name and is a workers.dev front.
  */
-const ALLOWED_LANES: readonly string[] = ['nitro', 'watchout', 'awsind', 'purstream', 'ophim', 'zoko'];
+const ALLOWED_LANES: readonly string[] = [
+  'nitro',
+  'castle',
+  'watchout',
+  'awsind',
+  'vixolity',
+  'purstream',
+  'ophim',
+  'zoko',
+];
 
 /** The families that belong to source-1. Never requested here. */
 const RIVE_FAMILY = /^rive[-_]/i;
 
-/** Anything shaped like a third-party relay in front of somebody else's media. */
-const RELAY_HOST =
-  /(?:^|[.-])(?:proxy|relay|transcode|bridge|worker|workers|gateway|mirror|edge)\d*(?:[.-]|$)|workers\.dev$/i;
+/**
+ * nxsha's OWN edge namespace.
+ *
+ * `castle` and `vixolity` serve from `*.nxstreamhub.workers.dev`. That is the
+ * provider's own Cloudflare edge, sitting next to the API that hands it out — the
+ * same case source-2 documents for its own `/api/media` proxy, which is NOT a
+ * relay and is kept. Refusing these because the word "workers" appears in the
+ * hostname threw away six real rows on two titles, including English 1080p and
+ * Japanese.
+ *
+ * A third-party bridge is a different thing: greybox's
+ * `dash-hls-bridge.john1mc.workers.dev` was somebody else's bandwidth in front of
+ * `sacdn.hakunaymatata.com`, and that is still refused below.
+ */
+const OWN_EDGE = /(?:^|\.)nxstreamhub\.workers\.dev$/i;
+
+/**
+ * Somebody else's Cloudflare relay.
+ *
+ * Narrowed to `workers.dev` and to hosts that literally name themselves as a
+ * proxy. The previous version also matched `edge`, `mirror` and `gateway` as
+ * substrings, which is guesswork about a name — it refused a provider's own
+ * `edge-` host for no reason beyond its spelling.
+ */
+const FOREIGN_RELAY = /workers\.dev$/i;
+
+/**
+ * A host that names itself a proxy, in its first label.
+ *
+ * `proxy.7movie.ws` and `edge-proxy.example.com` say what they are; `edge12.cdn`
+ * is a CDN node with an unhelpful name. The test is per-label rather than a
+ * substring, so a real CDN called something like `edgenuity.com` is not refused
+ * for containing a word by accident.
+ */
+const PROXY_WORD = /^(?:proxy|relay|transcode|bridge|mirror|gateway)\d*$/i;
+function selfDeclaredProxy(hostname: string): boolean {
+  const first = hostname.split('.')[0] ?? '';
+  return first.split(/[-_]/).some((label) => PROXY_WORD.test(label));
+}
 
 /** Google Drive pages: not seekable, and refused for six sources already. */
 const DRIVE_HOST = /(?:^|\.)(?:drive|docs)\.google\.com$|googleusercontent\.com$|drive\.usercontent\.google\.com$/i;
@@ -221,7 +266,11 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
     }
     // The board never forwards a credential or a non-HTTPS hop.
     if (url.protocol !== 'https:' || url.username || url.password) continue;
-    if (RELAY_HOST.test(url.hostname)) continue;
+    // Its own edge is fine; somebody else's relay is not.
+    if (!OWN_EDGE.test(url.hostname)) {
+      if (FOREIGN_RELAY.test(url.hostname)) continue;
+      if (selfDeclaredProxy(url.hostname)) continue;
+    }
     if (DRIVE_HOST.test(url.hostname) || /\/file\/d\/|usercontent/i.test(url.href)) continue;
     // An embed is somebody else's player, not a manifest.
     if (row.isEmbed === true || /embed/i.test(String(row.type ?? ''))) continue;

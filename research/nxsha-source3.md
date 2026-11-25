@@ -88,14 +88,27 @@ of.
 
 | result | lanes |
 | — | — |
-| **serves media (6)** | `nitro`, `watchout`, `awsind`, `purstream`, `ophim`, `zoko` |
-| **relay-shaped (2)** | `castle`, `vixolity` — both `*.nxstreamhub.workers.dev` |
+| **serves media (8)** | `nitro`, `castle`, `watchout`, `awsind`, `vixolity`, `purstream`, `ophim`, `zoko` |
+| **own edge (2)** | `castle`, `vixolity` — both `*.nxstreamhub.workers.dev` |
 | **nothing (22)** | the rest |
 | **Google Drive (0)** | — |
 
-The relay finding is the one worth having: `castle` reads like a normal scraper
-name and is a `workers.dev` front. It is refused twice — off the allowlist, and
-again by the host filter.
+**Corrected after this was first read wrong.** `nxstreamhub.workers.dev` is
+nxsha's OWN Cloudflare edge — it sits next to the API that hands the rows out,
+which is exactly the case source-2 documents for its own `/api/media` proxy:
+"Greybox's OWN proxy is not a relay in that sense."
+
+So `castle` and `vixolity` are **kept**, and they matter: castle's rows are
+`[English] - FHD 1080P`, `HD 720P`, `SD 480P` plus `[Japanese] - SD 480P` — six
+real rows across two titles that a hostname rule had thrown away for containing
+the word "workers".
+
+What is still refused is somebody else's bridge: greybox's
+`dash-hls-bridge.john1mc.workers.dev` fronts `sacdn.hakunaymatata.com`, which is
+one provider's bandwidth carrying another's media. Both are `workers.dev`; only
+one is a relay. The difference is ownership, and it cannot be read off a regex
+alone — it has to be named, which is why `nxstreamhub` is now an explicit
+allowance rather than a lucky non-match.
 
 The six media lanes carry genuinely different catalogues:
 
