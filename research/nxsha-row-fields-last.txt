@@ -1,0 +1,29 @@
+lanes on offer: nitro, watchout, awsind, purstream, ophim
+  fight-club    nitro      3 row(s)
+  fight-club    watchout   1 row(s)
+  fight-club    awsind     1 row(s)
+  fight-club    purstream  1 row(s)
+  fight-club    ophim      1 row(s)
+  naruto-s1e1   nitro      4 row(s)
+  naruto-s1e1   watchout   0 row(s)
+  naruto-s1e1   awsind     0 row(s)
+  naruto-s1e1   purstream  1 row(s)
+  naruto-s1e1   ophim      0 row(s)
+  got-s1e1      nitro      6 row(s)
+  got-s1e1      watchout   1 row(s)
+  got-s1e1      awsind     2 row(s)
+  got-s1e1      purstream  1 row(s)
+  got-s1e1      ophim      1 row(s)
+
+fields present on real rows (non-empty count, samples):
+  id              23  nitro-0 | nitro-1 | nitro-2 | watchout-0 | awsind-0
+  provider        23  nitro | nitro | nitro | watchout | awsind
+  url             23  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://suw.halcyoncreative.site/v4/us/n | https://i-arch-400.asrmo449ddj.com/strea
+  org_uri         23  https://wts.itsnitrox.tech/pitro/32jng4L | https://wts.itsnitrox.tech/pitro/yaQD09P | https://wts.itsnitrox.tech/pitro/-IhnnZA | https://suw.halcyoncreative.site/v4/us/n | https://i-arch-400.asrmo449ddj.com/strea
+  headers         23  [object Object] | [object Object] | [object Object] | [object Object] | [object Object]
+  quality         23  hguider | 1080P | hguider | hguider | 1080P | watchout | Hindi
+  label           23  hguider | 1080P | hguider | hguider | 1080P | watchout | Hindi
+  isEmbed         23  false | false | false | false | false
+  type            23  m3u8 | m3u8 | m3u8 | m3u8 | hls
+
+wrote research/nxsha-row-fields.json

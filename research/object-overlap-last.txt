@@ -1,4 +1,4 @@
-object overlap probe, 2026-11-25T12:58:48.754Z
+object overlap probe, 2026-11-25T13:23:36.308Z
 [elfura-citadel] movie/550: 2 row(s)
   fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
 [elfura-greybox] movie/550: 9 row(s), langs=7
@@ -9,16 +9,17 @@ object overlap probe, 2026-11-25T12:58:48.754Z
 [elfura-greybox] movie/27205: 9 row(s), langs=7
   inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
   inception candidate-nxsha: 5 candidate(s), 0 object id(s), itsnitrox.tech,workers.dev
-[elfura-citadel] tv/1399: 1 row(s)
-  got-s1e1 source-1-citadel: 1 candidate(s), 0 object id(s), fcxmb.com
+[elfura-citadel] tv/1399: 3 row(s)
+  got-s1e1 source-1-citadel: 3 candidate(s), 0 object id(s), hscow.com,fcxmb.com
 [elfura-greybox] tv/1399: throttled, retrying once
 [elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
   got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
-  got-s1e1 candidate-nxsha: 7 candidate(s), 0 object id(s), itsnitrox.tech,97bf1.com,wealthmanagementplan.cfd
+  got-s1e1 candidate-nxsha: 2 candidate(s), 0 object id(s), 97bf1.com,wealthmanagementplan.cfd
 [elfura-citadel] tv/46260: 1 row(s)
   naruto-s1e1 source-1-citadel: 1 candidate(s), 0 object id(s), hscow.com
-[elfura-greybox] tv/46260: 6 row(s), langs=6
-  naruto-s1e1 source-2-greybox: 6 candidate(s), 0 object id(s), duckdns.org,hscow.com
+[elfura-greybox] tv/46260: throttled, retrying once
+[elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
+  naruto-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
   naruto-s1e1 candidate-nxsha: 4 candidate(s), 0 object id(s), itsnitrox.tech
 
 wrote research/object-overlap.json
@@ -26,7 +27,7 @@ verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
   source-1-citadel & source-2-greybox: 2 shared object(s) on fight-club,inception
      hsc:78164859
      hsc:210544560
-  source-1-citadel: 10 url(s), 2 named object(s)
-  source-2-greybox: 29 url(s), 2 named object(s)
-  candidate-nxsha: 20 url(s), 0 named object(s)
+  source-1-citadel: 12 url(s), 2 named object(s)
+  source-2-greybox: 22 url(s), 2 named object(s)
+  candidate-nxsha: 15 url(s), 0 named object(s)
 domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, itsnitrox.tech:candidate-nxsha, halcyoncreative.site:candidate-nxsha, workers.dev:candidate-nxsha, fcxmb.com:source-1-citadel, 97bf1.com:candidate-nxsha, wealthmanagementplan.cfd:candidate-nxsha

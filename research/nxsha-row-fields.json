@@ -1,0 +1,437 @@
+{
+  "measuredAt": "2026-11-25T13:17:17.141Z",
+  "titles": [
+    {
+      "title": "fight-club",
+      "lane": "nitro",
+      "rows": [
+        {
+          "id": "nitro-0",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/32jng4LJsceBlu4orp1tMut6RWXF6wTqIeXsYYA/3455334d743569636c5233636831324c30596a4d3463544d78517a4c7a63444e30556a4e316b7a4e78385364325a47616e68576131686d637270476176456c5435633056765a4653786847526e7046653552555a61566d525368324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/32jng4LJsceBlu4orp1tMut6RWXF6wTqIeXsYYA/3455334d743569636c5233636831324c30596a4d3463544d78517a4c7a63444e30556a4e316b7a4e78385364325a47616e68576131686d637270476176456c5435633056765a4653786847526e7046653552555a61566d525368324c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P",
+          "label": "hguider | 1080P",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-1",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/yaQD09POZPcSGzpcimtGskr6TKD8kueBqTwRmsM/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e76416a4e7851544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355793430514631434f31566a557764465a35686e62523557616a4e6b56763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/yaQD09POZPcSGzpcimtGskr6TKD8kueBqTwRmsM/3d6754647a306d4c795647647a46576276516a4e79677a4e7845444e76416a4e7851544e3255544f33457a4c315a6e5a6f6447617056486179746d616f395355793430514631434f31566a557764465a35686e62523557616a4e6b56763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider",
+          "label": "hguider",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-2",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/-IhnnZA_D0SSUu3Ja9Wd_NMkqFDmRB1gNhHI0vw/3455334d743569636c5233636831324c334d544e3541444d79637a4c3555544d30556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176454665774d334d336f6c596c706e577977456442467a59554a325854647a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/-IhnnZA_D0SSUu3Ja9Wd_NMkqFDmRB1gNhHI0vw/3455334d743569636c5233636831324c334d544e3541444d79637a4c3555544d30556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176454665774d334d336f6c596c706e577977456442467a59554a325854647a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P",
+          "label": "hguider | 1080P",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "fight-club",
+      "lane": "watchout",
+      "rows": [
+        {
+          "id": "watchout-0",
+          "provider": "watchout",
+          "url": "https://suw.halcyoncreative.site/v4/us/noyr5v/cf-master.1779275191.txt?e=/master.m3u8",
+          "org_uri": "https://suw.halcyoncreative.site/v4/us/noyr5v/cf-master.1779275191.txt?e=/master.m3u8",
+          "headers": {},
+          "quality": "watchout",
+          "label": "watchout",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "fight-club",
+      "lane": "awsind",
+      "rows": [
+        {
+          "id": "awsind-0",
+          "provider": "awsind",
+          "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT21keatWWqZkaNRUQzoFRBVjWEtGNapmSp10VNhXT6VkeZdVRz8EVoh2TXVVP:1795604239:188.221.72.48:c8b8b61125446a701c76e81faebc3c086c0d6dd31819a48e827dee5d8d961ca6:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "org_uri": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT21keatWWqZkaNRUQzoFRBVjWEtGNapmSp10VNhXT6VkeZdVRz8EVoh2TXVVP:1795604239:188.221.72.48:c8b8b61125446a701c76e81faebc3c086c0d6dd31819a48e827dee5d8d961ca6:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "headers": {},
+          "quality": "Hindi",
+          "label": "Hindi",
+          "isEmbed": false,
+          "type": "hls"
+        }
+      ]
+    },
+    {
+      "title": "fight-club",
+      "lane": "purstream",
+      "rows": [
+        {
+          "id": "purstream-0",
+          "provider": "purstream",
+          "url": "https://free.finepulfe.xyz/movies/550-n4lvc/master.m3u8",
+          "org_uri": "https://free.finepulfe.xyz/movies/550-n4lvc/master.m3u8",
+          "headers": {},
+          "quality": "Purstream · pulse · 1080p · MULTI",
+          "label": "Purstream · pulse · 1080p · MULTI",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "fight-club",
+      "lane": "ophim",
+      "rows": [
+        {
+          "id": "ophim-0",
+          "provider": "ophim",
+          "url": "https://v7.kkphimplayer7.com/20260616/wxHYkHMr/index.m3u8",
+          "org_uri": "https://v7.kkphimplayer7.com/20260616/wxHYkHMr/index.m3u8",
+          "headers": {},
+          "quality": "Vietsub (Full)",
+          "label": "Vietsub (Full)",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "naruto-s1e1",
+      "lane": "nitro",
+      "rows": [
+        {
+          "id": "nitro-0",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/v56EW7G0G9C6CU_C2bRwOSldQOdcyyCvAC66iRU/3455334d743569636c5233636831324c7a41444e354d444d77517a4c34457a4d31556a4e316b7a4e78385364325a47616e68576131686d637270476176636e52784d54594764564d4b78554d335532517a4e3061316332536f6c304c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/v56EW7G0G9C6CU_C2bRwOSldQOdcyyCvAC66iRU/3455334d743569636c5233636831324c7a41444e354d444d77517a4c34457a4d31556a4e316b7a4e78385364325a47616e68576131686d637270476176636e52784d54594764564d4b78554d335532517a4e3061316332536f6c304c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P",
+          "label": "hguider | 1080P",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-1",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/Ya2IYaezpsf99POnDmOCoBjpXmo4n5joG1wsBrI/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d7651544d7a55544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a4c686c52524e6d57734a56516a785754504a326433346d65794d324e763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/Ya2IYaezpsf99POnDmOCoBjpXmo4n5joG1wsBrI/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d7651544d7a55544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a4c686c52524e6d57734a56516a785754504a326433346d65794d324e763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Multi Audio",
+          "label": "hguider | 1080P | Multi Audio",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-2",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/iWIqg8yUWH8VpVReHemtBn9ZMIjQ04astHQKMHc/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d7655544d7a55544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a4b35554e723169514a426e4e784556537a4548553149455477516a59763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/iWIqg8yUWH8VpVReHemtBn9ZMIjQ04astHQKMHc/3d6754647a306d4c795647647a4657627663444e776b444e30557a4d7655544d7a55544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a4b35554e723169514a426e4e784556537a4548553149455477516a59763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Multi Audio",
+          "label": "hguider | 1080P | Multi Audio",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-3",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/y7aN7d5GasYmxhlitcIEVzEEe1TBfhu7Esx2t9A/3455334d743569636c5233636831324c7863544e7a51444d32597a4c31457a4d31556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f7032617663484e5970484d4a705661474a5461774e7a55445245637439565a7a78304c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/y7aN7d5GasYmxhlitcIEVzEEe1TBfhu7Esx2t9A/3455334d743569636c5233636831324c7863544e7a51444d32597a4c31457a4d31556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f7032617663484e5970484d4a705661474a5461774e7a55445245637439565a7a78304c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Multi Audio",
+          "label": "hguider | 1080P | Multi Audio",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "naruto-s1e1",
+      "lane": "watchout",
+      "rows": []
+    },
+    {
+      "title": "naruto-s1e1",
+      "lane": "awsind",
+      "rows": []
+    },
+    {
+      "title": "naruto-s1e1",
+      "lane": "purstream",
+      "rows": [
+        {
+          "id": "purstream-0",
+          "provider": "purstream",
+          "url": "https://free.finepulfe.xyz/animes/tv/46260/S1/E1/premium-tsieng/master.m3u8",
+          "org_uri": "https://free.finepulfe.xyz/animes/tv/46260/S1/E1/premium-tsieng/master.m3u8",
+          "headers": {},
+          "quality": "Purstream · pulse · 1080p · MULTI",
+          "label": "Purstream · pulse · 1080p · MULTI",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "naruto-s1e1",
+      "lane": "ophim",
+      "rows": []
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "nitro",
+      "rows": [
+        {
+          "id": "nitro-0",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/kMIzI1ysclkhebVXB4m_A057F9u-6EE9A5_K7do/3455334d743569636c5233636831324c7955444d3441444e31457a4c786b544e79556a4e316b7a4e78385364325a47616e68576131686d6372704761764545654952455775567a636c4a44556942564f6d644456594e4856326b7a4c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/kMIzI1ysclkhebVXB4m_A057F9u-6EE9A5_K7do/3455334d743569636c5233636831324c7955444d3441444e31457a4c786b544e79556a4e316b7a4e78385364325a47616e68576131686d6372704761764545654952455775567a636c4a44556942564f6d644456594e4856326b7a4c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P",
+          "label": "hguider | 1080P",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-1",
+          "provider": "nitro",
+          "url": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=62bac6fe75c4d6838620c07fa0ee0f73-1795639193-104.28.196.55-2817502dd4130746e6e3fbc839b0c9ab300b4a9a1a6dbb01edb0706d07934a57",
+          "org_uri": "https://s14-s1001604.97bf1.com/hls/K1QsgNfdE9muerT8AdLqPdmBSnj5EdKP/master.m3u8?token=62bac6fe75c4d6838620c07fa0ee0f73-1795639193-104.28.196.55-2817502dd4130746e6e3fbc839b0c9ab300b4a9a1a6dbb01edb0706d07934a57",
+          "headers": {},
+          "quality": "1080P",
+          "label": "1080P",
+          "isEmbed": false,
+          "type": "hls"
+        },
+        {
+          "id": "nitro-2",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/QHASCD0dWRVq-Vn3mvrvQQhDTkfQIDg4-_E2JeQ/3d6754647a306d4c795647647a4657627649544e7767444d3055544d7667444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39535131417a514668586377514555774e7a4d684e6b61326f485734643254763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/QHASCD0dWRVq-Vn3mvrvQQhDTkfQIDg4-_E2JeQ/3d6754647a306d4c795647647a4657627649544e7767444d3055544d7667444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f39535131417a514668586377514555774e7a4d684e6b61326f485734643254763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Hindi | English",
+          "label": "hguider | 1080P | Hindi | English",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-3",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/HZsTHo6b4_STmAq2JLf7TsE6YSVFZNn8Yt56Xmk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/HZsTHo6b4_STmAq2JLf7TsE6YSVFZNn8Yt56Xmk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Hindi | English",
+          "label": "hguider | 1080P | Hindi | English",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-4",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/9yH5CbcIR5Vk5-gczpCl6BhskJzEVEe2hkFvrrA/3d6754647a306d4c795647647a4657627649544e7767444d3055544d766b444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f3953514d78324d746848634564325a55566b656b3547613146474e33493055763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/9yH5CbcIR5Vk5-gczpCl6BhskJzEVEe2hkFvrrA/3d6754647a306d4c795647647a4657627649544e7767444d3055544d766b444f3149544e3255544f33457a4c315a6e5a6f6447617056486179746d616f3953514d78324d746848634564325a55566b656b3547613146474e33493055763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Hindi | English",
+          "label": "hguider | 1080P | Hindi | English",
+          "isEmbed": false,
+          "type": "m3u8"
+        },
+        {
+          "id": "nitro-5",
+          "provider": "nitro",
+          "url": "https://wts.itsnitrox.tech/pitro/yb0zlEPLDNOA9mJzOjSt8sdDDR5x30oUhGwh8Dk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "org_uri": "https://wts.itsnitrox.tech/pitro/yb0zlEPLDNOA9mJzOjSt8sdDDR5x30oUhGwh8Dk/3455334d743569636c5233636831324c304d7a4e3349544e314d7a4c3567544e79556a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636d4e45466b55766c3053734e545379595751514644623445584d3041334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
+          "headers": {},
+          "quality": "hguider | 1080P | Hindi | English",
+          "label": "hguider | 1080P | Hindi | English",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "watchout",
+      "rows": [
+        {
+          "id": "watchout-0",
+          "provider": "watchout",
+          "url": "https://dd2stliwt0bc.wealthmanagementplan.cfd/sosNVcMrPrym/hls3/01/08534/vv8fvdwysiqc_n/master.txt?e=/master.m3u8",
+          "org_uri": "https://dd2stliwt0bc.wealthmanagementplan.cfd/sosNVcMrPrym/hls3/01/08534/vv8fvdwysiqc_n/master.txt?e=/master.m3u8",
+          "headers": {},
+          "quality": "watchout",
+          "label": "watchout",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "awsind",
+      "rows": [
+        {
+          "id": "awsind-0",
+          "provider": "awsind",
+          "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2llMNVTTEZlaOdkUo5kaKpWTtlUMNpmRs5kMVNjTUFUeadVV49ERBBTTtVUP:1795611663:188.221.72.48:50cece746a54550d61b5f91b4aa5fdcec4a3cf3586e3ebdb31d1c42ad2e39d5c:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "org_uri": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2llMNVTTEZlaOdkUo5kaKpWTtlUMNpmRs5kMVNjTUFUeadVV49ERBBTTtVUP:1795611663:188.221.72.48:50cece746a54550d61b5f91b4aa5fdcec4a3cf3586e3ebdb31d1c42ad2e39d5c:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "headers": {},
+          "quality": "Hindi",
+          "label": "Hindi",
+          "isEmbed": false,
+          "type": "hls"
+        },
+        {
+          "id": "awsind-1",
+          "provider": "awsind",
+          "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT29ERrhXW6FkMPdUVy0EVslWWqlFNNpWQy0ERjVTWtl0MOJTR61ERRJjT6VUP:1795611663:188.221.72.48:5d15bb9f71e8b753fa5a24a932ca341d0a409505f9a16bb66e9acaa54dfd0a8b:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "org_uri": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT29ERrhXW6FkMPdUVy0EVslWWqlFNNpWQy0ERjVTWtl0MOJTR61ERRJjT6VUP:1795611663:188.221.72.48:5d15bb9f71e8b753fa5a24a932ca341d0a409505f9a16bb66e9acaa54dfd0a8b:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8",
+          "headers": {},
+          "quality": "English",
+          "label": "English",
+          "isEmbed": false,
+          "type": "hls"
+        }
+      ]
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "purstream",
+      "rows": [
+        {
+          "id": "purstream-0",
+          "provider": "purstream",
+          "url": "https://free.finepulfe.xyz/tv/1399-u15cs/S01/E01/master.m3u8",
+          "org_uri": "https://free.finepulfe.xyz/tv/1399-u15cs/S01/E01/master.m3u8",
+          "headers": {},
+          "quality": "Purstream · pulse · 1080p · MULTI",
+          "label": "Purstream · pulse · 1080p · MULTI",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    },
+    {
+      "title": "got-s1e1",
+      "lane": "ophim",
+      "rows": [
+        {
+          "id": "ophim-0",
+          "provider": "ophim",
+          "url": "https://s3.phim1280.tv/20240730/up9im6mI/index.m3u8",
+          "org_uri": "https://s3.phim1280.tv/20240730/up9im6mI/index.m3u8",
+          "headers": {},
+          "quality": "Vietsub (Tập 01)",
+          "label": "Vietsub (Tập 01)",
+          "isEmbed": false,
+          "type": "m3u8"
+        }
+      ]
+    }
+  ],
+  "fields": {
+    "id": {
+      "nonEmpty": 23,
+      "samples": [
+        "nitro-0",
+        "nitro-1",
+        "nitro-2",
+        "watchout-0",
+        "awsind-0"
+      ]
+    },
+    "provider": {
+      "nonEmpty": 23,
+      "samples": [
+        "nitro",
+        "nitro",
+        "nitro",
+        "watchout",
+        "awsind"
+      ]
+    },
+    "url": {
+      "nonEmpty": 23,
+      "samples": [
+        "https://wts.itsnitrox.tech/pitro/32jng4L",
+        "https://wts.itsnitrox.tech/pitro/yaQD09P",
+        "https://wts.itsnitrox.tech/pitro/-IhnnZA",
+        "https://suw.halcyoncreative.site/v4/us/n",
+        "https://i-arch-400.asrmo449ddj.com/strea"
+      ]
+    },
+    "org_uri": {
+      "nonEmpty": 23,
+      "samples": [
+        "https://wts.itsnitrox.tech/pitro/32jng4L",
+        "https://wts.itsnitrox.tech/pitro/yaQD09P",
+        "https://wts.itsnitrox.tech/pitro/-IhnnZA",
+        "https://suw.halcyoncreative.site/v4/us/n",
+        "https://i-arch-400.asrmo449ddj.com/strea"
+      ]
+    },
+    "headers": {
+      "nonEmpty": 23,
+      "samples": [
+        "[object Object]",
+        "[object Object]",
+        "[object Object]",
+        "[object Object]",
+        "[object Object]"
+      ]
+    },
+    "quality": {
+      "nonEmpty": 23,
+      "samples": [
+        "hguider | 1080P",
+        "hguider",
+        "hguider | 1080P",
+        "watchout",
+        "Hindi"
+      ]
+    },
+    "label": {
+      "nonEmpty": 23,
+      "samples": [
+        "hguider | 1080P",
+        "hguider",
+        "hguider | 1080P",
+        "watchout",
+        "Hindi"
+      ]
+    },
+    "isEmbed": {
+      "nonEmpty": 23,
+      "samples": [
+        "false",
+        "false",
+        "false",
+        "false",
+        "false"
+      ]
+    },
+    "type": {
+      "nonEmpty": 23,
+      "samples": [
+        "m3u8",
+        "m3u8",
+        "m3u8",
+        "m3u8",
+        "hls"
+      ]
+    }
+  }
+}
