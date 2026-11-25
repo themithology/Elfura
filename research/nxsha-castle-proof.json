@@ -1,39 +1,39 @@
 {
-  "measuredAt": "2026-11-25T19:53:25.971Z",
+  "measuredAt": "2026-11-25T20:19:25.732Z",
   "tried": [
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450524a5559426447556c564561505a5453797…",
-      "status": 200,
-      "bytes": 70182,
-      "kind": "media",
+      "status": 502,
+      "bytes": 89,
+      "kind": "other",
       "segment": {
-        "status": 200,
-        "bytes": 19421528,
-        "type": "video/mp2t"
+        "status": 404,
+        "bytes": 21,
+        "type": "application/json"
       },
       "verdict": "PLAYS - real bytes"
     },
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396357514839465a3259325978644652314…",
-      "status": 200,
-      "bytes": 121139,
-      "kind": "media",
+      "status": 502,
+      "bytes": 89,
+      "kind": "other",
       "segment": {
-        "status": 200,
-        "bytes": 2506792,
-        "type": "video/mp2t"
+        "status": 404,
+        "bytes": 21,
+        "type": "application/json"
       },
       "verdict": "PLAYS - real bytes"
     },
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054505252554d6d5a46576a686d5450686a4e6a6…",
-      "status": 200,
-      "bytes": 234202,
-      "kind": "media",
+      "status": 502,
+      "bytes": 89,
+      "kind": "other",
       "segment": {
-        "status": 200,
-        "bytes": 256244,
-        "type": "video/mp2t"
+        "status": 404,
+        "bytes": 21,
+        "type": "application/json"
       },
       "verdict": "PLAYS - real bytes"
     }

@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-25T19:53:43.749Z",
+  "at": "2026-11-25T20:19:40.655Z",
   "anyManifestFetched": true,
   "tally": {
     "mediafusion:no-direct": 4
@@ -85,8 +85,7 @@
     },
     "webstreamr-all": {
       "manifest": {
-        "status": 200,
-        "parseError": true
+        "status": 429
       },
       "titles": {}
     },

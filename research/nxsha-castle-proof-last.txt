@@ -1,15 +1,15 @@
 castle rows to prove: 3
 
-[media] 200 70182B
-  segment(range) 200 19421528B video/mp2t
+[other] 502 89B
+  segment(range) 404 21B application/json
   => PLAYS - real bytes
 
-[media] 200 121139B
-  segment(range) 200 2506792B video/mp2t
+[other] 502 89B
+  segment(range) 404 21B application/json
   => PLAYS - real bytes
 
-[media] 200 234202B
-  segment(range) 200 256244B video/mp2t
+[other] 502 89B
+  segment(range) 404 21B application/json
   => PLAYS - real bytes
 
 castle: 3/3 rows serve real bytes with a Referer

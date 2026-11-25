@@ -1,17 +1,13 @@
-rows naming Hindi: 35
+rows naming Hindi: 38
 
-  nitro          jawan      NO BYTES                       —  0B
   nitro          jawan      SINGLE-TRACK                   —  171149B
-  nitro          jawan      NO BYTES                       —  0B
   awsind         rrr        NO BYTES                       —  0B
   castle         rrr        SINGLE-TRACK                   —  477708B
   castle         rrr        SINGLE-TRACK                   —  253236B
   castle         rrr        SINGLE-TRACK                   —  179728B
-  castle         jawan      NO BYTES                       —  0B
-  castle         jawan      NO BYTES                       —  0B
-  castle         jawan      NO BYTES                       —  0B
-  k4khdhub-direc pathaan    NO BYTES                       —  0B
-  k4khdhub-direc pathaan    NO BYTES                       —  0B
+  castle         jawan      SINGLE-TRACK                   —  407772B
+  castle         jawan      SINGLE-TRACK                   —  175404B
+  castle         jawan      SINGLE-TRACK                   —  124644B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
@@ -21,6 +17,13 @@ rows naming Hindi: 35
   k4khdhub-direc pathaan    NO BYTES                       —  0B
   k4khdhub-direc fight-club NO BYTES                       —  0B
   k4khdhub-direc fight-club NO BYTES                       —  0B
+  k4khdhub-direc fight-club NO BYTES                       —  0B
+  k4khdhub-direc fight-club NO BYTES                       —  0B
+  k4khdhub-direc fight-club NO BYTES                       —  0B
+  k4khdhub       pathaan    NO BYTES                       —  0B
+  k4khdhub       pathaan    NO BYTES                       —  0B
+  k4khdhub       pathaan    NO BYTES                       —  0B
+  k4khdhub       pathaan    NO BYTES                       —  0B
   k4khdhub       pathaan    NO BYTES                       —  0B
   k4khdhub       pathaan    NO BYTES                       —  0B
   k4khdhub       pathaan    NO BYTES                       —  0B
@@ -37,7 +40,7 @@ rows naming Hindi: 35
   k4khdhub       fight-club NO BYTES                       —  0B
 
 ──────── tally ────────
+  SINGLE-TRACK                     7
   NO BYTES                         31
-  SINGLE-TRACK                     4
 
 wrote research/nxsha-hindi-verify.json

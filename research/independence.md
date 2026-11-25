@@ -1,6 +1,6 @@
 # Is it a new source, or the same pipe?
 
-Measured 2026-11-25T19:52:19.940Z. Raw rows in [independence.json](independence.json).
+Measured 2026-11-25T20:17:57.158Z. Raw rows in [independence.json](independence.json).
 
 A candidate is independent when **none of the hosts behind its media** — the URL it
 hands out, the child playlists, the segments, the key URIs — appear in the media
@@ -11,9 +11,9 @@ different the URL looks.
 
 | source | media hosts |
 | --- | --- |
-| source-1 | `img1.hscow.com`, `img.hscow.com`, `img1.fcxmb.com`, `img.fcxmb.com` |
+| source-1 | `img1.hscow.com`, `img.hscow.com` |
 | source-2 | `greyboxtv.duckdns.org` |
-| source-3 | _none_ |
+| source-3 | `catflix.nxstreamhub.workers.dev`, `wts.itsnitrox.tech`, `silent-frost-f2dbv.nxstreamhub.workers.dev` |
 | source-4 | `img.rousav.tech`, `gzip.rousav.tech` |
 
 ## Candidates
@@ -21,14 +21,16 @@ different the URL looks.
 | candidate | playable | hosts | shared with board | verdict |
 | --- | --- | --- | --- | --- |
 | atlantic-vidbox | no | 0 | — | no media at all — not a source yet |
-| atlantic-q62 | no | 1 | — | media found but no bytes (http=429, http=429) |
+| atlantic-q62 | yes, 262144B | 1 | — | independent of the board; RELAY-SHAPED host(s): proxy.7movie.ws — the board refuses relay fronts |
 
 ## Why a lane produced nothing
 
 | lane / title | what arrived |
 | --- | --- |
-| atlantic-vidbox:fight-club | status 200; top-level keys [sources]; sources keys [Tik] |
-| atlantic-vidbox:inception | status 200; top-level keys [sources]; sources keys [Tik] |
-| atlantic-vidbox:got-s1e1 | status 200; top-level keys [sources]; sources keys [Tik] |
-| atlantic-vidbox:naruto-s1e1 | status 200; top-level keys [sources]; sources keys [Tik] |
+| atlantic-vidbox:fight-club | status 502; top-level keys [type, title, status, detail, instance, error_code, error_name, error_category]; sources keys [] |
+| atlantic-vidbox:inception | status 502; top-level keys [type, title, status, detail, instance, error_code, error_name, error_category]; sources keys [] |
+| atlantic-vidbox:got-s1e1 | status 502; top-level keys [type, title, status, detail, instance, error_code, error_name, error_category]; sources keys [] |
+| atlantic-vidbox:naruto-s1e1 | status 502; top-level keys [type, title, status, detail, instance, error_code, error_name, error_category]; sources keys [] |
+| atlantic-q62:got-s1e1 | status 404; top-level keys [detail, error] |
+| atlantic-q62:naruto-s1e1 | status 404; top-level keys [detail, error] |
 

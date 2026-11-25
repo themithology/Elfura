@@ -32,7 +32,7 @@ webstreamr  https://webstreamr.hayd.uk
 ==========================================================================
 webstreamr-all  https://webstreamr.hayd.uk
   Same instance with every language group enabled.
-  manifest: not JSON (24322B)
+  manifest: HTTP 429
 
 ==========================================================================
 nuviostreams  https://nuviostreams.hayd.uk

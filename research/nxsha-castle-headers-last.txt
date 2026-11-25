@@ -1,16 +1,13 @@
 isolating the 403 -> 200 change, one header at a time
 
   bare (User-Agent only)     403     9B
-  + Referer                  200    M3U8 70182B
+  + Referer                  502     89B
   + Origin                   403     9B
   + Accept: */*              403     9B
   + Range                    403     9B
-  + Referer + Origin         200    M3U8 70182B
+  + Referer + Origin         502     89B
   + row headers only         403     9B
-  + browser set, NO Range    200    M3U8 70182B
-  + full browser set (4)     200    M3U8 70182B
-
-shortest winning set: + Referer
-  variant 200, segment 400, 155 bytes
+  + browser set, NO Range    502     89B
+  + full browser set (4)     502     89B
 
 wrote research/nxsha-castle-headers.json

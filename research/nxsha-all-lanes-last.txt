@@ -1,1 +1,101 @@
-could not list scrapers: http=403
+34 scraper(s) listed, 30 not RiveStream
+titles: rrr, kalki-2898, jawan, baahubali-2, pathaan, mirzapur-s1e1, sacred-games-s1e1, fight-club
+
+  nitro               7 row(s) on 2/3 title(s)  silent-frost-f2dbv.nxstreamhub.workers.dev,wts.itsnitrox.tech,s13-s501740.s1q2105.com
+      rrr              "Auto | Telugu"                              silent-frost-f2dbv.nxstreamhub.workers.dev
+      rrr              "hguider"                                    wts.itsnitrox.tech
+      jawan            "1080P"                                      s13-s501740.s1q2105.com
+      jawan            "Auto | Telugu"                              silent-frost-f2dbv.nxstreamhub.workers.dev
+      jawan            "Auto | Hindi"                               silent-frost-f2dbv.nxstreamhub.workers.dev
+  mahalala            0 row(s) on 0/8 title(s)  —
+  watchout            2 row(s) on 2/8 title(s)  wpvsahsvl0yo.smartcheckout.shop,suw.halcyoncreative.site
+      rrr              "watchout"                                   wpvsahsvl0yo.smartcheckout.shop
+      fight-club       "watchout"                                   suw.halcyoncreative.site
+  awsind              5 row(s) on 2/5 title(s)  i-arch-400.asrmo449ddj.com
+      rrr              "Hindi"                                      i-arch-400.asrmo449ddj.com
+      rrr              "Tamil"                                      i-arch-400.asrmo449ddj.com
+      pathaan          "Bengali"                                    i-arch-400.asrmo449ddj.com
+      pathaan          "Tamil"                                      i-arch-400.asrmo449ddj.com
+      pathaan          "Telugu"                                     i-arch-400.asrmo449ddj.com
+  castle             20 row(s) on 2/3 title(s)  catflix.nxstreamhub.workers.dev
+      rrr              "[English] - FHD 1080P"                      catflix.nxstreamhub.workers.dev
+      rrr              "[Hindi] - FHD 1080P"                        catflix.nxstreamhub.workers.dev
+      rrr              "[OST] - FHD 1080P"                          catflix.nxstreamhub.workers.dev
+      jawan            "[Hindi] - FHD 1080P"                        catflix.nxstreamhub.workers.dev
+      jawan            "[Tamil] - FHD 1080P"                        catflix.nxstreamhub.workers.dev
+      jawan            "[Telugu] - FHD 1080P"                       catflix.nxstreamhub.workers.dev
+  streamflix          6 row(s) on 2/3 title(s)  mp4.fiboh64936.workers.dev,mp4.nolana15c4ad.workers.dev,mp4.shari15e0ad.workers.dev,mp4.shafer15c51d.workers.dev,mp4.sapphira15e512.workers.dev,mp4.riffle15e330.workers.dev
+      rrr              "Auto"                                       mp4.fiboh64936.workers.dev
+      rrr              "Auto"                                       mp4.nolana15c4ad.workers.dev
+      rrr              "Auto"                                       mp4.shari15e0ad.workers.dev
+      jawan            "Auto"                                       mp4.shafer15c51d.workers.dev
+      jawan            "Auto"                                       mp4.sapphira15e512.workers.dev
+      jawan            "Auto"                                       mp4.riffle15e330.workers.dev
+  xdownloader         0 row(s) on 0/8 title(s)  —
+  purstream           2 row(s) on 2/5 title(s)  free.finepulfe.xyz
+      rrr              "Purstream · pulse · 1080p · MULTI"          free.finepulfe.xyz
+      pathaan          "Purstream · pulse · 1080p · MULTI"          free.finepulfe.xyz
+  vixolity            2 row(s) on 2/3 title(s)  twilight-lake-fd5c.nxstreamhub.workers.dev
+      rrr              "Vixolity"                                   twilight-lake-fd5c.nxstreamhub.workers.dev
+      jawan            "Vixolity"                                   twilight-lake-fd5c.nxstreamhub.workers.dev
+  mhbox               0 row(s) on 0/8 title(s)  —
+  bdxs                0 row(s) on 0/8 title(s)  —
+  stvv                0 row(s) on 0/8 title(s)  —
+  imovr               0 row(s) on 0/8 title(s)  —
+  ophim               2 row(s) on 2/3 title(s)  s3.phim1280.tv
+      rrr              "Vietsub (Full)"                             s3.phim1280.tv
+      jawan            "Vietsub (Full)"                             s3.phim1280.tv
+  yomovies            0 row(s) on 0/8 title(s)  —
+  showbox-online      0 row(s) on 0/8 title(s)  —
+  vidapi              0 row(s) on 0/8 title(s)  —
+  levi                0 row(s) on 0/8 title(s)  —
+  toonstream          0 row(s) on 0/8 title(s)  —
+  tamilblasters       0 row(s) on 0/8 title(s)  —
+  hdhub4u             0 row(s) on 0/8 title(s)  —
+  hdhub4u-direct      0 row(s) on 0/8 title(s)  —
+  k4khdhub-direct    12 row(s) on 2/8 title(s)  hubcloud.mov,hubdrive.blog
+      pathaan          "HubCloud | 1080p | 40.16 GB | BluRay | Hi   hubcloud.mov
+      pathaan          "HubCloud | 4K | 35.64 GB | BluRay | HDR |   hubcloud.mov
+      pathaan          "HubCloud | 1080p | 21.86 GB | BluRay | HD   hubcloud.mov
+      fight-club       "HubCloud | 4K | 66.39 GB | BluRay | HDR |   hubcloud.mov
+      fight-club       "HubCloud | 4K | 41.84 GB | BluRay | HDR |   hubcloud.mov
+      fight-club       "HubCloud | 1080p | 26.39 GB | BluRay | Hi   hubcloud.mov
+  k4khdhub           18 row(s) on 2/8 title(s)  pixel.hubcloud.mov,aged-scene-2b67.terapiyo249.workers.dev,movies.aiplexmedia-server.workers.dev,fragrant-sound-d40a.lofivor2284988.workers.dev,drive.google-index.workers.dev,gpdl.hubcloud.mov,myfiles.directfile1.workers.dev,aws-es.mixis94992.workers.dev,pixeldrain.dev,star.server-7.workers.dev,lively-firefly-6bcf.becij680145336.workers.dev
+      pathaan          "HubCloud 10Gbps | 1080p | 40.16 GB | BluR   pixel.hubcloud.mov
+      pathaan          "Direct R2 | 1080p | 40.16 GB | BluRay | H   aged-scene-2b67.terapiyo249.workers.dev
+      pathaan          "HubCloud 10Gbps | 4K | 35.64 GB | BluRay    pixel.hubcloud.mov
+      fight-club       "HubCloud 10Gbps | 4K | 66.39 GB | BluRay    pixel.hubcloud.mov
+      fight-club       "Direct R2 | 4K | 66.39 GB | BluRay | HDR    star.server-7.workers.dev
+      fight-club       "HubCloud 10Gbps | 1080p | 26.39 GB | BluR   pixel.hubcloud.mov
+  filmyfly            0 row(s) on 0/8 title(s)  —
+  filmyfly-direct     0 row(s) on 0/8 title(s)  —
+  moviesdrive         0 row(s) on 0/8 title(s)  —
+  movone              7 row(s) on 2/3 title(s)  a.111477.xyz
+      rrr              "1080p"                                      a.111477.xyz
+      rrr              "1080p"                                      a.111477.xyz
+      rrr              "1080p"                                      a.111477.xyz
+      jawan            "1080p"                                      a.111477.xyz
+      jawan            "1080p"                                      a.111477.xyz
+  zoko                1 row(s) on 1/8 title(s)  hls.dramahot.top
+      fight-club       "ZokoAnime"                                  hls.dramahot.top
+  em-8                2 row(s) on 2/2 title(s)  gemma416okl.com
+      rrr              "HD"                                         gemma416okl.com
+      kalki-2898       "HD"                                         gemma416okl.com
+
+RiveStream providers (source-1 asks ONE of these):
+  citadel       10 row(s) on 2 title(s)  img1.fcxmb.com,img1.hscow.com
+  primevids      4 row(s) on 2 title(s)  cdn.ngcloud.app,cdn2.ngcloud.app,cdn1.ngcloud.app
+  flowcast       0 row(s) on 0 title(s)  —
+  quasar         0 row(s) on 0 title(s)  —
+  guru           0 row(s) on 0 title(s)  —
+  hindicast      0 row(s) on 0 title(s)  —
+
+nxsha lanes that ANSWERED on an Indian-weighted title: 13
+  nitro, watchout, awsind, castle, streamflix, purstream, vixolity, ophim, k4khdhub-direct, k4khdhub, movone, zoko, em-8
+nxsha lanes still silent after 8 titles: 17
+  mahalala, xdownloader, mhbox, bdxs, stvv, imovr, yomovies, showbox-online, vidapi, levi, toonstream, tamilblasters, hdhub4u, hdhub4u-direct, filmyfly, filmyfly-direct, moviesdrive
+
+RiveStream providers that answered: citadel, primevids
+RiveStream providers silent: flowcast, quasar, guru, hindicast
+
+wrote research/nxsha-all-lanes.json
