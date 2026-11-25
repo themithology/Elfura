@@ -3,7 +3,7 @@
 [elfura-greybox] movie/550: throttled, retrying once
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-greybox] movie/550: THROTTLED — provider refused us, not empty
-[elfura-sources] source-2 movie/550: 0 candidates in 1667ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
+[elfura-sources] source-2 movie/550: 0 candidates in 1708ms :: 2 req · greyboxtv.duckdns.org 429×2 (observed global fetch; lookup=fresh)
 
   "en" request: 4 stream(s), primary Source 4 · Multi-Audio
     Source 4 · Multi-Audio [undefined label] 2023MB
@@ -19,26 +19,13 @@
 [elfura-sources] source-2 movie/550: 0 candidates in 0ms :: 0 req (observed global fetch; lookup=fresh)
 [elfura-citadel] movie/550: 2 row(s)
 
-  "hi" request: 4 stream(s), primary "undefined"
+  "hi" request: 4 stream(s), primary "de"
   reported fallback: requested "hi" (no-stream-in-language)
 [elfura-greybox] movie/550: throttled 44s ago, not re-asking
 [elfura-sources] source-2 movie/550: 0 candidates in 1ms :: 0 req (observed global fetch; lookup=fresh)
 [elfura-citadel] movie/550: 2 row(s)
 
   "de" request: 4 stream(s), primary Source 4 · Multi-Audio
-node:internal/modules/run_main:123
-    triggerUncaughtException(
-    ^
+  primary 2023MB, language "de"
 
-AssertionError [ERR_ASSERTION]: asking for "de" opened a "undefined" stream
-    at file:///home/runner/work/Elfura/Elfura/backend/test/board-live.mjs:250:3
-    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
-  generatedMessage: false,
-  code: 'ERR_ASSERTION',
-  actual: undefined,
-  expected: true,
-  operator: '==',
-  diff: 'simple'
-}
-
-Node.js v22.23.5
+✓ board live: real sizes measured, requested language ranked biggest-first
