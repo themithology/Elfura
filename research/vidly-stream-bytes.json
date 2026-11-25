@@ -1,0 +1,219 @@
+{
+  "measuredAt": "2026-11-25T12:35:35.401Z",
+  "titles": [
+    {
+      "title": "fight-club",
+      "pageStatus": 200,
+      "embedded": [
+        "https://img.rousav.tech/media/84ba08366bab854da1bf/index.m3u8"
+      ],
+      "hosts": [
+        "img.rousav.tech"
+      ],
+      "proof": {
+        "manifestUrl": "https://img.rousav.tech/media/84ba08366bab854da1bf/index.m3u8",
+        "steps": [
+          {
+            "step": "master",
+            "status": 200,
+            "bytes": 2189
+          },
+          {
+            "step": "variant",
+            "status": 200,
+            "bytes": 70809
+          },
+          {
+            "step": "segment",
+            "status": 206,
+            "bytes": 131072
+          }
+        ],
+        "isMaster": true,
+        "audioLangs": [
+          "deu",
+          "eng",
+          "spa",
+          "fra",
+          "ita",
+          "jpn",
+          "pol",
+          "por",
+          "tur"
+        ],
+        "audioNames": [
+          "Arabic",
+          "German",
+          "English",
+          "European Spanish",
+          "Spanish",
+          "1. German",
+          "2. English",
+          "3. Spanish"
+        ],
+        "variants": 3,
+        "playable": true,
+        "reason": null
+      }
+    },
+    {
+      "title": "inception",
+      "pageStatus": 200,
+      "embedded": [
+        "https://img.rousav.tech/media/1cc3cc40a75d4052a788/index.m3u8"
+      ],
+      "hosts": [
+        "img.rousav.tech"
+      ],
+      "proof": {
+        "manifestUrl": "https://img.rousav.tech/media/1cc3cc40a75d4052a788/index.m3u8",
+        "steps": [
+          {
+            "step": "master",
+            "status": 200,
+            "bytes": 749
+          },
+          {
+            "step": "variant",
+            "status": 200,
+            "bytes": 30728
+          },
+          {
+            "step": "segment",
+            "status": 206,
+            "bytes": 131072
+          }
+        ],
+        "isMaster": true,
+        "audioLangs": [
+          "eng",
+          "hin"
+        ],
+        "audioNames": [
+          "English",
+          "1. English",
+          "2. Hindi"
+        ],
+        "variants": 3,
+        "playable": true,
+        "reason": null
+      }
+    },
+    {
+      "title": "got-s1e1",
+      "pageStatus": 200,
+      "embedded": [
+        "https://gzip.rousav.tech/tvshows/ee3c2a52662960708707/index.m3u8"
+      ],
+      "hosts": [
+        "gzip.rousav.tech"
+      ],
+      "proof": {
+        "manifestUrl": "https://gzip.rousav.tech/tvshows/ee3c2a52662960708707/index.m3u8",
+        "steps": [
+          {
+            "step": "master",
+            "status": 200,
+            "bytes": 932
+          },
+          {
+            "step": "variant",
+            "status": 200,
+            "bytes": 12513
+          },
+          {
+            "step": "segment",
+            "status": 206,
+            "bytes": 131072
+          }
+        ],
+        "isMaster": true,
+        "audioLangs": [
+          "hin",
+          "tel",
+          "eng",
+          "tam",
+          "kan"
+        ],
+        "audioNames": [
+          "English",
+          "Hindi",
+          "Telugu",
+          "Tamil",
+          "Kannada"
+        ],
+        "variants": 2,
+        "playable": true,
+        "reason": null
+      }
+    },
+    {
+      "title": "naruto-s1e1",
+      "pageStatus": 200,
+      "embedded": [
+        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmast",
+        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmast"
+      ],
+      "hosts": [
+        "dash-hls-bridge.john1mc.workers.dev"
+      ],
+      "proof": {
+        "manifestUrl": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmaster.m3u8",
+        "steps": [
+          {
+            "step": "master",
+            "status": 502,
+            "bytes": 30
+          }
+        ],
+        "playable": false,
+        "reason": "master 502"
+      }
+    }
+  ],
+  "plays": [
+    {
+      "title": "fight-club",
+      "host": "img.rousav.tech",
+      "bytes": 131072
+    },
+    {
+      "title": "inception",
+      "host": "img.rousav.tech",
+      "bytes": 131072
+    },
+    {
+      "title": "got-s1e1",
+      "host": "gzip.rousav.tech",
+      "bytes": 131072
+    }
+  ],
+  "summary": {
+    "pagesRendered": 4,
+    "ofTitles": 4,
+    "embeddedTotal": 5,
+    "mediaHosts": [
+      "img.rousav.tech",
+      "gzip.rousav.tech",
+      "dash-hls-bridge.john1mc.workers.dev"
+    ],
+    "playable": [
+      {
+        "title": "fight-club",
+        "host": "img.rousav.tech",
+        "bytes": 131072
+      },
+      {
+        "title": "inception",
+        "host": "img.rousav.tech",
+        "bytes": 131072
+      },
+      {
+        "title": "got-s1e1",
+        "host": "gzip.rousav.tech",
+        "bytes": 131072
+      }
+    ],
+    "verdict": "PLAYS — 3 of 4 titles served real bytes from img.rousav.tech, gzip.rousav.tech, dash-hls-bridge.john1mc.workers.dev"
+  }
+}

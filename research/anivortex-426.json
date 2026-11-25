@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T12:28:24.662Z",
+  "measuredAt": "2026-11-25T12:37:14.967Z",
   "rows": [
     {
       "title": "breaking-bad-s1e1",
@@ -10,13 +10,13 @@
           "blamed": false,
           "probes": [
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.IK4PTUwby4m1gKLIJYCNL6PMSQzlt3v8udQZE4Wg3pLWPrzYbeDwFdO0hqjSygnmyiv-EIcEiNG",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1._2f6HVYLhYm5QiHpeEcjMBs1890U11XYCFpRRkKDLB13tvK4L61JezIFWPQTxDqNE_HFU1z1om0",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
             },
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.CaQZJleMz2TFHltdLrT-mySOafx-_6MsRJp-uHUCRBxvBXO_fv7PYkUDSzt-1tLd6xgQsvrh1zC",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.UKiuu1ulpMcEzkdb8CKHhijo7l6Ik6bfGguT1CDc_lZ4PVsEPlekiuJG2w78Jv6iBiGVCuxZSTT",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
@@ -52,13 +52,13 @@
           "blamed": false,
           "probes": [
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.frWjQF2z9s2NaI0So0x0cgld4nGbYp-4REt_MVHmfedNv-ifdV0irZV5Ub9wBSjTGDQcpHCbO3L",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.NIh6tFpKBESygJJXNxFAfe6FtSTyNPvv61A-PrOBQGbxNJSCRohZgMqqOL0ixlWwK-0xlEyXy8b",
               "status": 200,
               "bytes": 2210,
               "contentType": "application/vnd.apple.mpegurl"
             },
             {
-              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.F3rIsmS7PeEY7Ie_m1xXoZRcH6Xo5s4iINX1udDqcbBv_wo08uVh5SSi_M7XVMmgGA5cLyzS6Nw",
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.R25w3B69GE_0qF1ij_m2mn5pCFsmS6covRu0jCoyEtf6APtkngXwdtNnVLioYFkQnTDRHUdAYun",
               "status": 200,
               "bytes": 2211,
               "contentType": "application/vnd.apple.mpegurl"
@@ -87,8 +87,27 @@
     },
     {
       "title": "naruto-s1e1",
-      "candidates": 0,
-      "perHost": {}
+      "candidates": 6,
+      "perHost": {
+        "greyboxtv.duckdns.org": {
+          "rows": 6,
+          "blamed": false,
+          "probes": [
+            {
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.P4C5YzOOh4Y7rWMKfHHle0X5yj-4myOO5PMU52KTla2oZEOLcsnTa16mmk2U9QMYGwh6n-NO7Z-",
+              "status": 200,
+              "bytes": 2208,
+              "contentType": "application/vnd.apple.mpegurl"
+            },
+            {
+              "url": "https://greyboxtv.duckdns.org/api/media?u=m1.9ihXxsMdGkgNFsuUyfZjyBcxUTcB0hGxsUPwi_bDjG4cXuHsjpUUWHw55oGyjqYrgHZqiLnBGCe",
+              "status": 200,
+              "bytes": 2208,
+              "contentType": "application/vnd.apple.mpegurl"
+            }
+          ]
+        }
+      }
     }
   ],
   "summary": {
@@ -112,6 +131,10 @@
       {
         "title": "got-s1e1",
         "host": "dash-hls-bridge.john1mc.workers.dev"
+      },
+      {
+        "title": "naruto-s1e1",
+        "host": "greyboxtv.duckdns.org"
       }
     ],
     "audioFound": false,

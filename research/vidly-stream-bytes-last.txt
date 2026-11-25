@@ -1,0 +1,13 @@
+vidly stream bytes, 2026-11-25T12:35:35.402Z
+  fight-club     page=200 1 embedded url(s) on img.rousav.tech
+                 playable=true 131072B variants=3 audio=[deu,eng,spa,fra,ita,jpn,pol,por,tur]
+  inception      page=200 1 embedded url(s) on img.rousav.tech
+                 playable=true 131072B variants=3 audio=[eng,hin]
+  got-s1e1       page=200 1 embedded url(s) on gzip.rousav.tech
+                 playable=true 131072B variants=2 audio=[hin,tel,eng,tam,kan]
+  naruto-s1e1    page=200 2 embedded url(s) on dash-hls-bridge.john1mc.workers.dev
+                 playable=false (master 502)
+
+wrote research/vidly-stream-bytes.json
+verdict: PLAYS — 3 of 4 titles served real bytes from img.rousav.tech, gzip.rousav.tech, dash-hls-bridge.john1mc.workers.dev
+hosts: img.rousav.tech, gzip.rousav.tech, dash-hls-bridge.john1mc.workers.dev

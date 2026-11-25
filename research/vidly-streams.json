@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T12:27:13.929Z",
+  "measuredAt": "2026-11-25T12:35:57.412Z",
   "steps": [
     {
       "step": "watch-page",
@@ -39,7 +39,7 @@
         {
           "url": "/api/sources?tmdb=550&kind=movie",
           "status": 403,
-          "bytes": 4542,
+          "bytes": 4543,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
@@ -47,7 +47,7 @@
         {
           "url": "/api/sources?kind=movie&tmdb=550&type=movie",
           "status": 403,
-          "bytes": 4542,
+          "bytes": 4543,
           "looksLikeJson": false,
           "challenge": true,
           "body": "<!DOCTYPE html>\n<!--[if lt IE 7]> <html class=\"no-js ie6 oldie\" lang=\"en-US\"> <![endif]-->\n<!--[if IE 7]>    <html class"
