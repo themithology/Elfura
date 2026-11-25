@@ -1,0 +1,1468 @@
+{
+  "measuredAt": "2026-11-25T16:07:17.045Z",
+  "titles": [
+    {
+      "key": "rrr",
+      "type": "movie",
+      "tmdbId": "579974",
+      "why": "Telugu/Hindi blockbuster"
+    },
+    {
+      "key": "kalki-2898",
+      "type": "movie",
+      "tmdbId": "1117737",
+      "why": "pan-India"
+    },
+    {
+      "key": "jawan",
+      "type": "movie",
+      "tmdbId": "872906",
+      "why": "Hindi"
+    },
+    {
+      "key": "baahubali-2",
+      "type": "movie",
+      "tmdbId": "316726",
+      "why": "Telugu/Tamil"
+    },
+    {
+      "key": "pathaan",
+      "type": "movie",
+      "tmdbId": "872585",
+      "why": "Hindi"
+    },
+    {
+      "key": "mirzapur-s1e1",
+      "type": "tv",
+      "tmdbId": "89197",
+      "season": 1,
+      "episode": 1,
+      "why": "Hindi series"
+    },
+    {
+      "key": "sacred-games-s1e1",
+      "type": "tv",
+      "tmdbId": "85737",
+      "season": 1,
+      "episode": 1,
+      "why": "Hindi series"
+    },
+    {
+      "key": "fight-club",
+      "type": "movie",
+      "tmdbId": "550",
+      "why": "control: the old sample"
+    }
+  ],
+  "nxsha": [
+    {
+      "lane": "nitro",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "silent-frost-f2dbv.nxstreamhub.workers.dev",
+              "label": "Auto | Telugu",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c3541445656394565795931527764565536686e4d685246654664466357356d56776847526b7045647252324c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "wts.itsnitrox.tech",
+              "label": "hguider",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wts.itsnitrox.tech/pitro/Hnyk-KO77-cZehF1PURfqOYYqPzZbdi7AuoLN6g/3d6754647a306d4c795647647a4657627651544d30557a4c7a497a4e79596a4e316b7a4e7838695a6b6857616e68576470685759316c47616f7032617663325a6e42484f51426c6532516d4e555a585a535a5759356b6b6432687a4c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "s13-s501740.s1q2105.com",
+              "label": "1080P",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://s13-s501740.s1q2105.com/hls/KORvibo2sunsnmzZW8F5AjyuDZfYCQi2/master.m3u8?token=da037af96c664656168f2e254b147f98-1795648328-104.28.196.53-8e7e71dff0495d09d841ba326e9a19f9761b7c11f9575dacceb6fbabff700f09"
+            },
+            {
+              "host": "wts.itsnitrox.tech",
+              "label": "hguider | 1080P | Hindi",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wts.itsnitrox.tech/pitro/-SUMHjjfJcjRgqHDefRnsQxiXeWtDdbTHXCEWP8/3d6754647a306d4c795647647a465762764d6a4e77637a4d3145544d76676a4d33496a4e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a446444556b467a544364454f534a575733554465764e6c575574454e763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "wts.itsnitrox.tech",
+              "label": "hguider | 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wts.itsnitrox.tech/pitro/MzvhC2ROM9qVEJ0FoHQ3LDd0vIxUkHkYR94KpoE/3455334d743569636c5233636831324c7a59444d334d544e78457a4c784d7a4e79596a4e316b7a4e78385364325a47616e68576131686d63727047617663484d4e31324e754a6b54704e305458527a5277647a5a6d5645627831304c7446575a79523363763032626a357963763557616f4e3262756c57627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "silent-frost-f2dbv.nxstreamhub.workers.dev",
+              "label": "Auto | Telugu",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c3541445656394561564e6c4d7768305559786d656978476174566d614f706e5473467a526b6c6d55714e314c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "silent-frost-f2dbv.nxstreamhub.workers.dev",
+              "label": "Auto | Hindi",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c35416a656b646b55595646644752455630515462614648635839304d4270575936705562553945617a6f314c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "silent-frost-f2dbv.nxstreamhub.workers.dev",
+              "label": "Auto | Tamil",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c354144565674456256466c536f467a534552474d4f4246615746466552356d59344a465658394562574e324c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "silent-frost-f2dbv.nxstreamhub.workers.dev",
+              "label": "Auto | Kannada",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://silent-frost-f2dbv.nxstreamhub.workers.dev/hls/3d3d7752354e48537a52326368306a616f6c4661716832635a52325a6d68334c35416a65614a584d48465757573157543267574d6970455a7470464d4a46545935746d565335574d794d314c7a784761763032626a354365755232593235694d7a7847617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "wts.itsnitrox.tech",
+              "label": "hguider | 1080P | Hindi",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wts.itsnitrox.tech/pitro/D4Vwq48GBjdEDBPUrrAAiBnkH9bS_AYRCGAkmss/3455334d743569636c5233636831324c7759444d7741444f30497a4c34497a4e79596a4e316b7a4e7838695a6b6857616e68576470685759316c47616f70326176636e5955566c5635414456784a314e70526e573145485a316857654b4a334c7446575a79523363763032626a3569636c685864696c6d647638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            },
+            {
+              "host": "wts.itsnitrox.tech",
+              "label": "hguider",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wts.itsnitrox.tech/pitro/zWxfYQU40QGDvofuQArCpcEWOiKrwEqat9qWns0/3d6754647a306d4c795647647a465762764d6a4e77637a4d3145544d76676a4d33496a4e3255544f33457a4c315a6e5a6f6447617056486179746d616f3979644b4a46576c686b517a634563575a6a55554254596a39575779566c59763057596c4a48647a395362764e6d4c6c4a48636f523362763132637638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan"
+      ]
+    },
+    {
+      "lane": "mahalala",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "watchout",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "wpvsahsvl0yo.smartcheckout.shop",
+              "label": "watchout",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://wpvsahsvl0yo.smartcheckout.shop/Qt9MDOYehjgb/hls3/01/08671/uqfhh6om24q6_h/master.txt?e=/master.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "fight-club",
+          "rows": [
+            {
+              "host": "suw.halcyoncreative.site",
+              "label": "watchout",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://suw.halcyoncreative.site/v4/us/noyr5v/cf-master.1779275191.txt?e=/master.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "awsind",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "i-arch-400.asrmo449ddj.com",
+              "label": "Hindi",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT21kaRdXTqlUMN1WUzkleFdnWtVleORlUp90VVVTWtVleZpWVy0kenNTTUlUP:1795612731:188.221.72.48:bea864d8c6daa80b8e60d3546557eed51ac25b66c97901785e822aa4b790ce9b:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8"
+            },
+            {
+              "host": "i-arch-400.asrmo449ddj.com",
+              "label": "Tamil",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2p1RGxWTH5UaZpGZr50VRVTTqlFeadkUsllekpmT6pFbNdVTw4EVjVjTtFVP:1795612731:188.221.72.48:0643349377d49eb319cea6bfbbf06fffefab473226000d17211f6223bd87fba8:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "pathaan",
+          "rows": [
+            {
+              "host": "i-arch-400.asrmo449ddj.com",
+              "label": "Bengali",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2pVbWxWW6x2aOdkWt5keO1mWEV1dPR0a14ERZpXTXV0dZJTW3lFVNhnWUVVP:1795625802:188.221.72.48:eb3f4f614cf4c0cde58f3331aedfa86dfae01d8b22058df47b2d47b2d96168fb:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8"
+            },
+            {
+              "host": "i-arch-400.asrmo449ddj.com",
+              "label": "Tamil",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT2pFRNRTTHVEMOR0a0olaBJzTUd2MadkTq1UbNJzTEJUaZRVS4l1VRFjTUlUP:1795625802:188.221.72.48:912bb48d3c7ccb2e13dc7cdaec0803df24217a48503e1f6686992d78d845228d:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8"
+            },
+            {
+              "host": "i-arch-400.asrmo449ddj.com",
+              "label": "Telugu",
+              "type": "hls",
+              "isEmbed": false,
+              "url": "https://i-arch-400.asrmo449ddj.com/stream2/i-arch-400/476d5a1efd24e3b7d0095e30b0c23147/MJTMsp1RshGTygnMNRUR2N2MSlnWXZEdMNDZzQWe5MDZzMmdZJTO1R2RWVHZDljekhkSsl1VwYnWtx2cihVT210RJh3TUZVbadUT6pVbRNTWqVENN1mSr50VJlXTEhGbaRkTq5UbZl3TEFUP:1795625803:188.221.72.48:67c9be66e2dfd40eb81d035892fbab6e980be1c59cdc9cce8b46052f3bba778e:=0EVnRDTqlUeNNFNz0Ua0AzTB1TP/index.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan"
+      ]
+    },
+    {
+      "lane": "castle",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[English] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503945465234393059566831524d704555557056517a686b64744a30586f3956536a4a5554466c5465784a32536b6c48555a6c4455544e7a615352335633596b59794630637a783051705245574a6444555770475255686d516d6c466179516a4e694248644f6c544f43526b4e317056514368326239556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435694e32497a583456475a756c324c7767444d7838794e336b544f3355444e30497a4c7a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503945465234393059566831524d704555557056517a686b64744a30586f3956536a4a5554466c5465784a32536b6c48555a6c4455544e7a615352335633596b59794630637a783051705245574a6444555770475255686d516d6c466179516a4e694248644f6c544f43526b4e317056514368326239556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435694e32497a583456475a756c324c7767444d7838794e336b544f3355444e30497a4c7a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[OST] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/39307a5a42526e59784a4563424a6a5368523364733532536f5257547959586150526b52536c6e624d70486351745563505a464f544a6e4e7a34574d704a3055336454556942584c334655647746486343526b554b5a334e4364325a584e5859344d45577a39564c6b5a4753437057636b5255573430545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a79417a4e7a4d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c33676a4d6668585a6b3557617641444f77457a4c35496d4d77677a4e3345474e3055544d7a49475a686c6a59306b445a314d575a69526d4e3445575a33517a4c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[English] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396357516c4e44574a52575636646e5a6e46444d31636b6379316d53574e5562765257613652304d544a545644784556475231584e70335842354555774a6e545135554c3277324e69465863784956577a4d58577052546579456b63683957596642546475526b656e644462345555557070335839556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e76637a4e356b7a4e3151444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396357516c4e44574a52575636646e5a6e46444d31636b6379316d53574e5562765257613652304d544a545644784556475231584e70335842354555774a6e545135554c3277324e69465863784956577a4d58577052546579456b63683957596642546475526b656e644462345555557070335839556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e76637a4e356b7a4e3151444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Tamil] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450524e4564786c6e57334d6c547a635561434a6b6255646b62305a7a626b5a30586b394656705a485233414465756831587a78456152426e54505a7a647070454e54314361325a6b6531555852326c584d6c5a3263704a6c5144687a524e52565558565454334a5655666c6b51536430646e5258506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d49444d334d7a4d3255544f334554507a566d63704248654639444f314e546275596a4e793846656c526d627039434d79637a4c78456a596c42444d7a596a597a6354596a646a4e6a52445a68563259695a474d6d566a4d6a687a5977557a4c7a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[OST] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3930545143354762666444536f4e32624a39454e47467a5953685656585248554e5a32596f31534f5568485a6b4a564e32417a55575a6e57743430614b31574c3452315a763157524f5244655a683352704a564c494a44547878574f554a30554e6c544f434a7a624a31695a4656455a5a4a6c657031545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a79417a4e7a4d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c32596a4d6668585a6b35576176416a4d3338794e32636a4e7a59574f78516d5978677a4e35496d4e6b526d5a344d545977676a59786b7a4e696c544e77387963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[English] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150394545525a3547544c39565a54785751775a5851316c6e534464484d59746d62355a7a5849566c537568335634316b567849484d754a6c577a3055657a6c306255645759706c6b4d524a6d52313957534d56455277596e4e7268306436703358314e544d74466a565a525551764a6e4d7a73456439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435694e32497a583456475a756c324c7767444e76637a4e356b7a4e3151444e79387963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150394545525a3547544c39565a54785751775a5851316c6e534464484d59746d62355a7a5849566c537568335634316b567849484d754a6c577a3055657a6c306255645759706c6b4d524a6d52313957534d56455277596e4e7268306436703358314e544d74466a565a525551764a6e4d7a73456439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d77637a4d7a59544e3563544d394d585a796c4763345630503455334d7435694e32497a583456475a756c324c7767444e76637a4e356b7a4e3151444e79387963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/1/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Tamil] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3930545142356b5a32455552323845556f64564d57564565724e305474423358543930647970315232733253734e4654326f3354454a3264565257556c6844617834324d4e4a575145746b614c4a335834675752424a484f7a7030563352484e743455527a5a574f3056474e78466a54587046563330545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a79417a4e7a4d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c32596a4d6668585a6b3557617641444f3038794e786b7a5978416a4e78676a4d7763444e7a67544f6846324d7a4d7a4d6a6c545a7a4d6a4e786b6a4d6b397963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[OST] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/39305451444632567a556c554f5a545272563254746b544d356844573067304e785531565268474d584a305630523061735a7a5a5268574e4246475a484a4565514a6e57733955613264544e59686a6546704761365248644964574f3642586351746b4e5056316432685655614655514f6433617331545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a79417a4e7a4d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c32596a4d6668585a6b3557617641444f3038435a7a59474f3459574e3155474e6b46444e6a46474f7745324e3467544d6d4a474e33517a4d694a544d35387963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039636d51685647653664306378495853693545553368454d43643352794a6c5177686e626e46465a684e58534f686e5352464852316b6c594f466b56556c5553435a585343466b5776426e55336c476178553063584e6a654a4a6c654e394753334258517a38315561466a51584a315252427a6139556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a534d344d6a4d7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444d7838534d3167444d7a59444e30497a4c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Tamil] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054506e4655564b68455368566a56457847636f644757334548574d396d654e706c516f643361615232513364476257746d5379646a616a6c4756336b7a4d6e5a575a6e6c4654325a335a6f6c334d4556554e72745557346f3058786330584a5a6e645531696531563359736c565a6b4e6b54477857506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d45444f7a497a4d3255544f334554507a566d63704248654639444f314e546275596a4e793846656c526d627039434d796344627031575930396c62686458594b39535a316c584d7838314d79416a4d764d48626f6c5862763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Telugu] - FHD 1080P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/39307a644252306330745764566831615a745752617046653249565a68705556445a7a4e3551466571356b52363545543045554c7a49314d44466a627146304d6f64565a7068585232676e554c4e6c4d50464653777855527a5647626b42484f30686a64303555564570326235494854314148655231545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a78677a4d794d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c33676a4d6668585a6b3557617641444f77457a4c6d56545a6852445a3355474f6c5a324e33496a5a695a444e7851444e69646a4e7851474d784154593451324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039635751435a4553785155535a5a5455535a475659703353753932614746326374686d6546684756716c4453434a6e524f42585544686d577a416c627364304e783832643635325a784131524d39316379516a5773746b62486856566d68584c50564454794e55515068544c6d316954746c455439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a534d344d6a4d7a59544e3563544d394d585a796c4763345630503455334d7435694e32497a583456475a756c324c77497a4e7645544e34417a4d3251444e79387963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Tamil] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039635851664a30557a3532547768544e68745752754254563074306446525552575a5465464a33524d39475331394653596446524a316d564c566c4d796b45566f4a444f746f6e63784948556652565150466b61774e57554b5a6d543242445734565459796c58596146464e48466c555570335939556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a534d344d6a4d7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444d78775761744647646635575933466d53765557643546544d664e6a4d77497a4c7a425862664e48626f6c5862763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Kannada] - HD 720P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450524e454f6a4e444e534e6b4e6b5a545257316d613534555a304e7a587764556578554663353932595442465a75686c594446564d6a4e554c6156325a52526c633545465a6e4e58593263474d76524857465a6a5251706e52326f6e595a64585332497a61366c325a55646b594b35574d776c56506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d45444f7a497a4d3255544f334554507a566d63704248654639444f314e546275596a4e793846656c526d627039434d79637a4c7859324e6c687a5933597a4e33516d5a6c6c444f3059474f30637a4d6c566d596956575a776b7a4e3345324c7a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Hindi] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039454552426431566d526d594c526e5a303447574e4633634456545a4e5658616c3532515a4e5852544e555a3239304e33566a6533636d4d34353254475a545236525663736448626c4a6e5278566d5a6d563164353946544b6833634970554e734e334e7464315549784757464655626c70565439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a534d344d6a4d7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444e7645544e34417a4d3251444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Telugu] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/39307a5a436c54547867314d7952475579393153705a55566e5a5754585230645374454e78417a55616856594c526b4e6a6846617246466343525657317332625868326350526d575952564d7639455768526e626e396b6148356b646d5258525856565145356b4d334e555974456a594939454f7830545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a78677a4d794d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c33676a4d6668585a6b3557617641444f3038695a315557593051324e6c68545a6d647a4e79596d593251544d30516a593359544d6b42544d7745474f6b397963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            },
+            {
+              "host": "catflix.nxstreamhub.workers.dev",
+              "label": "[Kannada] - SD 480P",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://catflix.nxstreamhub.workers.dev/stream/393054514268446433676c593155325a6d5a7a64315157624f7445576b706e5a6a464654365644614c78574f325a5556346755637a70555430735761466c4555764e474e6e31554e6b4e44526b3932527442545932384557367056646e396d4e496c56576b68574f74456c61776f455a6670474d4431545a795648646835325a704e6c4a6c4a586430466d626e6c325539555762683555656c746b4a78677a4d794d6a4e316b7a4e78307a636c4a5861776858522f6754647a306d4c32596a4d6668585a6b3557617641444f3038534d6d64545a344d324e32637a4e6b5a575a3567444e6d68444e334d545a6c4a6d596c56474d35637a4e68397963773132587a784761763032626a356959746833596d35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan"
+      ]
+    },
+    {
+      "lane": "streamflix",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "mp4.verna15c343.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.verna15c343.workers.dev/?url=https://s1.streamflixserver.site/movies/2022/rrr.mkv"
+            },
+            {
+              "host": "mp4.haletta15ddd2.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.haletta15ddd2.workers.dev/?url=https://s2.streamflixserver.site/movies/2022/rrr.mkv"
+            },
+            {
+              "host": "mp4.hikeloh549.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.hikeloh549.workers.dev/?url=https://s3.streamflixserver.site/movies/2022/rrr.mkv"
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "mp4.sarobo2914.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.sarobo2914.workers.dev/?url=https://s1.streamflixserver.site/movies/2023/jawan.mkv"
+            },
+            {
+              "host": "mp4.mivev89368.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.mivev89368.workers.dev/?url=https://s2.streamflixserver.site/movies/2023/jawan.mkv"
+            },
+            {
+              "host": "mp4.lettie15dd77.workers.dev",
+              "label": "Auto",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://mp4.lettie15dd77.workers.dev/?url=https://s3.streamflixserver.site/movies/2023/jawan.mkv"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan"
+      ]
+    },
+    {
+      "lane": "xdownloader",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "purstream",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "free.finepulfe.xyz",
+              "label": "Purstream · pulse · 1080p · MULTI",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://free.finepulfe.xyz/movies/21778-uizws/master.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "pathaan",
+          "rows": [
+            {
+              "host": "free.finepulfe.xyz",
+              "label": "Purstream · pulse · 1080p · MULTI",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://free.finepulfe.xyz/movies/872585-l797e/master.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan"
+      ]
+    },
+    {
+      "lane": "vixolity",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "twilight-lake-fd5c.nxstreamhub.workers.dev",
+              "label": "Vixolity",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://twilight-lake-fd5c.nxstreamhub.workers.dev/hls/3d6754647a306d4c3938444e7a59444f3345444f3052334c7a5a334c74393259756b486470783262346c6d64754547617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "twilight-lake-fd5c.nxstreamhub.workers.dev",
+              "label": "Vixolity",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://twilight-lake-fd5c.nxstreamhub.workers.dev/hls/3455334d743553502f59544d3551544e7a55544d3052334c7a5a334c74393259756b486470783262346c6d64754547617638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan"
+      ]
+    },
+    {
+      "lane": "mhbox",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "bdxs",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "stvv",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "imovr",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "ophim",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "s3.phim1280.tv",
+              "label": "Vietsub (Full)",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://s3.phim1280.tv/20240803/tgjfKm0x/index.m3u8"
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "s3.phim1280.tv",
+              "label": "Vietsub (Full)",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://s3.phim1280.tv/20240803/cVtaIz7Z/index.m3u8"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan"
+      ]
+    },
+    {
+      "lane": "yomovies",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "showbox-online",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "vidapi",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "levi",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "toonstream",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "tamilblasters",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "hdhub4u",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "hdhub4u-direct",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "k4khdhub-direct",
+      "hits": [
+        {
+          "title": "pathaan",
+          "rows": [
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 4K | 35.64 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/bp2xymfqlml10as"
+            },
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/uw5wucb1a6qy5y7"
+            },
+            {
+              "host": "hubdrive.blog",
+              "label": "HubDrive | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubdrive.blog/file/12457154065"
+            },
+            {
+              "host": "hubdrive.blog",
+              "label": "HubDrive | 1080p | 16.69 GB | BluRay | x264 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubdrive.blog/file/17342502583"
+            },
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/pcyp2ffpffpyapy"
+            },
+            {
+              "host": "hubdrive.blog",
+              "label": "HubDrive | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubdrive.blog/file/9155815372"
+            },
+            {
+              "host": "hubdrive.blog",
+              "label": "HubDrive | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubdrive.blog/file/5401412802"
+            },
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/zdipi12a91di9xd"
+            },
+            {
+              "host": "hubdrive.blog",
+              "label": "HubDrive | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubdrive.blog/file/1956994584"
+            }
+          ]
+        },
+        {
+          "title": "fight-club",
+          "rows": [
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 1080p | 26.39 GB | BluRay | Hindi | English | x264",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/nhfpxzp4kkxkkfe"
+            },
+            {
+              "host": "hubcloud.mov",
+              "label": "HubCloud | 1080p | 20.26 GB | BluRay | Hindi | English | x264",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://hubcloud.mov/drive/1sasl06wglq10ef"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "k4khdhub",
+      "hits": [
+        {
+          "title": "pathaan",
+          "rows": [
+            {
+              "host": "pixel.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 40.16 GB | BluRay | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixel.hubcloud.mov/?id=12dd7092f3bb953a56c9064b1b60674491b9aa1a674ed07b3b2a936348f1f3c23483c83b8e56161a8a1ad127ac1054f2721ab9378d2331bfe3ea7ac5d3b196bea5a1048ab10fe08d16677c58672fc87bfe9f5298c70fee28500b1e9c9b46699c::7bfa639ddc8599d53854141e9149e026"
+            },
+            {
+              "host": "snowy-dust-0180.dejecik4652547.workers.dev",
+              "label": "Direct R2 | 1080p | 40.16 GB | BluRay | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://snowy-dust-0180.dejecik4652547.workers.dev/df899f3205d827d2f3f00221da61bdea3da68dbd653279ef47b0b64e37d31a14540e1f294f08bdce550114a74f3cb6a9::130713dfb71350a18e6574e72109f134/1398017625/Oppenheimer (2023) IMAX 1080p BluRay REMUX AVC [Hindi DDP 5.1 + English DTS-HDMA 5.1] x265 (FraMeSToR-4kHdHub).mkv"
+            },
+            {
+              "host": "pixel.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixel.hubcloud.mov/?id=0dae0502ea47e144e0324d4a99ccaacc54391af5a52fac4bd3bdd054367855daeb464332726657e309b5fa80b129c7748ae1534284073944a77e02f395b3aaa98c5717650c7bf64b41a0babc8855302647cbdae06d13d5df0241fc64e949777d::acb121a778631a185fcd9e615892cee7"
+            },
+            {
+              "host": "calm-waterfall-fdfd.terapiyo2248503.workers.dev",
+              "label": "Direct R2 | 1080p | 21.86 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://calm-waterfall-fdfd.terapiyo2248503.workers.dev/a899a8fa560113e91a42bfbf09dbf5e2de4d5a1bdfa0ef771f42e6b944c3fb059d1cd7af23ee69cc93e35c0b8be51b21::f934cf468d4020a601b58f1077cc05e7/1398017625/Oppenheimer (2023) IMAX 1080p UHD BluRay HDR 10bit HEVC [Hindi DDP 5.1 + English DTS-HDMA 5.1] x265 (c0kE-4kHdHub).mkv"
+            },
+            {
+              "host": "gpdl.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://gpdl.hubcloud.mov/?id=004b90cce15bbbc7e9c4d57a18f46ad4a535e9ab8124dd1cce9e9657108fc363e28f9f39fb6d4156e1237d7940d176d29eaecd23c76c5911e1ff91d483be954378cae9d27a15faae38387622329fb9e4ef19d0159ea073720f5b904db1a755c02df777332b583ab767396bc024075997::69b34165daf67b3a928df29239f1db9c"
+            },
+            {
+              "host": "nameless-mountain-a418.babafe7002.workers.dev",
+              "label": "Direct R2 | 1080p | 7.83 GB | 10bit | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://nameless-mountain-a418.babafe7002.workers.dev/75ffe7820e988acd5ef459ee9f85cd827dcc58dcd52f5211e57f11e4674c906462dadb0a3ca0cad93e288451b525cd70::0057745af40f8c3aa24dda7b08e854cf/1398017625/Oppenheimer (2023) IMAX DS4K 1080p 10bit BluRay HEVC x265 [Hindi NF DDP 5.1 640kbps + English DDP 5.1] ESub-(RAGA-NmCT)-4kHdHub.mkv"
+            },
+            {
+              "host": "gpdl.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://gpdl.hubcloud.mov/?id=98e1ee24d989aaa40ce8985fad33fcd7fd6cde5303a163ac6587f1c0da74e3bd1daa6292a09fb8f572384d8996b16dab0a881b5ac5c7ce7e62566718bb8e29fbfd36b185bf47c48137cf5fe998f40685447cd88a99db0033aa093b3ca21a412c8469c701311c41a55acc11ae7027fb99::49e884760c4d0bffb5b9c11fa13fa633"
+            },
+            {
+              "host": "misty-queen-2a4c.rijati18085062.workers.dev",
+              "label": "Direct R2 | 4K | 4.84 GB | 10bit | HDR | BluRay | HEVC | x265 | Hindi | English",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://misty-queen-2a4c.rijati18085062.workers.dev/4a765d47958c7786f9d08a598de29d265af0d15c216982bd875494d04c2cc1587a8da6251a5bdb27af93a369614db04a::0b71ac83ee607dde49faced77b16ffb6/1398017625/Oppenheimer (2023) IMAX 2160p 10bit HDR BluRay HEVC x265 [Hindi NF DDP 5.1 640kbps + English DDP 5.1] ESub-(RAGA-PSA)-4kHdHub.mkv"
+            },
+            {
+              "host": "pixeldrain.dev",
+              "label": "HubCloud 10Gbps | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixeldrain.dev/u/negn6f"
+            },
+            {
+              "host": "gpdl.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 2.54 GB | 10bit | BluRay | HEVC | x265 | Hindi | English | AAC",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://gpdl.hubcloud.mov/?id=67738e058218ffd45fd648c1ab8a4b081188c8e87ec190eb31d7d52a9a2e7d5393c39d4e745e5ccc4678fea9cc8861ead2db3f6e75df10acfbc00c776b956a71f68d56338187838349500c99b8a1db66184fb1817c94eab4529b6f8a2b5547227f105b6bd9b05b5b41fe350fbb477eae::cca96591a6b0728b31e8093043dcd4f7"
+            }
+          ]
+        },
+        {
+          "title": "fight-club",
+          "rows": [
+            {
+              "host": "pixel.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 4K | 66.39 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixel.hubcloud.mov/?id=25725bc87663337ba157c8e36cb674128d76d36bf44b3bc4d89813658b262d1c3144218194143871f56d56603bc8e6383e27e56eec2539d80fe45458bdf14cfd865bd108dc35a3c8a973456469afab0bd8484adb0678c4eeda7d0e00dc4a9116::aeed12d25cc3d2b71c5e55607137d5ea"
+            },
+            {
+              "host": "tgcdn.xabopih256.workers.dev",
+              "label": "Direct R2 | 4K | 66.39 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://tgcdn.xabopih256.workers.dev/b8f3e723ba7b4ae7df8b7ef4744fa6d0f6c6fe8485c26146069310698591acdde7b66c82e7b20072b51d1a2cd2f4e492::2adc07cbb177320de265d967e6a1a78e/1398017625/Fight Club (1999) REPACK 2160p UHD BluRay REMUX HDR 10bit HEVC [Hindi DDP 2.0 + English DTS-HD MA 5.1] x265 (CiNEPHiLES-LUMiX).mkv"
+            },
+            {
+              "host": "gpdl.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 4K | 41.84 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://gpdl.hubcloud.mov/?id=3fe7626eb7bcaaa4dc9b6ac3ae1d6c49989b17eba91eb53e9d3a6aac8c768aead0a097c6d404749cf9a97c3bc46f8ca1be315ecf3bcbae0cb27192367c67196b4f4307771628a840447f61395e0a5ee555571c97988b63c0d0fd10163704a95353959c55aa2adde5e2b150baa3887391::89a8e001648e1cb064eb020d39746fe1"
+            },
+            {
+              "host": "long-mud-40f7.terapiyo251.workers.dev",
+              "label": "Direct R2 | 4K | 41.84 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://long-mud-40f7.terapiyo251.workers.dev/8c558ee475286f100235ed411df449ddd79870c4406f6cc6d2159f9f0c1fe0bffe9040c3536a659a31de253ca6a60e56::fa3902d42b645a1577dff16b81e7405a/1398017625/Fight Club (1999) 2160p UHD BluRay HDR 10bit HEVC [Hindi DDP 2.0 + English DTS-HD MA 5.1] x265 (j3rico-LUMiX).mkv"
+            },
+            {
+              "host": "pixel.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 20.26 GB | BluRay | Hindi | English | x264",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixel.hubcloud.mov/?id=18d827c8f0cb50bdf9b51eddb3fd74199c4f7ae7231148e99a7e3a31d0d6db0ed00beb3ecc0f28d2df192c376a86604055c3a2f7983a12e113cf6cd0d028e53121a4530c91952ae330bd7114eca0409877ac53cfb08ef73c81778881627f6061::ec92c1d72392abfb07598eb40a4c020a"
+            },
+            {
+              "host": "shiny-scene-663c.terapiyo246.workers.dev",
+              "label": "Direct R2 | 1080p | 20.26 GB | BluRay | Hindi | English | x264",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://shiny-scene-663c.terapiyo246.workers.dev/a037d990ed89fa09b732451ff351e61004e43bdb89205496a6fb5394d7c9b0d86bd6d3633f303da685fd882d3f6a954e::e350f9fad2c787d145203e1fe8c5b4d2/1398017625/Fight Club (1999) 1080p BluRay [Hindi DDP 2.0 + English DDP 5.1] x264 (ZoroSenpai-LUMiX).mkv"
+            },
+            {
+              "host": "pixel.hubcloud.mov",
+              "label": "HubCloud 10Gbps | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://pixel.hubcloud.mov/?id=cd43c3005ac81bb2ac4da428cce26a3316366d2c39f0d192d38b39ea08f780916b0188253ef5764112e462ff5c8bbfc89ea69b24b7280938e1f89aa267b0c074218b33e1a977df97701375bbfdbc7957e5a764d8af9e779c8d4167ba31ef1698::bc27f24d7cddb5f334c2b15605cce586"
+            },
+            {
+              "host": "index.cdn-utube.workers.dev",
+              "label": "Direct R2 | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://index.cdn-utube.workers.dev/18b5268f1c8b28b8b1ee3429f2e0e406a516182750fb0017f4e0e894a96f34d0563b6b1ca5f0fc0ada60448be52e7f63::02cde8360dce554236fb040cb4fd0c52/1398017625/Fight Club (1999) 1080p UHD BluRay HDR 10bit HEVC [Hindi DDP 2.0 + English DDP 5.1] x265 (HiDt-LUMiX).mkv"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "filmyfly",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "filmyfly-direct",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "moviesdrive",
+      "hits": [],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "movone",
+      "hits": [
+        {
+          "title": "pathaan",
+          "rows": [
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer%20%282023%29%20IMAX%20PROPER%202160p%204K%20UHD%20HDR10+%20DV%20HYBRID%20BluRay%20REMUX%20x265%2010bit%20HEVC%20%5BOrg%20AMZN%20Hindi%20DDP%205.1%20~%20640Kbps%20+%20English%20TrueHD%20Atmos%207.1%5D%20ESub%20~%20jennaortegaUHD.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer%202023%201080p%20Bluray%20REMUX%20AVC%20DTS%20HD%20MA%205%201%20GHD%20TGx.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer%202023%20BluRay%20IMAX%202160p%20HDR%20x265%20HEVC%2010bit%20Hindi%20English%20DD%205.1%20ESub%20-%20mkvCinemas.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.%282023%29.1080p.BluRay.5.1-LAMA.mp4"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.1080p.FDNG.WEB-DL.DDP.5.1.H.264-PiRaTeS.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.1080p.PCOK.WEB-DL.DDP.5.1.H.264-PiRaTeS.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.2160p.MAX.WEB-DL.DDP5.1.H.265-PMI.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.2160p.REMUX.IMAX.Dolby.Vision.And.HDR10.PLUS.ENG.ITA.LATINO.DTS-HD.Master.DDP5.1.DV.x265.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.IMAX.1080p.BluRay.x265-Protozoan.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Oppenheimer%20%282023%29/Oppenheimer.2023.PROPER.1080p.BluRay.x264-PiGNUS.mkv"
+            }
+          ]
+        },
+        {
+          "title": "fight-club",
+          "rows": [
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/010.Fight.Club.1999.BluRay.1080p.x265.10bit.2Audio.MNHD-FRDS.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight%20Club%201999%201080p%20REMUX%20ENG%20ITA%20HINDI%20RUS%20UKR%20And%20ESP%20LATINO%20DTS%20HD%20Master%20DDP5%201%20MKV%20BEN%20THE%20ME.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mp4",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.%281999%29.%5BREPACK%5D.%5B1080p%5D.%5BBluRay%5D.%5B5.1%5D.%5BYTS.MX%5D-xpost.mp4"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.1080p.10th.Ann.Edt.BluRay.DTS.x264.D-Z0N3.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-ATELiER.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.1080p.JC.WEB-DL.AAC2.0.x.264-Saon.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.1080p.STAN.WEB-DL.DD5.1.H.264-PMI.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.1080p.UHD.BluRay.Hindi.DDP.2.0.English.DD.5.1.x265.HDR-Pahe%5BReaperZa%5D.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.2160p.UHD.BluRay.DTS-HD.MA.6.1.DV.HDR10P.x265-TRUNKS.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.2160p.UHD.BluRay.x265.HDR.DD5.1-Pahe.in.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.BluRay.1080p.DTS-HD.MA.5.1.AVC.REMUX-FraMeSToR.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.Bluray.1080p.DTSMA5.1.x264.dxva-FraMeSToR.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "1080p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.REPACK.1080p.Remux.AVC.DTS-HD.MA.5.1-playBD.mkv"
+            },
+            {
+              "host": "a.111477.xyz",
+              "label": "2160p",
+              "type": "mkv",
+              "isEmbed": false,
+              "url": "https://a.111477.xyz/movies/Fight%20Club%20%281999%29/Fight.Club.1999.UHD.Re-Grade.6000nit.2160p.HEVC.HDR.IVA%28RUS.UKR.ENG%29.ExKinoRay.mkv"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "zoko",
+      "hits": [
+        {
+          "title": "fight-club",
+          "rows": [
+            {
+              "host": "hls.dramahot.top",
+              "label": "ZokoAnime",
+              "type": "m3u8",
+              "isEmbed": false,
+              "url": "https://hls.dramahot.top/p/scxqicy/vx1uoumb9k/xvrlba3n4f/dnwnrc1zo9d5w7/master.m3u8?v=cffafc5e28"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898",
+        "jawan",
+        "baahubali-2",
+        "pathaan",
+        "mirzapur-s1e1",
+        "sacred-games-s1e1",
+        "fight-club"
+      ]
+    },
+    {
+      "lane": "em-8",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "gemma416okl.com",
+              "label": "HD",
+              "type": "embed",
+              "isEmbed": true,
+              "url": "https://gemma416okl.com/play/tt8178634"
+            }
+          ]
+        },
+        {
+          "title": "kalki-2898",
+          "rows": [
+            {
+              "host": "gemma416okl.com",
+              "label": "HD",
+              "type": "embed",
+              "isEmbed": true,
+              "url": "https://gemma416okl.com/play/"
+            }
+          ]
+        }
+      ],
+      "tried": [
+        "rrr",
+        "kalki-2898"
+      ]
+    }
+  ],
+  "rive": [
+    {
+      "provider": "citadel",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "img1.fcxmb.com",
+              "label": "480p | English",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.hscow.com",
+              "label": "480p | Tamil",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.fcxmb.com",
+              "label": "480p | Telugu",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "img1.fcxmb.com",
+              "label": "720p | Hindi",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.hscow.com",
+              "label": "720p | Kannada",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.fcxmb.com",
+              "label": "720p | Tamil",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.hscow.com",
+              "label": "480p | Hindi",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.fcxmb.com",
+              "label": "480p | Kannada",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "img1.fcxmb.com",
+              "label": "480p | Telugu",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "primevids",
+      "hits": [
+        {
+          "title": "rrr",
+          "rows": [
+            {
+              "host": "cdn.ngcloud.app",
+              "label": "tcloud",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "cdn2.ngcloud.app",
+              "label": "dcloud",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            },
+            {
+              "host": "cdn1.ngcloud.app",
+              "label": "ipcloud",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            }
+          ]
+        },
+        {
+          "title": "jawan",
+          "rows": [
+            {
+              "host": "cdn2.ngcloud.app",
+              "label": "dcloud",
+              "language": null,
+              "type": "hls",
+              "isEmbed": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "provider": "flowcast",
+      "hits": []
+    },
+    {
+      "provider": "quasar",
+      "hits": []
+    },
+    {
+      "provider": "guru",
+      "hits": []
+    },
+    {
+      "provider": "hindicast",
+      "hits": []
+    }
+  ]
+}

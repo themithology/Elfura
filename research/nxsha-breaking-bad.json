@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T15:03:04.601Z",
+  "measuredAt": "2026-11-25T16:20:57.704Z",
   "title": {
     "key": "breaking-bad-s1e1",
     "type": "tv",
@@ -14,7 +14,7 @@
       "label": "[English] - FHD 1080P",
       "quality": "[English] - FHD 1080P",
       "type": "m3u8",
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054505252554d666c6b575a4e48566e4a46524968336474676b5143463362504e55544d5a7a4d45423155725247534e5a6a557739554f724a306350647a637a704562515657524f396b5933456a5770566e4d50746d534b42485671466b553334304d76746b513563574d7a4a31516d644665713557506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d456a4d35676a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d3441544d7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d305450424e6b57364a7a4e4c6c30516d746d4d43706b593474304e6b313059424e54534742584d6f394654364a6d5130566b4d505a4463786b3261304e6e514b6c44645768455a7442584f736454545270315178633054794e6b61524a325576646e627a426a56516447644d426c5a5a463064774254506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d456a4e30517a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d3441544d7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
       "orgUriSame": true,
       "rowHeaders": {},
       "otherFields": {
@@ -24,7 +24,7 @@
       },
       "immediate": {
         "status": 403,
-        "ms": 42,
+        "ms": 60,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -37,7 +37,7 @@
       },
       "delayed": {
         "status": 403,
-        "ms": 59,
+        "ms": 35,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -50,7 +50,7 @@
       },
       "rowHeadersFetch": {
         "status": 403,
-        "ms": 18,
+        "ms": 16,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -63,7 +63,7 @@
       },
       "browserLike": {
         "status": 200,
-        "ms": 293,
+        "ms": 228,
         "contentType": "application/vnd.apple.mpegurl; charset=utf-8",
         "bytes": 70182,
         "isManifest": true,
@@ -80,7 +80,7 @@
       "label": "[English] - HD 720P",
       "quality": "[English] - HD 720P",
       "type": "m3u8",
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150394555514d527a626f6c44636b78575a6b4a3061686c485632566b5771706c54334d574d58396b4d56354564533530594c42564d584231566d686e61613153565564314d6a5244556e426c596178475431386d524e467a4d34385762714a564e4b353064614a556576466c5379597a4d7a386b4d39556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a694d796b444f7959544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d515039636e5136744753444e464d7730575a77416a54346f474e575644536c526d52713956554c7058535556325835516d61717047524f56584c7945554e69566a5a545a33646f706c4e614258596a706c646e4e3058314d566135674665796345575a7045523035326231345553556c326379496d6439556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a534d3251444e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
       "orgUriSame": true,
       "rowHeaders": {},
       "otherFields": {
@@ -90,7 +90,7 @@
       },
       "immediate": {
         "status": 403,
-        "ms": 73,
+        "ms": 49,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -103,7 +103,7 @@
       },
       "delayed": {
         "status": 403,
-        "ms": 29,
+        "ms": 53,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -116,7 +116,7 @@
       },
       "rowHeadersFetch": {
         "status": 403,
-        "ms": 43,
+        "ms": 40,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -129,7 +129,7 @@
       },
       "browserLike": {
         "status": 200,
-        "ms": 93,
+        "ms": 273,
         "contentType": "application/vnd.apple.mpegurl; charset=utf-8",
         "bytes": 121139,
         "isManifest": true,
@@ -146,7 +146,7 @@
       "label": "[English] - SD 480P",
       "quality": "[English] - SD 480P",
       "type": "m3u8",
-      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054506e4e554f363932584c6856575a6447626d7447634c6c484d77645454314e474e5274476261464761464e4853344d57566d5244577751565a7a4d325551316d57705a5457686c304d7a6858524a46465230456d56305947524c6c6b4d7946576156466b5a4c4a3261325155546c646d63485656506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d496a4d35676a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c3045544e7a556d4d3449575a6864544e7941444f3445574d354557596c64444e6d5a545a6a68444e7a51474f7763545a3255544f6d397963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
+      "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054506e4e6b637052575530686a5a6b5246636f46554e4a5230635452316132673263516c6a555a3179517877555673466a624a5658656d5a6e573149484d436c44574342565976356b64356447634868484d7967484d535248546f6c6b57686c6c554a706c51545a56555a5a30613349464e314a58506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d456a4e30517a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d34517a4c3045544e7a556d4d3449575a6864544e7941444f3445574d354557596c64444e6d5a545a6a68444e7a51474f7763545a3255544f6d397963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
       "orgUriSame": true,
       "rowHeaders": {},
       "otherFields": {
@@ -155,19 +155,6 @@
         "isEmbed": false
       },
       "immediate": {
-        "status": 403,
-        "ms": 40,
-        "contentType": "text/plain;charset=UTF-8",
-        "bytes": 9,
-        "isManifest": false,
-        "isMarkup": false,
-        "finalHost": "catflix.nxstreamhub.workers.dev",
-        "first": "Forbidden",
-        "audioLangs": [],
-        "audioRenditions": [],
-        "body": "Forbidden"
-      },
-      "delayed": {
         "status": 403,
         "ms": 44,
         "contentType": "text/plain;charset=UTF-8",
@@ -180,9 +167,22 @@
         "audioRenditions": [],
         "body": "Forbidden"
       },
+      "delayed": {
+        "status": 403,
+        "ms": 28,
+        "contentType": "text/plain;charset=UTF-8",
+        "bytes": 9,
+        "isManifest": false,
+        "isMarkup": false,
+        "finalHost": "catflix.nxstreamhub.workers.dev",
+        "first": "Forbidden",
+        "audioLangs": [],
+        "audioRenditions": [],
+        "body": "Forbidden"
+      },
       "rowHeadersFetch": {
         "status": 403,
-        "ms": 29,
+        "ms": 37,
         "contentType": "text/plain;charset=UTF-8",
         "bytes": 9,
         "isManifest": false,
@@ -195,7 +195,7 @@
       },
       "browserLike": {
         "status": 200,
-        "ms": 103,
+        "ms": 152,
         "contentType": "application/vnd.apple.mpegurl; charset=utf-8",
         "bytes": 234202,
         "isManifest": true,
@@ -222,7 +222,7 @@
       },
       "immediate": {
         "status": 502,
-        "ms": 100,
+        "ms": 109,
         "contentType": "text/plain; charset=utf-8",
         "bytes": 1662,
         "isManifest": false,
@@ -234,7 +234,7 @@
       },
       "delayed": {
         "status": 502,
-        "ms": 90,
+        "ms": 71,
         "contentType": "text/plain; charset=utf-8",
         "bytes": 1662,
         "isManifest": false,
@@ -246,7 +246,7 @@
       },
       "rowHeadersFetch": {
         "status": 502,
-        "ms": 31,
+        "ms": 24,
         "contentType": "text/plain; charset=utf-8",
         "bytes": 1662,
         "isManifest": false,
@@ -258,7 +258,7 @@
       },
       "browserLike": {
         "status": 502,
-        "ms": 56,
+        "ms": 18,
         "contentType": "text/plain; charset=utf-8",
         "bytes": 1662,
         "isManifest": false,
@@ -285,7 +285,7 @@
       },
       "immediate": {
         "status": 200,
-        "ms": 162,
+        "ms": 289,
         "contentType": "application/vnd.apple.mpegurl",
         "bytes": 808,
         "isManifest": true,
@@ -311,7 +311,7 @@
       },
       "delayed": {
         "status": 200,
-        "ms": 83,
+        "ms": 52,
         "contentType": "application/vnd.apple.mpegurl",
         "bytes": 808,
         "isManifest": true,
@@ -332,7 +332,7 @@
       },
       "rowHeadersFetch": {
         "status": 200,
-        "ms": 12,
+        "ms": 45,
         "contentType": "application/vnd.apple.mpegurl",
         "bytes": 808,
         "isManifest": true,
@@ -353,7 +353,7 @@
       },
       "browserLike": {
         "status": 403,
-        "ms": 10,
+        "ms": 21,
         "contentType": "text/html; charset=UTF-8",
         "bytes": 4549,
         "isManifest": false,
@@ -379,63 +379,58 @@
         "isEmbed": false
       },
       "immediate": {
-        "status": 200,
-        "ms": 1000,
-        "contentType": "application/vnd.apple.mpegurl",
-        "bytes": 99,
-        "isManifest": true,
-        "isMarkup": false,
+        "status": 404,
+        "ms": 661,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 891,
+        "isManifest": false,
+        "isMarkup": true,
         "finalHost": "v7.kkphimplayer7.com",
-        "first": "#EXTM3U #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RES",
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> <meta charset=\"UTF-8",
         "audioLangs": [],
         "audioRenditions": [],
-        "body": "#EXTM3U\n#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RESOLUTION=1920x1080\n3500kb/hls/index.m3u8",
-        "bytesProof": {
-          "bytes": 131072,
-          "status": 206,
-          "variantStatus": 200
-        }
+        "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>404</title>\n<style>\n    body {\n        margin: 0;\n        padding: 0;\n        background-color: #111;\n        color: #fff;\n        font-family: Arial, sans-serif;\n        display: flex;\n        justify-content: center;\n        align-items: center;\n        height: 100vh;\n        text-align: center;\n    }\n    h1 {\n        font-size: 120px;\n        margin: 0;\n        letter-spacing: 10px;\n    }\n    p {\n        font-size: 20px;\n        margin-top: 20px;\n        color: #ccc;\n    }\n    .vn {\n        margin-top: 10px;\n        font-size: 18px;\n        color: #ff5555;\n    }\n</style>\n</head>\n<body>\n\n<div>\n    <h1>404</h1>\n    <p>Page Not Found</p>\n    <div class=\"vn\">\n     Vui lòng sử dụng mạng trong nước để truy cập trang này.\n    </div>\n<div>DEBUG: IP 20.120.158.136  country  166  name:美国</div>\n</div>\n\n</body>\n</html>"
       },
       "delayed": {
-        "status": 200,
-        "ms": 675,
-        "contentType": "application/vnd.apple.mpegurl",
-        "bytes": 99,
-        "isManifest": true,
-        "isMarkup": false,
+        "status": 404,
+        "ms": 642,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 891,
+        "isManifest": false,
+        "isMarkup": true,
         "finalHost": "v7.kkphimplayer7.com",
-        "first": "#EXTM3U #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RES",
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> <meta charset=\"UTF-8",
         "audioLangs": [],
         "audioRenditions": [],
-        "body": "#EXTM3U\n#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RESOLUTION=1920x1080\n3500kb/hls/index.m3u8"
+        "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>404</title>\n<style>\n    body {\n        margin: 0;\n        padding: 0;\n        background-color: #111;\n        color: #fff;\n        font-family: Arial, sans-serif;\n        display: flex;\n        justify-content: center;\n        align-items: center;\n        height: 100vh;\n        text-align: center;\n    }\n    h1 {\n        font-size: 120px;\n        margin: 0;\n        letter-spacing: 10px;\n    }\n    p {\n        font-size: 20px;\n        margin-top: 20px;\n        color: #ccc;\n    }\n    .vn {\n        margin-top: 10px;\n        font-size: 18px;\n        color: #ff5555;\n    }\n</style>\n</head>\n<body>\n\n<div>\n    <h1>404</h1>\n    <p>Page Not Found</p>\n    <div class=\"vn\">\n     Vui lòng sử dụng mạng trong nước để truy cập trang này.\n    </div>\n<div>DEBUG: IP 20.120.158.136  country  166  name:美国</div>\n</div>\n\n</body>\n</html>"
       },
       "rowHeadersFetch": {
-        "status": 200,
-        "ms": 203,
-        "contentType": "application/vnd.apple.mpegurl",
-        "bytes": 99,
-        "isManifest": true,
-        "isMarkup": false,
+        "status": 404,
+        "ms": 161,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 891,
+        "isManifest": false,
+        "isMarkup": true,
         "finalHost": "v7.kkphimplayer7.com",
-        "first": "#EXTM3U #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RES",
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> <meta charset=\"UTF-8",
         "audioLangs": [],
         "audioRenditions": [],
-        "body": "#EXTM3U\n#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RESOLUTION=1920x1080\n3500kb/hls/index.m3u8"
+        "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>404</title>\n<style>\n    body {\n        margin: 0;\n        padding: 0;\n        background-color: #111;\n        color: #fff;\n        font-family: Arial, sans-serif;\n        display: flex;\n        justify-content: center;\n        align-items: center;\n        height: 100vh;\n        text-align: center;\n    }\n    h1 {\n        font-size: 120px;\n        margin: 0;\n        letter-spacing: 10px;\n    }\n    p {\n        font-size: 20px;\n        margin-top: 20px;\n        color: #ccc;\n    }\n    .vn {\n        margin-top: 10px;\n        font-size: 18px;\n        color: #ff5555;\n    }\n</style>\n</head>\n<body>\n\n<div>\n    <h1>404</h1>\n    <p>Page Not Found</p>\n    <div class=\"vn\">\n     Vui lòng sử dụng mạng trong nước để truy cập trang này.\n    </div>\n<div>DEBUG: IP 20.120.158.136  country  166  name:美国</div>\n</div>\n\n</body>\n</html>"
       },
       "browserLike": {
-        "status": 206,
-        "ms": 203,
-        "contentType": "application/vnd.apple.mpegurl",
-        "bytes": 99,
-        "isManifest": true,
-        "isMarkup": false,
+        "status": 404,
+        "ms": 160,
+        "contentType": "text/html; charset=utf-8",
+        "bytes": 891,
+        "isManifest": false,
+        "isMarkup": true,
         "finalHost": "v7.kkphimplayer7.com",
-        "first": "#EXTM3U #EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RES",
+        "first": "<!DOCTYPE html> <html lang=\"en\"> <head> <meta charset=\"UTF-8",
         "audioLangs": [],
         "audioRenditions": [],
-        "body": "#EXTM3U\n#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=3500000,RESOLUTION=1920x1080\n3500kb/hls/index.m3u8"
+        "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<title>404</title>\n<style>\n    body {\n        margin: 0;\n        padding: 0;\n        background-color: #111;\n        color: #fff;\n        font-family: Arial, sans-serif;\n        display: flex;\n        justify-content: center;\n        align-items: center;\n        height: 100vh;\n        text-align: center;\n    }\n    h1 {\n        font-size: 120px;\n        margin: 0;\n        letter-spacing: 10px;\n    }\n    p {\n        font-size: 20px;\n        margin-top: 20px;\n        color: #ccc;\n    }\n    .vn {\n        margin-top: 10px;\n        font-size: 18px;\n        color: #ff5555;\n    }\n</style>\n</head>\n<body>\n\n<div>\n    <h1>404</h1>\n    <p>Page Not Found</p>\n    <div class=\"vn\">\n     Vui lòng sử dụng mạng trong nước để truy cập trang này.\n    </div>\n<div>DEBUG: IP 20.120.158.136  country  166  name:美国</div>\n</div>\n\n</body>\n</html>"
       },
-      "verdict": "SERVES A MANIFEST"
+      "verdict": "DEAD 404 everywhere"
     }
   ],
   "lanesUnavailable": []

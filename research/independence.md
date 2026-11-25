@@ -1,6 +1,6 @@
 # Is it a new source, or the same pipe?
 
-Measured 2026-11-25T15:01:31.536Z. Raw rows in [independence.json](independence.json).
+Measured 2026-11-25T16:05:40.248Z. Raw rows in [independence.json](independence.json).
 
 A candidate is independent when **none of the hosts behind its media** — the URL it
 hands out, the child playlists, the segments, the key URIs — appear in the media
@@ -11,9 +11,9 @@ different the URL looks.
 
 | source | media hosts |
 | --- | --- |
-| source-1 | `img1.hscow.com`, `img.hscow.com` |
+| source-1 | `img1.hscow.com`, `img.hscow.com`, `img1.fcxmb.com`, `img.fcxmb.com` |
 | source-2 | `greyboxtv.duckdns.org` |
-| source-3 | `i-arch-400.asrmo449ddj.com`, `free.finepulfe.xyz`, `wts.itsnitrox.tech`, `silent-frost-f2dbv.nxstreamhub.workers.dev` |
+| source-3 | `catflix.nxstreamhub.workers.dev`, `wts.itsnitrox.tech`, `silent-frost-f2dbv.nxstreamhub.workers.dev` |
 | source-4 | `img.rousav.tech`, `gzip.rousav.tech` |
 
 ## Candidates

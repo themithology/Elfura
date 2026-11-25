@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T15:06:56.599Z",
+  "measuredAt": "2026-11-25T16:25:22.713Z",
   "titles": [
     {
       "title": "fight-club",
@@ -151,14 +151,14 @@
       "title": "naruto-s1e1",
       "pageStatus": 200,
       "embedded": [
-        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmast",
-        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmast"
+        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Flow%2F480p%2F1948426%2Fv1%2F515232%2Fmaster.m3u8",
+        "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Flow%2F480p%2F1948426%2Fv1%2F515232%2Fmaster.m3u8&am"
       ],
       "hosts": [
         "dash-hls-bridge.john1mc.workers.dev"
       ],
       "proof": {
-        "manifestUrl": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Fdash%2F3569304491382001728_1_1_1080_h265_918%2Fmaster.m3u8",
+        "manifestUrl": "https://dash-hls-bridge.john1mc.workers.dev/?url=https%3A%2F%2Fsacdn.hakunaymatata.com%2Flow%2F480p%2F1948426%2Fv1%2F515232%2Fmaster.m3u8",
         "steps": [
           {
             "step": "master",

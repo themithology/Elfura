@@ -1,12 +1,12 @@
 {
-  "measuredAt": "2026-11-25T15:03:04.550Z",
+  "measuredAt": "2026-11-25T16:20:57.657Z",
   "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3054505252554d666c6b575a4e48566e4a46524968336474676b5143463362504e55544d5a7a4d45423155725247534e5a6a557739554f724a306350647a637a704562515657524f396b5933456a5770566e4d50746d534b42485671466b553334304d76746b513563574d7a4a31516d644665713557506c4a586430466d626e6c32556d556d6331525859756457615431545a74466d54355632536d456a4d35676a4d3255544f334554507a566d63704248654639444f314e54627563444f793846656c526d627039434d3441544d7651544d314d545a79676a596c46324e3149444d34675459786b54596856324e30596d4e6c4e474f304d445a34417a4e6c5a544e3559324c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
   "attempts": [
     {
       "name": "bare (User-Agent only)",
       "headers": {},
       "status": 403,
-      "ms": 102,
+      "ms": 108,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -17,7 +17,7 @@
         "Referer": "https://nxsha.space/"
       },
       "status": 200,
-      "ms": 138,
+      "ms": 562,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -28,7 +28,7 @@
         "Origin": "https://nxsha.space"
       },
       "status": 403,
-      "ms": 11,
+      "ms": 37,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -39,7 +39,7 @@
         "Accept": "*/*"
       },
       "status": 403,
-      "ms": 12,
+      "ms": 28,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -50,7 +50,7 @@
         "Range": "bytes=0-1023"
       },
       "status": 403,
-      "ms": 16,
+      "ms": 34,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -62,7 +62,7 @@
         "Origin": "https://nxsha.space"
       },
       "status": 200,
-      "ms": 84,
+      "ms": 94,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -71,7 +71,7 @@
       "name": "+ row headers only",
       "headers": {},
       "status": 403,
-      "ms": 16,
+      "ms": 61,
       "isManifest": false,
       "bytes": 9,
       "first": "Forbidden"
@@ -84,7 +84,7 @@
         "Accept": "*/*"
       },
       "status": 200,
-      "ms": 85,
+      "ms": 90,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"
@@ -98,7 +98,7 @@
         "Range": "bytes=0-1023"
       },
       "status": 200,
-      "ms": 112,
+      "ms": 87,
       "isManifest": true,
       "bytes": 70182,
       "first": "#EXTM3U #EXT-X-VERSION:3 #EXT-X-MEDIA-SEQUENCE:0 #EXT-X-ALLOW-CACHE:YE"

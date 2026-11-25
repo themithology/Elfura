@@ -1,4 +1,4 @@
-nxsha lane survey, 2026-11-25T15:08:48.096Z origin=https://nxsha.space
+nxsha lane survey, 2026-11-25T16:27:18.399Z origin=https://nxsha.space
 34 scraper(s) listed, 30 not RiveStream, key 38c8cd65…
   nitro                 7 row(s)  media        wts.itsnitrox.tech
   mahalala              0 row(s)  nothing      -
@@ -14,3 +14,15 @@ nxsha lane survey, 2026-11-25T15:08:48.096Z origin=https://nxsha.space
   stvv                  0 row(s)  nothing      -
   imovr                 0 row(s)  nothing      -
   ophim                 1 row(s)  media        v7.kkphimplayer7.com
+  yomovies              0 row(s)  nothing      -
+  showbox-online        0 row(s)  nothing      -
+  vidapi                0 row(s)  nothing      -
+  levi                  0 row(s)  nothing      -
+  toonstream            0 row(s)  nothing      -
+  tamilblasters         0 row(s)  nothing      -
+  hdhub4u               0 row(s)  nothing      -
+  hdhub4u-direct        0 row(s)  nothing      -
+  k4khdhub-direct       0 row(s)  nothing      -
+  k4khdhub              0 row(s)  nothing      -
+  filmyfly              0 row(s)  nothing      -
+  filmyfly-direct       0 row(s)  nothing      -

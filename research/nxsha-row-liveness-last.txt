@@ -4,7 +4,7 @@
   fight-club   watchout  label=watchout                   plain=TypeError: fetch failed  hdr=TypeError: fetch failed
   fight-club   awsind    label=Hindi                      plain=404 MARKUP hdr=404
   fight-club   purstream label=Purstream · pulse · 1080p  plain=200 M3U8 hdr=200
-  fight-club   ophim     label=Vietsub (Full)             plain=200 M3U8 hdr=200
+  fight-club   ophim     label=Vietsub (Full)             plain=404 MARKUP hdr=404
   got-s1e1     nitro     label=hguider | 1080P            plain=403 MARKUP hdr=403
   got-s1e1     nitro     label=1080P                      plain=404 MARKUP hdr=404
   got-s1e1     nitro     label=hguider | 1080P | Hindi |  plain=403 MARKUP hdr=403
@@ -15,6 +15,6 @@
   got-s1e1     awsind    label=Hindi                      plain=404 MARKUP hdr=404
   got-s1e1     awsind    label=English                    plain=404 MARKUP hdr=404
   got-s1e1     purstream label=Purstream · pulse · 1080p  plain=200 M3U8 hdr=200
-  got-s1e1     ophim     label=Vietsub (Tập 01)           plain=200 M3U8 hdr=200
+  got-s1e1     ophim     label=Vietsub (Tập 01)           plain=404 MARKUP hdr=404
 
 wrote research/nxsha-row-liveness.json
