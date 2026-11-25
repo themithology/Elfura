@@ -16,7 +16,7 @@ import {
   openToken,
   payloadCandidates,
   vidlinkUrl,
-} from '../../dist/backend/sources/vidlink.js';
+} from '../sources/source3-vidlink.ts';
 
 const NOW = 1_700_000_000_000;
 
@@ -150,7 +150,7 @@ console.log('— the adapter refuses to reach for a third party');
     calls.push(String(url));
     return new Response('bad token', { status: 400 });
   };
-  const { createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js');
+  const { createVidlinkAdapter } = await import('../sources/source3-vidlink.ts');
   const adapter = createVidlinkAdapter();
   const quiet = console.warn;
   console.warn = () => {};

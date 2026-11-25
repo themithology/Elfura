@@ -1,4 +1,25 @@
 /**
+ * ARCHIVED — never registered. Kept because the adapter is correct and the only
+ * thing wrong with the source is somebody else's server.
+ *
+ * Measured on runners, 2026-11-25 (research/vidlink-verdict.md):
+ *   /api/b accepted a locally minted token on all four titles — 3, 3, 4, 2 media
+ *   URLs. The protocol is solved and no third party is in the path.
+ *   Every media URL then answered 429 from nginx with a text/html body, on the
+ *   first fetch of each title, and again after a 15-second wait. A bare request
+ *   (no adapter headers) answers 428 Precondition Required — the host wants a
+ *   Referer the adapter already sends, then refuses anyway. Zero bytes, four
+ *   titles, three fetch strategies.
+ *
+ * So it cannot pass the contract gate, and separately it serves the same media
+ * object as vidora (resource/a58dd00a… on movie/27205), which was never approved.
+ * If that host ever serves datacenter IPs, restore this file and run
+ * scripts/research/vidlink-bytes.mjs — it is one runner job from proof.
+ *
+ * Original header follows.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
  * Source 3 — vidlink.
  *
  *   GET /api/b/movie/<token>                    → { stream: { playlist, qualities }, streams[] }
@@ -20,8 +41,8 @@
  * never cached.
  */
 import nacl from 'tweetnacl';
-import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
-import { sourceEnv } from './index.js';
+import type { RawStreamCandidate, SourceAdapter, SourceQuery } from '../../src/sources/types.js';
+import { sourceEnv } from '../../src/sources/index.js';
 
 const DEFAULT_API = 'https://vidlink.pro/api/b';
 const DEFAULT_ORIGIN = 'https://vidlink.pro';

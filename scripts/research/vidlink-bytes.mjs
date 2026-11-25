@@ -109,12 +109,20 @@ async function attempt(url, headers, label) {
 async function main() {
   console.log('vidlink bytes probe,', new Date().toISOString());
 
+  // The adapter is archived, and attic is not compiled by design - a file that
+  // ships nothing should not sit in dist/ looking like a lane. Re-testing is a
+  // deliberate act: move it back, run this.
   let createVidlinkAdapter;
   try {
     ({ createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js'));
-  } catch (error) {
-    console.error('Build the backend first: npm run build:backend');
-    throw error;
+  } catch {
+    console.error(
+      'The vidlink adapter is archived at backend/attic/sources/source3-vidlink.ts.\n' +
+        'To re-test the source:\n' +
+        '  git mv backend/attic/sources/source3-vidlink.ts backend/src/sources/vidlink.ts\n' +
+        '  npm run build:backend && node scripts/research/vidlink-bytes.mjs',
+    );
+    process.exit(2);
   }
   const adapter = createVidlinkAdapter();
 

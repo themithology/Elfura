@@ -163,23 +163,20 @@ async function main() {
 
   let createCitadelAdapter;
   let createGreyboxAdapter;
-  let createVidlinkAdapter;
   try {
     ({ createCitadelAdapter } = await import('../../dist/backend/sources/citadel.js'));
     ({ createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js'));
-    ({ createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js'));
   } catch (error) {
     console.error('Build the backend first: npm run build:backend');
     throw error;
   }
 
-  // All three, including the two already approved. The board's own internal
+  // The two approved sources. The board's own internal
   // overlap matters as much as a candidate's: if source-1 and source-2 serve the
   // same object, the board is smaller than it says it is.
   const lanes = {
     'source-1-citadel': createCitadelAdapter(),
     'source-2-greybox': createGreyboxAdapter(),
-    'source-3-vidlink': createVidlinkAdapter(),
   };
 
   const rows = [];

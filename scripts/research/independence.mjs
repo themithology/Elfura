@@ -145,31 +145,6 @@ const CANDIDATES = [
     },
   },
   {
-    id: 'vidlink',
-    label: 'VidLink',
-    note: '/api/b/<locally minted token> -> stream.playlist + qualities (source24 protocol, no third party)',
-    async discover(title) {
-      // Uses the REAL adapter module, so what is measured is what would ship.
-      const { createVidlinkAdapter } = await import('../../dist/backend/sources/vidlink.js');
-      const adapter = createVidlinkAdapter();
-      const result = await adapter.resolve({
-        type: title.type,
-        tmdbId: title.tmdbId,
-        season: title.season,
-        episode: title.episode,
-        signal: AbortSignal.timeout(20_000),
-      });
-      const candidates = result?.candidates ?? [];
-      if (candidates.length === 0) {
-        reportDiscovery(this.id, title, { status: 'adapter returned no candidate', topLevelKeys: [] });
-        return [];
-      }
-      // Every candidate, and the headers the adapter chose: the media hosts are
-      // the point, and they are measured with the headers that actually ship.
-      return candidates.map((c) => ({ url: c.url, headers: c.headers }));
-    },
-  },
-  {
     id: 'atlantic-q62',
     label: 'Atlantic · q62',
     note: 'stream.hls.lol/q62 -> releases[0].master (fmhy-atlantic-research.mjs)',
