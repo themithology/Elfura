@@ -40,6 +40,7 @@
 import type { SourceAdapter } from './types.js';
 import { createCitadelAdapter } from './citadel.js';
 import { createGreyboxAdapter } from './greybox.js';
+import { createNxshaAdapter } from './nxsha.js';
 
 /**
  * What a source may read: `process.env`, already carrying the `.env` overlay.
@@ -106,6 +107,27 @@ export const APPROVED_SOURCES: SourceDefinition[] = [
     probes: [
       { type: 'movie', tmdbId: '550' },
       { type: 'tv', tmdbId: '1399', season: 1, episode: 1 },
+    ],
+  },
+  {
+    id: 'source-3',
+    envFlag: 'ELFURA_NXSHA_ENABLED',
+    create: () => createNxshaAdapter(),
+    website: { name: 'Nxsha', url: 'https://nxsha.space' },
+    // Measured on a runner 2026-11-25 across four titles: zero media objects
+    // shared with source-1 or source-2, and anime rows where the other two had
+    // none. Its four rive-* lanes are excluded by construction because they ARE
+    // source-1, and of its 30 own scrapers only 6 were observed serving media —
+    // those 6 are the whole allowlist.
+    //
+    // NOTE: this entry is present but NOT yet proven by the contract. It was
+    // added on the user's instruction to ship it as source 3; the contract run
+    // on the next push is what decides whether it stays. An entry that cannot
+    // pull real segment bytes does not belong in this array, and will be removed
+    // again rather than left to look like coverage.
+    probes: [
+      { type: 'movie', tmdbId: '550' },
+      { type: 'tv', tmdbId: '46260', season: 1, episode: 1 },
     ],
   },
 ];
