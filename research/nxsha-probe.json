@@ -1,0 +1,121 @@
+{
+  "measuredAt": "2026-11-25T09:03:06.654Z",
+  "origins": [
+    {
+      "origin": "https://nxsha.space",
+      "steps": [
+        {
+          "step": "watch-page (the old verdict)",
+          "status": 200,
+          "bytes": 50610,
+          "contentType": "text/html; charset=utf-8"
+        },
+        {
+          "step": "api/servers",
+          "status": 200,
+          "bytes": 11106,
+          "contentType": "application/json",
+          "body": "{\"_hash\":\"U2FsdGVkX19QjXtJEynlU7sM6vHWGh4AkRP6A95jXebP6jpW6l94RmH-DaYDjBqt6hutsIY23Ob07sImS_Gw_McF0dZJ0DyljFpUVjldqPKt-q"
+        },
+        {
+          "step": "passphrase",
+          "status": 200,
+          "note": "opened with 38c8cd65…"
+        },
+        {
+          "step": "payload",
+          "status": 200,
+          "note": "34 scraper(s): 4 RiveStream-family, 30 its own"
+        },
+        {
+          "step": "sources:nitro",
+          "status": 200,
+          "bytes": 3767,
+          "media": 3,
+          "domains": [
+            "itsnitrox.tech"
+          ]
+        }
+      ]
+    },
+    {
+      "origin": "https://web.nxsha.app",
+      "steps": [
+        {
+          "step": "watch-page (the old verdict)",
+          "status": 403,
+          "bytes": 5630,
+          "contentType": "text/html; charset=UTF-8"
+        },
+        {
+          "step": "api/servers",
+          "status": 403,
+          "bytes": 6517,
+          "contentType": "text/html; charset=UTF-8",
+          "body": "<!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/htm"
+        }
+      ]
+    }
+  ],
+  "notes": {
+    "https://nxsha.space": {
+      "scrapers": 34,
+      "riveFamily": [
+        "rive-citadel",
+        "rive-primevids",
+        "rive-flowcast",
+        "rive-hindicast"
+      ],
+      "ownFamily": [
+        "nitro",
+        "mahalala",
+        "watchout",
+        "awsind",
+        "castle",
+        "streamflix",
+        "xdownloader",
+        "purstream",
+        "vixolity",
+        "mhbox",
+        "bdxs",
+        "stvv",
+        "imovr",
+        "ophim",
+        "yomovies",
+        "showbox-online",
+        "vidapi",
+        "levi",
+        "toonstream",
+        "tamilblasters",
+        "hdhub4u",
+        "hdhub4u-direct",
+        "k4khdhub-direct",
+        "k4khdhub",
+        "filmyfly",
+        "filmyfly-direct",
+        "moviesdrive",
+        "movone",
+        "zoko",
+        "em-8"
+      ],
+      "payloadKeys": [
+        "servers",
+        "_req_ts",
+        "_req_salt"
+      ]
+    },
+    "https://nxsha.space:nitro": {
+      "rows": 3,
+      "languages": [
+        "hguider | 1080P",
+        "hguider"
+      ],
+      "mediaHosts": [
+        "wts.itsnitrox.tech"
+      ],
+      "domains": [
+        "itsnitrox.tech"
+      ]
+    }
+  }
+}
