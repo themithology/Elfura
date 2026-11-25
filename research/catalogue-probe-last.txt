@@ -1,15 +1,27 @@
-catalogue probe, 2026-11-25T08:48:22.926Z
+catalogue probe, 2026-11-25T08:53:14.699Z
 
 — kisskh
-  reachable 1/3 step(s)
+  home               200
+                     content-type text/html
+  listing            400
+                     content-type application/problem+json; charset=utf-8
+                     said: {"type":"https://tools.ietf.org/html/rfc7231#section-6.5.1","title":"Bad Request","status":400,"trac
+  episode-no-key     403
   third party: kkey required — the site gates the endpoint; minting it locally is unproven
 
 — animekai
-  reachable 2/2 step(s)
-  third party: unknown — could not read the content id, so the gate was never tested
+  home               200
+  watch-page         200
+                     content-type text/html; charset=UTF-8
+  episodes-bare-1    200
+  episodes-bare-2    200
+  third party: none needed for this step — episodes list answered without enc
 
 — yflix
-  reachable 0/4 step(s)
+  home:yflix.to      TypeError: fetch failed (ENOTFOUND)
+  home:1movies.bz    TypeError: fetch failed (ENOTFOUND)
+  home:solarmovie.fi TypeError: fetch failed (UND_ERR_CONNECT_TIMEOUT)
+  watch-page         TypeError: fetch failed (ENOTFOUND)
   third party: unknown — could not read the content id, so the gate was never tested
 
 wrote research/catalogue-probe.json
