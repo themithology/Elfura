@@ -94,7 +94,6 @@ jobs:
       # The board treated 22 lanes as dead on a 2-title sample. Ask all 30 against
       # Indian-weighted titles, and all six RiveStream providers, not just citadel.
       - name: Survey Stremio addons for direct streams
-        continue-on-error: true
         run: |
           node scripts/research/stremio-addon-survey.mjs 2>&1 | tee research/stremio-addon-survey-last.txt
 
@@ -245,24 +244,22 @@ jobs:
         run: |
           git config user.name "source research"
           git config user.email "research@example.invalid"
-          git add research/independence.json research/independence.md research/independence-last.txt \
-                  research/object-overlap.json research/object-overlap-last.txt \
-                  research/nxsha-probe.json research/nxsha-probe-last.txt \
-                  research/nxsha-lanes.json research/nxsha-lanes-last.txt \
-                  research/anivortex-426.json research/anivortex-426-last.txt \
-                  research/upstream-lookup.json research/upstream-lookup-last.txt \
-                  research/vidly-deep.json research/vidly-deep-last.txt \
-                  research/vidly-streams.json research/vidly-streams-last.txt \
-                  research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt \
-                  research/vidly-page-lang.json research/vidly-page-lang-last.txt \
-                  research/nxsha-row-fields.json research/nxsha-row-fields-last.txt \
-                  research/nxsha-row-liveness.json research/nxsha-row-liveness-last.txt \
-                  research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt \
-                  research/nxsha-castle-headers.json research/nxsha-castle-headers-last.txt \
-                  research/nxsha-all-lanes.json research/nxsha-all-lanes-last.txt \
-                  research/nxsha-castle-proof.json research/nxsha-castle-proof-last.txt \
-                  research/nxsha-hindi-verify.json research/nxsha-hindi-verify-last.txt \
-                  research/stremio-addon-survey.json research/stremio-addon-survey-last.txt
+          # Stage probe output defensively.
+          #
+          # This was `git add <25 explicit paths>`, and that is why measured
+          # data kept vanishing. git add is all-or-nothing on pathspecs: ONE
+          # path that no step produced aborts the whole command with exit 128
+          # and stages NOTHING - not even the files that do exist. Most runs
+          # produce a different subset, so this failed nearly every time while
+          # the step still reported success.
+          #
+          # Now: every research artifact that a probe actually wrote gets
+          # staged, and a probe that produced nothing simply contributes
+          # nothing. Add them one at a time so no path can abort the others.
+          for f in research/*.json research/*.txt research/*.md; do
+            [ -e "$f" ] || continue
+            git add -- "$f" 2>/dev/null || true
+          done
           # Report what was actually staged. A silent `git add` of a file the
           # probe never wrote leaves the commit empty and looks like success.
           echo "staged files:"

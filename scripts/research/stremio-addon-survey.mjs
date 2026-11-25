@@ -203,7 +203,21 @@ for (const a of ADDONS) {
   console.log(`  ${a.id.padEnd(14)} direct ${String(d).padStart(3)}/${String(all).padEnd(3)}  indian-titles direct: ${indian}`);
 }
 
+// A run where NOTHING could be fetched is not a finding about the addons - it is
+// a finding about this runner's egress. Say so, loudly, instead of writing an
+// empty table that reads like "no addon has direct streams".
+const anyManifest = ADDONS.some((a) => perAddon[a.id]?.manifest?.status === 200);
+if (!anyManifest) {
+  console.log('\n::error::not one manifest could be fetched — this measures the runner\'s\n' +
+    'egress, not the addons. Do not read the zeros above as a verdict.');
+}
+
 const fs = await import('node:fs');
 fs.mkdirSync('research', { recursive: true });
-fs.writeFileSync('research/stremio-addon-survey.json', JSON.stringify({ at: new Date().toISOString(), tally, perAddon }, null, 2));
-console.log('\nwrote research/stremio-addon-survey.json');
+fs.writeFileSync('research/stremio-addon-survey.json', JSON.stringify({
+  at: new Date().toISOString(),
+  anyManifestFetched: anyManifest,
+  tally, perAddon,
+}, null, 2));
+console.log(`\nwrote research/stremio-addon-survey.json (anyManifestFetched=${anyManifest})`);
+process.exit(anyManifest ? 0 : 1);
