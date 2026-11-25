@@ -257,6 +257,17 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
   });
   assert.equal(bare.length, 1, 'a row with no headers is admitted');
   assert.equal(bare[0].headers.Referer, 'https://nxsha.space/', 'and gets the provider origin as Referer');
+
+  // The other half of the same measurement: a blanket Referer broke purstream in
+  // the very commit that fixed castle. free.finepulfe.xyz serves 200 to a bare
+  // fetch and 403 (an HTML block page) to Referer+Origin+Accept+Range. Each host
+  // gets what it was measured to need, not one policy for all.
+  const pur = nxCandidates({
+    sources: [{ url: 'https://free.finepulfe.xyz/movies/550/master.m3u8', type: 'm3u8', label: 'Purstream · pulse · 1080p · MULTI' }],
+  });
+  assert.equal(pur.length, 1);
+  assert.equal(pur[0].headers.Referer, undefined, 'a host measured to refuse a Referer is sent none');
+  assert.ok(pur[0].headers['User-Agent'], 'but it still gets a UA, which was measured to be enough');
   assert.ok(bare[0].headers['User-Agent'], 'still carrying a UA');
 
   // A row that DOES ship a Referer keeps its own; the fallback never overrides.

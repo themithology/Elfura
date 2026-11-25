@@ -172,8 +172,32 @@ function rowHeaders(raw: unknown): Record<string, string> | undefined {
  */
 function candidateHeaders(row: NxStream, origin: string): Record<string, string> {
   const headers = rowHeaders(row.headers) ?? { 'User-Agent': UA };
-  if (!headers.Referer) headers.Referer = `${origin}/`;
+  if (headers.Referer) return headers;
+  // WHICH HOSTS WANT A REFERER IS MEASURED, NOT ASSUMED.
+  //
+  // A blanket Referer fixed castle and BROKE purstream in the same commit:
+  //
+  //   catflix.nxstreamhub.workers.dev  bare 403 -> Referer 200 (70 KB playlist)
+  //   free.finepulfe.xyz               bare 200 -> Referer+Origin+Accept+Range 403
+  //                                                 (an HTML block page, not media)
+  //
+  // purstream's own rows were serving fine with a bare User-Agent, and adding the
+  // header the other host wanted turned its manifest into a 403. So the fallback
+  // is scoped to the host family that was measured to require it. A new host is
+  // tried bare first, which is the safe default: a bare fetch is what already
+  // worked for every host that did not need anything.
+  const REFERER_REQUIRED = /(?:^|\.)nxstreamhub\.workers\.dev$/i;
+  if (REFERER_REQUIRED.test(hostOfRow(row))) headers.Referer = `${origin}/`;
   return headers;
+}
+
+/** The host a row points at, without constructing a URL twice. */
+function hostOfRow(row: NxStream): string {
+  try {
+    return new URL(String(row.url ?? '')).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
 }
 
 const MAX_LANES = 8;
