@@ -98,6 +98,27 @@ console.log('— the provider’s own edge is kept; somebody else’s is not');
   assert.equal(plain.length, 1, 'but a CDN node merely named edge12 is not');
 }
 
+console.log('— every lane measured to serve is requested, and nothing else is');
+{
+  const { ownLanes } = await import('../../dist/backend/sources/nxsha.js');
+  const lanes = ownLanes();
+  // These five were silently absent from the board until the survey asked 30
+  // lanes about Indian titles instead of 2 titles about Fight Club and Naruto.
+  // k4khdhub names Hindi in its own labels, at 1080p, with a file size.
+  for (const lane of ['k4khdhub', 'k4khdhub-direct', 'movone', 'em-8']) {
+    assert.ok(lanes.includes(lane), `${lane} answered on an Indian title and must be requested`);
+  }
+  // streamflix answers too, but with MP4 on third-party worker hosts — refused on
+  // its host rule, so asking it would be wasted budget, not extra coverage.
+  assert.ok(!lanes.includes('streamflix'), 'a lane whose every row is refused is not requested');
+  // The 17 silent ones stay out until something answers.
+  for (const lane of ['tamilblasters', 'hdhub4u', 'filmyfly', 'moviesdrive', 'yomovies']) {
+    assert.ok(!lanes.includes(lane), `${lane} was silent across eight titles and is not requested`);
+  }
+  // A lane naming itself RiveStream is source-1's, whatever the allowlist says.
+  assert.equal(lanes.filter((l) => /^rive/i.test(l)).length, 0);
+}
+
 console.log('— the language lives in the label, and every measured shape is read correctly');
 {
   const { rowLanguages, nxCandidates } = await import('../../dist/backend/sources/nxsha.js');

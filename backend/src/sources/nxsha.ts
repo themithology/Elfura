@@ -70,6 +70,33 @@ export const PASSES = [
  * this list cannot re-admit them by accident. That is belt and braces on
  * purpose: `castle` looks like a normal scraper name and is a workers.dev front.
  */
+/**
+ * Every lane that has ANSWERED a media row, measured against Indian-weighted
+ * titles rather than the two Hollywood/anime titles the first survey used.
+ *
+ * The original list was eight lanes, taken from a survey that asked Fight Club
+ * and Naruto and treated silence as death. Re-measured against RRR, Kalki, Jawan,
+ * Baahubali 2, Pathaan, Mirzapur and Sacred Games, THIRTEEN lanes answer and five
+ * of them were never being asked:
+ *
+ *   k4khdhub-direct  Pathaan "HubDrive | 1080p | 16.69 GB | BluRay | x264 | Hindi | English"
+ *   k4khdhub         Pathaan "HubCloud 10Gbps | 1080p | 40.16 GB | BluRay | Hindi | English"
+ *   movone           25 rows on 2 titles, 2160p and 1080p
+ *   em-8             RRR, Kalki "HD"
+ *   streamflix       RRR, Jawan "Auto" — mp4, on workers.dev, refused by host rule
+ *
+ * That first check is the whole point of this list existing: those rows NAME
+ * Hindi explicitly, in a file-size form ("16.69 GB" at 1080p), on an Indian
+ * catalogue. They were discarded because a lane named "k4khdhub" was asked for
+ * an American film.
+ *
+ * The five that stay refused are refused for a measured reason, not silence:
+ * streamflix serves MP4 on third-party worker hosts, and the hubcloud rows are
+ * file-host pages rather than manifests until proven otherwise.
+ *
+ * The 17 that were silent across all eight titles are left out deliberately: that
+ * is now a result, not an assumption.
+ */
 const ALLOWED_LANES: readonly string[] = [
   'nitro',
   'castle',
@@ -79,6 +106,10 @@ const ALLOWED_LANES: readonly string[] = [
   'purstream',
   'ophim',
   'zoko',
+  'k4khdhub',
+  'k4khdhub-direct',
+  'movone',
+  'em-8',
 ];
 
 /** The families that belong to source-1. Never requested here. */
@@ -200,7 +231,9 @@ function hostOfRow(row: NxStream): string {
   }
 }
 
-const MAX_LANES = 8;
+// One request per lane, asked concurrently. 12 lanes = 12 of the 30 offered, the
+// ones measured to serve. The bound is the allowlist, not this number.
+const MAX_LANES = 12;
 const MAX_CANDIDATES = 24;
 const MAX_BODY_BYTES = 1_000_000;
 const PROVIDER_TIMEOUT_MS = 8000;
