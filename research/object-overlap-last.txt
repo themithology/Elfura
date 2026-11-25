@@ -1,36 +1,33 @@
-object overlap probe, 2026-11-24T18:40:00.307Z
+object overlap probe, 2026-11-25T01:10:37.293Z
 [elfura-citadel] movie/550: 2 row(s)
   fight-club source-1-citadel: 2 candidate(s), 1 object id(s), hscow.com
-[elfura-greybox] movie/550: 9 row(s), langs=7
-  fight-club source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
+[elfura-greybox] movie/550: ECONNRESET
+  fight-club source-2-greybox: 0 candidate(s), 0 object id(s), no domain
 [elfura-vidlink] movie/550: 3 row(s)
   fight-club source-3-vidlink: 3 candidate(s), 3 object id(s), hakunaymatata.com
 [elfura-citadel] movie/27205: 6 row(s)
   inception source-1-citadel: 6 candidate(s), 1 object id(s), hscow.com
-[elfura-greybox] movie/27205: 9 row(s), langs=7
-  inception source-2-greybox: 9 candidate(s), 1 object id(s), duckdns.org,hscow.com
+[elfura-greybox] movie/27205: ECONNRESET
+  inception source-2-greybox: 0 candidate(s), 0 object id(s), no domain
 [elfura-vidlink] movie/27205: 3 row(s)
   inception source-3-vidlink: 3 candidate(s), 3 object id(s), hakunaymatata.com
 [elfura-citadel] tv/1399: 2 row(s)
   got-s1e1 source-1-citadel: 2 candidate(s), 0 object id(s), fcxmb.com,hscow.com
-[elfura-greybox] tv/1399: 7 row(s), langs=5
-  got-s1e1 source-2-greybox: 7 candidate(s), 0 object id(s), duckdns.org,fcxmb.com,hscow.com
+[elfura-greybox] tv/1399: ECONNRESET
+  got-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
 [elfura-vidlink] tv/1399: 4 row(s)
   got-s1e1 source-3-vidlink: 4 candidate(s), 4 object id(s), hakunaymatata.com
 [elfura-citadel] tv/46260: 1 row(s)
   naruto-s1e1 source-1-citadel: 1 candidate(s), 0 object id(s), hscow.com
-[elfura-greybox] tv/46260: throttled, retrying once
-[elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
+[elfura-greybox] tv/46260: ECONNRESET
   naruto-s1e1 source-2-greybox: 0 candidate(s), 0 object id(s), no domain
 [elfura-vidlink] tv/46260: 2 row(s)
   naruto-s1e1 source-3-vidlink: 2 candidate(s), 2 object id(s), hakunaymatata.com
 
 wrote research/object-overlap.json
-verdict: OVERLAP — source-1-citadel & source-2-greybox share 2 object(s)
-  source-1-citadel & source-2-greybox: 2 shared object(s) on fight-club,inception
-     hsc:78164859
-     hsc:210544560
+verdict: NO SHARED OBJECTS — no lane pair served a byte-identical media object
   source-1-citadel: 11 url(s), 2 named object(s)
-  source-2-greybox: 31 url(s), 2 named object(s)
+  source-2-greybox: 0 url(s), 0 named object(s)
   source-3-vidlink: 12 url(s), 12 named object(s)
-domains — hscow.com:source-1-citadel+source-2-greybox, duckdns.org:source-2-greybox, hakunaymatata.com:source-3-vidlink, fcxmb.com:source-1-citadel+source-2-greybox
+  caveat: Absence of a shared id is not proof of different libraries: a lane whose rows are opaque (?u=m1.…) hides its object, and that lane could still be serving what another lane names.
+domains — hscow.com:source-1-citadel, hakunaymatata.com:source-3-vidlink, fcxmb.com:source-1-citadel
