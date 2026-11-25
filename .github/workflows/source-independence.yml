@@ -30,6 +30,7 @@ on:
       - 'scripts/research/vidly-page-lang.mjs'
       - 'scripts/research/nxsha-row-fields.mjs'
       - 'scripts/research/nxsha-row-liveness.mjs'
+      - 'scripts/research/nxsha-breaking-bad.mjs'
       - '.github/workflows/source-independence.yml'
 
 # The verdict is committed back to the branch; logs cannot be downloaded from
@@ -72,6 +73,16 @@ jobs:
         run: |
           set -o pipefail
           node scripts/research/upstream-lookup.mjs 2>&1 | tee research/upstream-lookup-last.txt
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+
+      # The owner's question, on the title they named: is any row labelled Hindi
+      # actually Hindi, and are the "dead" rows dead or just expiring/bot-gated?
+      - name: Probe nxsha Breaking Bad S1E1
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/research/nxsha-breaking-bad.mjs 2>&1 | tee research/nxsha-breaking-bad-last.txt
         env:
           NODE_OPTIONS: --dns-result-order=ipv4first
 
@@ -197,7 +208,8 @@ jobs:
                   research/vidly-stream-bytes.json research/vidly-stream-bytes-last.txt \
                   research/vidly-page-lang.json research/vidly-page-lang-last.txt \
                   research/nxsha-row-fields.json research/nxsha-row-fields-last.txt \
-                  research/nxsha-row-liveness.json research/nxsha-row-liveness-last.txt
+                  research/nxsha-row-liveness.json research/nxsha-row-liveness-last.txt \
+                  research/nxsha-breaking-bad.json research/nxsha-breaking-bad-last.txt
           git diff --cached --quiet || git commit -m "Independence probe $(date -u +%Y-%m-%dT%H:%MZ)"
           for attempt in 1 2 3 4; do
             if git push; then
