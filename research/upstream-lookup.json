@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T19:17:09.570Z",
+  "measuredAt": "2026-11-25T19:53:25.935Z",
   "summary": {
     "vidly": {
       "titlesIndexed": 8,
@@ -298,7 +298,7 @@
       {
         "step": "home",
         "status": 200,
-        "bytes": 52270
+        "bytes": 52237
       }
     ]
   },
@@ -323,7 +323,7 @@
       {
         "step": "home:https://bingr.one",
         "status": 200,
-        "bytes": 409182,
+        "bytes": 409139,
         "contentType": "text/html; charset=utf-8",
         "challenge": false
       },

@@ -1,5 +1,7 @@
-anivortex 426 probe, 2026-11-25T19:20:13.640Z
-  breaking-bad-s1e1  0 row(s) on 0 host(s): 
+anivortex 426 probe, 2026-11-25T19:56:28.948Z
+  breaking-bad-s1e1  6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
+      OTHER   greyboxtv.duckdns.org              200 2210B 
+      OTHER   dash-hls-bridge.john1mc.workers.dev 200 3333B 
   got-s1e1           6 row(s) on 2 host(s): greyboxtv.duckdns.org, dash-hls-bridge.john1mc.workers.dev
       OTHER   greyboxtv.duckdns.org              200 2210B 
       OTHER   dash-hls-bridge.john1mc.workers.dev 200 3332B 

@@ -7,9 +7,9 @@ rows naming Hindi: 35
   castle         rrr        SINGLE-TRACK                   —  477708B
   castle         rrr        SINGLE-TRACK                   —  253236B
   castle         rrr        SINGLE-TRACK                   —  179728B
-  castle         jawan      SINGLE-TRACK                   —  407772B
-  castle         jawan      SINGLE-TRACK                   —  175404B
-  castle         jawan      SINGLE-TRACK                   —  124644B
+  castle         jawan      NO BYTES                       —  0B
+  castle         jawan      NO BYTES                       —  0B
+  castle         jawan      NO BYTES                       —  0B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
   k4khdhub-direc pathaan    NO BYTES                       —  0B
@@ -37,7 +37,7 @@ rows naming Hindi: 35
   k4khdhub       fight-club NO BYTES                       —  0B
 
 ──────── tally ────────
-  NO BYTES                         28
-  SINGLE-TRACK                     7
+  NO BYTES                         31
+  SINGLE-TRACK                     4
 
 wrote research/nxsha-hindi-verify.json

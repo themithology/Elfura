@@ -1,16 +1,17 @@
-independence probe 2026-11-25T19:16:09.163Z
+independence probe 2026-11-25T19:52:19.940Z
 
 — reading the board
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-citadel] movie/27205: 6 row(s)
+[elfura-citadel] tv/1399: 4 row(s)
 [elfura-citadel] tv/46260: 1 row(s)
 [elfura-greybox] movie/550: 9 row(s), langs=7
 [elfura-greybox] movie/27205: 9 row(s), langs=7
 [elfura-greybox] tv/1399: throttled, retrying once
-[elfura-greybox] tv/1399: THROTTLED — provider refused us, not empty
+[elfura-greybox] tv/1399: 7 row(s), langs=5
 [elfura-greybox] tv/46260: throttled, retrying once
-[elfura-greybox] tv/46260: 6 row(s), langs=6
-  source-1: 2 media host(s) :: img1.hscow.com, img.hscow.com
+[elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
+  source-1: 4 media host(s) :: img1.hscow.com, img.hscow.com, img1.fcxmb.com, img.fcxmb.com
   source-2: 1 media host(s) :: greyboxtv.duckdns.org
   source-3: 0 media host(s) :: none
   source-4: 2 media host(s) :: img.rousav.tech, gzip.rousav.tech

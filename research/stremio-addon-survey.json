@@ -1,0 +1,107 @@
+{
+  "at": "2026-11-25T19:53:43.749Z",
+  "anyManifestFetched": true,
+  "tally": {
+    "mediafusion:no-direct": 4
+  },
+  "perAddon": {
+    "mediafusion": {
+      "manifest": {
+        "status": 200,
+        "id": "stremio.addons.mediafusion|elfhosted",
+        "version": "6.2.0",
+        "types": [
+          "movie",
+          "series",
+          "tv",
+          "events"
+        ],
+        "hasStream": true
+      },
+      "titles": {
+        "fight-club": {
+          "status": 200,
+          "total": 0,
+          "kinds": {},
+          "direct": 0,
+          "heights": [],
+          "langs": [],
+          "sizes": []
+        },
+        "rrr": {
+          "status": 200,
+          "total": 0,
+          "kinds": {},
+          "direct": 0,
+          "heights": [],
+          "langs": [],
+          "sizes": []
+        },
+        "jawan": {
+          "status": 200,
+          "total": 0,
+          "kinds": {},
+          "direct": 0,
+          "heights": [],
+          "langs": [],
+          "sizes": []
+        },
+        "squid-game": {
+          "status": 200,
+          "total": 0,
+          "kinds": {},
+          "direct": 0,
+          "heights": [],
+          "langs": [],
+          "sizes": []
+        }
+      }
+    },
+    "ggplay": {
+      "manifest": {
+        "status": 402
+      },
+      "titles": {}
+    },
+    "nodebrid": {
+      "manifest": {
+        "error": "fetch failed"
+      },
+      "titles": {}
+    },
+    "stremify": {
+      "manifest": {
+        "status": 200,
+        "parseError": true
+      },
+      "titles": {}
+    },
+    "webstreamr": {
+      "manifest": {
+        "status": 200,
+        "parseError": true
+      },
+      "titles": {}
+    },
+    "webstreamr-all": {
+      "manifest": {
+        "status": 200,
+        "parseError": true
+      },
+      "titles": {}
+    },
+    "nuviostreams": {
+      "manifest": {
+        "status": 200,
+        "parseError": true
+      },
+      "titles": {}
+    },
+    "multiscraper": {
+      "manifest": {
+        "status": 404
+      },
+      "titles": {}
+    }
+  }
+}

@@ -1,18 +1,8 @@
 
 ==========================================================================
-ggplay  https://ggplay-gf.vercel.app
-  HTTP/HLS only, claims 4K + multi-audio. README lists its upstreams as Vidlink/Videasy/Cinejoy/VixSrc/VAPlayer/DirectWeb — three of which this board has already measured and rejected, so the interesting question is whether anything is left.
-  manifest: HTTP 402
-
-==========================================================================
-nuviostreams  https://nuviostreams.hayd.uk
-  HTTP direct, multi-provider, TMDB+IMDb ids.
-  manifest: not JSON (24060B)
-
-==========================================================================
 mediafusion  https://mediafusion.elfhosted.com
-  Widest catalogue of the set — Tamil/Hindi/Malayalam/Kannada scrapers. Expected to be torrent-heavy; the direct ratio is the whole question.
-  manifest: stremio.addons.mediafusion|elfhosted v6.2.0  types=movie,series,tv,events  stream=true
+  Widest catalogue — Tamil/Hindi/Malayalam/Kannada scrapers. Torrent+debrid expected; the direct ratio is the question.
+  manifest@(bare): stremio.addons.mediafusion|elfhosted v6.2.0  types=movie,series,tv,events  stream=true
   manifest languages: (none declared)
   fight-club  western    0 streams  (none)
   rrr         indian     0 streams  (none)
@@ -20,17 +10,51 @@ mediafusion  https://mediafusion.elfhosted.com
   squid-game  kdrama     0 streams  (none)
 
 ==========================================================================
+ggplay  https://ggplay-gf.vercel.app
+  HTTP/HLS only. Returned 402 to the bare manifest: paid tier.
+  manifest: HTTP 402
+
+==========================================================================
+nodebrid  https://nodebrid.fly.dev
+  HTTP direct, no debrid, claims 13+ sources / 100k movies / 70k shows / 10k anime.
+  manifest: fetch failed
+
+==========================================================================
+stremify  https://stremify.hayd.uk
+  HTTP streams from streaming sites.
+  manifest: not JSON (22084B)
+
+==========================================================================
 webstreamr  https://webstreamr.hayd.uk
-  HTTP from streaming sites. MediaFlow proxy reportedly needed for some hosters.
+  HTTP from streaming sites, 15+ regional sources grouped by language.
   manifest: not JSON (24322B)
+
+==========================================================================
+webstreamr-all  https://webstreamr.hayd.uk
+  Same instance with every language group enabled.
+  manifest: not JSON (24322B)
+
+==========================================================================
+nuviostreams  https://nuviostreams.hayd.uk
+  HTTP direct, multi-provider.
+  manifest: not JSON (24060B)
+
+==========================================================================
+multiscraper  https://multiscraper.vercel.app
+  Aggregates named scrapers — this is the one whose config we can actually read.
+  manifest: HTTP 404
 
 ==========================================================================
 STREAM-OBJECT TALLY ACROSS ALL ADDONS AND TITLES
 
-addons returning at least one DIRECT stream: 0/4
-  ggplay         direct   0/0    indian-titles direct: 0
-  nuviostreams   direct   0/0    indian-titles direct: 0
+addons returning at least one DIRECT stream: 0/8
   mediafusion    direct   0/0    indian-titles direct: 0
+  ggplay         direct   0/0    indian-titles direct: 0
+  nodebrid       direct   0/0    indian-titles direct: 0
+  stremify       direct   0/0    indian-titles direct: 0
   webstreamr     direct   0/0    indian-titles direct: 0
+  webstreamr-all direct   0/0    indian-titles direct: 0
+  nuviostreams   direct   0/0    indian-titles direct: 0
+  multiscraper   direct   0/0    indian-titles direct: 0
 
 wrote research/stremio-addon-survey.json (anyManifestFetched=true)

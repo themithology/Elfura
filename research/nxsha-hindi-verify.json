@@ -1,5 +1,5 @@
 {
-  "measuredAt": "2026-11-25T19:17:26.185Z",
+  "measuredAt": "2026-11-25T19:53:43.897Z",
   "rows": [
     {
       "url": "https://wts.itsnitrox.tech/pitro/9h1ufQBqMT2LOF9MAZRvP1-TtQcBNvRITtMjy2o/3d6754647a306d4c795647647a465762764d6a4e77637a4d3145544d76676a4e31676a4e3255544f33457a4c315a6e5a6f6447617056486179746d616f39795a7168326261706d594631455543465653796b6a5a3578555272394554763057596c4a48647a395362764e6d4c7a5658616a35575a793957627638694f7a424864306857656c7432586c4a58646a56326366686e62/master.m3u8",
@@ -108,54 +108,33 @@
     },
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503963325172527a4e707047556d56566554646e4d576c54526a39575231456d4e69686c514c686a574f6c6b524231435735426e61504a44574e68304e77594864785130535370485348565557514e56646d7832637a736d537a4a545530386b517473575332706c6233306b5930566c56556c336239556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444d7838534d3167444d7a59444e30497a4c7a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
-      "verdict": "SINGLE-TRACK",
+      "verdict": "NO BYTES",
       "renditions": [],
-      "kinds": {
-        "isMaster": false,
-        "bytes": 251649
-      },
-      "status": 200,
-      "segment": {
-        "status": 200,
-        "bytes": 407772,
-        "type": "video/mp2t"
-      },
+      "kinds": {},
+      "status": 502,
+      "reason": "http=502 first={\"error\":\"Upstream returned HTTP 403; re",
       "lane": "castle",
       "title": "jawan",
       "label": "[Hindi] - FHD 1080P"
     },
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d5150396348524e706d53365644624731305476566b545731435a315a324d366830623555574c33306d627a55475336783056555a3255684a574f4346484e7838326373526c5332593352684e6b5753565563345a565332745552776b454e494a544d42566d636d466c567574305366526c623155444f39556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c77497a4e7645544e34417a4d3251444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
-      "verdict": "SINGLE-TRACK",
+      "verdict": "NO BYTES",
       "renditions": [],
-      "kinds": {
-        "isMaster": false,
-        "bytes": 857913
-      },
-      "status": 200,
-      "segment": {
-        "status": 200,
-        "bytes": 175404,
-        "type": "video/mp2t"
-      },
+      "kinds": {},
+      "status": 502,
+      "reason": "http=502 first={\"error\":\"Upstream returned HTTP 403; re",
       "lane": "castle",
       "title": "jawan",
       "label": "[Hindi] - HD 720P"
     },
     {
       "url": "https://catflix.nxstreamhub.workers.dev/stream/3d3d51503963335174386c65585a55654242584c6b5a4554354a6e627a55444d4c6c5755496c485a513947566e6c6e654552444e764a32516f52314e73396d654c564864346f6e53324e6b535068565a745555534d4e55613530474f7452476470686e533156334d31596b536d52554c334a444d72786d5939556d633152585975645761545a535a795648646835325a704e56506c3157594f6c585a4c5a434f32456a4e7a59544e3563544d394d585a796c4763345630503455334d7435794e34497a583456475a756c324c7767444e7645544e34417a4d3251444e79387963773132587a784761763032626a357964764e32636f35534d6e3157617638694f7a424864306857656c7432586c4a58646a56326366686e62/0/master.m3u8",
-      "verdict": "SINGLE-TRACK",
+      "verdict": "NO BYTES",
       "renditions": [],
-      "kinds": {
-        "isMaster": false,
-        "bytes": 858425
-      },
-      "status": 200,
-      "segment": {
-        "status": 200,
-        "bytes": 124644,
-        "type": "video/mp2t"
-      },
+      "kinds": {},
+      "status": 502,
+      "reason": "http=502 first={\"error\":\"Upstream returned HTTP 403; re",
       "lane": "castle",
       "title": "jawan",
       "label": "[Hindi] - SD 480P"
@@ -396,8 +375,8 @@
       "verdict": "NO BYTES",
       "renditions": [],
       "kinds": {},
-      "status": 200,
-      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "status": 400,
+      "reason": "http=400 first=404 ! .. ",
       "lane": "k4khdhub",
       "title": "fight-club",
       "label": "HubCloud 10Gbps | 4K | 41.84 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
@@ -418,8 +397,8 @@
       "verdict": "NO BYTES",
       "renditions": [],
       "kinds": {},
-      "status": 200,
-      "reason": "http=200 first=<!DOCTYPE html> <html lang=\"en\"> <head> ",
+      "status": 400,
+      "reason": "http=400 first=404 !",
       "lane": "k4khdhub",
       "title": "fight-club",
       "label": "HubCloud 10Gbps | 1080p | 18.66 GB | BluRay | HDR | 10bit | HEVC | Hindi | English | x265"
