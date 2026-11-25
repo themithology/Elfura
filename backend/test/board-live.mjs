@@ -202,6 +202,24 @@ assert(
   primaryLangs.includes(lang.split('-')[0]),
   `the primary stream carries "${primaryLangs.join(',') || 'nothing'}", not the requested "${lang}"`,
 );
+// THE RULE, stated as a counter-example so it cannot regress silently: the
+// biggest stream carrying the requested language must be the primary, whether its
+// language came from a manifest measurement or a provider label. Those two used to
+// sit in different tiers, which let a 2023MB stream beat a 5302MB one in the same
+// language.
+const sameLangBigger = wanted.sources.filter(
+  (s) =>
+    Number.isFinite(s.measuredBytes) &&
+    s.measuredBytes > (wanted.primary?.measuredBytes ?? 0) &&
+    langsOf(s).includes(lang.split('-')[0]),
+);
+assert.equal(
+  sameLangBigger.length,
+  0,
+  `the ${(sameLangBigger[0]?.measuredBytes / MB_).toFixed(0)}MB ${lang} stream should have been primary ` +
+    `over ${(wanted.primary?.measuredBytes / MB_).toFixed(0)}MB — the size rule outranks label-vs-measurement`,
+);
+
 // The size rule still holds inside the language: no bigger stream may offer the
 // same language the primary offers, or the wrong copy won.
 const primarySet = new Set(primaryLangs);

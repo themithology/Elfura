@@ -1176,20 +1176,35 @@ export class SourceRegistry {
       const prefCode = normalizeLang(params.preferredLang).code;
       if (prefCode && prefCode !== 'und') {
         const prefPrimary = prefCode.split('-')[0];
-        // 0 = verified in this language, 1 = the provider labelled it as this
-        // language, 2 = multi-audio with unknown tracks, 3 = not this language.
-        // A label outranks "unknown" but sits below a measurement, and it sits
-        // above "no" — otherwise a lane that only ever says "Hindi" could never
-        // be picked for Hindi at all.
+        // 0 = this stream carries the requested language, 1 = it does not say,
+        // 2 = it carries something else.
+        //
+        // There used to be a rung between "carries it" and "does not say" that
+        // held provider LABELS — a single-dub row claiming "Hindi" scored 1, a
+        // manifest-verified multi-audio set containing "en" scored 0, and a row
+        // that merely CLAIMED "en" also scored 1. The intent was to rank a
+        // measurement above a claim, but the effect was worse than the problem:
+        // a 5302MB stream whose language was a CLAIM lost the primary slot to a
+        // 2023MB stream the size rule should have beaten purely on bytes.
+        //
+        // The owner's rule is explicit — "within the requested language, the
+        // biggest stream should open" — and it cannot hold if a claim and a
+        // measurement of the SAME language sit in different tiers, because the
+        // tier is compared before the size. So the rung is gone.
+        //
+        // Nothing is weakened by removing it. A claim is compared against a
+        // measurement only AFTER the response has established that both carry
+        // the requested language, and the response already distinguishes them:
+        // `audioLang` is verified, `claimedAudioLang` is labelled, and the player
+        // is told which is which. Ordering by size inside one language is exactly
+        // what the rule asks for.
         const scoreOpt = (opt: UniformStreamOption): number => {
-          const exactDirect = opt.audioLang === prefCode;
-          const exactMulti = !!opt.availableAudioLangs?.includes(prefCode);
-          const subtagDirect = opt.audioLang?.split('-')[0] === prefPrimary;
-          const subtagMulti = !!opt.availableAudioLangs?.some((l) => l.split('-')[0] === prefPrimary);
-          if (exactDirect || exactMulti || subtagDirect || subtagMulti) return 0;
-          if (opt.claimedAudioLang?.split('-')[0] === prefPrimary) return 1;
-          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 2;
-          return 3;
+          const direct = opt.audioLang?.split('-')[0] === prefPrimary;
+          const multi = !!opt.availableAudioLangs?.some((l) => l.split('-')[0] === prefPrimary);
+          const claimed = opt.claimedAudioLang?.split('-')[0] === prefPrimary;
+          if (direct || multi || claimed) return 0;
+          if (opt.multiAudio && !opt.availableAudioLangs?.length) return 1;
+          return 2;
         };
         const effectiveSpeedMs = (opt: UniformStreamOption): number => {
           const base = opt.latencyHintMs ?? 550;
