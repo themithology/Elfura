@@ -50,6 +50,16 @@ async function probe(url, headers, extra = {}) {
       // A manifest starts with #EXTM3U; a page starts with <
       first: text.slice(0, 40).replace(/\s+/g, ' '),
       isManifest: /^\s*#EXTM3U/i.test(text),
+      // The body matters as much as the status. A master that declares audio
+      // LANGUAGE attributes is the ONLY honest language evidence on this lane -
+      // every label measured so far names either a lane, a height, or nothing.
+      body: text.length <= 2000 ? text : undefined,
+      audioRenditions: (text.match(/^#EXT-X-MEDIA:[^\n]*TYPE=AUDIO[^\n]*/gim) ?? []).slice(0, 8),
+      audioLangs: [
+        ...new Set(
+          [...text.matchAll(/#EXT-X-MEDIA:[^\n]*\bLANGUAGE="([^"]+)"/gi)].map((m) => m[1].toLowerCase()),
+        ),
+      ],
       isMarkup: /^\s*</.test(text),
       finalHost: (() => {
         try {
