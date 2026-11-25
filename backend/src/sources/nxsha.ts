@@ -37,6 +37,7 @@
 import crypto from 'node:crypto';
 import type { RawStreamCandidate, SourceAdapter, SourceQuery } from './types.js';
 import { sourceEnv } from './index.js';
+import { normalizeLang } from './lang.js';
 
 const DEFAULT_ORIGIN = 'https://nxsha.space';
 const UA =
@@ -281,13 +282,20 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
       if (!/^(?:dash|mpd)$/i.test(String(row.type ?? '')) && !/\.mpd(?:[?#]|$)/i.test(url.href)) continue;
     }
     if (seen.has(url.href)) continue;
-    // A row that names no language is not offered: it can win a
+    // A row that names no language anywhere is not offered: it can win a
     // language-filtered race by accident and then play audio the viewer did not
-    // ask for, which is precisely the silent fallback this board refuses. This
-    // is the rule source-2 already states, and the live board test is what
-    // showed it was missing here: a "Source 3 · 1080P" stream reached the player
-    // with no language evidence at all.
-    if (typeof row.language !== 'string' || !row.language.trim()) continue;
+    // ask for, which is the silent fallback this board refuses. This is the rule
+    // source-2 already states, and the live board test is what showed it was
+    // missing here.
+    //
+    // Read from `label`, because that is the field this API actually populates.
+    // There is no `language` field at all — measured, not assumed: 23 raw rows
+    // across five media lanes carried exactly nine keys (id, provider, url,
+    // org_uri, headers, quality, label, isEmbed, type) and `language` was not
+    // among them. The first version of this rule read `row.language`, which is
+    // why source-3 dropped from 12 candidates to zero in a single run.
+    const langs = rowLanguages(row);
+    if (langs.length === 0) continue;
     seen.add(url.href);
     const type = /\.mpd(?:[?#]|$)/i.test(url.href) || /^(?:dash|mpd)$/i.test(String(row.type ?? '')) ? 'dash' : 'hls';
     const quality = qualityOf(row.quality ?? row.label);
@@ -300,10 +308,49 @@ export function nxCandidates(payload: NxPayload): RawStreamCandidate[] {
       // Later rows are later lanes in the site's own reliability order.
       rank: 30 + out.length,
       ...(headers ? { headers } : {}),
-      ...(typeof row.language === 'string' && row.language.trim()
-        ? { claimedAudioLang: row.language.trim().slice(0, 40) }
-        : {}),
+      // The row's own label, when it names exactly one language, is the claim.
+      // When it names several ("Hindi | English") there is no single claim to
+      // make: `availableAudioLangs` carries the set and `multiAudio` is NOT set,
+      // because a label is not a manifest and only the probe can prove the file
+      // really carries more than one audio rendition.
+      ...(langs.length === 1 ? { claimedAudioLang: langs[0] } : {}),
+      ...(langs.length > 1 ? { availableAudioLangs: langs } : {}),
     });
+  }
+  return out;
+}
+
+/* ── reading a row's language ──────────────────────────────────────────────── */
+
+/**
+ * Every language a row names, normalised.
+ *
+ * The label is the only field this API populates, and it has four shapes that
+ * were measured on real rows rather than guessed:
+ *
+ *   "Hindi"                             — the language, alone
+ *   "English"                           — same
+ *   "hguider | 1080P | Hindi | English" — a lane name, a height, two languages
+ *   "Purstream · pulse · 1080p · MULTI" — a product label naming no language
+ *
+ * So the label is split on its separators and every segment is normalised
+ * independently. Handing the whole string to `normalizeLang` returns `und` for
+ * all four — it expects one token — which is how a lane carrying Hindi and
+ * English ended up reporting nothing at all.
+ *
+ * A segment that is a lane name or a height normalises to `und` and contributes
+ * nothing, which is the honest outcome: "hguider" is not a language.
+ */
+export function rowLanguages(row: NxStream): string[] {
+  const segments = [row.label, row.language, row.quality]
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    .flatMap((value) => value.split(/[|·,;/]+|\s{2,}/))
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const out: string[] = [];
+  for (const segment of segments) {
+    const code = normalizeLang(segment).code;
+    if (code && code !== 'und' && !out.includes(code)) out.push(code);
   }
   return out;
 }

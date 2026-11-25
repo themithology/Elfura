@@ -23,7 +23,13 @@ import fs from 'node:fs/promises';
 import { call, scrapers } from './nxsha-client.mjs';
 
 const OUT = 'research/nxsha-row-fields.json';
-const MEDIA_LANES = ['nitro', 'watchout', 'awsind', 'purstream', 'ophim'];
+// EVERY lane the adapter may request, not a sample. A rule that refuses
+// unlabelled rows must be checked against all of them: a lane whose labels name
+// no language would be silently emptied by it, which is the failure mode this
+// probe exists to catch. castle and vixolity are included even though their rows
+// are relay-shaped and refused downstream — the language rule runs first, so
+// their labels must still parse or the two rules become entangled.
+const MEDIA_LANES = ['nitro', 'castle', 'watchout', 'awsind', 'vixolity', 'purstream', 'ophim', 'zoko'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {

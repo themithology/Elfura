@@ -74,14 +74,14 @@ console.log('— the provider’s own edge is kept; somebody else’s is not');
       // names no language is now refused on its own account, so an unlabelled
       // fixture would pass these assertions for the wrong reason and stop
       // testing the host rule at all.
-      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P', language: 'English' },
-      { url: 'https://twilight-lake-fd5c.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls', language: 'Japanese' },
+      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P', label: 'English' },
+      { url: 'https://twilight-lake-fd5c.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls', label: 'Japanese' },
       // Somebody else's bridge - greybox's dash-hls-bridge is exactly this shape.
-      { url: 'https://dash-hls-bridge.john1mc.workers.dev/?url=x', type: 'hls', language: 'English' },
-      { url: 'https://random.someoneelse.workers.dev/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://dash-hls-bridge.john1mc.workers.dev/?url=x', type: 'hls', label: 'English' },
+      { url: 'https://random.someoneelse.workers.dev/a.m3u8', type: 'hls', label: 'English' },
       // A host that literally names itself a proxy.
-      { url: 'https://proxy.7movie.ws/a.m3u8', type: 'hls', language: 'English' },
-      { url: 'https://relay7.example.net/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://proxy.7movie.ws/a.m3u8', type: 'hls', label: 'English' },
+      { url: 'https://relay7.example.net/a.m3u8', type: 'hls', label: 'English' },
     ],
   });
   const urls = rows.map((r) => r.url);
@@ -92,32 +92,60 @@ console.log('— the provider’s own edge is kept; somebody else’s is not');
     assert.ok(!urls.some((u) => u.includes(bad)), `a foreign bridge is still refused: ${bad}`);
   }
   // An 'edge-' prefix is a name, not evidence. The old regex refused these.
-  const named = nxCandidates({ sources: [{ url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', language: 'English' }] });
+  const named = nxCandidates({ sources: [{ url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', label: 'English' }] });
   assert.equal(named.length, 0, 'a self-declared proxy is still refused');
-  const plain = nxCandidates({ sources: [{ url: 'https://edge12.cdn.example.com/a.m3u8', type: 'hls', language: 'English' }] });
+  const plain = nxCandidates({ sources: [{ url: 'https://edge12.cdn.example.com/a.m3u8', type: 'hls', label: 'English' }] });
   assert.equal(plain.length, 1, 'but a CDN node merely named edge12 is not');
 }
 
-console.log('— a row that names no language is not offered at all');
+console.log('— the language lives in the label, and every measured shape is read correctly');
 {
-  const { nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
-  // This is the case the live board test found: a perfectly good 1080p row on
-  // nxsha's own edge, with nothing saying what audio it carries. On a board
-  // where the viewer asks for a language, that row can win the race and play
-  // something they did not ask for.
-  const unlabelled = nxCandidates({
+  const { rowLanguages, nxCandidates } = await import('../../dist/backend/sources/nxsha.js');
+
+  // Verbatim labels measured on 23 real rows across five lanes. The API has no
+  // `language` field at all; the first version of this rule read one, and the
+  // lane dropped from 12 candidates to zero in a single contract run.
+  const measured = [
+    ['Hindi', ['hi']],
+    ['English', ['en']],
+    ['hguider | 1080P | Hindi | English', ['hi', 'en']],
+    ['hguider | 1080P | Multi Audio', []],
+    ['hguider | 1080P', []],
+    ['hguider', []],
+    ['watchout', []],
+    ['1080P', []],
+    ['Purstream · pulse · 1080p · MULTI', []],
+    ['Vietsub (Full)', []],
+  ];
+  for (const [label, want] of measured) {
+    assert.deepEqual(rowLanguages({ label }), want, `label ${JSON.stringify(label)} -> ${JSON.stringify(want)}`);
+  }
+
+  // Why splitting matters: as ONE token the whole label is unrecognisable, and
+  // that is how a row naming Hindi and English reported no language at all.
+  const { normalizeLang } = await import('../../dist/backend/sources/lang.js');
+  assert.equal(normalizeLang('hguider | 1080P | Hindi | English').code, 'und');
+  assert.equal(normalizeLang('Hindi').code, 'hi');
+
+  const rows = nxCandidates({
     sources: [
-      { url: 'https://catflix.nxstreamhub.workers.dev/a/index.m3u8', type: 'hls', quality: '1080P' },
-      { url: 'https://catflix.nxstreamhub.workers.dev/b/index.m3u8', type: 'hls', language: '   ' },
-      { url: 'https://catflix.nxstreamhub.workers.dev/c/index.m3u8', type: 'hls', language: null },
-      { url: 'https://catflix.nxstreamhub.workers.dev/d/index.m3u8', type: 'hls', language: 'Hindi' },
+      // a lane name and a height, naming no language at all
+      { url: 'https://wts.itsnitrox.tech/a/index.m3u8', type: 'hls', label: 'hguider | 1080P' },
+      { url: 'https://awsind.example.com/b/index.m3u8', type: 'hls', label: 'Hindi' },
+      // names two: a set, not a single claim
+      { url: 'https://wts.itsnitrox.tech/c/index.m3u8', type: 'hls', label: 'hguider | 1080P | Hindi | English' },
+      // nothing at all
+      { url: 'https://wts.itsnitrox.tech/d/index.m3u8', type: 'hls' },
     ],
   });
-  assert.equal(unlabelled.length, 1, 'only the labelled row survives');
-  assert.equal(unlabelled[0].claimedAudioLang, 'Hindi');
-  // It is a CLAIM and must stay one: the manifest is the only thing that can
-  // verify what a file actually carries.
-  assert.equal(unlabelled[0].audioLang, undefined, 'a provider label is never promoted to a verified language');
+  assert.equal(rows.length, 2, 'the row naming no language is refused; the two that name one survive');
+  const single = rows.find((r) => r.url.includes('/b/'));
+  assert.equal(single.claimedAudioLang, 'hi', 'one named language is the claim, normalised');
+  assert.equal(single.audioLang, undefined, 'a provider label is never promoted to a verified language');
+  const pair = rows.find((r) => r.url.includes('/c/'));
+  assert.deepEqual(pair.availableAudioLangs, ['hi', 'en'], 'two named languages are a set');
+  assert.equal(pair.claimedAudioLang, undefined, 'and not a single claim');
+  assert.notEqual(pair.multiAudio, true, 'a label is not a manifest — only the probe may declare multi-audio');
 }
 
 console.log('— media rows are filtered the way the board filters them');
@@ -128,26 +156,26 @@ console.log('— media rows are filtered the way the board filters them');
       //
       // Every row names a language, so whatever this block refuses, it refuses
       // for the URL/type reason it is asserting and not for silence about audio.
-      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '1080P', language: 'Hindi' },
+      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '1080P', label: 'Hindi' },
       // source-2 refuses these, so source-3 must too
-      { url: 'https://bad.workers.dev/manifest.m3u8', type: 'hls', language: 'English' },
-      { url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', language: 'English' },
-      { url: 'https://proxy.relay.example.net/a.m3u8', type: 'hls', language: 'English' },
+      { url: 'https://bad.workers.dev/manifest.m3u8', type: 'hls', label: 'English' },
+      { url: 'https://edge-proxy.example.com/a.m3u8', type: 'hls', label: 'English' },
+      { url: 'https://proxy.relay.example.net/a.m3u8', type: 'hls', label: 'English' },
       // Drive pages: refused for six sources already
-      { url: 'https://drive.google.com/file/d/abc/view', type: 'hls', language: 'English' },
-      { url: 'https://drive.usercontent.google.com/download?id=abc', type: 'hls', language: 'English' },
+      { url: 'https://drive.google.com/file/d/abc/view', type: 'hls', label: 'English' },
+      { url: 'https://drive.usercontent.google.com/download?id=abc', type: 'hls', label: 'English' },
       // somebody else's player
-      { url: 'https://cdn.example.com/embed/player.m3u8', type: 'embed', isEmbed: true, language: 'English' },
+      { url: 'https://cdn.example.com/embed/player.m3u8', type: 'embed', isEmbed: true, label: 'English' },
       // not media
-      { url: 'https://cdn.example.com/film.mp4', type: 'mp4', language: 'English' },
-      { url: 'http://plain.example.com/a.m3u8', type: 'hls', language: 'English' },
-      { url: 'https://user:pass@cdn.example.com/a.m3u8', type: 'hls', language: 'English' },
-      { url: 'not a url', type: 'hls', language: 'English' },
+      { url: 'https://cdn.example.com/film.mp4', type: 'mp4', label: 'English' },
+      { url: 'http://plain.example.com/a.m3u8', type: 'hls', label: 'English' },
+      { url: 'https://user:pass@cdn.example.com/a.m3u8', type: 'hls', label: 'English' },
+      { url: 'not a url', type: 'hls', label: 'English' },
       // a genuine DASH row and a genuine HLS row with no extension
-      { url: 'https://cdn.example.com/a.mpd', type: 'dash', language: 'English' },
-      { url: 'https://cdn.example.com/stream', type: 'hls', language: 'English' },
+      { url: 'https://cdn.example.com/a.mpd', type: 'dash', label: 'English' },
+      { url: 'https://cdn.example.com/stream', type: 'hls', label: 'English' },
       // the same stream again, labelled differently - only the URL decides
-      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '720P', language: 'Tamil' },
+      { url: 'https://wts.itsnitrox.tech/x/index.m3u8', type: 'hls', quality: '720P', label: 'Tamil' },
     ],
   };
   const rows = nxCandidates(payload);
@@ -155,7 +183,7 @@ console.log('— media rows are filtered the way the board filters them');
 
   assert.equal(urls[0], 'https://wts.itsnitrox.tech/x/index.m3u8', 'the good row leads');
   assert.equal(rows[0].quality, '1080p', '2160/1080/720 become the board shape');
-  assert.equal(rows[0].claimedAudioLang, 'Hindi', 'a declared language is kept as a claim, not as verified audio');
+  assert.equal(rows[0].claimedAudioLang, 'hi', 'a declared language is kept as a claim, normalised, not as verified audio');
   assert.equal(rows[0].audioLang, undefined, 'and never promoted to verified audio');
 
   for (const bad of ['workers.dev', 'edge-proxy', 'relay7', 'drive.google.com', 'usercontent', 'embed', '.mp4', 'http://', 'user:pass']) {
@@ -177,13 +205,13 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
         type: 'hls',
         // The CDN checks these two; the contract failed this adapter when they
         // were dropped, so they are asserted rather than assumed.
-        language: 'English',
+        label: 'English',
         headers: { Referer: 'https://nxsha.space/', Origin: 'https://nxsha.space' },
       },
       {
         url: 'https://cdn.example.com/b/index.m3u8',
         type: 'hls',
-        language: 'English',
+        label: 'English',
         // A provider must not be able to inject an arbitrary header.
         headers: { 'X-Injected': 'yes', Cookie: 'session=1', Referer: 'https://ok.example/' },
       },
@@ -198,7 +226,7 @@ console.log('— a row’s own headers are forwarded, and nothing else is');
 
   // A header value that tries to split the request is refused outright.
   const hostile = nxCandidates({
-    sources: [{ url: 'https://cdn.example.com/c/index.m3u8', language: 'English', headers: { Referer: 'https://a/\r\nX: y' } }],
+    sources: [{ url: 'https://cdn.example.com/c/index.m3u8', label: 'English', headers: { Referer: 'https://a/\r\nX: y' } }],
   });
   assert.equal(hostile[0].headers.Referer, undefined, 'a CRLF in a header value is not forwarded');
 }
@@ -225,7 +253,7 @@ console.log('— a resolve asks only lanes that exist, and never source-1’s');
     return new Response(
       JSON.stringify({
         _hash: seal({
-          sources: [{ url: 'https://wts.itsnitrox.tech/a/index.m3u8', type: 'hls', language: 'English' }],
+          sources: [{ url: 'https://wts.itsnitrox.tech/a/index.m3u8', type: 'hls', label: 'English' }],
         }),
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
