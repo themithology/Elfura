@@ -1,13 +1,12 @@
-independence probe 2026-11-25T09:07:17.076Z
+independence probe 2026-11-25T09:12:28.511Z
 
 — reading the board
 [elfura-citadel] movie/550: 2 row(s)
 [elfura-citadel] movie/27205: 6 row(s)
-[elfura-citadel] tv/1399: 1 row(s)
+[elfura-citadel] tv/1399: 4 row(s)
 [elfura-citadel] tv/46260: 1 row(s)
 [elfura-greybox] movie/550: 9 row(s), langs=7
-[elfura-greybox] movie/27205: 11 row(s), langs=8
-[elfura-greybox] tv/1399: throttled, retrying once
+[elfura-greybox] movie/27205: 9 row(s), langs=7
 [elfura-greybox] tv/1399: 10 row(s), langs=6
 [elfura-greybox] tv/46260: throttled, retrying once
 [elfura-greybox] tv/46260: THROTTLED — provider refused us, not empty
