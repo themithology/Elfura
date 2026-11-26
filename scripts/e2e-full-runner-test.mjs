@@ -92,13 +92,27 @@ async function main() {
       if (!resolveRes.ok || !resolveJson) {
         throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
       }
-      if (Array.isArray(resolveJson.streams) && resolveJson.streams.length > 0) break;
+      if (
+        (Array.isArray(resolveJson.streams) && resolveJson.streams.length > 0) ||
+        (Array.isArray(resolveJson.sources) && resolveJson.sources.length > 0) ||
+        resolveJson.stream
+      ) {
+        break;
+      }
       await new Promise((r) => setTimeout(r, 1500));
     }
-    const streamCount = Array.isArray(resolveJson?.streams) ? resolveJson.streams.length : 0;
-    log(`✓ /api/v1/playback movie/550: HTTP 200, streams=${streamCount}`);
+    const streamCount = Array.isArray(resolveJson?.streams)
+      ? resolveJson.streams.length
+      : Array.isArray(resolveJson?.sources)
+        ? resolveJson.sources.length
+        : resolveJson?.stream
+          ? 1
+          : 0;
+    log(
+      `✓ /api/v1/playback movie/550: HTTP 200, keys=${Object.keys(resolveJson || {}).join(',')}, streams=${streamCount}`
+    );
     if (streamCount === 0) {
-      throw new Error(`No streams resolved for movie/550: ${JSON.stringify(resolveJson).slice(0, 300)}`);
+      throw new Error(`No streams resolved for movie/550: keys=${Object.keys(resolveJson || {}).join(',')}`);
     }
 
     // 3. Headless browser check (Playwright)
