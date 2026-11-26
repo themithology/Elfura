@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'src/**'
       - 'scripts/e2e-full-runner-test.mjs'
       - '.github/workflows/full-e2e-test.yml'
 
