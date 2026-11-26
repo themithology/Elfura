@@ -2559,7 +2559,9 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' && !s.label.toUpperCase().includes(s.quality.toUpperCase()) ? s.quality.toUpperCase() : '';
-      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und' ? languageLabel(s.audioLang) : '';
+      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und'
+        ? languageLabel(s.audioLang)
+        : 'Unknown';
       const languageSuffix = audioBadge && !s.label.toLowerCase().includes(audioBadge.toLowerCase()) ? audioBadge : '';
       // Only the active engine knows which manifest representations the
       // current browser can actually select. Do not promise a ladder for an
