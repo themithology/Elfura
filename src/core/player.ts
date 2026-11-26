@@ -1836,6 +1836,7 @@ export class ElfuraPlayer {
         return !s.multiAudio && canonLang(s.audioLang) === 'und';
       }
       if (s.audioLang && matchScore(targetLang, s.audioLang) >= 0) return true;
+      if (s.claimedAudioLang && matchScore(targetLang, s.claimedAudioLang) >= 0) return true;
       const hint = providerVariantLanguage(s);
       if (hint && matchScore(targetLang, hint) >= 0) return true;
       if ((s.availableAudioLangs ?? []).some((l) => matchScore(targetLang, l) >= 0)) return true;
