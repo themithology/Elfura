@@ -83,9 +83,9 @@ async function main() {
     }
     log(`✓ /api/v1/session: HTTP ${sessRes.status} (got token)`);
 
-    const resolveRes = await fetch(`${BASE}/api/v1/playback?type=movie&tmdb=550`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const resolveRes = await fetch(
+      `${BASE}/api/v1/playback?type=movie&tmdb=550&pltoken=${encodeURIComponent(token)}`
+    );
     const resolveJson = await resolveRes.json().catch(() => null);
     if (!resolveRes.ok || !resolveJson) {
       throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
