@@ -2404,7 +2404,7 @@ export class PlayerUI {
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        const row = this.row(t.label, selected ? (t.providerHint ? 'Selected · Provider label' : 'Selected') : t.providerHint ? 'Provider label' : '', selected, () => {
+        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
           this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
           this.renderPanelBody();
@@ -2559,7 +2559,13 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' && !s.label.toUpperCase().includes(s.quality.toUpperCase()) ? s.quality.toUpperCase() : '';
-      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und' ? languageLabel(s.audioLang) : '';
+      const langCode =
+        s.audioLang && canonLang(s.audioLang) !== 'und'
+          ? s.audioLang
+          : s.claimedAudioLang && canonLang(s.claimedAudioLang) !== 'und'
+            ? s.claimedAudioLang
+            : '';
+      const audioBadge = langCode ? languageLabel(langCode) : 'Unknown';
       const languageSuffix = audioBadge && !s.label.toLowerCase().includes(audioBadge.toLowerCase()) ? audioBadge : '';
       // Only the active engine knows which manifest representations the
       // current browser can actually select. Do not promise a ladder for an
