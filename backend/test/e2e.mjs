@@ -2756,8 +2756,8 @@ try {
   //     - TMDB `media` carries `episodeName`, `tagline`, `rating`, `genres`, and `logo`
   //     - Persistent `TheOGPirateBot` brand badge (100% opacity when started/paused, faded while playing)
   //     - `Back` button only when UI is on (no `Home` button), and `S# · E# — Episode Name` on top for TV
-  //     - Title Logo with playful Cartoony Font fallback (`elf-title-cartoon`) when logo is unavailable
-  //     - Cinema Paused Screen (`elf-pause-screen`: Title Logo/Cartoon, `PAUSED`, tagline, year + ★ rating, overview)
+  //     - Title Logo with a system display-stack fallback (`elf-title-fallback`) when logo is unavailable
+  //     - Cinema Paused Screen (`elf-pause-screen`: Title Logo/display fallback, `PAUSED`, tagline, year + ★ rating, overview)
   //     - Zero center forward/backward 10s skip buttons, animated Play/Pause & 4-corner Fullscreen,
   //       double-tap 10s skip, hold-for-2x, Screen Lock, bottom Episodes/thumbnails,
   //       integrated current-language navigation, branded loading, and terminal unavailable UI
@@ -2783,7 +2783,7 @@ try {
     'elf-top-episode',
     'elf-pause-screen',
     'elf-title-logo',
-    'elf-title-cartoon',
+    'elf-title-fallback',
     'elf-audio-quick',
     'elf-audio-current',
     'elf-audio-badge',
@@ -2791,7 +2791,7 @@ try {
     'elf-episodes-btn',
     'elf-epw-thumb',
     'elf-loading-screen',
-    'elf-loading-quote',
+    'elf-rating',
     'elf-unavailable-screen',
     'retrySources',
     'elf-pp-svg',
@@ -2811,7 +2811,7 @@ try {
     '.elf-og-pill',
     '.elf-pill-back',
     '.elf-pause-screen',
-    '.elf-title-cartoon',
+    '.elf-title-fallback',
     '.elf-audio-quick',
     '.elf-audio-option',
     '.elf-audio-badge',
@@ -2823,6 +2823,10 @@ try {
     '.elf-pp-pause',
     '.elf-dtap-ripple',
     '.elf-scrub-knob',
+    '.elf-rating',
+    '.elf-tab',
+    '.elf-loading-status',
+    '.elf-unmute',
   ]) {
     assert(builtCss.includes(requiredCss), `Expected built CSS to include "${requiredCss}"`);
   }

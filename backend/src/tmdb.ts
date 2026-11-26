@@ -55,6 +55,8 @@ export interface MediaMetadata {
   /** Runtime in minutes: the movie's, or this episode's (falls back to the series average). */
   runtime?: number | null;
   rating?: number | null;
+  /** Age rating from TMDB release dates (movies) or content ratings (TV), e.g. PG-13 / TV-14. */
+  certification?: string;
   genres?: string[];
   overview: string;
   poster: string | null;
@@ -187,6 +189,54 @@ function buildEndpointHeaders(ep: TmdbEndpoint): Record<string, string> {
   return headers;
 }
 
+
+/**
+ * Viewer-facing age rating.
+ *
+ * Movies carry certifications inside `release_dates.results[].release_dates[]`;
+ * TV carries a single rating per country in `content_ratings.results[]`. The US
+ * classification is the one most catalogues expect, so it wins; the rest of the
+ * English-speaking world and India follow before any other country. Everything
+ * is defensive: a self-hosted TMDB mirror may omit these blocks entirely, and
+ * the badge must simply stay hidden rather than show a fabricated label.
+ */
+function pickCertification(data: Record<string, unknown>, type: 'movie' | 'tv'): string {
+  const clean = (v: unknown): string =>
+    typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, 12) : '';
+  // 'NR'/'UR' means the title has no classification; a badge saying "Rated NR"
+  // is worse than no badge at all.
+  const usable = (v: string): string => (/^(NR|UR|N\/A|NOT RATED|UNRATED|PASSED|APPROVED)$/i.test(v) ? '' : v);
+  const direct = usable(clean(data.certification ?? data.age_rating ?? data.rated));
+  if (direct) return direct;
+
+  const bucket =
+    type === 'movie'
+      ? (data.release_dates as { results?: unknown } | undefined)?.results
+      : (data.content_ratings as { results?: unknown } | undefined)?.results;
+  if (!Array.isArray(bucket)) return '';
+
+  const rows = bucket.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object');
+  const preferred = ['US', 'GB', 'IN', 'CA', 'AU'];
+  const ordered = [
+    ...preferred.flatMap((c) => rows.filter((r) => r.iso_3166_1 === c)),
+    ...rows.filter((r) => !preferred.includes(String(r.iso_3166_1))),
+  ];
+  for (const row of ordered) {
+    if (type === 'movie') {
+      const entries = Array.isArray(row.release_dates) ? row.release_dates : [];
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object') continue;
+        const cert = usable(clean((entry as Record<string, unknown>).certification));
+        if (cert) return cert;
+      }
+    } else {
+      const cert = usable(clean(row.rating));
+      if (cert) return cert;
+    }
+  }
+  return '';
+}
+
 export async function fetchTmdbMetadata(
   cfg: BackendConfig['tmdb'],
   params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
@@ -224,7 +274,7 @@ export async function fetchTmdbMetadata(
         try {
           const headers = buildEndpointHeaders(ep);
           const mainUrl = buildEndpointUrl(ep, `/${params.type}/${encodeURIComponent(params.tmdbId)}`, {
-            append_to_response: 'external_ids,images',
+            append_to_response: 'external_ids,images,release_dates,content_ratings',
             include_image_language: 'en,null',
           });
 
@@ -352,6 +402,7 @@ export async function fetchTmdbMetadata(
       const tagline = typeof data.tagline === 'string' ? data.tagline.trim() : '';
       const rawVote = Number(data.vote_average ?? data.rating);
       const rating = Number.isFinite(rawVote) && rawVote > 0 ? Math.round(rawVote * 10) / 10 : null;
+      const certification = pickCertification(data, params.type);
       const genres: string[] = Array.isArray(data.genres)
         ? data.genres
             .map((g) =>
@@ -403,6 +454,7 @@ export async function fetchTmdbMetadata(
         ...(tagline ? { tagline } : {}),
         ...(runtimeMinutes ? { runtime: runtimeMinutes } : {}),
         ...(rating !== null ? { rating } : {}),
+        ...(certification ? { certification } : {}),
         ...(genres.length ? { genres } : {}),
         overview,
         poster: fullImageUrl(cfg.imageBase, data.poster_path ?? data.poster, 'w780'),

@@ -22,7 +22,7 @@
 import type Hls from 'hls.js';
 import type { MediaPlayerClass, MediaInfo } from 'dashjs';
 import { dashHevcDefinitelyUnsupported } from './dash-codecs';
-import { playbackTimeouts } from './playback-timing';
+import { playbackTimeouts } from './source17-timing';
 
 type HlsCtor = typeof Hls;
 
@@ -174,6 +174,10 @@ export interface TitleMediaInfo {
   year?: string;
   tagline?: string;
   rating?: number | null;
+  /** Age rating supplied by the catalogue, e.g. PG-13 or TV-14. */
+  certification?: string;
+  /** Runtime in minutes (the movie's, or this episode's). */
+  runtime?: number | null;
   genres?: string[];
   overview?: string;
   poster?: string | null;
@@ -2722,7 +2726,7 @@ export class ElfuraPlayer {
         return;
       }
       this.failover();
-    }, playbackTimeouts(this.currentSource?.traits).startup);
+    }, playbackTimeouts(this.currentSource?.id).startup);
   }
 
   private teardownEngine(): void {
@@ -2807,7 +2811,7 @@ export class ElfuraPlayer {
       return;
     }
 
-    const timeouts = playbackTimeouts(this.currentSource?.traits);
+    const timeouts = playbackTimeouts(this.currentSource?.id);
     const hls = new Hls({
       enableWorker: true,
       capLevelToPlayerSize: true,

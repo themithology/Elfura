@@ -10,15 +10,15 @@
  *     when UI is off; no Home button clutter).
  *   - Top episode text (`S1 · E1 — Episode Name`) for TV series when UI is on
  *     (no duplicate top title logo).
- *   - Title Logo (with playful cartoony display-font fallback when TMDB has no
- *     logo) + compact `Movie · Genre · Year` metadata above the seekbar when
- *     controls are visible.
- *   - Cinema Paused Screen when paused: dark vignette, large Title Logo (or
- *     cartoony title fallback), `PAUSED`, italic `"Tagline"`, `Year • ★ Rating`,
- *     and synopsis paragraph.
+ *   - Title Logo (with a tight display-type fallback when TMDB has no logo) +
+ *     compact `Movie · Genre · Year` metadata above the seekbar.
+ *   - Cinema Paused Screen when paused: low scrim, Title Logo, `PAUSED`,
+ *     tagline, `Year • Certification • Runtime • ★ Rating`, and synopsis.
+ *   - One-shot age-rating slip that springs in at playback start and leaves
+ *     after a few seconds.
  *   - Top-right `Quality` and `Screen Lock`; bottom-navigation Episodes with
  *     thumbnail drawer; integrated current-language Audio & Subtitles; inline
- *     capsule-thumb seekbar; animated Play/Pause & 4-corner Fullscreen; left/
+ *     round-playhead seekbar; animated Play/Pause & 4-corner Fullscreen; left/
  *     right double-tap 10s skip; press-and-hold for 2× speed; zero center skip
  *     clutter.
  *
@@ -30,7 +30,6 @@ import type { SubtitleStyle } from '../subs/style';
 import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../subs/style';
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
-import { mountDvdBounce, type DvdBounce } from './dvd-bounce';
 
 /* ---------------------------------------------------------------------- */
 /* Brand Mark (`icon-maskable-512.png`, lossless 64x64 RGBA, 377 bytes)   */
@@ -136,25 +135,6 @@ const esc = (s: string) =>
 
 type PanelMode = 'audiosubs' | 'quality' | 'sources' | 'speed' | 'style';
 
-const FALLBACK_LOADING_QUOTES: { quote: string; author: string }[] = [
-  { quote: 'Every great story begins with a single scene.', author: '' },
-  { quote: 'The best seat in the house is wherever you are.', author: '' },
-  { quote: 'A little escape, one episode at a time.', author: '' },
-  { quote: 'Stories stay with us long after the screen goes dark.', author: '' },
-  { quote: 'Another world is only a play button away.', author: '' },
-  { quote: 'Some stories deserve just one more episode.', author: '' },
-  { quote: 'Every frame opens a door to somewhere new.', author: '' },
-  { quote: 'A quiet moment can hold an extraordinary adventure.', author: '' },
-  { quote: 'The next chapter is already waiting for you.', author: '' },
-  { quote: 'Great characters make even unfamiliar worlds feel like home.', author: '' },
-  { quote: 'Let the rest of the day wait while the story unfolds.', author: '' },
-  { quote: 'There is always more beyond the opening scene.', author: '' },
-  { quote: 'A good story turns spare minutes into memorable journeys.', author: '' },
-  { quote: 'New voices, new worlds, and a fresh perspective await.', author: '' },
-  { quote: 'The screen is small, but the adventure does not have to be.', author: '' },
-  { quote: 'Settle in. Something remarkable is about to begin.', author: '' },
-];
-
 /** Presentation only: available tracks still come exclusively from runtime sources. */
 const audioBadgeLabel = (lang?: string | null): string => {
   const canon = canonLang(lang);
@@ -173,6 +153,8 @@ interface DisplayMedia {
   year: string;
   tagline: string;
   rating: number | null;
+  certification: string;
+  runtime: number | null;
   genres: string[];
   overview: string;
   logo: string | null;
@@ -246,7 +228,7 @@ export class PlayerUI {
   private nextEpDismissBtn!: HTMLButtonElement;
   private nextEpDismissedKey = '';
 
-  /* Bottom dock: Title Logo / Cartoony Title + Submeta (left) & Source Pill (right) */
+  /* Bottom dock: Title Logo / display fallback + Submeta (left) & Source Pill (right) */
   private dockIdentityEl!: HTMLElement;
   private dockLogoSlot!: HTMLElement;
   private dockSubmetaEl!: HTMLElement;
@@ -255,25 +237,30 @@ export class PlayerUI {
   /* Branded startup / unavailable states */
   private loadingScreen!: HTMLElement;
   private loadingBackdrop!: HTMLImageElement;
+  private loadingLogoSlot!: HTMLElement;
   private loadingStatus!: HTMLElement;
-  private loadingQuote!: HTMLElement;
-  private loadingQuoteAuthor!: HTMLElement;
-  private loadingQuoteTimer = 0;
+  private loadingArtKey = '';
   private loadingDeadlineTimer = 0;
   private loadingHardStopTimer = 0;
   private slowLoadingActive = false;
-  private loadingQuoteIndex = 0;
-  private loadingQuoteAbort: AbortController | null = null;
-  private loadingQuoteSession = 0;
-  private loadingQuoteHistory = new Set<string>();
   private loadingActive = false;
-  private dvdBounce: DvdBounce | null = null;
-  private loadingDvdLayer!: HTMLElement;
   private slowNoticeShown = false;
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
   private unavailableTitle!: HTMLElement;
   private unavailableMessage!: HTMLElement;
+  private unavailableKicker!: HTMLElement;
+
+  /* Transient age-rating card, shown once per title/episode */
+  private ratingBadge!: HTMLElement;
+  private ratingValueEl!: HTMLElement;
+  private ratingMetaEl!: HTMLElement;
+  private ratingShowTimer = 0;
+  private ratingOutTimer = 0;
+  private ratingShownKey = '';
+
+  /* Muted-autoplay affordance */
+  private unmutePill!: HTMLButtonElement;
 
   /* Inline timeline row (`0:09 [====|----] 1:33:49`) */
   private timelineRow!: HTMLElement;
@@ -554,7 +541,7 @@ export class PlayerUI {
     this.nextEpWrap.append(this.nextEpBtn, this.nextEpDismissBtn);
     shell.appendChild(this.nextEpWrap);
 
-    /* 9. Bottom dock: [Title Logo / Cartoony Title + Submeta | Source Pill] + Inline Timeline + Control Bar */
+    /* 9. Bottom dock: [Title Logo / display fallback + Submeta | Source Pill] + Inline Timeline + Control Bar */
     const bottomDock = el('div', 'elf-bottom-dock');
 
     const dockUpper = el('div', 'elf-dock-upper');
@@ -676,10 +663,14 @@ export class PlayerUI {
     const closeBtn = this.iconBtn(I.close, 'Close');
     closeBtn.classList.add('elf-panel-close');
     closeBtn.onclick = () => this.closePanel();
-    panelHead.append(this.panelHeaderTitle, this.panelTabsEl, closeBtn);
+    panelHead.append(this.panelHeaderTitle, closeBtn);
+    this.panel.setAttribute('role', 'dialog');
+    this.panel.setAttribute('aria-modal', 'false');
+    this.panelTabsEl.className = 'elf-tabs';
+    this.panelTabsEl.setAttribute('role', 'tablist');
 
     this.panelBody = el('div', 'elf-panel-body');
-    this.panel.append(panelHead, this.panelBody);
+    this.panel.append(panelHead, this.panelTabsEl, this.panelBody);
     shell.append(this.panelBackdrop, this.panel);
 
     /* 11. Startup artwork + useful progress and a real terminal unavailable state. */
@@ -699,18 +690,15 @@ export class PlayerUI {
       this.loadingBackdrop.dataset.ready = 'true';
     });
     const loadingShade = el('div', 'elf-state-shade');
-    // The startup screen is artwork only: the title's backdrop with its logo
-    // bouncing across it like a DVD screensaver. No status line, no quotes, no
-    // progress rule — nothing to read while you wait.
-    const loadingDvdLayer = el('div', 'elf-loading-dvd');
-    loadingDvdLayer.setAttribute('aria-hidden', 'true');
-    this.loadingDvdLayer = loadingDvdLayer;
-    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingDvdLayer);
-    // Kept for state logic, never attached: nothing on the loading screen is
-    // text any more.
-    this.loadingStatus = el('div', 'elf-loading-status', 'Finding the best available source…');
-    this.loadingQuote = el('blockquote', 'elf-loading-quote');
-    this.loadingQuoteAuthor = el('figcaption', 'elf-loading-quote-author');
+    // Title artwork, the title's own lockup, and one honest status line. No
+    // bouncing logo, no rotating quotations, no invented progress percentage.
+    const loadingContent = el('div', 'elf-loading-content');
+    this.loadingLogoSlot = el('div', 'elf-loading-logo');
+    this.loadingStatus = el('div', 'elf-loading-status', 'Preparing your stream…');
+    const loadingRule = el('div', 'elf-loading-rule', '<span></span>');
+    loadingRule.setAttribute('aria-hidden', 'true');
+    loadingContent.append(this.loadingLogoSlot, this.loadingStatus, loadingRule);
+    this.loadingScreen.append(this.loadingBackdrop, loadingShade, loadingContent);
 
     this.unavailableScreen = el('div', 'elf-unavailable-screen');
     this.unavailableScreen.dataset.visible = 'false';
@@ -720,8 +708,9 @@ export class PlayerUI {
     this.unavailableBackdrop.alt = '';
     const unavailableShade = el('div', 'elf-state-shade');
     const unavailableCard = el('div', 'elf-unavailable-card');
+    this.unavailableKicker = el('div', 'elf-unavailable-kicker', 'Playback unavailable');
     const unavailableIcon = el('div', 'elf-unavailable-icon', I.info);
-    this.unavailableTitle = el('h2', 'elf-unavailable-title', "Couldn't find this title");
+    this.unavailableTitle = el('h2', 'elf-unavailable-title', "Playback didn't start");
     this.unavailableMessage = el(
       'p',
       'elf-unavailable-message',
@@ -734,9 +723,38 @@ export class PlayerUI {
       this.showInitialLoading();
       void this.player.retrySources();
     };
-    unavailableCard.append(unavailableIcon, this.unavailableTitle, this.unavailableMessage, retryBtn);
+    const unavailableActions = el('div', 'elf-unavailable-actions');
+    unavailableActions.appendChild(retryBtn);
+    unavailableCard.append(this.unavailableKicker, unavailableIcon, this.unavailableTitle, this.unavailableMessage, unavailableActions);
     this.unavailableScreen.append(this.unavailableBackdrop, unavailableShade, unavailableCard);
     shell.append(this.loadingScreen, this.unavailableScreen);
+
+    /* 12. Age-rating slip. Springs in when playback starts, then leaves on its
+           own — the one place the interface is allowed to be playful. */
+    this.ratingBadge = el('div', 'elf-rating');
+    this.ratingBadge.dataset.visible = 'false';
+    this.ratingBadge.setAttribute('role', 'note');
+    this.ratingValueEl = el('div', 'elf-rating-value');
+    this.ratingMetaEl = el('div', 'elf-rating-meta');
+    this.ratingBadge.append(this.ratingValueEl, this.ratingMetaEl);
+    shell.appendChild(this.ratingBadge);
+
+    /* 13. Unmute affordance: muted autoplay is a recovery, not a final state. */
+    this.unmutePill = el(
+      'button',
+      'elf-unmute',
+      `<span class="elf-unmute-ico">${I.volMute}</span><span>Tap to unmute</span>`,
+    ) as HTMLButtonElement;
+    this.unmutePill.type = 'button';
+    this.unmutePill.dataset.visible = 'false';
+    this.unmutePill.setAttribute('aria-label', 'Unmute');
+    this.unmutePill.onclick = (e) => {
+      e.stopPropagation();
+      this.player.setMuted(false);
+      if (this.player.getState().volume === 0) this.player.setVolume(1);
+      this.syncUnmuteHint();
+    };
+    shell.appendChild(this.unmutePill);
   }
 
   private iconBtn(icon: string, label: string): HTMLButtonElement {
@@ -747,7 +765,7 @@ export class PlayerUI {
   }
 
   /* ------------------------------------------------------------------ */
-  /* Title Logo / Cartoony Fallback + Paused Cinema Screen Sync          */
+  /* Title Lockup / display fallback + Paused Cinema Screen Sync          */
   /* ------------------------------------------------------------------ */
 
   private resolveDisplayMedia(): DisplayMedia {
@@ -776,6 +794,8 @@ export class PlayerUI {
     const year = String(m?.year ?? '').trim();
     const tagline = String(m?.tagline ?? '').trim();
     const rating = typeof m?.rating === 'number' && Number.isFinite(m.rating) && m.rating > 0 ? m.rating : null;
+    const certification = String(m?.certification ?? '').trim();
+    const runtime = typeof m?.runtime === 'number' && Number.isFinite(m.runtime) && m.runtime > 0 ? Math.round(m.runtime) : null;
     const genres = Array.isArray(m?.genres) ? m.genres.filter(Boolean) : [];
     const overview = String(m?.overview ?? '').trim();
 
@@ -788,6 +808,8 @@ export class PlayerUI {
       year,
       tagline,
       rating,
+      certification,
+      runtime,
       genres,
       overview,
       logo,
@@ -813,15 +835,6 @@ export class PlayerUI {
   }
 
   private syncStateArtwork(dm: DisplayMedia): void {
-    // TMDB may deliver the logo a few hundred milliseconds after the screen
-    // appears; without this the bounce would never start and the logo would
-    // never be seen at all.
-    if (this.loadingActive && dm.logo && this.dvdBounce) {
-      const art = this.loadingDvdLayer.querySelector('.elf-dvd-art') as HTMLImageElement | null;
-      if (art && art.getAttribute('src') !== dm.logo) this.startDvdBounce();
-    } else if (this.loadingActive && !this.dvdBounce && dm.logo) {
-      this.startDvdBounce();
-    }
     const backdrop = dm.backdrop;
     for (const img of [this.loadingBackdrop, this.unavailableBackdrop]) {
       if (backdrop) {
@@ -832,37 +845,23 @@ export class PlayerUI {
         img.hidden = true;
       }
     }
-    // The startup screen has no text and no docked logo: the backdrop is the
-    // whole picture and the logo bounces over it (see startDvdBounce).
+    this.syncLoadingArtwork(dm);
   }
 
-  private startDvdBounce(): void {
-    // Decoration only: a bug in the loader must never take the player with it.
-    try {
-      const dm = this.resolveDisplayMedia();
-      const logo = dm.logo;
-      if (!logo) {
-        // Nothing to bounce. Better an honest backdrop than invented text.
-        this.dvdBounce?.stop();
-        return;
-      }
-      if (!this.dvdBounce) this.dvdBounce = mountDvdBounce(this.loadingDvdLayer);
-      this.dvdBounce.setImage(logo);
-      this.dvdBounce.start();
-    } catch {
-      /* the loading screen and source list stay fully functional without it */
-    }
-  }
-
-  private stopDvdBounce(): void {
-    this.dvdBounce?.stop();
+  /** Startup lockup: the official logo when TMDB has one, otherwise the title. */
+  private syncLoadingArtwork(dm: DisplayMedia): void {
+    const key = `${dm.logo ?? ''}|${dm.mainTitle}`;
+    if (key === this.loadingArtKey) return;
+    this.loadingArtKey = key;
+    this.loadingLogoSlot.replaceChildren();
+    const visual = this.createTitleVisual(dm, 'loading');
+    if (visual) this.loadingLogoSlot.appendChild(visual);
+    this.loadingLogoSlot.hidden = !visual;
   }
 
   private showInitialLoading(): void {
     this.loadingActive = true;
     this.slowLoadingActive = false;
-    const session = ++this.loadingQuoteSession;
-    if (this.loadingQuoteHistory.size > 64) this.loadingQuoteHistory.clear();
     this.player.shell.dataset.initialLoading = 'true';
     this.player.shell.dataset.unavailable = 'false';
     this.loadingScreen.dataset.visible = 'true';
@@ -877,13 +876,14 @@ export class PlayerUI {
       if (!this.claimSlowNotice()) {
         // Retry attempts for the same title keep the progress state, but don't
         // put the identical blocking warning back over the player.
-        this.loadingStatus.textContent = 'Still trying to connect…';
+        this.loadingStatus.textContent = 'Still connecting…';
         return;
       }
       this.hideInitialLoading(true);
       this.slowLoadingActive = true;
+      this.unavailableKicker.textContent = 'Still connecting';
       this.unavailableTitle.textContent = 'Taking longer than expected';
-      this.unavailableMessage.textContent = 'Still connecting. You can wait or try again.';
+      this.unavailableMessage.textContent = 'The source is still responding. You can wait, or try again.';
       this.syncStateArtwork(this.resolveDisplayMedia());
       this.unavailableScreen.dataset.visible = 'true';
     }, 20_000);
@@ -891,17 +891,8 @@ export class PlayerUI {
     this.loadingHardStopTimer = window.setTimeout(() => {
       if (this.loadingActive || this.slowLoadingActive) this.player.cancelStartup();
     }, 45000);
-    this.loadingStatus.textContent = 'Finding the best available source…';
+    this.loadingStatus.textContent = 'Preparing your stream…';
     this.syncStateArtwork(this.resolveDisplayMedia());
-    this.startDvdBounce();
-    clearInterval(this.loadingQuoteTimer);
-    this.loadingQuoteTimer = window.setInterval(() => {
-      if (!this.loadingActive || session !== this.loadingQuoteSession) return;
-      // Keep something fresh on screen immediately, then replace it with a new
-      // live quote as soon as the request resolves. No repeated four-quote loop.
-      this.showNextFallbackQuote();
-      void this.fetchLoadingQuote(session);
-    }, 6500);
   }
 
   private claimSlowNotice(): boolean {
@@ -910,65 +901,11 @@ export class PlayerUI {
     return true;
   }
 
-  private showNextFallbackQuote(): void {
-    let item = FALLBACK_LOADING_QUOTES[this.loadingQuoteIndex % FALLBACK_LOADING_QUOTES.length];
-    for (let i = 0; i < FALLBACK_LOADING_QUOTES.length; i++) {
-      const candidate = FALLBACK_LOADING_QUOTES[(this.loadingQuoteIndex + i) % FALLBACK_LOADING_QUOTES.length];
-      if (!this.loadingQuoteHistory.has(candidate.quote)) {
-        item = candidate;
-        this.loadingQuoteIndex = (this.loadingQuoteIndex + i + 1) % FALLBACK_LOADING_QUOTES.length;
-        break;
-      }
-    }
-    this.setLoadingQuote(item);
-  }
-
-  private setLoadingQuote(item: { quote: string; author: string }): void {
-    this.loadingQuoteHistory.add(item.quote);
-    this.loadingQuote.textContent = `“${item.quote}”`;
-    this.loadingQuoteAuthor.textContent = item.author ? `— ${item.author}` : '';
-  }
-
-  private async fetchLoadingQuote(session: number, allowDuplicateRetry = true): Promise<void> {
-    this.loadingQuoteAbort?.abort();
-    const controller = new AbortController();
-    this.loadingQuoteAbort = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 2600);
-    try {
-      const res = await fetch('https://zenquotes.io/api/random', {
-        signal: controller.signal,
-        credentials: 'omit',
-        headers: { Accept: 'application/json' },
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as { q?: unknown; a?: unknown }[] | null;
-      const quote = String(data?.[0]?.q ?? '').trim();
-      const author = String(data?.[0]?.a ?? '').trim();
-      if (!this.loadingActive || session !== this.loadingQuoteSession || !quote || quote.length > 280) return;
-      if (this.loadingQuoteHistory.has(quote)) {
-        if (allowDuplicateRetry) void this.fetchLoadingQuote(session, false);
-        return;
-      }
-      this.setLoadingQuote({ quote, author: author.slice(0, 90) });
-    } catch {
-      /* Offline/CORS failures retain the larger, non-repeating local fallback set. */
-    } finally {
-      clearTimeout(timeout);
-      if (this.loadingQuoteAbort === controller) this.loadingQuoteAbort = null;
-    }
-  }
-
   private hideInitialLoading(keepHardStop = false): void {
     this.loadingActive = false;
-    this.stopDvdBounce();
-    this.loadingQuoteSession++;
-    clearInterval(this.loadingQuoteTimer);
     clearTimeout(this.loadingDeadlineTimer);
     if (!keepHardStop) { clearTimeout(this.loadingHardStopTimer); this.loadingHardStopTimer = 0; this.slowLoadingActive = false; }
     this.loadingDeadlineTimer = 0;
-    this.loadingQuoteTimer = 0;
-    this.loadingQuoteAbort?.abort();
-    this.loadingQuoteAbort = null;
     this.player.shell.dataset.initialLoading = 'false';
     this.loadingScreen.dataset.visible = 'false';
   }
@@ -980,14 +917,61 @@ export class PlayerUI {
     this.player.shell.dataset.pauseScreen = 'false';
     this.player.shell.dataset.buffering = 'false';
     this.player.shell.dataset.unavailable = 'true';
-    this.unavailableTitle.textContent = "Couldn't find this title";
+    this.unavailableKicker.textContent = 'Playback unavailable';
+    this.unavailableTitle.textContent = "Playback didn't start";
     this.unavailableMessage.textContent =
-      message || 'No playable sources are available right now. Please try again in a moment.';
+      message || 'Every available source failed to start. Try again, or come back in a moment.';
     this.syncStateArtwork(this.resolveDisplayMedia());
     this.unavailableScreen.dataset.visible = 'true';
   }
 
-  private createTitleVisual(dm: DisplayMedia, variant: 'dock' | 'pause'): HTMLElement | null {
+  /**
+   * The age-rating card. It is a one-shot piece of information, not part of the
+   * chrome: it springs in when playback actually begins, holds long enough to
+   * read, then leaves on its own. The key includes the episode so a new episode
+   * gets its own card, while a source switch or a pause does not repeat it.
+   */
+  private maybeShowRatingBadge(): void {
+    if (!this.hasStartedPlayback) return;
+    const dm = this.resolveDisplayMedia();
+    const cert = dm.certification.trim();
+    if (!cert) return;
+    const key = `${cert}|${dm.year}|${dm.season ?? 0}:${dm.episode ?? 0}`;
+    if (key === this.ratingShownKey) return;
+    this.ratingShownKey = key;
+
+    // 'Rated PG-13' reads naturally; TV classifications already carry their own prefix.
+    this.ratingValueEl.textContent = /^TV-/i.test(cert) ? cert.toUpperCase() : `Rated ${cert}`;
+    const meta: string[] = [];
+    if (dm.year) meta.push(dm.year);
+    if (dm.runtime && dm.runtime > 0) {
+      const h = Math.floor(dm.runtime / 60);
+      const m = dm.runtime % 60;
+      meta.push(h ? `${h}h ${m ? `${m}m` : ''}`.trim() : `${m}m`);
+    }
+    if (dm.mediaType === 'tv' && dm.season && dm.episode) {
+      meta.push(`S${dm.season} E${dm.episode}`);
+    } else if (dm.genres[0]) {
+      meta.push(dm.genres[0]);
+    }
+    this.ratingMetaEl.textContent = meta.join(' · ');
+    this.ratingMetaEl.hidden = meta.length === 0;
+
+    clearTimeout(this.ratingShowTimer);
+    clearTimeout(this.ratingOutTimer);
+    this.ratingBadge.dataset.visible = 'false';
+    // Force a style flush so replaying the entrance animation is deterministic.
+    void this.ratingBadge.offsetWidth;
+    this.ratingBadge.dataset.visible = 'in';
+    this.ratingShowTimer = window.setTimeout(() => {
+      this.ratingBadge.dataset.visible = 'out';
+      this.ratingOutTimer = window.setTimeout(() => {
+        this.ratingBadge.dataset.visible = 'false';
+      }, 520);
+    }, 4000);
+  }
+
+  private createTitleVisual(dm: DisplayMedia, variant: 'dock' | 'pause' | 'loading'): HTMLElement | null {
     if (dm.logo) {
       const img = document.createElement('img');
       img.className = `elf-title-logo elf-title-logo--${variant}`;
@@ -1004,9 +988,9 @@ export class PlayerUI {
       return img;
     }
     if (dm.mainTitle) {
-      const cartoon = el('div', `elf-title-cartoon elf-title-cartoon--${variant}`);
-      cartoon.textContent = dm.mainTitle;
-      return cartoon;
+      const fallback = el('div', `elf-title-fallback elf-title-fallback--${variant}`);
+      fallback.textContent = dm.mainTitle;
+      return fallback;
     }
     return null;
   }
@@ -1034,7 +1018,7 @@ export class PlayerUI {
       if (this.epWheelOpen) this.closeEpisodeWheel();
     }
 
-    /* B. Bottom-dock Title Logo (or Cartoony Font fallback) + `Movie · Genre · Year` */
+    /* B. Bottom-dock Title Logo (or display fallback) + `Movie · Genre · Year` */
     this.dockLogoSlot.replaceChildren();
     const dockVisual = this.createTitleVisual(dm, 'dock');
     if (dockVisual) this.dockLogoSlot.appendChild(dockVisual);
@@ -1053,7 +1037,7 @@ export class PlayerUI {
     this.dockSubmetaEl.hidden = dockParts.length === 0;
     this.dockIdentityEl.hidden = !dockVisual && dockParts.length === 0;
 
-    /* C. Cinema Paused Screen (Title Logo / Cartoony Title + PAUSED + "Tagline" + Year • ★ Rating + Overview) */
+    /* C. Cinema Paused Screen (Title Logo / display fallback + PAUSED + tagline + facts + overview) */
     this.pauseTitleSlot.replaceChildren();
     const pauseVisual = this.createTitleVisual(dm, 'pause');
     if (pauseVisual) this.pauseTitleSlot.appendChild(pauseVisual);
@@ -1069,6 +1053,14 @@ export class PlayerUI {
 
     const factItems: string[] = [];
     if (dm.year) factItems.push(`<span class="elf-pf-year">${esc(dm.year)}</span>`);
+    if (dm.certification) {
+      factItems.push(`<span class="elf-pf-cert">${esc(dm.certification)}</span>`);
+    }
+    if (dm.runtime && dm.runtime > 0) {
+      const h = Math.floor(dm.runtime / 60);
+      const m = dm.runtime % 60;
+      factItems.push(`<span class="elf-pf-runtime">${esc(h ? `${h}h ${m ? `${m}m` : ''}`.trim() : `${m}m`)}</span>`);
+    }
     if (dm.rating !== null) {
       factItems.push(
         `<span class="elf-pf-rating"><span class="elf-pf-star">${I.star}</span>${esc(dm.rating.toFixed(1))}</span>`,
@@ -1087,6 +1079,9 @@ export class PlayerUI {
 
     this.pauseOverviewEl.textContent = dm.overview;
     this.pauseOverviewEl.hidden = !dm.overview;
+
+    // TMDB can answer after `play`; the badge must not be lost in that race.
+    this.maybeShowRatingBadge();
   }
 
   private enterPauseScreen(): void {
@@ -1303,6 +1298,8 @@ export class PlayerUI {
       }
 
       this.flashIcon(I.playSolid);
+      this.maybeShowRatingBadge();
+      this.syncUnmuteHint();
       this.scheduleHide();
     });
 
@@ -1315,6 +1312,7 @@ export class PlayerUI {
       shell.dataset.brandFull = 'true';
       this.playBtn.setAttribute('aria-label', 'Play');
       this.flashIcon(I.pauseSolid);
+      this.syncUnmuteHint();
 
       if (!this.locked) {
         if (this.hasStartedPlayback || v.currentTime > 0) {
@@ -1432,18 +1430,14 @@ export class PlayerUI {
     bus.on('error', (d) => {
       const code = (d as { code?: string })?.code ?? '';
       if (code === 'no-sources' || code === 'all-sources-failed' || code.startsWith('resolve-')) {
-        // Say WHICH failure this is. Three very different faults - the API
-        // refused us, we reached it and the title genuinely has nothing, and we
-        // got sources but none would play - all used to read as "check your
-        // connection", which sends everyone hunting in the wrong place. The
-        // detail is the status or the message the backend already returned; it
-        // contains no provider names and no URLs, so it is safe to display.
-        const detail = String((d as { message?: string })?.message ?? '').slice(0, 120);
+        // Three different faults, three different next steps — expressed in
+        // viewer language. Internal codes and upstream detail stay in the
+        // console so the terminal screen never looks like a stack trace.
         const message = code.startsWith('resolve-')
-          ? `We couldn’t reach this title’s sources (${code.replace('resolve-', 'request ')}${detail ? `: ${detail}` : ''}). Check your connection and try again.`
+          ? 'We couldn’t reach this title’s sources. Check your connection and try again.'
           : code === 'all-sources-failed'
-            ? `None of the available sources could start playback${detail ? ` (${detail})` : ''}. Please try again.`
-            : `We couldn’t find a playable stream for this title${detail ? ` (${detail})` : ''}. Please try again later.`;
+            ? 'Every available source failed to start. Try again, or pick another title.'
+            : 'No playable stream is available for this title right now. Try again in a moment.';
         this.showUnavailable(message);
       }
     });
@@ -1889,6 +1883,18 @@ export class PlayerUI {
     const isMuted = d.muted || d.volume === 0;
     this.volBtn.innerHTML = isMuted ? I.volMute : I.volHigh;
     this.volBtn.dataset.muted = String(isMuted);
+    this.syncUnmuteHint();
+  }
+
+  private syncUnmuteHint(): void {
+    const st = this.player.getState();
+    const show =
+      Boolean(st.muted) &&
+      this.hasStartedPlayback &&
+      !this.player.video.paused &&
+      !this.locked &&
+      this.player.shell.dataset.unavailable !== 'true';
+    this.unmutePill.dataset.visible = String(show);
   }
 
   private triggerBtnPop(btn: HTMLElement): void {
@@ -2348,18 +2354,29 @@ export class PlayerUI {
     };
     this.panelHeaderTitle.textContent = titles[this.panelMode];
 
+    const short: Record<PanelMode, string> = {
+      audiosubs: 'Audio & Subs',
+      quality: 'Quality',
+      sources: 'Servers',
+      speed: 'Speed',
+      style: 'Style',
+    };
     this.panelTabsEl.replaceChildren();
     for (const m of modes) {
-      const b = this.iconBtn(m.icon, m.label);
+      const b = el('button', 'elf-tab', `${m.icon}<span>${short[m.id]}</span>`) as HTMLButtonElement;
+      b.type = 'button';
+      b.title = m.label;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-label', m.label);
       b.dataset.on = String(this.panelMode === m.id || (this.panelMode === 'style' && m.id === 'audiosubs'));
-      b.onclick = () => {
+      b.addEventListener('click', () => {
         this.panelMode = m.id;
         this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
         this.qualityTopBtn.dataset.active = String(this.panelMode === 'quality');
         this.audioSubsBtn.dataset.active = String(this.panelMode === 'audiosubs');
         this.buildPanelHeader();
         this.renderPanelBody();
-      };
+      });
       this.panelTabsEl.appendChild(b);
     }
   }
@@ -3086,6 +3103,8 @@ export class PlayerUI {
     clearTimeout(this.dtapHideRightTimer);
     clearTimeout(this.holdTimer);
     clearTimeout(this.lockPeekTimer);
+    clearTimeout(this.ratingShowTimer);
+    clearTimeout(this.ratingOutTimer);
     this.hideInitialLoading();
     this.previewRenderer?.destroy();
   }

@@ -49,7 +49,7 @@ export interface ElfuraConfig {
   poster?: string;
   /** Wide backdrop art from the catalogue page; used before TMDB answers. */
   backdrop?: string;
-  /** Title logo (already transparent PNG); the startup screen bounces this. */
+  /** Title logo (already transparent PNG); used on the startup and pause screens. */
   logo?: string;
   title?: string;
   servers?: { lang: string; label?: string; url: string }[];
