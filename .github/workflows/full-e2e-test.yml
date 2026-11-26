@@ -30,7 +30,7 @@ jobs:
       - run: npm run build
 
       - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
+        run: npm install --no-save playwright && npx playwright install chromium --with-deps
 
       - name: Run full E2E test
         id: e2e
