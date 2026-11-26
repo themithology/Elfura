@@ -133,13 +133,23 @@ async function main() {
 
       // Wait for sources to populate in the player
       await page.waitForTimeout(6000);
-      const serverBtn = page.locator('button[title*="Servers"], button[aria-label*="Servers"], .elf-source-seg').first();
-      if (await serverBtn.count()) {
-        await serverBtn.click({ force: true }).catch(() => {});
-        await page.waitForTimeout(500);
+      // Open Audio & Subtitles sheet
+      const asBtn = page.locator('button[aria-label*="Audio"], button[title*="Audio"], .elf-btn-as').first();
+      await asBtn.click({ force: true, timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      const audioOpts = await page.locator('.elf-audio-option').allInnerTexts().catch(() => []);
+      log(`✓ Browser Audio options (${audioOpts.length}): ${audioOpts.map((s) => s.replace(/\s+/g, ' ').trim()).join(' | ')}`);
+      if (audioOpts.length > 1) {
+        const targetIdx = audioOpts.findIndex((t) => /hindi/i.test(t));
+        const clickIdx = targetIdx >= 0 ? targetIdx : 1;
+        await page.locator('.elf-audio-option').nth(clickIdx).click({ force: true });
+        await page.waitForTimeout(5000);
+        const toastText = await page.locator('.elf-toast').allInnerTexts().catch(() => []);
+        log(`✓ Clicked audio[${clickIdx}] ("${audioOpts[clickIdx].replace(/\s+/g, ' ').trim()}") -> toast: ${toastText.join(' | ') || '(none)'}`);
+        if (toastText.some((t) => /didn't find it/i.test(t))) {
+          throw new Error(`Audio switch failed with unavailable toast: ${toastText.join(' | ')}`);
+        }
       }
-      const serverRows = await page.locator('.elf-sheet-row, .elf-row').allInnerTexts().catch(() => []);
-      log(`✓ Browser server/sheet rows (${serverRows.length}): ${serverRows.slice(0, 6).map((s) => s.replace(/\s+/g, ' ').trim()).join(' | ')}`);
 
       if (pageErrors.length > 0) {
         log(`! Page errors: ${pageErrors.join(' | ')}`);
