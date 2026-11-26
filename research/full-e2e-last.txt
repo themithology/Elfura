@@ -1,0 +1,12 @@
+=== Full E2E Runner Test (2026-11-26T10:54:57.350Z) ===
+✓ Server started and /health responded 200
+✓ / HTTP 200 (34652B)
+✓ /landing.html HTTP 200 (34652B)
+✓ /embed.html HTTP 200 (1272B)
+✓ /api/v1/session: HTTP 200 (got token)
+✓ /api/v1/playback movie/550: HTTP 200, keys=ok,media,primary,sources,sourceGroups,waveUpdates,pendingSources, streams=25
+✓ Browser /landing.html loaded (title="TheOGPirateBot — One player for your catalog")
+✓ Browser /embed.html?type=movie&tmdb=550 rendered <video> element
+✓ Browser Audio options (0): 
+✓ Zero uncaught page errors
+=== ALL E2E CHECKS PASSED ===
