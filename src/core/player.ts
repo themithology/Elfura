@@ -3362,11 +3362,12 @@ export class ElfuraPlayer {
     for (const s of this.sources) {
       if (this.isCandidateFailed(s)) continue;
       const hint = providerVariantLanguage(s);
-      if (!s.multiAudio && (s.audioLang || hint)) {
+      const declaredLang = hint ?? s.audioLang ?? s.claimedAudioLang;
+      if (!s.multiAudio && declaredLang && declaredLang !== 'und') {
         discoveredSourceLangs.push({
-          lang: hint ?? s.audioLang!,
+          lang: declaredLang,
           active: s.id === this.currentSource?.id,
-          ...(hint ? { providerHint: true } : {}),
+          ...(hint || !s.audioLang ? { providerHint: true } : {}),
         });
       }
       for (const l of s.availableAudioLangs ?? []) {
