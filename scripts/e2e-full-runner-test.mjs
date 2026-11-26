@@ -83,17 +83,22 @@ async function main() {
     }
     log(`✓ /api/v1/session: HTTP ${sessRes.status} (got token)`);
 
-    const resolveRes = await fetch(
-      `${BASE}/api/v1/playback?type=movie&tmdb=550&pltoken=${encodeURIComponent(token)}`
-    );
-    const resolveJson = await resolveRes.json().catch(() => null);
-    if (!resolveRes.ok || !resolveJson) {
-      throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
+    let resolveJson = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const resolveRes = await fetch(
+        `${BASE}/api/v1/playback?type=movie&tmdb=550&pltoken=${encodeURIComponent(token)}`
+      );
+      resolveJson = await resolveRes.json().catch(() => null);
+      if (!resolveRes.ok || !resolveJson) {
+        throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
+      }
+      if (Array.isArray(resolveJson.streams) && resolveJson.streams.length > 0) break;
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    const streamCount = Array.isArray(resolveJson.streams) ? resolveJson.streams.length : 0;
-    log(`✓ /api/v1/playback movie/550: HTTP ${resolveRes.status}, streams=${streamCount}`);
+    const streamCount = Array.isArray(resolveJson?.streams) ? resolveJson.streams.length : 0;
+    log(`✓ /api/v1/playback movie/550: HTTP 200, streams=${streamCount}`);
     if (streamCount === 0) {
-      throw new Error('No streams resolved for movie/550 on live runner');
+      throw new Error(`No streams resolved for movie/550: ${JSON.stringify(resolveJson).slice(0, 300)}`);
     }
 
     // 3. Headless browser check (Playwright)
