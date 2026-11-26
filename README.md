@@ -469,3 +469,4 @@ The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each res
 The browser audit exercises real discovery, the production registry and relay, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
 
 The deployment ZIP includes `wreq-js` and the native bindings available on the build host (the published bundle is Linux x64). On another architecture, install the optional runtime dependency on the resolver with `npm install --omit=dev` in the extracted application directory and restart it. If the native client is unavailable, this source is skipped; other sources continue to work.
+
