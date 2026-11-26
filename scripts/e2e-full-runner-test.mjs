@@ -70,8 +70,17 @@ async function main() {
       log(`✓ ${p} HTTP ${r.status} (${body.length}B)`);
     }
 
-    // 2. Live source resolution (Fight Club tmdb=550)
-    const resolveRes = await fetch(`${BASE}/api/v1/playback?type=movie&tmdb=550`);
+    // 2. Session + Live source resolution (Fight Club tmdb=550)
+    const sessRes = await fetch(`${BASE}/api/v1/session`, { method: 'POST' });
+    const sessJson = await sessRes.json().catch(() => null);
+    if (!sessRes.ok || !sessJson?.token) {
+      throw new Error(`/api/v1/session failed: HTTP ${sessRes.status}`);
+    }
+    log(`✓ /api/v1/session: HTTP ${sessRes.status} (got token)`);
+
+    const resolveRes = await fetch(`${BASE}/api/v1/playback?type=movie&tmdb=550`, {
+      headers: { Authorization: `Bearer ${sessJson.token}` },
+    });
     const resolveJson = await resolveRes.json().catch(() => null);
     if (!resolveRes.ok || !resolveJson) {
       throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
