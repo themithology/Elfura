@@ -1893,7 +1893,8 @@ export class ElfuraPlayer {
       // the current engine enumerated native tracks and none matches, a
       // multi-audio candidate did not switch, whatever its metadata claims.
       const nativeTracks = this.audioTracks.filter((t) => t.kind === 'native');
-      if (!realTrack && cand.multiAudio && nativeTracks.length > 0) return false;
+      const declaredMatches = matchScore(targetLang, cand.audioLang ?? cand.claimedAudioLang ?? 'und') >= 0;
+      if (!realTrack && cand.multiAudio && nativeTracks.length > 0 && !declaredMatches) return false;
       const matchedTrack =
         realTrack ?? {
           id: `source:${targetLang}`,
