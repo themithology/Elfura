@@ -71,13 +71,13 @@ async function main() {
     }
 
     // 2. Live source resolution (Fight Club tmdb=550)
-    const resolveRes = await fetch(`${BASE}/api/v1/resolve?type=movie&tmdb=550`);
+    const resolveRes = await fetch(`${BASE}/api/v1/playback?type=movie&tmdb=550`);
     const resolveJson = await resolveRes.json().catch(() => null);
     if (!resolveRes.ok || !resolveJson) {
-      throw new Error(`/api/v1/resolve failed: HTTP ${resolveRes.status}`);
+      throw new Error(`/api/v1/playback failed: HTTP ${resolveRes.status}`);
     }
     const streamCount = Array.isArray(resolveJson.streams) ? resolveJson.streams.length : 0;
-    log(`✓ /api/v1/resolve movie/550: HTTP ${resolveRes.status}, streams=${streamCount}`);
+    log(`✓ /api/v1/playback movie/550: HTTP ${resolveRes.status}, streams=${streamCount}`);
     if (streamCount === 0) {
       throw new Error('No streams resolved for movie/550 on live runner');
     }
