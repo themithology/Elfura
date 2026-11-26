@@ -1,0 +1,10 @@
+=== Full E2E Runner Test (2026-11-26T06:18:19.635Z) ===
+✓ Server started and /health responded 200
+✓ / HTTP 200 (34652B)
+✓ /landing.html HTTP 200 (34652B)
+✓ /embed.html HTTP 200 (1272B)
+✓ /api/v1/session: HTTP 200 (got token)
+✓ /api/v1/playback movie/550: HTTP 200, streams=0
+✗ E2E FAILED: Error: No streams resolved for movie/550 on live runner
+    at main (file:///home/runner/work/Elfura/Elfura/scripts/e2e-full-runner-test.mjs:96:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
