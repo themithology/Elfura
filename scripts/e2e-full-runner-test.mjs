@@ -24,7 +24,7 @@ async function waitForServer(timeoutMs = 20000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const res = await fetch(`${BASE}/health`);
+      const res = await fetch(`${BASE}/api/v1/health`);
       if (res.ok) return true;
     } catch {}
     await new Promise((r) => setTimeout(r, 400));
