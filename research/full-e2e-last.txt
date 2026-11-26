@@ -1,0 +1,13 @@
+=== Full E2E Runner Test (2026-11-26T10:44:21.586Z) ===
+✓ Server started and /health responded 200
+✓ / HTTP 200 (34652B)
+✓ /landing.html HTTP 200 (34652B)
+✓ /embed.html HTTP 200 (1272B)
+✓ /api/v1/session: HTTP 200 (got token)
+✓ /api/v1/playback movie/550: HTTP 200, keys=ok,media,primary,sources,sourceGroups,waveUpdates,pendingSources,segments, streams=45
+✓ Browser /landing.html loaded (title="TheOGPirateBot — One player for your catalog")
+✓ Browser /embed.html?type=movie&tmdb=550 rendered <video> element
+✓ Browser Audio options (12): EN English | FR French | DE German | IT Italian | JA Japanese | PL Polish | PT Portuguese | ES Spanish | ES Spanish #2 | TR Turkish | हिं Hindi | UK Ukrainian
+✓ Clicked audio[10] ("हिं Hindi") -> toast: Sorry, we searched all sources yet didn't find it in "Hindi"
+✗ E2E FAILED: Error: Audio switch failed with unavailable toast: Sorry, we searched all sources yet didn't find it in "Hindi"
+    at main (file:///home/runner/work/Elfura/Elfura/scripts/e2e-full-runner-test.mjs:150:17)
