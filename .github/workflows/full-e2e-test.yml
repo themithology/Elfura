@@ -1,0 +1,58 @@
+name: full e2e test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/e2e-full-runner-test.mjs'
+      - '.github/workflows/full-e2e-test.yml'
+
+concurrency:
+  group: elfura-measurements
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - run: npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Run full E2E test
+        id: e2e
+        continue-on-error: true
+        run: node scripts/e2e-full-runner-test.mjs
+
+      - name: Record verdict
+        run: |
+          git config user.name "full e2e"
+          git config user.email "e2e@example.invalid"
+          if [ -f research/full-e2e-last.txt ]; then
+            git add research/full-e2e-last.txt
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "Full E2E test $(date -u +%Y-%m-%dT%H:%MZ)"
+            for i in 1 2 3 4 5; do
+              git push origin HEAD && break
+              git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+              sleep 2
+            done
+          fi
+
+      - name: Fail if E2E failed
+        if: steps.e2e.outcome != 'success'
+        run: exit 1
