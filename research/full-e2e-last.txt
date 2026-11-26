@@ -1,0 +1,9 @@
+=== Full E2E Runner Test (2026-11-26T06:19:09.515Z) ===
+✓ Server started and /health responded 200
+✓ / HTTP 200 (34652B)
+✓ /landing.html HTTP 200 (34652B)
+✓ /embed.html HTTP 200 (1272B)
+✓ /api/v1/session: HTTP 200 (got token)
+✓ /api/v1/playback movie/550: HTTP 200, streams=0
+✗ E2E FAILED: Error: No streams resolved for movie/550: {"ok":true,"media":{"type":"movie","tmdbId":"550","imdbId":"tt0137523","title":"Fight Club","rawTitle":"Fight Club","year":"1999","releaseDate":"1999-10-15","originalLanguage":"en","tagline":"Mischief. Mayhem. Soap.","runtime":139,"rating":8.4,"genres":["Drama","Thriller"],"overview":"A ticking-time
+    at main (file:///home/runner/work/Elfura/Elfura/scripts/e2e-full-runner-test.mjs:101:13)
