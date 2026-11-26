@@ -2016,9 +2016,14 @@ export class ElfuraPlayer {
 
     if (fallbackOpt && (this.currentSource?.id !== fallbackOpt.id || (this.currentSource && this.isCandidateFailed(this.currentSource)))) {
       await this.activateSourceOption(fallbackOpt, savedTime > 0.5);
-      if (savedTime > 0.5 && wasPlaying) void this.play();
+      if (savedTime > 0.5 && wasPlaying) {
+        void this.play();
+      } else {
+        this.emit(this.video.paused ? 'pause' : 'play');
+      }
     } else if (fallbackOpt) {
       this.shell.dataset.buffering = 'false';
+      this.emit(this.video.paused ? 'pause' : 'play');
     }
 
     this.emit('audio:unavailable', {
