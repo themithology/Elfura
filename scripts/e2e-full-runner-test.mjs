@@ -77,7 +77,7 @@ async function main() {
       body: JSON.stringify({ type: 'movie', tmdb: '550' }),
     });
     const sessJson = await sessRes.json().catch(() => null);
-    const token = sessJson?.token || sessJson?.sessionToken || sessJson?.playbackToken;
+    const token = sessJson?.pltoken || sessJson?.token || sessJson?.sessionToken || sessJson?.playbackToken;
     if (!sessRes.ok || !token) {
       throw new Error(`/api/v1/session failed: HTTP ${sessRes.status} body=${JSON.stringify(sessJson)}`);
     }
