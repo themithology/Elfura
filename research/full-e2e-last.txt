@@ -1,0 +1,8 @@
+=== Full E2E Runner Test (2026-11-26T06:16:33.310Z) ===
+✓ Server started and /health responded 200
+✓ / HTTP 200 (34652B)
+✓ /landing.html HTTP 200 (34652B)
+✓ /embed.html HTTP 200 (1272B)
+✗ E2E FAILED: Error: /api/v1/session failed: HTTP 200 body={"ok":true,"pltoken":"eyJtIjoibW92aWUiLCJpZCI6IjU1MCIsIm4iOiJZb3FnZ1p6VDZ1SUQiLCJ1IjoiVkY2bE9FWVFBLV9jIiwiZXhwIjoxNzk1NjgwOTkzfQ.W-Puy3HqAcY-DbpjnHdyiGUGAlalFZ6hlf-8KUYt6JU","nonce":"YoqggZzT6uID","exp":1795680993}
+    at main (file:///home/runner/work/Elfura/Elfura/scripts/e2e-full-runner-test.mjs:82:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
