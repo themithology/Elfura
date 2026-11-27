@@ -11,7 +11,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { PolicyCache } from '../memory-policy.js';
 import { SourceHealthStore } from '../source-health.js';
-import { buildStreamProxyUrl, DEFAULT_STREAM_PROXY_PATH } from '../stream-proxy.js';
+import { sealStreamTicket } from '../security.js';
 import { fetchOpenSubtitlesFallback } from '../subtitles.js';
 import { fetchTmdbMetadata } from '../tmdb.js';
 import { APPROVED_SOURCES } from './index.js';
@@ -470,7 +470,7 @@ export class SourceRegistry {
             }
             return null;
         }
-        const streamBase = DEFAULT_STREAM_PROXY_PATH;
+        const streamBase = '/api/v1/stream';
         // Identity of this title for the late-join stash. Deliberately excludes
         // headers/tokens: it is only a bucket name.
         const lateKey = `${params.type}|${params.tmdbId}|${params.season ?? ''}|${params.episode ?? ''}|${params.anilistId ?? ''}|${params.anilistEpisode ?? ''}`;
@@ -1007,7 +1007,7 @@ export class SourceRegistry {
                     lang: s.lang,
                     label: s.label,
                     ...(s.format ? { format: s.format } : {}),
-                    url: buildStreamProxyUrl(s.url, s.headers, streamBase),
+                    url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: s.url, h: s.headers }))}`,
                 }));
                 for (const opt of uniformOptions) {
                     const lane = this.adapters.find((adapter) => adapter.id === opt.sourceId);
@@ -1030,7 +1030,7 @@ export class SourceRegistry {
                 lang: track.lang,
                 label: track.label,
                 format: 'vtt',
-                url: buildStreamProxyUrl(track.url, track.headers, streamBase),
+                url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers }))}`,
             }));
             for (const opt of uniformOptions) {
                 const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
@@ -1258,7 +1258,7 @@ export class SourceRegistry {
         const audioTracks = (cand.audioTracks ?? []).map((t) => ({
             lang: t.lang,
             label: t.label,
-            url: buildStreamProxyUrl(t.url, t.headers, streamBase),
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: t.url, h: t.headers }))}`,
         }));
         // Only the new anime lane opts into source-specific, episode-aligned
         // subtitles. Keep the existing subtitle policy for every other adapter.
@@ -1266,7 +1266,7 @@ export class SourceRegistry {
             lang: track.lang,
             label: track.label,
             ...(track.format ? { format: track.format } : {}),
-            url: buildStreamProxyUrl(track.url, track.headers, streamBase, proxyOptions),
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
         })) : [];
         const latencyHintMs = typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
             ? Math.round(cand.latencyMs)
@@ -1276,7 +1276,7 @@ export class SourceRegistry {
             sourceId: adapter.id,
             label: displayLabel,
             type: cand.type,
-            url: buildStreamProxyUrl(cand.url, cand.headers, streamBase, proxyOptions),
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: cand.url, h: cand.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
             quality: cand.quality || 'auto',
             ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
             ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),

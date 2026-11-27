@@ -236,12 +236,12 @@ export class ElfuraPlayer {
 
   private sources: SourceOption[] = [];
   // Generic source groups supplied by the backend; fallback supports older servers.
-  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4'];
   private pendingSourceGroups: string[] = [];
   private lateHydrationToken = 0;
   private currentSource: SourceOption | null = null;
-  // Source 17 is an aggregator: its rows can be independent upstream servers.
-  // Honor a manual Source 17 selection through its other rows before leaving it.
+  // An aggregator lane (traits: ['aggregator']) fronts multiple upstreams.
+  // Honor a manual aggregator selection through its other rows before leaving it.
   private manualAggregatorGroup: string | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
@@ -1406,7 +1406,7 @@ export class ElfuraPlayer {
       if (Array.isArray(data.sourceGroups)) {
         this.sourceGroups = [...new Set(data.sourceGroups.filter((id): id is string => typeof id === 'string' && /^source-[1-9]\d{0,3}$/.test(id)))].slice(0, 32);
       } else {
-        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4'];
       }
       if (data.media) {
         this.mediaInfo = data.media;
