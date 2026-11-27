@@ -779,8 +779,12 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
             media: {
               type,
               tmdbId,
+              ...(media.season ? { season: media.season } : {}),
+              ...(media.episode ? { episode: media.episode } : {}),
               title: media.title,
               year: media.year,
+              certification: media.certification,
+              runtime: media.runtime,
               logo: media.logo,
               backdrop: media.backdrop,
               poster: media.poster,

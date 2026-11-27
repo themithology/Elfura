@@ -180,7 +180,11 @@ export interface TitleMediaInfo {
   rawTitle?: string;
   year?: string;
   tagline?: string;
+  /** TMDB community vote average; this is not an age/content classification. */
   rating?: number | null;
+  /** Real content certification from the metadata source, kept separate from rating. */
+  certification?: string;
+  runtime?: number | null;
   genres?: string[];
   overview?: string;
   poster?: string | null;
@@ -816,14 +820,18 @@ export class ElfuraPlayer {
   private async prefetchArtwork(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || cfg.src) return;
+    const mediaType = cfg.mediaType || (cfg.anilist ? 'tv' : 'movie');
+    const tmdbId = String(cfg.tmdb);
+    const season = mediaType === 'tv' ? cfg.season ?? 1 : undefined;
+    const episode = mediaType === 'tv' ? cfg.episode ?? 1 : undefined;
     try {
       const base = new URL(cfg.api || '/api/v1/playback', window.location.href);
       const artUrl = new URL('/api/v1/art', base);
-      artUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
-      artUrl.searchParams.set('tmdb', String(cfg.tmdb));
-      if ((cfg.mediaType || '') === 'tv' || cfg.anilist) {
-        artUrl.searchParams.set('s', String(cfg.season ?? 1));
-        artUrl.searchParams.set('e', String(cfg.episode ?? 1));
+      artUrl.searchParams.set('type', mediaType);
+      artUrl.searchParams.set('tmdb', tmdbId);
+      if (mediaType === 'tv') {
+        artUrl.searchParams.set('s', String(season));
+        artUrl.searchParams.set('e', String(episode));
       }
       const res = await fetch(artUrl.toString(), {
         headers: { Accept: 'application/json' },
@@ -832,22 +840,66 @@ export class ElfuraPlayer {
       if (this.destroyed || !res.ok) return;
       const data = (await res.json()) as {
         ok?: boolean;
-        media?: { title?: string; year?: string; logo?: string | null; backdrop?: string | null; poster?: string | null };
+        media?: {
+          type?: 'movie' | 'tv';
+          tmdbId?: string;
+          season?: number;
+          episode?: number;
+          title?: string;
+          year?: string;
+          certification?: string;
+          runtime?: number | null;
+          logo?: string | null;
+          backdrop?: string | null;
+          poster?: string | null;
+        };
       };
       if (this.destroyed || !data?.ok || !data.media) return;
       const art = data.media;
-      if (!art.backdrop && !art.logo && !art.title) return;
+      const currentType = cfg.mediaType || (cfg.anilist ? 'tv' : 'movie');
+      if (
+        String(cfg.tmdb) !== tmdbId ||
+        currentType !== mediaType ||
+        (season !== undefined && (cfg.season ?? 1) !== season) ||
+        (episode !== undefined && (cfg.episode ?? 1) !== episode) ||
+        (art.tmdbId && art.tmdbId !== tmdbId) ||
+        (art.type && art.type !== mediaType) ||
+        (art.season !== undefined && art.season !== season) ||
+        (art.episode !== undefined && art.episode !== episode)
+      ) return;
+      if (!art.backdrop && !art.logo && !art.title && !art.certification && !art.runtime) return;
+
+      const artType = art.type ?? (mediaType as 'movie' | 'tv');
+      const artTmdbId = art.tmdbId ?? tmdbId;
+      const artSeason = art.season ?? (artType === 'tv' ? cfg.season ?? 1 : undefined);
+      const artEpisode = art.episode ?? (artType === 'tv' ? cfg.episode ?? 1 : undefined);
+      const current = this.mediaInfo;
+      const sameTitle = current?.type === artType && current?.tmdbId === artTmdbId;
+      const sameEpisode =
+        sameTitle && current?.season === artSeason && current?.episode === artEpisode;
       const merged: TitleMediaInfo = {
-        ...(this.mediaInfo ?? {
-          type: (cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) as 'movie' | 'tv',
-          tmdbId: String(cfg.tmdb),
-        }),
-        ...(art.title && !this.mediaInfo?.title ? { title: art.title } : {}),
-        ...(art.year && !this.mediaInfo?.year ? { year: art.year } : {}),
+        ...(sameTitle ? current : { type: artType, tmdbId: artTmdbId }),
+        type: artType,
+        tmdbId: artTmdbId,
+        ...(artSeason !== undefined ? { season: artSeason } : {}),
+        ...(artEpisode !== undefined ? { episode: artEpisode } : {}),
+        ...(art.title && (!sameTitle || !current?.title) ? { title: art.title } : {}),
+        ...(art.year && (!sameTitle || !current?.year) ? { year: art.year } : {}),
+        ...(art.certification
+          ? { certification: art.certification }
+          : sameTitle && current?.certification
+            ? { certification: current.certification }
+            : {}),
+        runtime:
+          typeof art.runtime === 'number' && art.runtime > 0
+            ? art.runtime
+            : sameEpisode && current?.runtime
+              ? current.runtime
+              : null,
         ...(art.logo ? { logo: art.logo } : {}),
         ...(art.backdrop ? { backdrop: art.backdrop } : {}),
-        ...(art.poster && !this.mediaInfo?.poster ? { poster: art.poster } : {}),
-      } as TitleMediaInfo;
+        ...(art.poster && (!sameTitle || !current?.poster) ? { poster: art.poster } : {}),
+      };
       this.mediaInfo = merged;
       if (!cfg.poster && (art.backdrop || art.poster)) {
         cfg.poster = String(art.backdrop || art.poster);
@@ -1430,7 +1482,36 @@ export class ElfuraPlayer {
         this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4'];
       }
       if (data.media) {
-        this.mediaInfo = data.media;
+        const previousMedia = this.mediaInfo;
+        const sameTitle = Boolean(
+          data.media.type &&
+            data.media.tmdbId &&
+            previousMedia?.type === data.media.type &&
+            previousMedia?.tmdbId === data.media.tmdbId,
+        );
+        const sameEpisode =
+          sameTitle &&
+          previousMedia?.season === data.media.season &&
+          previousMedia?.episode === data.media.episode;
+        this.mediaInfo = {
+          ...data.media,
+          ...(sameTitle && !data.media.title && previousMedia?.title ? { title: previousMedia.title } : {}),
+          ...(sameTitle && !data.media.year && previousMedia?.year ? { year: previousMedia.year } : {}),
+          ...(sameTitle && !data.media.rawTitle && previousMedia?.rawTitle
+            ? { rawTitle: previousMedia.rawTitle }
+            : {}),
+          ...(sameTitle && !data.media.certification && previousMedia?.certification
+            ? { certification: previousMedia.certification }
+            : {}),
+          ...(sameEpisode && !(data.media.runtime && data.media.runtime > 0) && previousMedia?.runtime
+            ? { runtime: previousMedia.runtime }
+            : {}),
+          ...(sameTitle && !data.media.logo && previousMedia?.logo ? { logo: previousMedia.logo } : {}),
+          ...(sameTitle && !data.media.backdrop && previousMedia?.backdrop
+            ? { backdrop: previousMedia.backdrop }
+            : {}),
+          ...(sameTitle && !data.media.poster && previousMedia?.poster ? { poster: previousMedia.poster } : {}),
+        };
       }
       if (!cfg.title && data.media?.title) {
         cfg.title = data.media.title;
@@ -2789,9 +2870,31 @@ export class ElfuraPlayer {
 
     if (pre && pre.season === season && pre.episode === episode && pre.sources.length > 0) {
       if (pre.media) {
-        this.mediaInfo = pre.media;
-        if (pre.media.title) cfg.title = pre.media.title;
-        const posterCand = pre.media.backdrop || pre.media.poster;
+        const previousMedia = this.mediaInfo;
+        const sameTitle = Boolean(
+          pre.media.type &&
+            pre.media.tmdbId &&
+            previousMedia?.type === pre.media.type &&
+            previousMedia?.tmdbId === pre.media.tmdbId,
+        );
+        this.mediaInfo = {
+          ...pre.media,
+          ...(sameTitle && !pre.media.title && previousMedia?.title ? { title: previousMedia.title } : {}),
+          ...(sameTitle && !pre.media.rawTitle && previousMedia?.rawTitle
+            ? { rawTitle: previousMedia.rawTitle }
+            : {}),
+          ...(sameTitle && !pre.media.year && previousMedia?.year ? { year: previousMedia.year } : {}),
+          ...(sameTitle && !pre.media.certification && previousMedia?.certification
+            ? { certification: previousMedia.certification }
+            : {}),
+          ...(sameTitle && !pre.media.logo && previousMedia?.logo ? { logo: previousMedia.logo } : {}),
+          ...(sameTitle && !pre.media.backdrop && previousMedia?.backdrop
+            ? { backdrop: previousMedia.backdrop }
+            : {}),
+          ...(sameTitle && !pre.media.poster && previousMedia?.poster ? { poster: previousMedia.poster } : {}),
+        };
+        if (this.mediaInfo.title) cfg.title = this.mediaInfo.title;
+        const posterCand = this.mediaInfo.backdrop || this.mediaInfo.poster;
         if (posterCand) {
           cfg.poster = posterCand;
           this.video.poster = posterCand;

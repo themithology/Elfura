@@ -163,6 +163,8 @@ interface DisplayMedia {
   year: string;
   tagline: string;
   rating: number | null;
+  certification: string;
+  runtime: number | null;
   genres: string[];
   overview: string;
   logo: string | null;
@@ -187,7 +189,6 @@ export class PlayerUI {
   private qualitySubText!: HTMLElement;
   private audioSubsBtn!: HTMLButtonElement;
   private audioCurrentLabel!: HTMLElement;
-  private audioCurrentBadge!: HTMLElement;
   private lockBtn!: HTMLButtonElement;
 
   /* Right-Hand Curved/Fading Scroll-Wheel Episode Selector (TV only) */
@@ -260,6 +261,11 @@ export class PlayerUI {
   private dvdBounce: DvdBounce | null = null;
   private loadingDvdLayer!: HTMLElement;
   private slowNoticeShown = false;
+  private ratingIntro!: HTMLElement;
+  private ratingIntroLevel!: HTMLElement;
+  private ratingIntroMeta!: HTMLElement;
+  private ratingIntroTimer = 0;
+  private ratingIntroKey = '';
   private unavailableScreen!: HTMLElement;
   private unavailableBackdrop!: HTMLImageElement;
   private unavailableTitle!: HTMLElement;
@@ -435,9 +441,8 @@ export class PlayerUI {
     this.audioSubsBtn.title = 'Audio & subtitles';
     this.audioSubsBtn.setAttribute('aria-label', 'Change audio and subtitles');
     this.audioSubsBtn.setAttribute('aria-haspopup', 'dialog');
-    this.audioSubsBtn.innerHTML = `<span class="elf-audio-badge" aria-hidden="true">A</span><span class="elf-audio-current">Audio</span>`;
+    this.audioSubsBtn.innerHTML = `<span class="elf-audio-icon" aria-hidden="true">${I.headphonesDuotone}</span><span class="elf-audio-current">Audio</span>`;
     this.audioCurrentLabel = this.audioSubsBtn.querySelector('.elf-audio-current') as HTMLElement;
-    this.audioCurrentBadge = this.audioSubsBtn.querySelector('.elf-audio-badge') as HTMLElement;
     this.audioSubsBtn.onclick = () => this.togglePanel('audiosubs');
 
     this.lockBtn = el('button', 'elf-top-btn elf-lock-trigger') as HTMLButtonElement;
@@ -729,6 +734,22 @@ export class PlayerUI {
     unavailableCard.append(unavailableIcon, this.unavailableTitle, this.unavailableMessage, retryBtn);
     this.unavailableScreen.append(this.unavailableBackdrop, unavailableShade, unavailableCard);
     shell.append(this.loadingScreen, this.unavailableScreen);
+
+    this.ratingIntro = el('div', 'elf-rating-intro');
+    this.ratingIntro.dataset.visible = 'false';
+    this.ratingIntro.setAttribute('role', 'status');
+    this.ratingIntro.setAttribute('aria-live', 'polite');
+    this.ratingIntro.setAttribute('aria-atomic', 'true');
+    const ratingRail = el('span', 'elf-rating-rail');
+    ratingRail.setAttribute('aria-hidden', 'true');
+    const ratingCopy = el('div', 'elf-rating-copy');
+    this.ratingIntroLevel = el('strong', 'elf-rating-level');
+    this.ratingIntroMeta = el('span', 'elf-rating-meta');
+    ratingCopy.append(this.ratingIntroLevel, this.ratingIntroMeta);
+    const ratingMark = el('span', 'elf-rating-mark', I.star);
+    ratingMark.setAttribute('aria-hidden', 'true');
+    this.ratingIntro.append(ratingRail, ratingCopy, ratingMark);
+    shell.appendChild(this.ratingIntro);
   }
 
   private iconBtn(icon: string, label: string): HTMLButtonElement {
@@ -768,6 +789,9 @@ export class PlayerUI {
     const year = String(m?.year ?? '').trim();
     const tagline = String(m?.tagline ?? '').trim();
     const rating = typeof m?.rating === 'number' && Number.isFinite(m.rating) && m.rating > 0 ? m.rating : null;
+    const certification = String(m?.certification ?? '').trim().slice(0, 24);
+    const rawRuntime = Number(m?.runtime);
+    const runtime = Number.isFinite(rawRuntime) && rawRuntime > 0 ? Math.round(rawRuntime) : null;
     const genres = Array.isArray(m?.genres) ? m.genres.filter(Boolean) : [];
     const overview = String(m?.overview ?? '').trim();
 
@@ -780,6 +804,8 @@ export class PlayerUI {
       year,
       tagline,
       rating,
+      certification,
+      runtime,
       genres,
       overview,
       logo,
@@ -967,6 +993,7 @@ export class PlayerUI {
 
   private showUnavailable(message?: string): void {
     this.hideInitialLoading();
+    this.hideRatingIntro();
     this.closePanel();
     if (this.epWheelOpen) this.closeEpisodeWheel();
     this.player.shell.dataset.pauseScreen = 'false';
@@ -1079,6 +1106,52 @@ export class PlayerUI {
 
     this.pauseOverviewEl.textContent = dm.overview;
     this.pauseOverviewEl.hidden = !dm.overview;
+    this.showRatingIntroIfReady(dm);
+  }
+
+  private showRatingIntroIfReady(dm = this.resolveDisplayMedia()): void {
+    if (!dm.certification) {
+      this.hideRatingIntro();
+      this.ratingIntroKey = '';
+      return;
+    }
+    if (
+      !this.hasStartedPlayback ||
+      this.player.video.paused ||
+      this.loadingActive ||
+      this.player.shell.dataset.unavailable === 'true'
+    ) return;
+
+    const media = this.player.getMediaInfo();
+    const mediaKey = String(media?.tmdbId ?? this.player.config.tmdb ?? dm.mainTitle);
+    const key = `${mediaKey}|${dm.mediaType}|${dm.certification}`;
+    if (key === this.ratingIntroKey) return;
+    this.ratingIntroKey = key;
+
+    const ratingLabel = /^(?:NR|not rated|unrated)$/i.test(dm.certification)
+      ? 'Not Rated'
+      : `Rated ${dm.certification}`;
+    const facts = [dm.mainTitle, dm.year, formatRuntime(dm.runtime)].filter(Boolean);
+    const factLine = facts.join(' · ');
+    this.ratingIntroLevel.textContent = ratingLabel;
+    this.ratingIntroMeta.textContent = factLine;
+    this.ratingIntroMeta.hidden = !factLine;
+    this.ratingIntro.setAttribute('aria-label', [ratingLabel, factLine].filter(Boolean).join('. '));
+
+    clearTimeout(this.ratingIntroTimer);
+    this.ratingIntro.dataset.visible = 'false';
+    void this.ratingIntro.offsetWidth;
+    this.ratingIntro.dataset.visible = 'true';
+    this.ratingIntroTimer = window.setTimeout(() => {
+      this.ratingIntro.dataset.visible = 'false';
+      this.ratingIntroTimer = 0;
+    }, 4400);
+  }
+
+  private hideRatingIntro(): void {
+    clearTimeout(this.ratingIntroTimer);
+    this.ratingIntroTimer = 0;
+    this.ratingIntro.dataset.visible = 'false';
   }
 
   private enterPauseScreen(): void {
@@ -1291,10 +1364,12 @@ export class PlayerUI {
 
       this.flashIcon(I.playSolid);
       this.scheduleHide();
+      this.showRatingIntroIfReady();
     });
 
     v.addEventListener('pause', () => {
       this.stopHold2x();
+      this.hideRatingIntro();
       clearTimeout(this.startWindowTimer);
       shell.dataset.playing = 'false';
       shell.dataset.paused = 'true';
@@ -1324,7 +1399,10 @@ export class PlayerUI {
       this.unavailableScreen.dataset.visible = 'false';
       this.hideInitialLoading();
     };
-    v.addEventListener('playing', markPlaybackReady);
+    v.addEventListener('playing', () => {
+      markPlaybackReady();
+      this.showRatingIntroIfReady();
+    });
     v.addEventListener('loadeddata', markPlaybackReady);
 
     bus.on('media', () => {
@@ -1337,6 +1415,7 @@ export class PlayerUI {
     });
     bus.on('sources', () => {
       this.hasStartedPlayback = false;
+      this.hideRatingIntro();
       shell.dataset.pauseScreen = 'false';
       shell.dataset.brandFull = 'true';
       this.syncMediaMetadata();
@@ -1775,7 +1854,6 @@ export class PlayerUI {
     const lang = selected?.lang ?? st.audioLang ?? source?.audioLang ?? null;
     const label = selected?.label ?? (lang && lang !== 'und' ? languageLabel(lang) : 'Audio');
     this.audioCurrentLabel.textContent = label;
-    this.audioCurrentBadge.textContent = audioBadgeLabel(lang);
     this.audioSubsBtn.setAttribute(
       'aria-label',
       lang && lang !== 'und' ? `Audio: ${label}. Change audio and subtitles` : 'Change audio and subtitles',
@@ -2308,7 +2386,7 @@ export class PlayerUI {
     clearTimeout(this.pauseIdleTimer);
     this.player.shell.dataset.pauseScreen = 'false';
     this.panel.dataset.open = 'true';
-    this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
+    this.panel.dataset.wide = String(this.panelMode === 'audiosubs' || this.panelMode === 'speed');
     this.panelBackdrop.dataset.open = 'true';
     this.qualityTopBtn.dataset.active = String(this.panelMode === 'quality');
     this.audioSubsBtn.dataset.active = String(this.panelMode === 'audiosubs' || this.panelMode === 'style');
@@ -2337,7 +2415,7 @@ export class PlayerUI {
     if (this.panelMode !== 'style' && !modes.some((m) => m.id === this.panelMode)) {
       this.panelMode = modes[0]?.id ?? 'speed';
     }
-    this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
+    this.panel.dataset.wide = String(this.panelMode === 'audiosubs' || this.panelMode === 'speed');
     this.buildPanelHeader();
     this.renderPanelBody();
   }
@@ -2348,7 +2426,7 @@ export class PlayerUI {
       audiosubs: 'Audio & Subtitles',
       quality: 'Video Quality',
       sources: 'Servers',
-      speed: 'Playback Speed',
+      speed: 'Playback',
       style: 'Subtitle Appearance',
     };
     this.panelHeaderTitle.textContent = titles[this.panelMode];
@@ -2359,7 +2437,7 @@ export class PlayerUI {
       b.dataset.on = String(this.panelMode === m.id || (this.panelMode === 'style' && m.id === 'audiosubs'));
       b.onclick = () => {
         this.panelMode = m.id;
-        this.panel.dataset.wide = String(this.panelMode === 'audiosubs');
+        this.panel.dataset.wide = String(this.panelMode === 'audiosubs' || this.panelMode === 'speed');
         this.qualityTopBtn.dataset.active = String(this.panelMode === 'quality');
         this.audioSubsBtn.dataset.active = String(this.panelMode === 'audiosubs');
         this.buildPanelHeader();
@@ -2593,15 +2671,33 @@ export class PlayerUI {
   }
 
   private renderSpeed(): void {
-    const st = this.player.getState();
-    for (const s of [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]) {
-      this.panelBody.appendChild(
-        this.row(`${s}×`, s === 1 ? 'Normal' : '', s === st.speed, () => {
-          this.player.setSpeed(s);
-          this.renderPanelBody();
-        }),
-      );
+    const current = this.player.getState().speed;
+    const presets = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+    const hasCurrentPreset = presets.some((speed) => Math.abs(speed - current) < 0.005);
+    const speeds = hasCurrentPreset ? presets : [...presets, current].sort((a, b) => a - b);
+
+    const section = el('section', 'elf-speed-settings');
+    section.appendChild(el('div', 'elf-speed-label', 'Playback speed'));
+
+    const segmented = el('div', 'elf-speed-segments');
+    segmented.setAttribute('role', 'group');
+    segmented.setAttribute('aria-label', 'Playback speed');
+    for (const speed of speeds) {
+      const selected = Math.abs(speed - current) < 0.005;
+      const option = el('button', 'elf-speed-option', `${trim(speed)}×`) as HTMLButtonElement;
+      option.type = 'button';
+      option.dataset.selected = String(selected);
+      option.setAttribute('aria-pressed', String(selected));
+      option.setAttribute('aria-label', speed === 1 ? 'Normal speed' : `${trim(speed)} times speed`);
+      option.onclick = () => {
+        this.player.setSpeed(speed);
+        this.renderPanelBody();
+      };
+      segmented.appendChild(option);
     }
+
+    section.appendChild(segmented);
+    this.panelBody.appendChild(section);
   }
 
   private row(label: string, sub: string, selected: boolean, onClick: () => void, badge?: string) {
@@ -3151,9 +3247,20 @@ export class PlayerUI {
     clearTimeout(this.dtapHideRightTimer);
     clearTimeout(this.holdTimer);
     clearTimeout(this.lockPeekTimer);
+    clearTimeout(this.ratingIntroTimer);
     this.hideInitialLoading();
     this.previewRenderer?.destroy();
   }
 }
 
 const trim = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''));
+
+const formatRuntime = (minutes: number | null): string => {
+  if (!minutes || !Number.isFinite(minutes) || minutes <= 0) return '';
+  const total = Math.round(minutes);
+  const hours = Math.floor(total / 60);
+  const remainder = total % 60;
+  if (hours && remainder) return `${hours}h ${remainder}m`;
+  if (hours) return `${hours}h`;
+  return `${remainder}m`;
+};

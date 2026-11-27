@@ -54,7 +54,10 @@ export interface MediaMetadata {
   tagline?: string;
   /** Runtime in minutes: the movie's, or this episode's (falls back to the series average). */
   runtime?: number | null;
+  /** TMDB community vote average; this is not a content certification. */
   rating?: number | null;
+  /** Real country/market content certification from TMDB release/content ratings. */
+  certification?: string;
   genres?: string[];
   overview: string;
   poster: string | null;
@@ -187,6 +190,48 @@ function buildEndpointHeaders(ep: TmdbEndpoint): Record<string, string> {
   return headers;
 }
 
+function metadataCertification(data: Record<string, unknown>, type: 'movie' | 'tv'): string | undefined {
+  const clean = (value: unknown): string =>
+    typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 24) : '';
+  const direct = clean(data.certification ?? data.content_rating ?? data.age_rating);
+  if (direct) return direct;
+
+  const field = type === 'movie' ? data.release_dates : data.content_ratings;
+  if (!field || typeof field !== 'object') return undefined;
+  const results = (field as { results?: unknown }).results;
+  if (!Array.isArray(results)) return undefined;
+
+  const regionOrder = ['US', 'IN', 'GB', 'CA', 'AU', 'NZ'];
+  const rank = (region: string) => {
+    const index = regionOrder.indexOf(region.toUpperCase());
+    return index < 0 ? regionOrder.length : index;
+  };
+  const rows = (results as Record<string, unknown>[])
+    .filter((row) => row && typeof row === 'object')
+    .sort((a, b) => rank(String(a.iso_3166_1 ?? '')) - rank(String(b.iso_3166_1 ?? '')));
+
+  for (const row of rows) {
+    if (type === 'movie') {
+      const releases = Array.isArray(row.release_dates)
+        ? (row.release_dates as Record<string, unknown>[])
+        : [];
+      releases.sort((a, b) => {
+        const priority = (release: Record<string, unknown>) => {
+          const releaseType = Number(release.type);
+          return releaseType === 3 ? 0 : releaseType === 4 ? 1 : 2;
+        };
+        return priority(a) - priority(b);
+      });
+      const certification = releases.map((release) => clean(release.certification)).find(Boolean);
+      if (certification) return certification;
+    } else {
+      const certification = clean(row.rating);
+      if (certification) return certification;
+    }
+  }
+  return undefined;
+}
+
 export async function fetchTmdbMetadata(
   cfg: BackendConfig['tmdb'],
   params: { type: 'movie' | 'tv'; tmdbId: string; season?: number; episode?: number },
@@ -224,7 +269,7 @@ export async function fetchTmdbMetadata(
         try {
           const headers = buildEndpointHeaders(ep);
           const mainUrl = buildEndpointUrl(ep, `/${params.type}/${encodeURIComponent(params.tmdbId)}`, {
-            append_to_response: 'external_ids,images',
+            append_to_response: `external_ids,images,${params.type === 'movie' ? 'release_dates' : 'content_ratings'}`,
             include_image_language: 'en,null',
           });
 
@@ -352,6 +397,7 @@ export async function fetchTmdbMetadata(
       const tagline = typeof data.tagline === 'string' ? data.tagline.trim() : '';
       const rawVote = Number(data.vote_average ?? data.rating);
       const rating = Number.isFinite(rawVote) && rawVote > 0 ? Math.round(rawVote * 10) / 10 : null;
+      const certification = metadataCertification(data, params.type);
       const genres: string[] = Array.isArray(data.genres)
         ? data.genres
             .map((g) =>
@@ -403,6 +449,7 @@ export async function fetchTmdbMetadata(
         ...(tagline ? { tagline } : {}),
         ...(runtimeMinutes ? { runtime: runtimeMinutes } : {}),
         ...(rating !== null ? { rating } : {}),
+        ...(certification ? { certification } : {}),
         ...(genres.length ? { genres } : {}),
         overview,
         poster: fullImageUrl(cfg.imageBase, data.poster_path ?? data.poster, 'w780'),
