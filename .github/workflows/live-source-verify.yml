@@ -16,6 +16,8 @@ on:
       - 'backend/src/relay.ts'
       - 'backend/src/security.ts'
       - 'backend/test/live-sources.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/live-source-verify.yml'
 
 permissions:
