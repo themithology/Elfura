@@ -513,8 +513,13 @@ export class PlayerUI {
     const center = el('div', 'elf-center');
     this.flash = el('div', 'elf-flash', I.playSolid);
     this.spinner = el('div', 'elf-spinner');
-    this.bigPlay = el('button', 'elf-bigplay', I.playSolid) as HTMLButtonElement;
+    this.bigPlay = el(
+      'button',
+      'elf-bigplay',
+      `<span class="elf-bigplay-icon">${I.playSolid}</span><span class="elf-bigplay-label">Play</span>`,
+    ) as HTMLButtonElement;
     this.bigPlay.setAttribute('aria-label', 'Play');
+    this.bigPlay.title = 'Play';
     center.append(this.flash, this.spinner, this.bigPlay);
     shell.appendChild(center);
 

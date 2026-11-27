@@ -431,7 +431,7 @@ export const PARAM_SCHEMA: readonly ParamSpec[] = [
     key: 'color',
     aliases: ['accent', 'accentcolor', 'theme'],
     type: 'color',
-    default: '#ff5c39',
+    default: '#f4f4f4',
     group: 'ui',
     desc: 'Accent colour. Drives scrubber fill, active states, skip badges and focus rings; derived shades are computed automatically.',
     example: '00b4ff',

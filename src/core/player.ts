@@ -321,7 +321,7 @@ export class ElfuraPlayer {
     this.shell = options.root ?? document.createElement('div');
     this.shell.classList.add('elf-shell');
     this.shell.dataset.skin = cfg.skin ?? 'dark';
-    this.shell.style.setProperty('--elf-accent', cfg.color ?? '#ff5c39');
+    this.shell.style.setProperty('--elf-accent', cfg.color ?? '#f4f4f4');
 
     this.surface = document.createElement('div');
     this.surface.className = 'elf-surface';
