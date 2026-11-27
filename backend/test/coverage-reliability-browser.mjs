@@ -1,4 +1,4 @@
-// End-to-end research of already-registered groups via the production relay/player.
+// End-to-end browser audit of each approved source through the production relay/player.
 // Fixture TMDB and playback response. No upstream URLs or tickets are logged.
 import {createBackendServer} from '../../dist/backend/index.js';
 import {loadBackendConfig} from '../../dist/backend/config.js';
@@ -7,7 +7,7 @@ import {chromium} from 'playwright-core';
 import chromiumBinary from '@sparticuz/chromium';
 const id=process.env.AUDIT_SOURCE;
 const index=Number(process.env.AUDIT_INDEX??'0');
-if(!['source-1','source-4','source-14'].includes(id)||!Number.isInteger(index)||index<0||index>3)throw Error('unknown audit configuration');
+if(!['source-1','source-2','source-3','source-4'].includes(id)||!Number.isInteger(index)||index<0||index>3)throw Error('unknown audit configuration');
 const samples=[
  {label:'Fight Club',type:'movie',id:'550',title:'Fight Club',year:'1999',runtime:139},
  {label:'Dune Part Two',type:'movie',id:'693134',title:'Dune: Part Two',year:'2024',runtime:166},

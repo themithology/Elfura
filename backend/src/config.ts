@@ -6,7 +6,7 @@
  *   - Zero local disk paths / cache directories
  *   - All secrets & upstream base URLs driven by environment variables
  *
- * Mainstream board (2026-11-27): 4 approved sources only —
+ * The production manifest contains four approved sources only —
  *   citadel (RiveStream), greybox (Greybox), nxsha (Nxsha), vidly (Vidly)
  * Adapters read their own env via sourceEnv() (backend/src/sources/index.ts),
  * so BackendConfig has NO per-source keys — adding a source never touches here.

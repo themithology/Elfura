@@ -9,24 +9,22 @@
  *
  * Nothing else may import a source module. The registry builds its adapter list
  * from this array and from nothing else, so an entry that is not here cannot
- * serve traffic — and an entry that is here is exercised by
- * `backend/test/source-contract.mjs`, which resolves real titles, fetches a real
- * manifest and pulls real segment bytes. If a source cannot do that, the suite
- * fails and the entry does not belong here.
+ * serve traffic. `backend/test/four-source-contract.mjs` verifies the exact
+ * manifest, each adapter's candidate parsing, and the Vidly media-origin ticket
+ * boundary. Playback integration is exercised separately by resolver and relay
+ * tests.
  *
- * That is the whole lesson of the previous board: thirty adapters, most of which
- * answered nothing, and a console that reported coverage instead of streams.
- * Fewer lanes, each one proven. An empty array is a valid, honest state — the
- * service boots, the proxy works, and /api/v1/playback says plainly that no
- * source is configured rather than pretending otherwise.
+ * The active board is deliberately four lanes: Citadel/RiveStream, Greybox,
+ * Nxsha, and Vidly. The registry contains no numbered legacy-adapter imports;
+ * every source that can serve traffic is declared below.
  *
  * Adding one, in order:
  *
  *   1. Write the adapter module. It reads its own settings from the environment
  *      (see `sourceEnv` below) so config.ts stays free of per-source keys.
- *   2. Add the entry here with the titles the contract test must resolve.
- *   3. `npm run build && node backend/test/source-contract.mjs` — it must print
- *      the manifest and the segment byte count for your source, not a timeout.
+ *   2. Add the entry here with deterministic parser/ticket coverage.
+ *   3. `npm run build && npm test` — the source and the playback contract must
+ *      pass before it can serve traffic.
  *   4. Only then commit.
  *
  * If the lane needs different behaviour from the player, set a `SourceTrait` on
@@ -51,8 +49,8 @@ export function sourceEnv() {
     return process.env;
 }
 /**
- * Approved sources. Empty on purpose: the board starts at zero and every entry
- * has to earn its place through source-contract.mjs.
+ * The only adapters permitted to serve production traffic. Keep this array in
+ * sync with the four-source contract test; do not register research modules.
  */
 export const APPROVED_SOURCES = [
     {

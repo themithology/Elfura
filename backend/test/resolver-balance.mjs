@@ -47,7 +47,7 @@ try {
   const owner=(await pool.resolve(one)).node;
   await pool.resolve(two);
   assert.equal((await pool.resolve({...one,late:true})).node,owner);
-  await pool.resolve({...one,sourceId:'source-29'});
+  await pool.resolve({...one,sourceId:'fixture-late-source'});
   assert.equal((await pool.resolve({...one,late:true})).node,owner);
   // Health may answer even when playback fails: the node must stay paused
   // until two later health checks, not get called repeatedly by retries.
@@ -107,15 +107,15 @@ const recoveryPool=createBalancedPlaybackResolver(r1,r2,{additionalClients:[r3],
 try {
   const title={...request,lateAffinityKey:'recovery-viewer'};
   const ownerR=(await recoveryPool.resolve(title)).node;
-  assert.equal((await recoveryPool.resolve({...title,sourceId:'source-29'})).node,ownerR,'source-specific recovery must use the discovery owner');
+  assert.equal((await recoveryPool.resolve({...title,sourceId:'fixture-late-source'})).node,ownerR,'source-specific recovery must use the discovery owner');
   assert.equal((await recoveryPool.resolve({...title,late:true})).node,ownerR);
   const ownerMock=[r1,r2,r3].find(r=>r.label===ownerR);
   const otherCalls=[r1,r2,r3].filter(r=>r!==ownerMock).reduce((s,r)=>s+r.state.calls,0);
   assert.equal(otherCalls,0,'recovery must not start fresh discovery on another node');
   ownerMock.state.fail=true;
-  const fallbackNode=(await recoveryPool.resolve({...title,sourceId:'source-29'})).node;
+  const fallbackNode=(await recoveryPool.resolve({...title,sourceId:'fixture-late-source'})).node;
   assert.notEqual(fallbackNode,ownerR,'recovery may fail over to a healthy peer');
-  await recoveryPool.resolve({...title,sourceId:'source-29'});
+  await recoveryPool.resolve({...title,sourceId:'fixture-late-source'});
   const failedCalls=ownerMock.state.calls;
   await recoveryPool.resolve({...title,late:true});
   assert.equal(ownerMock.state.calls,failedCalls,'neither recovery nor late requests may hit an unavailable owner');
@@ -126,7 +126,7 @@ try {
 const explicitA=mock('explicit-a'),explicitB=mock('explicit-b');
 const explicitPool=createBalancedPlaybackResolver(explicitA,explicitB,{healthIntervalMs:10000,log:()=>{}});
 try {
-  const only={...request,lateAffinityKey:'explicit-source',sourceId:'source-29'};
+  const only={...request,lateAffinityKey:'explicit-source',sourceId:'fixture-late-source'};
   assert.equal((await explicitPool.resolve(only)).node,'explicit-a');
   await explicitPool.resolve({...request,lateAffinityKey:'another-viewer'});
   assert.equal((await explicitPool.resolve({...only,late:true})).node,'explicit-a');

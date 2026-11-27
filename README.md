@@ -66,7 +66,7 @@ Key parameters (full list: `Elfura.schemaDocs()`):
 | Param | Type | Example | Purpose |
 |---|---|---|---|
 | `tmdb` | id | `94605` | TMDB ID used by the standard playback sources |
-| `anilist` | id | `16498` | AniList ID used by bundled Anivexa; provide this alongside `tmdb` to load and prioritize anime sources |
+| `anilist` | id | `16498` | Optional anime identity retained for episode mapping; all active source adapters resolve from TMDB |
 | `mediaType` | enum | `tv` | `movie` or `tv` (also accepts `?type=movie\|tv` or `/embed/tv/:id/:s/:e`) |
 | `season` / `episode` | int | `s=1&e=1` | 1-based season & episode for `tv` playback |
 | `source` | id | `source-1` | pin a preferred uniform source adapter |
@@ -240,7 +240,7 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
 - **Clean TMDB Embed URLs:**
   - Movie: `/embed/movie/:tmdbId` or `/embed?tmdb=:tmdbId&type=movie`
   - TV Episode: `/embed/tv/:tmdbId/:season/:episode` or `/embed?tmdb=:tmdbId&type=tv&s=1&e=1`
-  - Anime episode with AniList-aware providers prioritized: `/embed?tmdb=:tmdbId&anilist=:anilistId&type=tv&s=1&e=1`
+  - TV/anime episode: `/embed/tv/:tmdbId/:season/:episode` or `/embed?tmdb=:tmdbId&type=tv&s=1&e=1`; optional AniList fields only preserve caller-provided episode identity/offsets.
 - **Single Uniform Endpoint (`GET/POST /api/v1/playback`):** Resolves TMDB metadata (from your self-hosted `TMDB_API_BASE`) + modular `SourceAdapter` streams into one uniform schema with zero upstream provider names or raw CDN URLs exposed, wrapped in an **AES-256-GCM Sealed Playback Envelope** (`X-Elfura-Envelope: 1`) so DevTools Network Preview and copied cURL commands only see ciphertext.
 - **Smart Hybrid Stream Relay (`GET /api/v1/stream?t=<ticket>`, `RELAY_MODE=hybrid`):** Encrypts upstream URLs and required `Referer`/`Origin` headers inside AES-256-GCM tickets, always relays manifests/subtitles/keys and header-locked or source-identifying streams in memory with zero disk writes, and offloads verified anonymous CORS-safe HTTPS video segments directly to edge CDNs (keeping Cloudflare Proxy & 2 GB RAM Pterodactyl containers safe at scale, with automatic `&p=1` backend-tunnel failover if a viewer's ISP blocks an external CDN).
 - **Pterodactyl Ready (`elfura-pterodactyl.zip`):** Upload `elfura-pterodactyl.zip` to `/home/container` in Pterodactyl's **Files** tab and click **Unarchive** (flat-root archive — extracts directly into `/home/container` with pre-built `dist/` and zero heavy `node_modules`). Edit `.env` (or Startup variables) with `ELFURA_SECRET`, `TMDB_API_BASE`, and `ALLOWED_ORIGINS`, then click **Start**.
@@ -250,8 +250,6 @@ Elfura maintains a strict separation between **Part 1 (`src/`)** and **Part 2 (`
   If your egg hard-codes `ts-node --esm index.ts`, change it to `node index.js`. TypeScript files are deliberately not shipped: this project's runtime output is already compiled into `dist/`, and a `.ts` entrypoint makes the host install a compiler it never needs. Some `ts-node` 10.x builds also crash on Node 22 with `Cannot find module './--max-old-space-size=384'` inside `imaginaryUncacheableRequireResolveScript`, which reads as a boot loop in the panel console.
 
   If you cannot change the startup command, `node index.js` still works when launched through `ts-node`/`tsx` — the entrypoint detects a TypeScript runner, ignores its injected flags, and serves the compiled build. It just needs the runner installed.
-<<<<<<< HEAD
-=======
 
 ### Deployment layouts: one server or two
 
@@ -418,61 +416,10 @@ switch for each source. Counts start from installation, not historical data; SDK
 
 Analytics are kept for 72 hours and pruned automatically. The clear button deletes analytics immediately but deliberately preserves site bans. Data and bans are persisted in `data/roxy.json` (or in the directory specified by `ROXY_DATA_DIR`), outside the deployment ZIP; keep this directory writable and persistent across deployments. No client IPs, full referrer URLs, stream URLs or playback tokens are stored. Storage errors are shown on the dashboard.
 
-### Recommended: Cloudflare Worker relay (no `.env` editing)
+### Active source manifest
 
-A proxy list costs money per request and gets throttled — discovery alone fires
-dozens of requests per page load. A Cloudflare Worker is the better egress: one URL,
-one hop, no credential rotation, and the free plan's 100,000 requests/day is far above
-what discovery uses.
+Only four adapters are registered for production traffic: `source-1` (Citadel/RiveStream), `source-2` (Greybox), `source-3` (Nxsha), and `source-4` (Vidly). Research modules and historical source IDs are not part of the runtime bundle.
 
-1. Deploy `cloudflare-worker/worker.js` — see [cloudflare-worker/README.md](./cloudflare-worker/README.md)
-   for the browser-only steps and the `TOKEN` secret.
-2. In `/roxy`, open **Egress relay**, paste the Worker URL and the token, then **Save**.
-3. Press **Test relay**. It answers with Cloudflare's exit address, which should not be
-   this server's address.
-
-The boot log then says `discovery requests are relayed through <host>`. If the Worker
-ever fails three times in a row it is skipped for a minute and requests go direct, so a
-broken relay degrades to the previous behaviour instead of stalling every source. Media
-playback never goes through the relay.
-
-The URL and token can also be set as `ELFURA_UPSTREAM_RELAY` / `ELFURA_RELAY_TOKEN`, in
-which case the environment or `.env` wins and the panel shows the value as locked.
-
-### Proxy list (no `.env` editing)
-
-If source discovery fails because provider websites refuse this server's IP, upload a proxy list instead of editing files. Open `/roxy`, sign in, and use the **Proxy pool** panel: pick your provider's `.txt` file and press **Upload proxy list**, or paste the lines into the box and press **Save pasted list**. One proxy per line, in any of these shapes:
-
-```
-45.38.107.97:6014:username:password     ← Webshare's export format
-http://username:password@host:port
-username:password@host:port
-host:port                                ← open proxy, no login
-```
-
-Press **Test all** to check the list. Each reachable proxy shows the exit address the internet sees, and the panel reports how many answered. If none answer, the panel also probes the same endpoint *without* a proxy: when that works, the proxies are the problem; when it also fails, the hosting network is. Working proxies are used for source discovery in rotation, three per request, with automatic failover and a direct fallback, so one dead proxy never removes a source. A proxy that fails three times rests for a minute and is marked `SKIPPED`. Passwords are written to `data/proxies.json` (mode 0600) and are never returned to the browser or written to the log. The uploaded list takes precedence over the single `ELFURA_UPSTREAM_PROXY` `.env` value. Media playback traffic is not routed through the list.
+The source website check and health panel are scoped to the same four approved adapters. Source discovery uses Node's native networking; there is no configurable outbound proxy pool, Worker discovery relay, or DNS rescue layer. The separate `/api/v1/stream` relay remains the playback path for protected manifests and media.
 
 Website attribution and banning use the browser's `Referer` origin on embed requests. This is best-effort, not authentication: referrers can be absent or spoofed, direct API users are not covered, and already-playing streams are not immediately disconnected. Missing referrers appear as unknown. Use proper authenticated, origin-bound integration credentials and network policy if strong access control is required.
-
-
-### Source 26 retired
-
-MovieBox (Source 26) is not registered, including when an older `.env` contains
-`ELFURA_MOVIEBOX_ENABLED=1`. Browser tests showed audio-only playback for the
-HEVC streams on browsers without HEVC decoding, and some reported resolutions
-were inaccurate. Research adapters remain unregistered until real video playback,
-audio switching and episode identity have been verified.
-
-Protocol reference: [MovieBox-TUI](https://github.com/mesamirh/MovieBox-Tui/tree/b901738b56170c278b35468c32ade32b9de1890d/src/providers/moviebox)
-(MIT OR Apache-2.0). `.github/workflows/moviebox-direct.yml` checks the adapter
-with mocked responses and probes a movie and an episode on a GitHub runner.
-The ffprobe test checks media streams, not browser playback or audio switching.
-# Multi-audio anime source (Source 28)
-
-Source 28 resolves directly from the anime catalogue to a multi-audio HLS master. It runs only in the resolver and never sends catalogue or player URLs to the client. Audio languages and available quality levels are read from the actual HLS manifest, not assumed from a title or subtitle labels.
-
-The source is enabled by default. Set `ELFURA_ANIME_MULTI_ENABLED=0` on each resolver and restart to disable it. A TMDB API key or configured TMDB mirror is required. To avoid wrong episodes, the source currently supports season 1 only and requires TMDB to identify Japanese animation and provide an episode title that matches the provider's title. Missing metadata, alternate title spellings or numbering differences can cause legitimate episodes to be skipped. Movies and other seasons are not supported by this lane.
-
-The browser audit exercises real discovery, the production registry and relay, video rendering, audio switches, non-silent decoded audio, and two different episode frames for two shows. It uses fixture metadata and a mocked playback response, and does not independently establish the spoken language or episode identity; language names come from upstream HLS metadata. Availability may vary by region or over time.
-
-The deployment ZIP includes `wreq-js` and the native bindings available on the build host (the published bundle is Linux x64). On another architecture, install the optional runtime dependency on the resolver with `npm install --omit=dev` in the extracted application directory and restart it. If the native client is unavailable, this source is skipped; other sources continue to work.

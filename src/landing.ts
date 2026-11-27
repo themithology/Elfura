@@ -522,7 +522,7 @@ const refreshStatus = async () => {
     $('[data-status-latency]').textContent = `${latency} ms`;
     setStatusPill($('[data-service="api"]'), 'operational');
     const sourceIds = new Set((health.sources || []).map((source) => source.id));
-    for (const id of ['source-1', 'source-2', 'source-3']) setStatusPill($(`[data-service="${id}"]`), sourceIds.has(id) ? 'operational' : 'down');
+    for (const id of ['source-1', 'source-2', 'source-3', 'source-4']) setStatusPill($(`[data-service="${id}"]`), sourceIds.has(id) ? 'operational' : 'down');
   } catch {
     $('[data-status-summary]').textContent = 'Status endpoint unreachable';
     $('[data-status-orb]').className = 'status-orb down';

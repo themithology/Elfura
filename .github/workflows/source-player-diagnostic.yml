@@ -1,0 +1,30 @@
+name: Four-source player diagnostic
+on:
+  push:
+    paths:
+      - 'backend/src/sources/**'
+      - 'backend/src/relay.ts'
+      - 'src/core/player.ts'
+      - 'backend/test/source-player-diagnostic.mjs'
+      - '.github/workflows/source-player-diagnostic.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [source-1, source-2, source-3, source-4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/source-player-diagnostic.mjs
+        env:
+          AUDIT_SOURCE: ${{ matrix.source }}
+          AUDIT_SHORT: '1'

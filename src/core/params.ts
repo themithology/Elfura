@@ -173,7 +173,7 @@ export const PARAM_SCHEMA: readonly ParamSpec[] = [
     aliases: ['anilistid'],
     type: 'string',
     group: 'source',
-    desc: 'AniList ID for anime playback through the bundled Anivexa provider aggregator.',
+    desc: 'Optional caller-supplied anime identity retained for episode navigation; playback still uses the four approved sources through TMDB.',
     example: '16498',
   },
   {
@@ -183,7 +183,7 @@ export const PARAM_SCHEMA: readonly ParamSpec[] = [
     min: 1,
     max: 5000,
     group: 'source',
-    desc: 'AniList/Anivexa episode number override. Defaults to the route `episode` number; useful when TMDB season numbering differs.',
+    desc: 'Optional episode-number offset retained for navigation. Defaults to the route `episode`; source lookup continues to use TMDB.',
     example: '3',
   },
   {

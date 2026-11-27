@@ -48,9 +48,9 @@ try {
   assert.deepEqual([...new Set(got)].sort(),['a','b','c','d'],'all configured resolvers should receive playback');
   const sessionOne=(await playback(11,'&nonce=session-one')).node;
   await playback(12,'&nonce=session-two');
-  assert.equal((await playback(11,'&nonce=session-one&source=source-29')).node,sessionOne,'source recovery must reuse the original resolver');
-  const owner=[a,b,c,d].find(n=>n.state.lastRequest.sourceId==='source-29');
-  assert.equal(owner?.state.lastRequest.sourceId,'source-29');
+  assert.equal((await playback(11,'&nonce=session-one&source=source-4')).node,sessionOne,'source recovery must reuse the original resolver');
+  const owner=[a,b,c,d].find(n=>n.state.lastRequest.sourceId==='source-4');
+  assert.equal(owner?.state.lastRequest.sourceId,'source-4');
   assert.equal((await playback(11,'&nonce=session-one&late=1')).node,sessionOne,'late request must reach the original resolver');
   assert.equal(owner.state.lastRequest.late,true);
   assert.equal('lateAffinityKey' in owner.state.lastRequest,false,'routing key must not leave media node');
@@ -59,7 +59,7 @@ try {
   // playback failures pause it. Both requests must fail over through the real
   // media API, then the paused resolver must receive no further playback.
   for(let i=0;i<2;i++) {
-    const result=await playback(11,'&nonce=session-one&source=source-29');
+    const result=await playback(11,'&nonce=session-one&source=source-4');
     assert.notEqual(result.node,sessionOne,'an unavailable response must fail over');
   }
   const count=owner.state.calls;

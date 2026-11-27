@@ -29,13 +29,6 @@ export interface SourceQuery {
   diag?: DiagEntry[];
   /** Warm the adapter cache with lanes that finish after a fast initial result. */
   onLateResult?: (result: RawSourceResult) => void;
-  /**
-   * Subtitle-only adapters (they produce no stream of their own) append their
-   * tracks here; the registry attaches them to the streams it already found for
-   * this title. A subtitle lane must never fabricate a video candidate to carry
-   * them — that would rank as a playable stream.
-   */
-  extraSubtitles?: RawTrackRef[];
   imdbId?: string | null;
   title?: string;
   year?: string;

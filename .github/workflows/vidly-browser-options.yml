@@ -1,0 +1,30 @@
+name: Vidly alternate playback browser coverage
+on:
+  push:
+    paths:
+      - 'backend/src/sources/vidly.ts'
+      - 'backend/src/relay.ts'
+      - 'backend/test/coverage-reliability-browser.mjs'
+      - '.github/workflows/vidly-browser-options.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        index: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium
+      - run: node backend/test/coverage-reliability-browser.mjs
+        env:
+          AUDIT_SOURCE: source-4
+          AUDIT_INDEX: ${{ matrix.index }}
+          AUDIT_SHORT: '1'

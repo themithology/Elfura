@@ -805,7 +805,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Playback responses intentionally use root-relative `/api/proxy` URLs.
+   * Playback responses use root-relative `/api/v1/stream` tickets.
    * When an SDK consumer resolves through an absolute cross-origin `api` URL,
    * those tickets belong to that API origin, not to the site hosting the player.
    */
@@ -956,7 +956,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Lightweight concurrent probe against our uniform `/api/proxy` stream proxy.
+   * Lightweight concurrent probe against our uniform `/api/v1/stream` relay.
    * Measures true end-to-end upstream latency, verifies the stream is alive
    * (and actually carries `targetLang` when probing multi-audio HLS), and
    * warms the backend RAM manifest cache so `hls.js` / `dash.js` starts in <2ms.
@@ -975,7 +975,7 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
 
     const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
-    const isBackendTicket = /\/(?:api\/v1\/stream|api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
+    const isBackendTicket = /\/api\/v1\/stream(?:[/?#]|$)/.test(resolvedUrl);
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
         ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
@@ -1100,7 +1100,7 @@ export class ElfuraPlayer {
         }
       }
 
-      // Backend `/api/proxy` playlists were ALREADY deep-verified (including child playlists)
+      // Backend `/api/v1/stream` playlists were already deep-verified (including child playlists)
       // by `liveness.ts` on the server — only double-check child playlists for raw non-proxy URLs!
       if (streamInfLines.length > 0 && !isBackendTicket) {
         let variantChildUri: string | null = null;
@@ -3211,8 +3211,8 @@ export class ElfuraPlayer {
 
   private async loadDash(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
-    // TGVIDX can offer HEVC-only DASH that dash.js otherwise plays as audio
-    // with no picture. Preserve those streams on capable devices; on others,
+    // HEVC-only DASH can otherwise play as audio with no picture in dash.js.
+    // Preserve those streams on capable devices; on others,
     // inspect the manifest before attaching the engine and fall back only when
     // every advertised video representation is definitively HEVC. A timeout or
     // unknown/mixed manifest remains eligible rather than being discarded.
@@ -3696,7 +3696,7 @@ export class ElfuraPlayer {
 
   /**
    * Native HLS subtitles arrive as a media playlist of subtitle segments, not one
-   * file. Resolve all non-comment segment URIs (including `/api/proxy?u=...`
+   * file. Resolve all non-comment segment URIs (including `/api/v1/stream?t=...`
    * URLs), concatenate in order, and parse with our own subtitle engine.
    */
   private async loadSubtitleCues(track: SubtitleTrack): Promise<void> {

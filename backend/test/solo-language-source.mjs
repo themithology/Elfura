@@ -89,12 +89,12 @@ const mp4Ticket = openStreamTicket(cfg.secret, new URL(mp4Option.url, 'https://e
 assert.equal(mp4Ticket?.k, 'a', 'MP4 source choices must be marked as media assets');
 const audioTicket = openStreamTicket(cfg.secret, new URL(mp4Option.audioTracks[0].url, 'https://elfura.test').searchParams.get('t'));
 assert.equal(audioTicket?.k, 'a', 'external audio tickets must preserve range/asset handling');
-const animeAdapter = { id: 'source-29', label: 'Anime', traits: ['animeEpisode'] };
-const animeOption = registry.sealCandidate(animeAdapter, {
+const subtitleFixtureAdapter = { id: 'fixture-subtitle-lane', label: 'Fixture subtitle lane', traits: ['animeEpisode'] };
+const subtitleOption = registry.sealCandidate(subtitleFixtureAdapter, {
   ...rows.candidates[0],
   subtitles: [{ lang: 'hi', label: 'Hindi', url: 'https://cdn.example/subtitles.vtt' }],
 }, 3, new Map(), '/api/v1/stream');
-const subtitleTicket = openStreamTicket(cfg.secret, new URL(animeOption.subtitles[0].url, 'https://elfura.test').searchParams.get('t'));
+const subtitleTicket = openStreamTicket(cfg.secret, new URL(subtitleOption.subtitles[0].url, 'https://elfura.test').searchParams.get('t'));
 assert.equal(subtitleTicket?.k, 's', 'subtitle tickets must retain subtitle-specific relay handling');
 
 const singleUntaggedMaster = [

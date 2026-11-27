@@ -25,9 +25,13 @@ try {
   const reg=new SourceRegistry(cfg);
   const make=(id,ms)=>({id,label:id,enabled:()=>true,async resolve(q){
    const k=`${id}:${q.tmdbId}`;discoveries[n].set(k,(discoveries[n].get(k)??0)+1);
-   if(ms)await wait(q.tmdbId==='88888'?6500:ms);if(q.tmdbId==='88888' && id!=='source-29')return {candidates:[]};if(id==='source-5')await wait(400);if(id==='source-5' && discoveries[n].get(k)===1)return {candidates:[]};return {candidates:[{key:k,url:`https://load-cdn.example/${k}.mp4`,type:'mp4',quality:'auto',rank:0}]};
+   // Keep each active HTTP wave open long enough for the 150 simultaneous
+   // viewers to reach all four nodes; otherwise a fast fixture can finish
+   // before later socket accepts and test cache behavior instead of coalescing.
+   if(['fixture-fast-1','fixture-fast-2','fixture-fast-3'].includes(id))await wait(700);
+   if(ms)await wait(q.tmdbId==='88888'?4500:ms);if(q.tmdbId==='88888' && id!=='fixture-slow-late')return {candidates:[]};if(id==='fixture-retry')await wait(400);if(id==='fixture-retry' && discoveries[n].get(k)===1)return {candidates:[]};return {candidates:[{key:k,url:`https://load-cdn.example/${k}.mp4`,type:'mp4',quality:'auto',rank:0}]};
   }});
-  reg.adapters=[make('source-1',0),make('source-3',0),make('source-4',0),make('source-5',0),make('source-29',3600)];
+  reg.adapters=[make('fixture-fast-1',0),make('fixture-fast-2',0),make('fixture-fast-3',0),make('fixture-retry',0),make('fixture-slow-late',3600)];
   const resolve=reg.resolvePlayback.bind(reg);
   reg.resolvePlayback=async req=>{scans[n].push({title:req.tmdbId,late:!!req.late,at:Date.now()});return resolve(req);};
   nodes.push(await listen(createResolverServer({cfg,registry:reg,token:secret,log:()=>{}}).server));
@@ -41,22 +45,22 @@ try {
   assert.equal(res.status,200,`viewer ${i} ${late?'late':'initial'} status ${res.status}`);return res.json();
  }
  const started=Date.now();const first=await Promise.all(titles.map((_,i)=>get(i)));
- assert(first.every(x=>x.sources.some(s=>s.sourceId==='source-1')&&x.pendingSources.includes('source-29')));
+ assert(first.every(x=>x.sources.some(s=>s.sourceId==='fixture-fast-1')&&x.pendingSources.includes('fixture-slow-late')));
  assert.deepEqual(scans.map(s=>s.filter(r=>!r.late).length),[13,13,13,13],'102 shared-title requests coalesce into one computation per node');
  const workload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
  assert.equal(workload.reduce((s,x)=>s+x.playback.started+x.playback.shared,0),150,'all 150 viewer requests reach the resolver pool');
  assert(workload.every(x=>x.playback.started+x.playback.shared>=30),'all 4 nodes share the load');
  await wait(3800);
  const late=await Promise.all(titles.map((_,i)=>get(i,true)));
- assert(late.every(x=>x.sources.some(s=>s.sourceId==='source-29')),'every viewer receives its second wave');
+ assert(late.every(x=>x.sources.some(s=>s.sourceId==='fixture-slow-late')),'every viewer receives its second wave');
  const lateWorkload=await Promise.all(nodes.map(async url=>(await original(url+'/resolver/api/workload',{headers:{'x-elfura-resolver-token':secret}})).json()));
  assert.equal(lateWorkload.reduce((s,x)=>s+x.playback.started+x.playback.shared,0),300,'late requests still reach the discovery owner');
- for(let n=0;n<4;n++)assert.equal(discoveries[n].get('source-29:90000'),1,'same-title concurrent discoveries coalesce per node');
+ for(let n=0;n<4;n++)assert.equal(discoveries[n].get('fixture-slow-late:90000'),1,'same-title concurrent discoveries coalesce per node');
  await Promise.all(titles.map((t,i)=>t==='90000'?get(i,true,true):null));
  await wait(500);
  const retried=await Promise.all(titles.map((t,i)=>t==='90000'?get(i,true):null));
- assert(retried.filter(Boolean).every(x=>x.sources.some(s=>s.sourceId==='source-5')),'coalesced retry returns previously empty source');
- for(let n=0;n<4;n++)assert.equal(discoveries[n].get('source-5:90000'),2,'one shared retry per source on each node');
+ assert(retried.filter(Boolean).every(x=>x.sources.some(s=>s.sourceId==='fixture-retry')),'coalesced retry returns previously empty source');
+ for(let n=0;n<4;n++)assert.equal(discoveries[n].get('fixture-retry:90000'),2,'one shared retry per source on each node');
  // An empty first wave still owns in-flight work; its later result must route
  // to that owner rather than disappearing after the initial 404.
  const emptyUrl=`${base}/api/v1/playback?type=movie&tmdb=88888&nonce=empty-viewer`;
@@ -66,7 +70,7 @@ try {
  await wait(2000);
  const emptyLate=await original(`${emptyUrl}&late=1`,{headers:{origin:base,'user-agent':'Mozilla/5.0'}});
  assert.equal(emptyLate.status,200);
- assert((await emptyLate.json()).sources.some(s=>s.sourceId==='source-29'));
+ assert((await emptyLate.json()).sources.some(s=>s.sourceId==='fixture-slow-late'));
  assert(scans[owner].some(row=>row.title==='88888'&&row.late),'empty first wave retains affinity');
 
  console.log(`wave HTTP pressure: ${titles.length} concurrent viewers, 48 unique titles + 102 shared-title requests, 4 nodes, all second waves; ${(Date.now()-started)}ms`);

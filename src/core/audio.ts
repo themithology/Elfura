@@ -36,15 +36,15 @@ export interface AudioTrack {
 }
 
 /**
- * Narrow, provider-labelled fallback for anime source versions. This is not
- * verified language evidence: explicit manifest language always takes priority.
+ * Generic source-mode hint for an explicitly marked subtitle/dub variant. This
+ * is not verified language evidence: an explicit manifest language or a
+ * multi-audio stream always takes priority. No provider IDs are special-cased.
  */
 export function providerVariantLanguage(source: {
-  sourceId: string; audioVariant?: 'sub' | 'dub'; audioLang?: string;
+  audioVariant?: 'sub' | 'dub'; audioLang?: string;
   availableAudioLangs?: string[]; multiAudio?: boolean;
 }): 'ja' | 'en' | null {
-  if (!['source-16', 'source-29', 'source-30'].includes(source.sourceId) || source.multiAudio ||
-      canonLang(source.audioLang) !== 'und' ||
+  if (source.multiAudio || canonLang(source.audioLang) !== 'und' ||
       (source.availableAudioLangs ?? []).some(l => canonLang(l) !== 'und')) return null;
   return source.audioVariant === 'sub' ? 'ja' : source.audioVariant === 'dub' ? 'en' : null;
 }

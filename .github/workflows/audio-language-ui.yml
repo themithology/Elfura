@@ -1,0 +1,19 @@
+name: Audio language menu and fixture trait regression
+on:
+  push:
+    paths: ['src/core/audio.ts', 'src/core/player.ts', 'src/ui/controls.ts', 'backend/test/audio-language*', '.github/workflows/audio-language-ui.yml']
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm ci
+      - run: npm run build
+      - run: node --experimental-strip-types backend/test/audio-language-ui.mjs
+      - run: node backend/test/fixture-anime-priority.mjs
+      - run: npm install --no-save --no-package-lock playwright-core @sparticuz/chromium @ffmpeg-installer/ffmpeg
+      - run: node backend/test/audio-language-browser.mjs

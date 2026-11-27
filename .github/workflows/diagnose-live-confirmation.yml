@@ -1,7 +1,6 @@
 name: Diagnose live confirmation
 on:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [backend/test/diagnose-live-confirmation.mjs, .github/workflows/diagnose-live-confirmation.yml]
 permissions:
   contents: read

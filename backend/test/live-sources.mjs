@@ -1,5 +1,5 @@
 /**
- * Live Re:Zero source acceptance audit (manual/CI only).
+ * Live four-source acceptance audit (GitHub Actions/manual only).
  *
  * Runs against real upstreams through the real uniform backend and relay.
  * Never prints upstream URLs, headers, signed tickets, or provider identifiers.
@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createBackendServer } from '../../dist/backend/index.js';
+import { approvedSourceIds } from '../../dist/backend/sources/index.js';
 
 const AUDIT_LANG = process.env.AUDIT_LANG || '';
 const EXPECT_LANG = process.env.AUDIT_EXPECT_LANG || '';
@@ -16,10 +17,15 @@ const TYPE = (process.env.AUDIT_TYPE || 'tv').trim().toLowerCase() === 'movie' ?
 const SEASON = process.env.AUDIT_SEASON || '1';
 const EPISODE = process.env.AUDIT_EPISODE || '1';
 const TITLE_LABEL = process.env.AUDIT_TITLE || 'Re:Zero S1E1';
-const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || 'source-1,source-2,source-3')
+const AUDIT_SOURCES = (process.env.AUDIT_SOURCES || approvedSourceIds().join(','))
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+const allowedAuditIds = new Set([...approvedSourceIds(), 'combined']);
+const unapprovedAuditIds = AUDIT_SOURCES.filter((id) => !allowedAuditIds.has(id));
+if (unapprovedAuditIds.length) {
+  throw new Error(`AUDIT_SOURCES contains IDs outside the four-source manifest: ${unapprovedAuditIds.join(', ')}`);
+}
 /** Hard speed budget for one /api/v1/playback resolution (0 = disabled). */
 const MAX_RESOLVE_MS = Math.max(0, Number(process.env.AUDIT_MAX_RESOLVE_MS || 0));
 /** Fail unless at least one advertised option carries real multi-language evidence. */

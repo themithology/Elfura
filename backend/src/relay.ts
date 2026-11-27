@@ -5,7 +5,7 @@
  *   - Decrypts upstream URL + required headers (Referer, Origin, UA, Cookie).
  *   - Enforces SSRF protection on both initial and post-redirect URLs.
  *   - Normalizes `#EXT-X-MEDIA` ISO 639-2 language codes (`hin`->`hi`, `jpn`->`ja`,
- *     `kan`->`kn`, etc.), strips upstream release-group watermarks (`MovieHubBD`),
+ *     `kan`->`kn`, etc.) and strips active-source release watermarks,
  *     disambiguates duplicate subtitle labels (`English #2`), and ensures each
  *     audio group has a `DEFAULT=YES` track for `hls.js` + Safari native HLS.
  *   - Rewrites every URI inside HLS (.m3u8) and DASH (.mpd) manifests into
@@ -40,22 +40,22 @@ const MAX_MANIFEST_BYTES = 4 * 1024 * 1024; // 4 MiB safety ceiling for text man
 const MAX_WRAPPED_SEGMENT_BYTES = 8 * 1024 * 1024;
 
 const UPSTREAM_TRACK_WATERMARK_RE =
-  /moviehub|tgflix|tgvid|tghub|tgkai|aetho|vidbolt|rousav|hakuna|hscow|fcxmb|orion|vidrift|vidsync|nxsha|nxstream|itsnitrox|vidbox|vidlink|vidrock|vercetti|vidstuck|hguider|sply|greybox|greyboxtv|^(?:audio|track\s*\d*|sound|stream)$/i;
+  /citadel|rivestream|greybox|greyboxtv|nxsha|vidly|rousav|fcxmb|^(?:audio|track\s*\d*|sound|stream)$/i;
 
 const HEVC_HINT_RE = /(?:^|[_/.-])(?:h265|hevc|x265)(?:[_/.-]|$)/i;
 
 const WEBVTT_SPAM_CUE_RE =
-  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|aethoembed|aethoflix|vidbolt|vidrift|vidsync|vidlink|vidrock|vidstuck|nxsha|nxstream|tgflix|tgvid|moviehub|greybox|greyboxtv|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
+  /(?:www\.|https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|world|xyz|pro|in|io|to|gg|cc|space|tech)\b|watch\s+movies|hollymovie|opensubtitles|subscene|yts\.|yify|citadel|rivestream|greybox|greyboxtv|nxsha|vidly|rousav|fcxmb|bottom\s+control\s+bar|press\s+space\s+or\s+k|multi-audio\s+stream\s+connected)/i;
 
 /* ------------------------------------------------------------------ */
 /* Hybrid Segment Offload — Anonymity & Browser-CORS Verifier          */
 /* ------------------------------------------------------------------ */
 
 const SOURCE_HOST_DENY_RE =
-  /(?:tgvid|tgflix|tghub|tgkai|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|vidrift|vidsync|vidzee|vidbolt|vidfast|vaplayer|vidsrc|vidstuck|vidlink|vidrock|vidbox|nxsha|nxstream|itsnitrox|vercetti|enc-dec|0vidads|zxc|freekz|aetho|rousav|moviehub|mhbdtv|hlowb|fastcloud|husvu|greybox|greyboxtv|\bproxy\b|\brelay\b|\bbridge\b)/i;
+  /(?:citadel|rivestream|fcxmb|greybox|greyboxtv|nxsha|vidly|rousav|lovable\.app|vercel\.app|netlify\.app|pages\.dev|workers\.dev|\bproxy\b|\brelay\b|\bbridge\b)/i;
 
 const SOURCE_PATH_DENY_RE =
-  /(?:^\/(?:api|backend|_serverFn)\b|\/(?:orion|tgkai|vidbolt|rousav|aetho|vidsync|vidrift|vidlink|vidrock|vidstuck|nxsha|proxy|relay)\b)/i;
+  /(?:^\/(?:api|backend|_serverFn)\b|\/(?:citadel|rivestream|fcxmb|greybox|nxsha|vidly|rousav|proxy|relay)\b)/i;
 
 const SOURCE_QUERY_DENY_RE =
   /(?:^|[?&])(?:api_?key|access_?token|auth_?token|secret|pltoken)=/i;
@@ -311,7 +311,7 @@ function inferChildKind(tagLine: string, resolvedUrl: string, expectVariantPlayl
     return 'm';
   }
   if (/\.m3u8(?:[?#]|$)/i.test(resolvedUrl) || /[?&](?:m=1|p=)(?:&|$|[^&])/.test(resolvedUrl)) {
-    // Note: TGKAI uses `?p=%2Fhls%2F...` for sub-playlists and `?s=...` for segments
+    // Some HLS endpoints encode nested playlist or segment references in query parameters.
     if (!/[?&]s=/.test(resolvedUrl)) return 'm';
   }
   if (/\.(?:vtt|srt|ass|ssa)(?:[?#]|$)/i.test(resolvedUrl)) return 's';
@@ -420,7 +420,7 @@ function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string
       updated += `,NAME="${safeName}"`;
     }
 
-    // Ensure every AUDIO group has at least one DEFAULT=YES track (fixes TGKAI all-DEFAULT=NO)
+    // Ensure every AUDIO group has at least one DEFAULT=YES track for browser compatibility.
     if (isAudio && !audioGroupHasDefault.get(groupId) && !promotedGroups.has(groupId)) {
       promotedGroups.add(groupId);
       if (/DEFAULT=NO\b/i.test(updated)) {
@@ -438,7 +438,7 @@ function sanitizeExtXMediaLines(lines: string[], hintAudioLang?: string): string
 export function resolveHlsChildUrl(rawRef: string, baseUrl: string): string {
   const base = new URL(baseUrl);
   const child = new URL(normalizeManifestUriReference(rawRef), base);
-  if (child.origin === base.origin && /(?:^|\.)(?:rousav\.tech|animecurx\.tech)$/i.test(base.hostname)) {
+  if (child.origin === base.origin && /(?:^|\.)rousav\.tech$/i.test(base.hostname)) {
     const key = base.searchParams.get('api_key') || base.searchParams.get('apikey');
     if (key && !child.searchParams.has('api_key') && !child.searchParams.has('apikey')) child.searchParams.set('api_key', key);
   }
@@ -507,7 +507,7 @@ export function rewriteHlsManifest(
     return `${streamPath}?t=${encodeURIComponent(ticket)}`;
   };
 
-  // Deduplicate repeated leading #EXTM3U lines (observed on TGKAI anime playlists)
+  // Be tolerant of manifests with repeated leading #EXTM3U headers.
   const rawLines = manifestText.split(/\r?\n/);
   const dedupedHeaderLines: string[] = [];
   let seenExtM3u = false;
@@ -1056,8 +1056,8 @@ export async function handleStreamRelay(
     const upstreamInit: RequestInit = {
       method: req.method === 'HEAD' ? 'HEAD' : 'GET',
       headers: upstreamHeaders,
-      // The optional Worker egress preserves manual redirects; using 'error'
-      // there can otherwise result in a Worker following before Node sees it.
+      // Restricted media must expose each redirect to the local origin policy
+      // before following; ordinary tickets use the native fetch redirect policy.
       redirect: ticket.ro ? 'manual' : 'follow',
       signal: AbortSignal.any([
         abortController.signal,
@@ -1164,7 +1164,7 @@ export async function handleStreamRelay(
       return;
     }
 
-    // Some restricted anime CDNs mislabel genuine MPEG-TS fragments as HTML.
+    // Some origin-restricted media endpoints mislabel genuine MPEG-TS fragments as HTML.
     // Require several consecutive packet sync bytes before treating such a
     // response as media; actual HTML and short/ambiguous payloads stay blocked.
     if (ticket.ro && ticket.k === 'a' && req.method !== 'HEAD' && upstreamRes.body &&
@@ -1239,8 +1239,8 @@ export async function handleStreamRelay(
     ) {
       let original: Buffer | null;
       if (ticket.ro) {
-        // Some anime CDNs label ordinary (including encrypted) transport bytes
-        // as images. Buffering those entire segments before writing anything can
+        // Some origin-restricted endpoints label ordinary (including encrypted)
+        // transport bytes as images. Buffering those entire segments before writing anything can
         // make hls.js time out. Inspect only the PNG signature first; stream
         // everything else unchanged, with backpressure and client cancellation.
         const reader = upstreamRes.body.getReader();
@@ -1374,9 +1374,9 @@ export async function handleStreamRelay(
     const nodeStream = Readable.fromWeb(upstreamRes.body as unknown as WebReadableStream);
     await pipeline(nodeStream, res);
   } catch (err) {
-    if (ticket.ro && process.env.ELFURA_ANIME_RELAY_DEBUG === '1') {
+    if (ticket.ro && process.env.ELFURA_RESTRICTED_RELAY_DEBUG === '1') {
       const e = err as { name?: string; code?: string; cause?: { code?: string } };
-      console.warn('[elfura-anime-relay]', String(e?.name ?? 'Error').replace(/[^\w-]/g, '').slice(0,40), String(e?.code ?? e?.cause?.code ?? '').replace(/[^\w-]/g, '').slice(0,40), ticket.k ?? '', abortController.signal.aborted ? 'client-abort' : 'upstream-timeout');
+      console.warn('[elfura-restricted-relay]', String(e?.name ?? 'Error').replace(/[^\w-]/g, '').slice(0,40), String(e?.code ?? e?.cause?.code ?? '').replace(/[^\w-]/g, '').slice(0,40), ticket.k ?? '', abortController.signal.aborted ? 'client-abort' : 'upstream-timeout');
     }
     if (!res.headersSent) {
       setCloudflareCache(res, 'no-store');

@@ -23,7 +23,7 @@ Elfura is split into two isolated parts in this repository so upstream scraper c
   - Episode changes start a fresh timeline (never reuse the preceding episode's position or initial `t` offset), while same-episode source/audio switches preserve position. Forward the sanitized `episodeChange` event to the embedding host when a selection starts; the host must verify the player origin and iframe sender.
 
 ### Part 2 — Backend (`backend/`)
-- **Isolated runtime & directory (`backend/`)** housing the HTTP server, anti-scraper security layer, TMDB client, source adapters, and stream ingress/egress relay.
+- **Isolated runtime & directory (`backend/`)** housing the HTTP server, anti-scraper security layer, TMDB client, the approved source adapters, and playback stream relay.
 - Owns all communication with our self-hosted TMDB API and external media sources (`Source 1`, `Source 2`, etc.).
 - Normalizes messy, inconsistent upstream responses into **one strict uniform schema** before anything reaches Part 1.
 
@@ -76,11 +76,11 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
 
 1. **Self-Hosted TMDB Primary Identity & Zero-Outage Fallback:**
    - Titles are addressed by TMDB ID (`movie` or `tv` with `season` & `episode`), resolved first through our self-hosted TMDB API (`TMDB_API_BASE`) and automatically falling back across `api.themoviedb.org/3` / `api.tmdb.org/3` in both `fetchTmdbMetadata` and `fetchTmdbSeasonEpisodes` if `TMDB_API_BASE` is unset or unreachable.
-2. **Plug-and-Play Multi-Cluster Source Isolation & Circuit Breakers:**
-   - Each source lives in its own isolated module (`backend/src/sources/source1.ts`, `source2.ts`) implementing a shared `SourceAdapter` interface backed by redundant independent upstream clusters and bounded in-memory dead-origin circuit breakers (`5 min` cooldown on `5xx`/`429`/takedowns) so a single upstream takedown never stalls resolution.
-   - Adding, fixing, or retiring a source **must only touch `backend/`** — Part 1 (`src/`) must require **zero code changes** when new sources are added.
-   - Public-facing source identifiers and labels must stay clean and branded (`source-1` / `Source 1`, etc.), never leaking internal upstream provider names.
-   - Sources that require per-installation credentials (e.g. `source-17` / AniVortex) must stay **off by default**, enable only when `ELFURA_*_ENABLED=1` **and** their credentials are present in the environment, hold those credentials in `.env` key/value form (never on disk, never in logs, never in diagnostics), and emit a single diagnostic instead of making any request when unconfigured.
+2. **Approved Source Manifest & Isolation:**
+   - Production adapters are registered only in `backend/src/sources/index.ts`: `source-1` (Citadel/RiveStream), `source-2` (Greybox), `source-3` (Nxsha), and `source-4` (Vidly). A module or research fixture outside that manifest cannot serve traffic; do not restore numbered legacy adapters.
+   - Each registered adapter implements the shared `SourceAdapter` contract. Keep provider-specific parsing and network calls in its backend module, and keep the Part 1 player source-agnostic.
+   - Public-facing source identifiers and labels stay generic (`source-1` / `Source 1`, etc.); internal provider names and raw upstream URLs never enter player output.
+   - Prefer Node's built-in fetch and direct guarded transport. Do not add global egress interceptors, DNS rescue, external discovery relays, proxy pools, or provider-specific networking packages unless the active source contract demonstrably requires one.
 
 ---
 
@@ -90,9 +90,9 @@ Our production environment runs on a **Pterodactyl Panel container** (heavy CPU/
    - **Never** hardcode audio track lists or pre-populate languages that a title's streams do not actually offer.
    - Audio tracks must be discovered **100% dynamically** at runtime from parsed HLS/DASH manifests (`#EXT-X-MEDIA:TYPE=AUDIO` / `<AdaptationSet contentType="audio">`), dynamic sidecar `audioTracks`, and the actual audio languages dynamically reported across resolved raw stream candidates for that TMDB title.
    - Language tag canonicalization (ISO 639-1 / ISO 639-2 / BCP-47) and human display labels must rely on runtime `Intl.Locale` + `Intl.DisplayNames` rather than hardcoded language dictionaries.
-   - **Separate per-language streams are the one explicit exception:** when an upstream returns one distinct stream URL per language (e.g. `source-17` AniVortex DASH lanes, which carry a single audio adaptation set and no rendition list), that stream's declared language is authoritative for that candidate. Expose one candidate per language, canonicalize the tag, and keep the behaviour behind the adapter's own `ELFURA_*_TRUST_LABELS` switch so it can be reverted to claim-only.
+   - **Separate per-language streams are the one explicit exception:** when an upstream returns one distinct stream URL per language, expose one candidate per language and preserve its normalized row-level language claim. The live manifest remains authoritative if it declares a conflicting track.
 2. **Dynamic Language-Aware Server Hierarchy & Multi-Audio Speed Priority:**
-   - Source adapters must harvest **all online upstream servers** (including all 30+ `byServer` nodes and distinct language/quality variants on `Source 2`, plus true CDN manifest RTTs on `Source 1`) without leaking upstream server names or domains.
+   - Each of the four registered adapters may return only candidates it has actually parsed from its measured upstream shape. Do not reintroduce inactive discovery inventories or publish upstream server names/domains.
    - **Never neglect Multi-Audio streams when ranking or racing a language (e.g., Hindi):** Multi-Audio streams (`multiAudio: true`, carrying `#EXT-X-MEDIA:TYPE=AUDIO` tracks or untagged Multi-Audio masters) must enter the **top race wave alongside direct language streams**, always ranked ahead of single-language sources when compatible, and locked onto the target audio track synchronously (`hls.audioTrack`) before downloading initial segments.
    - Whenever an audio language is selected or persisted, `ElfuraPlayer` (`reorderSourcesHierarchy`) and `/api/v1/playback?lang=...` **dynamically re-order the server hierarchy** so whichever server responds fastest for that language (including Multi-Audio servers) sits at **`#1` on top**, with non-matching servers cleanly below.
 3. **Exhaustive Raw-Source Search per Selected Language:**

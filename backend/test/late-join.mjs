@@ -24,10 +24,10 @@ try {
   });
   const registry = new SourceRegistry(cfg);
   registry.adapters = [
-    adapter('source-1', async () => ({ candidates: [fast] })),
-    adapter('source-20', async () => ({ candidates: [] })),
+    adapter('fixture-fast', async () => ({ candidates: [fast] })),
+    adapter('fixture-empty', async () => ({ candidates: [] })),
     // Finishes well after the first response is sealed.
-    adapter('source-14', async () => { await sleep(6000); return { candidates: [slow] }; }),
+    adapter('fixture-slow', async () => { await sleep(6000); return { candidates: [slow] }; }),
   ];
 
   const started = Date.now();
@@ -35,23 +35,23 @@ try {
   const firstMs = Date.now() - started;
   assert(first, 'first pass must return a playable source');
   const firstIds = first.sources.map((s) => s.sourceId);
-  assert(firstIds.includes('source-1'), `fast lane missing: ${firstIds.join(',')}`);
-  assert(!firstIds.includes('source-14'), 'slow lane cannot be in the first response');
-  assert(first.pendingSources?.includes('source-14'), 'slow lane must be reported as pending');
+  assert(firstIds.includes('fixture-fast'), `fast lane missing: ${firstIds.join(',')}`);
+  assert(!firstIds.includes('fixture-slow'), 'slow lane cannot be in the first response');
+  assert(first.pendingSources?.includes('fixture-slow'), 'slow lane must be reported as pending');
   assert(firstMs < 4000, `first pass too slow: ${firstMs}ms`);
 
   // The player's source-specific background recovery must not wipe the
   // original request's late-join stash while slower adapters are still running.
-  await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', sourceId: 'source-20' });
+  await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', sourceId: 'fixture-empty' });
   const afterRecovery = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
-  assert(afterRecovery?.sources.some(s => s.sourceId === 'source-1'), 'recovery erased the original late stash');
+  assert(afterRecovery?.sources.some(s => s.sourceId === 'fixture-fast'), 'recovery erased the original late stash');
 
   // While the slow lane is still working, a late pass must never block.
   const earlyStarted = Date.now();
   const early = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
   const earlyMs = Date.now() - earlyStarted;
   assert(earlyMs < 1500, `late pass must not wait for unfinished sources: ${earlyMs}ms`);
-  assert(early === null || !early.sources.some((s) => s.sourceId === 'source-14'));
+  assert(early === null || !early.sources.some((s) => s.sourceId === 'fixture-slow'));
 
   // After it finishes, the same late pass returns it from RAM cache. Measure
   // from the original discovery start so a faster first response does not make
@@ -62,19 +62,19 @@ try {
   const lateMs = Date.now() - lateStarted;
   assert(late, 'late pass must return the sources that finished');
   const lateIds = late.sources.map((s) => s.sourceId);
-  assert(lateIds.includes('source-14'), `late lane missing: ${lateIds.join(',')}`);
-  assert(!late.pendingSources?.includes('source-1'), 'fast lane can no longer be pending');
+  assert(lateIds.includes('fixture-slow'), `late lane missing: ${lateIds.join(',')}`);
+  assert(!late.pendingSources?.includes('fixture-fast'), 'fast lane can no longer be pending');
   assert(lateMs < 2500, `late pass too slow: ${lateMs}ms`);
 
   // A lane that never finishes is merely reported pending, never returned.
   const hung = new SourceRegistry(cfg);
-  hung.adapters = [adapter('source-1', async () => ({ candidates: [fast] })), adapter('source-20', never)];
+  hung.adapters = [adapter('fixture-fast', async () => ({ candidates: [fast] })), adapter('fixture-empty', never)];
   const hungFirst = await hung.resolvePlayback({ type: 'movie', tmdbId: '424243' });
-  assert(hungFirst?.pendingSources?.includes('source-20'));
+  assert(hungFirst?.pendingSources?.includes('fixture-empty'));
   const hungLate = await hung.resolvePlayback({ type: 'movie', tmdbId: '424243', late: true });
-  assert(!hungLate || !hungLate.sources.some((s) => s.sourceId === 'source-20'));
+  assert(!hungLate || !hungLate.sources.some((s) => s.sourceId === 'fixture-empty'));
 
-  console.log(`✓ Late-join: first ${firstMs}ms (pending source-14), late passes ${earlyMs}ms / ${lateMs}ms, hung lane never surfaces.`);
+  console.log(`✓ Late-join: first ${firstMs}ms (pending fixture-slow), late passes ${earlyMs}ms / ${lateMs}ms, hung lane never surfaces.`);
 } finally {
   globalThis.fetch = original;
   clearInterval(keepAlive);

@@ -4,8 +4,8 @@
  * ===================================================================
  * Orchestrates registered `SourceAdapter` modules concurrently with TMDB
  * metadata resolution, caches raw results in bounded RAM (zero disk writes),
- * strips all internal provider strings, and shapes every URL into one
- * stateless raw-stream proxy URL (`/api/proxy?u=...`).
+ * strips upstream identifiers and seals every stream URL into a stateless
+ * `/api/v1/stream?t=...` playback ticket.
  */
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -27,13 +27,13 @@ const MAX_ADAPTER_CACHE_ENTRIES = 1024;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
 /** Tiny collection grace; slow sources are returned by the existing late-wave path. */
 const EARLY_GRACE_MS = 150;
-/** First playable resolution never waits for a broad source board. */
+/** First playable resolution does not wait for every source to finish. */
 const MIN_JOIN_MS = 350;
 /** Floor for one probe window; an inconclusive lane stays available as fallback. */
 const PROBE_MIN_WINDOW_MS = 1000;
 /** Upper bound for the first answer when no adapter has produced candidates yet. */
 const ADAPTER_RACE_MS = 1800;
-/** Window for a single-adapter recovery call (`?source=source-N`). */
+/** Window for a focused single-source recovery call. */
 const SINGLE_SOURCE_BUDGET_MS = 6500;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 /** Diagnostics only: the environment variable that can switch each source off. */
@@ -42,16 +42,10 @@ const resolveBudgetMs = () => {
     return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
 };
 /**
- * Candidates probed in the shared verification batch, spread across sources.
- *
- * With 21 adapters this divided down to the floor of 2 lanes per source, so a
- * multi-language source had 2 of its 21 lanes verified and the rest reached the
- * player unprobed. 84 gives roughly four each at the current board size.
- *
- * 160 was tried first and was too greedy: the probe ran long enough to eat the
- * resolve budget, and slower adapters that had candidates never got sealed at
- * all - two whole sources were lost to gain thirteen slots. Four per source,
- * language-aware, is the balance.
+ * Candidate target for the shared verification batch. Work is spread across
+ * the four approved adapters so a prolific language/server lane cannot starve
+ * another source; liveness budgets, rather than a provider-specific cap, bound
+ * the total work.
  */
 const VERIFY_BREADTH_TARGET = 84;
 /**
@@ -59,12 +53,9 @@ const VERIFY_BREADTH_TARGET = 84;
  * verified set. Verified lanes are not counted, so this only limits how much a
  * single prolific source can pad the tail of the list.
  *
- * This was 12 and it was measurably losing streams. A multi-language source
- * returns one lane per language (Greybox: 21 for a film, 14 for an episode;
- * bingr: 10), and a cap of 12 cut that to five, so the language variety a
- * source was chosen for never reached the player. Set to 200: the intended
- * ceiling here is "all of them", and the real limits are the liveness probe and
- * the per-adapter candidate caps upstream of this point.
+ * A small cap can hide useful alternate languages or server lanes from a
+ * currently approved source. Keep this comfortably above observed results; the
+ * liveness probe and adapter parsers provide the meaningful bounds.
  */
 const MAX_LANES_PER_SOURCE = 200;
 const MAX_WAVE_TITLES = 256;
@@ -103,11 +94,10 @@ export class SourceRegistry {
         // Record what each adapter actually talked to, so a resolve that yields
         // nothing can explain itself in the console.
         installNetTap();
-        // The board is the manifest, and nothing else. An adapter that is not in
-        // APPROVED_SOURCES cannot serve traffic, and one that is there has passed
-        // backend/test/source-contract.mjs — real titles, a real manifest, real
-        // segment bytes. Thirty adapters that answer nothing is worse than none,
-        // because the console reports coverage instead of streams.
+        // The manifest is the only adapter registry. An adapter that is not in
+        // APPROVED_SOURCES cannot serve traffic. The four-source contract verifies
+        // this exact manifest, adapter parsing, and Vidly's origin-scoped tickets;
+        // live media-byte verification runs separately in GitHub Actions.
         this.adapters = APPROVED_SOURCES.map((source) => source.create());
     }
     /**
@@ -845,7 +835,7 @@ export class SourceRegistry {
         // Coverage pass: every adapter that answered contributes its usable lanes,
         // not only the ones whose probe finished inside the budget. Verified lanes
         // are already in `candidateEntries` and sort first downstream; these fill in
-        // behind them so a title never shows two streams when nineteen sources
+        // behind them so a title keeps usable candidates from every source that
         // actually replied. Candidates probed and found dead are never added, and
         // the last rail keeps a total verification blackout from emptying the list.
         {
@@ -942,11 +932,9 @@ export class SourceRegistry {
             console.warn(`[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} meta=${media.title ? 'ok' : 'missing'} ms=${Date.now() - resolveStartedAt} :: ${detail}`);
             return null;
         }
-        // Only OpenSubtitles tracks are exposed by default. No provider subtitle
-        // fallback — with one exception: the Vidly index (source-22), which is a
-        // separate, unauthenticated subtitle catalogue. It is used only when
-        // OpenSubtitles produced nothing, so it can add languages but can never
-        // displace a working OpenSubtitles track.
+        // OpenSubtitles is the only separate subtitle fallback in the active
+        // runtime. It is used only when the stream manifest provides no track for
+        // a language, so it can add coverage without replacing a working track.
         if (shouldResolveOpenSubtitles && media.imdbId) {
             const rawFallbackSubs = subtitleState.value ?? [];
             if (rawFallbackSubs.length > 0) {
@@ -970,29 +958,6 @@ export class SourceRegistry {
                         opt.subtitles = [...sealedFallbackSubs];
                     }
                 }
-            }
-        }
-        // Vidly subtitle index: a language fallback, never a replacement.
-        // `query.extraSubtitles` was filled in by the source-22 lane during the same
-        // resolve, so this costs no extra request and no extra wait.
-        const vidlyTracks = query.extraSubtitles ?? [];
-        if (vidlyTracks.length && uniformOptions.length) {
-            const sealedVidly = vidlyTracks.map((track) => ({
-                lang: track.lang,
-                label: track.label,
-                format: 'vtt',
-                url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
-                    u: track.url,
-                    ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
-                    k: 's',
-                }))}`,
-            }));
-            for (const opt of uniformOptions) {
-                const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
-                const added = sealedVidly.filter((track) => !already.has(track.lang));
-                // Never overwrite a language we already have: OpenSubtitles wins.
-                if (added.length)
-                    opt.subtitles = [...(opt.subtitles ?? []), ...added];
             }
         }
         // Hierarchy: genuine multi-audio streams (several languages muxed in one

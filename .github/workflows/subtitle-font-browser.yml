@@ -1,7 +1,6 @@
 name: Subtitle font rendering
 on:
   push:
-    branches: [arena/124b7afe-elfura]
     paths:
       - 'src/subs/**'
       - 'src/ui/styles.css'

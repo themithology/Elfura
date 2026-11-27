@@ -65,8 +65,6 @@ const supervisor = spawn(process.execPath, [entry], {
     ELFURA_SELF_TEST: '0',
     ELFURA_RESOLVE_BUDGET_MS: '1500',
     RESOLVE_TIMEOUT_MS: '1500',
-    // Keep the test off the public DNS rescue path.
-    ELFURA_DNS_RESCUE: '0',
   },
 });
 

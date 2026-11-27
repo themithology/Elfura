@@ -107,7 +107,7 @@ try {
   // that performed discovery, even when another viewer is interleaved.
   const owner=(await playback(80,'&nonce=package-viewer')).node;
   await playback(81,'&nonce=other-viewer');
-  assert.equal((await playback(80,'&nonce=package-viewer&source=source-29')).node,owner);
+  assert.equal((await playback(80,'&nonce=package-viewer&source=source-4')).node,owner);
   assert.equal((await playback(80,'&nonce=package-viewer&late=1')).node,owner);
   // Pterodactyl startup variables can override the .env values. Confirm that the
   // package emits a useful warning instead of silently running only one node.
