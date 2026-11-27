@@ -44,6 +44,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run test:zip
+      - run: npm test
       - run: node backend/test/resolver-balance.mjs
       - run: node backend/test/resolver-balance-integration.mjs
       - run: node backend/test/resolver-late-waves.mjs
