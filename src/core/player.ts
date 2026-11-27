@@ -958,7 +958,7 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
 
     const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
-    const isBackendTicket = /\/(?:api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
+    const isBackendTicket = /\/(?:api\/v1\/stream|api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
         ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
@@ -1782,7 +1782,7 @@ export class ElfuraPlayer {
       if (
         this.currentSource &&
         !this.currentSource.multiAudio &&
-        matchScore(targetLang, this.currentSource.audioLang ?? 'und') >= 0 &&
+        matchScore(targetLang, this.currentSource.audioLang ?? this.currentSource.claimedAudioLang ?? 'und') >= 0 &&
         (this.video.readyState >= 1 || this.qualityLevels.length > 0)
       ) {
         const activeTrack =
@@ -3042,7 +3042,7 @@ export class ElfuraPlayer {
           probe.settle({ ok: true });
         } else if (probe.opt.multiAudio || dashAudio.length > 1) {
           probe.settle({ ok: false, loadFailed: false });
-        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0) {
+        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
@@ -3074,7 +3074,7 @@ export class ElfuraPlayer {
     if (probe && this.currentSource?.id === probe.opt.id) {
       const onLoaded = () => {
         this.video.removeEventListener('loadedmetadata', onLoaded);
-        if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
+        if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
