@@ -145,8 +145,8 @@ try {
 
   saveRelayUrl(workerUrl, TOKEN);
 
-  // All concurrent provider requests must go through the relay, including a
-  // Source 25 lookup started while other providers' relay requests are pending.
+  // Every concurrent source request must go through the relay. One in-flight
+  // relay call must not flip a process-wide bypass and send its siblings direct.
   const beforeConcurrent = seen.length;
   const parallel = await Promise.all(Array.from({ length: 12 }, (_, i) =>
     fetch(`http://127.0.0.1:${providerPort}/parallel-${i}`).then(async (res) => {
@@ -159,8 +159,8 @@ try {
   assert.equal(targets.length, 12, 'no simultaneous discovery request bypasses the relay');
   for (let i = 0; i < 12; i += 1) assert.ok(targets.includes(`/parallel-${i}`));
 
-  const { createSource25Adapter } = await import('../../dist/backend/sources/source25.js');
-  const greybox = createSource25Adapter({ enabled: true, origin: 'https://greyboxtv.duckdns.org', timeoutMs: 5000, rank: 50 });
+  const { createGreyboxAdapter } = await import('../../dist/backend/sources/greybox.js');
+  const greybox = createGreyboxAdapter({ origin: 'https://greyboxtv.duckdns.org' });
   const greyboxStart = seen.length;
   const [firstGreybox, secondGreybox] = await Promise.all([
     greybox.resolve({ type: 'tv', tmdbId: '71446', season: 1, episode: 1 }),

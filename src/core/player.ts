@@ -236,6 +236,7 @@ export class ElfuraPlayer {
 
   private input: ResolvedInput;
   private HlsClass: HlsCtor | null = null;
+  private DashClass: typeof import('dashjs').MediaPlayer | null = null;
   private engineKind: EngineKind | null = null;
   private hls: Hls | null = null;
   private dash: MediaPlayerClass | null = null;
@@ -292,6 +293,7 @@ export class ElfuraPlayer {
   private initialAudioApplied = false;
   private desiredAudioLang: string | null = null;
   private audioSearchSeq = 0;
+  private audioRequestSeq = 0;
   private activeProbe: {
     seq: number;
     targetLang: string;
@@ -385,7 +387,7 @@ export class ElfuraPlayer {
       duration: Number.isFinite(v.duration) ? v.duration : 0,
       buffered: v.buffered.length ? v.buffered.end(v.buffered.length - 1) : 0,
       volume: v.volume,
-      muted: v.muted,
+      muted: this.externalAudio.muted,
       speed: v.playbackRate,
       qualityMode: this.qualityMode,
       effectiveHeight: this.effectiveHeight,
@@ -1724,13 +1726,125 @@ export class ElfuraPlayer {
     this.video.volume = Math.max(0, Math.min(1, v));
   }
   setMuted(m: boolean): void {
+    if (this.externalAudio.setMuted(m)) {
+      this.emit('volumechange', { volume: this.video.volume, muted: m });
+      return;
+    }
     this.video.muted = m;
   }
   setSpeed(s: number): void {
     this.video.playbackRate = Math.max(0.25, Math.min(4, s));
   }
 
+  private dashAudioLang(track: MediaInfo | null | undefined): string {
+    if (!track) return 'und';
+    const declared = canonLang(track.lang);
+    if (declared !== 'und') return declared;
+    for (const label of track.labels ?? []) {
+      const fromLabel = canonLang(String(label.text ?? ''));
+      if (fromLabel !== 'und') return fromLabel;
+    }
+    return 'und';
+  }
+
+  private sameDashAudioTrack(a: MediaInfo | null | undefined, b: MediaInfo | null | undefined): boolean {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.id && b.id) return a.id === b.id;
+    if (a.index !== null && a.index !== undefined && b.index !== null && b.index !== undefined) {
+      return a.index === b.index;
+    }
+    const labels = (track: MediaInfo) => (track.labels ?? []).map((label) => String(label.text ?? '').trim().toLowerCase()).join('|');
+    return this.dashAudioLang(a) === this.dashAudioLang(b) && labels(a) === labels(b);
+  }
+
+  private switchHlsAudioTrack(trackId: number, requestSeq: number, timeoutMs = 6_000): Promise<boolean> {
+    const hls = this.hls;
+    const Hls = this.HlsClass;
+    if (!hls || !Hls) return Promise.resolve(false);
+    const target = hls.audioTracks.find((track, index) => (track.id ?? index) === trackId);
+    if (!target) return Promise.resolve(false);
+    const previousTrackId = hls.audioTrack;
+    if (previousTrackId === trackId) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = 0;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        hls.off(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+        if (
+          !ok &&
+          requestSeq === this.audioRequestSeq &&
+          this.hls === hls &&
+          hls.audioTrack === trackId
+        ) {
+          hls.audioTrack = previousTrackId;
+        }
+        resolve(ok && requestSeq === this.audioRequestSeq);
+      };
+      const onSwitched = (_event: unknown, data: { id?: number }) => {
+        if (data.id === trackId) finish(true);
+      };
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+      timer = window.setTimeout(() => finish(false), timeoutMs);
+      try {
+        hls.audioTrack = trackId;
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
+  private switchDashAudioTrack(track: MediaInfo, requestSeq: number, timeoutMs = 6_000): Promise<boolean> {
+    const dash = this.dash;
+    const Dash = this.DashClass;
+    if (!dash || !Dash) return Promise.resolve(false);
+    const previousTrack = dash.getCurrentTrackFor('audio');
+    if (this.sameDashAudioTrack(previousTrack, track)) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = 0;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        dash.off(Dash.events.TRACK_CHANGE_RENDERED, onRendered);
+        if (
+          !ok &&
+          previousTrack &&
+          requestSeq === this.audioRequestSeq &&
+          this.dash === dash
+        ) {
+          dash.setCurrentTrack(previousTrack);
+        }
+        resolve(ok && requestSeq === this.audioRequestSeq);
+      };
+      const onRendered = (event: { mediaType?: string; newMediaInfo?: MediaInfo }) => {
+        if (event.mediaType === 'audio' && this.sameDashAudioTrack(event.newMediaInfo, track)) finish(true);
+      };
+
+      dash.on(Dash.events.TRACK_CHANGE_RENDERED, onRendered);
+      timer = window.setTimeout(() => finish(false), timeoutMs);
+      try {
+        dash.setCurrentTrack(track);
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
   async setAudio(idOrLang: string): Promise<boolean> {
+    const requestSeq = ++this.audioRequestSeq;
+    // A new manual request must invalidate an older source race, including when
+    // this request can be handled directly by the active engine.
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: false });
+    this.activeProbe = null;
     const exactTrack = this.audioTracks.find((t) => t.id === idOrLang);
     const targetLang = exactTrack ? exactTrack.lang : canonLang(idOrLang);
     const displayLabel = exactTrack
@@ -1760,27 +1874,40 @@ export class ElfuraPlayer {
         exactTrack?.kind === 'native'
           ? exactTrack
           : this.audioTracks.find((t) => t.kind === 'native' && matchScore(targetLang, t.lang) >= 0);
+      let nativeSwitchFailed = false;
 
       if (nativeMatch) {
-        this.externalAudio.deactivate();
+        let switched = false;
         if (this.hls && typeof nativeMatch.ref === 'number') {
-          this.hls.audioTrack = nativeMatch.ref;
+          switched = await this.switchHlsAudioTrack(nativeMatch.ref, requestSeq);
         } else if (this.dash) {
-          const native = this.dash
-            .getTracksFor('audio')
-            .find((t) => matchScore(targetLang, t.lang ?? '') >= 0);
-          if (native) this.dash.setCurrentTrack(native);
+          const dashTracks = this.dash.getTracksFor('audio');
+          const indexedTrack = typeof nativeMatch.ref === 'number' ? dashTracks[nativeMatch.ref] : undefined;
+          const native =
+            indexedTrack && matchScore(targetLang, this.dashAudioLang(indexedTrack)) >= 0
+              ? indexedTrack
+              : dashTracks.find((track) => matchScore(targetLang, this.dashAudioLang(track)) >= 0);
+          if (native) switched = await this.switchDashAudioTrack(native, requestSeq);
         }
-        this.currentAudio = nativeMatch;
-        if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
-        this.reorderSourcesHierarchy(targetLang);
-        this.emit('audioChange', {
-          id: nativeMatch.id,
-          lang: nativeMatch.lang,
-          label: nativeMatch.label,
-          kind: nativeMatch.kind,
-        });
-        return true;
+        if (requestSeq !== this.audioRequestSeq) return false;
+        if (switched) {
+          // Keep an active sidecar intact until the in-manifest rendition has
+          // actually switched; otherwise a failed native selection becomes silence.
+          this.externalAudio.deactivate();
+          this.currentAudio = nativeMatch;
+          if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+          this.reorderSourcesHierarchy(targetLang);
+          this.emit('audioChange', {
+            id: nativeMatch.id,
+            lang: nativeMatch.lang,
+            label: nativeMatch.label,
+            kind: nativeMatch.kind,
+          });
+          return true;
+        }
+        nativeSwitchFailed = true;
+        // A listed engine track that does not acknowledge the switch is not a
+        // successful selection. Continue to sidecars/source search instead.
       }
 
       // 2) Try sidecar external audio file on the currently active stream
@@ -1791,6 +1918,7 @@ export class ElfuraPlayer {
 
       if (externalMatch) {
         const res = await this.externalAudio.activate(externalMatch);
+        if (requestSeq !== this.audioRequestSeq) return false;
         if (res.ok) {
           this.currentAudio = externalMatch;
           if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
@@ -1808,6 +1936,7 @@ export class ElfuraPlayer {
 
       // 3) Check if current healthy single-dub stream already matches targetLang
       if (
+        !nativeSwitchFailed &&
         this.currentSource &&
         !this.currentSource.multiAudio &&
         matchScore(targetLang, sourceSingleAudioLang(this.currentSource)) >= 0 &&
@@ -2940,20 +3069,50 @@ export class ElfuraPlayer {
       if (probe && this.currentSource?.id === probe.opt.id) {
         queueMicrotask(() => {
           if (this.activeProbe?.seq !== probe.seq || this.hls !== hls) return;
+          const previousTrackId = hls.audioTrack;
+          let expectedTrackId: number | null = null;
+          let trackConfirmed = false;
+          let mediaConfirmed = false;
+          const switchedIds = new Set<number>();
+          const cleanup = () => {
+            hls.off(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+            hls.off(Hls.Events.FRAG_LOADED, onMediaLoaded);
+            hls.off(Hls.Events.BUFFER_APPENDED, onMediaAppended);
+          };
+          const originalSettle = probe.settle;
+          probe.settle = (result) => {
+            cleanup();
+            originalSettle(result);
+          };
+          const maybeConfirm = () => {
+            if (trackConfirmed && mediaConfirmed) probe.settle({ ok: true });
+          };
+          const onSwitched = (_event: unknown, switched: { id?: number }) => {
+            if (typeof switched.id === 'number') switchedIds.add(switched.id);
+            if (expectedTrackId !== null && switched.id === expectedTrackId) {
+              trackConfirmed = true;
+              maybeConfirm();
+            }
+          };
+          const onMediaLoaded = () => {
+            mediaConfirmed = true;
+            maybeConfirm();
+          };
+          const onMediaAppended = () => {
+            mediaConfirmed = true;
+            maybeConfirm();
+          };
+          hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+          hls.on(Hls.Events.FRAG_LOADED, onMediaLoaded);
+          hls.on(Hls.Events.BUFFER_APPENDED, onMediaAppended);
+
           if (!this.applyHlsProbeAudioSelection(probe, data.audioTracks ?? [], hls)) {
             probe.settle({ ok: false, loadFailed: false });
             return;
           }
-
-          // Require an actual media fragment / buffer append before confirming alive
-          // so dead segments (403/404) or codec errors never falsely pass probing!
-          const confirmAlive = () => {
-            hls.off(Hls.Events.FRAG_LOADED, confirmAlive);
-            hls.off(Hls.Events.BUFFER_APPENDED, confirmAlive);
-            probe.settle({ ok: true });
-          };
-          hls.on(Hls.Events.FRAG_LOADED, confirmAlive);
-          hls.on(Hls.Events.BUFFER_APPENDED, confirmAlive);
+          expectedTrackId = hls.audioTrack;
+          trackConfirmed = expectedTrackId === previousTrackId || switchedIds.has(expectedTrackId);
+          maybeConfirm();
         });
       }
     });
@@ -3073,6 +3232,7 @@ export class ElfuraPlayer {
     }
     const Dash = await getDash();
     if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
+    this.DashClass = Dash;
     const player = Dash().create();
     this.dash = player;
     const extras = player as unknown as DashExtras;
@@ -3093,13 +3253,17 @@ export class ElfuraPlayer {
     }
     player.on(Dash.events.STREAM_INITIALIZED, () => {
       const dashAudio = player.getTracksFor('audio');
-      const preferredDashAudio = this.desiredAudioLang && dashAudio.find((t: MediaInfo) => matchScore(this.desiredAudioLang!, t.lang ?? '') >= 0);
-      if (!this.activeProbe && preferredDashAudio) player.setCurrentTrack(preferredDashAudio);
+      const preferredDashAudio = this.desiredAudioLang
+        ? dashAudio.find((track: MediaInfo) => matchScore(this.desiredAudioLang!, this.dashAudioLang(track)) >= 0)
+        : undefined;
+      if (!this.activeProbe && preferredDashAudio) {
+        void this.switchDashAudioTrack(preferredDashAudio, this.audioRequestSeq);
+      }
       this.mergeNativeAudio(
-        dashAudio.map((t: MediaInfo, i: number) => ({
+        dashAudio.map((track: MediaInfo, i: number) => ({
           id: i,
-          lang: t.lang ?? 'und',
-          label: t.labels?.length ? String(t.labels[0].text) : undefined,
+          lang: this.dashAudioLang(track),
+          label: track.labels?.length ? String(track.labels[0].text) : undefined,
           default: i === 0,
         })),
       );
@@ -3112,10 +3276,13 @@ export class ElfuraPlayer {
 
       const probe = this.activeProbe;
       if (probe && this.currentSource?.id === probe.opt.id) {
-        const match = dashAudio.find((t: MediaInfo) => matchScore(probe.targetLang, t.lang ?? '') >= 0);
+        const match = dashAudio.find((track: MediaInfo) => matchScore(probe.targetLang, this.dashAudioLang(track)) >= 0);
         if (match) {
-          player.setCurrentTrack(match);
-          probe.settle({ ok: true });
+          void this.switchDashAudioTrack(match, this.audioRequestSeq, 3_500).then((ok) => {
+            if (this.activeProbe?.seq === probe.seq && this.dash === player) {
+              probe.settle({ ok, loadFailed: false });
+            }
+          });
         } else if (probe.opt.multiAudio || dashAudio.length > 1) {
           probe.settle({ ok: false, loadFailed: false });
         } else if (matchScore(probe.targetLang, sourceSingleAudioLang(probe.opt)) >= 0) {
@@ -3644,7 +3811,7 @@ export class ElfuraPlayer {
         void this.prewarmNextEpisode();
       }
     });
-    v.addEventListener('volumechange', () => this.emit('volumechange', { volume: v.volume, muted: v.muted }));
+    v.addEventListener('volumechange', () => this.emit('volumechange', { volume: v.volume, muted: this.externalAudio.muted }));
     v.addEventListener('ratechange', () => this.emit('speedchange', { speed: v.playbackRate }));
     document.addEventListener('fullscreenchange', () => {
       const isFs = document.fullscreenElement === this.shell;

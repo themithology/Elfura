@@ -1151,7 +1151,7 @@ export class PlayerUI {
 
     this.volBtn.onclick = () => {
       this.triggerBtnPop(this.volBtn);
-      this.player.setMuted(!v.muted);
+      this.player.setMuted(!this.player.getState().muted);
     };
     this.volSlider.oninput = () => this.player.setVolume(Number(this.volSlider.value));
 
@@ -2226,7 +2226,7 @@ export class PlayerUI {
           this.player.setVolume(v.volume - 0.05);
           break;
         case 'm':
-          this.player.setMuted(!v.muted);
+          this.player.setMuted(!this.player.getState().muted);
           break;
         case 'f':
           void this.player.fullscreen(document.fullscreenElement !== shell);

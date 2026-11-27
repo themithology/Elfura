@@ -5,11 +5,12 @@
  * answered 403 to this server while the same URL and headers answered 200 from a
  * different address. Cloudflare judges the request shape as well as the IP, and a
  * bare Node fetch is not what a player sends. So discovery requests leave with a
- * browser's header set, over HTTP/2, and one silent retry with a plainer
- * fingerprint when the first attempt is refused.
+ * browser's header set over HTTP/1.1, and one silent retry with a plainer
+ * fingerprint when the first attempt is refused. HTTP/2 is disabled because
+ * Undici's GOAWAY recovery path is unstable under concurrent provider requests.
  *
- * This test proves: headers are added, a 403 is retried exactly once, and ranged
- * media requests are left completely alone.
+ * This test proves: HTTP/1.1 browser-profile requests add headers, a 403 is
+ * retried exactly once, and ranged media requests are left completely alone.
  */
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -41,6 +42,7 @@ installNetTap();
 const { installEgressProfile } = await import('../../dist/backend/egress.js');
 const installed = await installEgressProfile((line) => lines.push(line));
 assert.equal(installed, true, `the profile installs automatically (log: ${lines.join(' | ')})`);
+assert.ok(lines.some((line) => line.includes('(HTTP/1.1, Chrome headers')), 'the deployed profile keeps unstable HTTP/2 disabled');
 
 try {
   const tapped = await tapRequests(() => fetch(`http://127.0.0.1:${port}/plain`, { headers: { accept: 'application/json' } }));

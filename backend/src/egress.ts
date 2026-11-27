@@ -5,9 +5,10 @@
  * like the look of, and it judges the shape of the request as much as the address:
  * one Host, one Accept, Node's own TLS settings and no browser hints is not what a
  * player sends. The adapters cannot fix that, so every discovery request leaves
- * through one browser-shaped profile instead: HTTP/2 enabled, the header set a
- * real Chrome sends, and one silent retry with a second profile if the first is
- * refused.
+ * through one browser-shaped profile instead: Chrome-like headers over HTTP/1.1,
+ * and one silent retry with a second profile if the first is refused. HTTP/2 is
+ * deliberately disabled because Undici's GOAWAY/resume path can crash the
+ * process while several provider requests are in flight.
  *
  * Nothing here refuses anything, skips anything or changes what an adapter asks
  * for. Media relay keeps its own path: it is ranged byte traffic and must not be
@@ -27,6 +28,7 @@ import { readDotEnvOverlay } from './config.js';
 import { loadUndici, undiciUnavailableReason } from './undici-loader.js';
 import { currentRelayUrl, readRelayToken, setRelayChangeHandler } from './relay-config.js';
 import { proxyPool } from './proxy-pool.js';
+import { installNetTap } from './sources/net-tap.js';
 
 export async function testProxyConnection(proxyUrl: string, kind: 'connect' | 'fetch-api' = 'connect', apiKey?: string): Promise<{
   ok: boolean;
@@ -310,7 +312,10 @@ export async function installEgressProfile(log: (line: string) => void = console
   try {
     directAgent = proxy
       ? new undici.ProxyAgent(proxy)
-      : new undici.Agent({ connect: connect as never, allowH2: true, keepAliveTimeout: 10_000 });
+      // Undici's HTTP/2 GOAWAY/resume path can throw an uncaught assertion when
+      // multiple providers share a session. Discovery tolerates HTTP/1.1, so do
+      // not let an upstream GOAWAY take down the Pterodactyl process.
+      : new undici.Agent({ connect: connect as never, allowH2: false, keepAliveTimeout: 10_000 });
   } catch (error) {
     installProblem =
       'the outbound agent could not be created: ' +
@@ -342,15 +347,6 @@ export async function installEgressProfile(log: (line: string) => void = console
    * 302 ourselves: the Worker has already resolved the chain, so a 3xx reaching
    * this point is the target's real answer.
    */
-  /**
-   * Loop guard. In production the Worker is a separate service, but when the relay
-   * is reachable from this same process — a test harness, or an operator pointing
-   * it at their own server — the hop to the Worker goes through this patched
-   * global fetch, which relays again, forever. While the relay hop is in flight the
-   * flag makes the wrapper pass everything straight to undici.
-   */
-  let relayInFlight = 0;
-
   const relayFetch = async (base: string, url: string, init: unknown, timeoutMs = 20_000): Promise<FetchResult> => {
     const options = (init ?? {}) as {
       method?: string;
@@ -377,17 +373,13 @@ export async function installEgressProfile(log: (line: string) => void = console
       // the relay the body has to survive, and it is small enough to inline.
       headers['x-elfura-body'] = Buffer.from(options.body as string).toString('base64').slice(0, 8192);
     }
-    relayInFlight += 1;
-    let response: FetchResult;
-    try {
-      response = (await fetch(base, {
-        headers,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(timeoutMs),
-      } as never)) as FetchResult;
-    } finally {
-      relayInFlight -= 1;
-    }
+    // Use raw Undici for this relay hop. A process-wide "relay in flight" flag
+    // would make unrelated concurrent source requests bypass the relay too.
+    const response = (await fetch(base, {
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    } as never)) as FetchResult;
     // The Worker answers its own failures with a JSON body and this header. It is
     // the difference between "the provider refused the Worker" (a 403 with no
     // marker: try the next egress) and "this Worker rejected us" (a bad token:
@@ -404,7 +396,6 @@ export async function installEgressProfile(log: (line: string) => void = console
 
   const previousFetch = globalThis.fetch;
   const profiledFetch = (async (input: unknown, init?: unknown) => {
-    if (relayInFlight > 0) return previousFetch(input as never, init as never);
     const normalized = normalizeFetchInput(input, init);
     const headers = { ...(normalized.init.headers as HeaderBag | undefined) };
 
@@ -536,6 +527,10 @@ export async function installEgressProfile(log: (line: string) => void = console
   }) as typeof fetch;
 
   globalThis.fetch = profiledFetch;
+  // This layer replaces global fetch after SourceRegistry has already installed
+  // the per-adapter network tap. Reattach the tap outside the profile so source
+  // diagnostics record the real response instead of misleading `0 req` lines.
+  installNetTap();
   installed = true;
   const bootRelay = currentRelayUrl();
   log(
@@ -544,7 +539,7 @@ export async function installEgressProfile(log: (line: string) => void = console
         ? ` via relay ${relayHost(bootRelay)}`
         : proxy
           ? ' via configured proxy'
-          : ' (HTTP/2, Chrome headers, one retry on 403)'),
+          : ' (HTTP/1.1, Chrome headers, one retry on 403)'),
   );
   return true;
 }

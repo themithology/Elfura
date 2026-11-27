@@ -225,7 +225,9 @@ export class ExternalAudioSync {
   private audio = new Audio();
   private attached: AudioTrack | null = null;
   private timer = 0;
+  private activationSeq = 0;
   private video: HTMLVideoElement | null = null;
+  private videoMutedBeforeExternal: boolean | null = null;
 
   constructor() {
     this.audio.preload = 'auto';
@@ -244,7 +246,7 @@ export class ExternalAudioSync {
     });
     video.addEventListener('volumechange', () => {
       this.audio.volume = video.volume;
-      this.audio.muted = video.muted;
+      this.audio.muted = this.attached ? (this.videoMutedBeforeExternal ?? video.muted) : video.muted;
     });
     this.audio.volume = video.volume;
     this.audio.muted = video.muted;
@@ -255,36 +257,108 @@ export class ExternalAudioSync {
     const url = String(track.ref);
     if (this.attached?.id === track.id) return { ok: true };
 
+    const seq = ++this.activationSeq;
     const v = this.video;
     const t = v ? v.currentTime : 0;
     const wasPlaying = v ? !v.paused : false;
 
     this.audio.src = url;
-    this.audio.currentTime = t;
     this.attached = track;
-    if (v) v.muted = true;
+    if (v) {
+      if (this.videoMutedBeforeExternal === null) this.videoMutedBeforeExternal = v.muted;
+      this.audio.muted = this.videoMutedBeforeExternal;
+      v.muted = true;
+    }
 
     try {
-      await this.audio.load();
-      this.audio.currentTime = v ? v.currentTime : t;
+      // HTMLMediaElement.load() returns void; wait for canplay rather than
+      // treating the request to load as proof the sidecar is usable.
+      await this.waitUntilPlayable();
+      if (seq !== this.activationSeq || this.attached?.id !== track.id) {
+        return { ok: false, error: 'External audio selection was superseded' };
+      }
+      const duration = this.audio.duration;
+      const resumeAt = Number.isFinite(duration) && duration > 0 ? Math.min(t, Math.max(0, duration - 0.05)) : t;
+      this.audio.currentTime = Number.isFinite(resumeAt) ? resumeAt : 0;
       if (wasPlaying) await this.audio.play();
+      if (seq !== this.activationSeq || this.attached?.id !== track.id) {
+        return { ok: false, error: 'External audio selection was superseded' };
+      }
       this.startWatchdog();
       return { ok: true };
     } catch (err) {
+      if (seq === this.activationSeq) {
+        this.stopWatchdog();
+        this.audio.pause();
+        this.audio.removeAttribute('src');
+        this.attached = null;
+        if (v && this.videoMutedBeforeExternal !== null) v.muted = this.videoMutedBeforeExternal;
+        this.videoMutedBeforeExternal = null;
+      }
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
+  private waitUntilPlayable(timeoutMs = 8_000): Promise<void> {
+    const audio = this.audio;
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timer = 0;
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        audio.removeEventListener('canplay', onCanPlay);
+        audio.removeEventListener('error', onError);
+      };
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+      const onCanPlay = () => finish();
+      const onError = () => finish(new Error('External audio failed to load'));
+
+      audio.addEventListener('canplay', onCanPlay);
+      audio.addEventListener('error', onError);
+      timer = window.setTimeout(() => finish(new Error('External audio readiness timed out')), timeoutMs);
+      try {
+        audio.load();
+        if (audio.readyState >= 3) finish();
+      } catch (err) {
+        finish(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
   deactivate(): void {
+    this.activationSeq++;
     this.stopWatchdog();
     this.audio.pause();
     this.audio.removeAttribute('src');
     this.attached = null;
-    if (this.video) this.video.muted = false;
+    if (this.video && this.videoMutedBeforeExternal !== null) {
+      this.video.muted = this.videoMutedBeforeExternal;
+    }
+    this.videoMutedBeforeExternal = null;
   }
 
   get activeTrack(): AudioTrack | null {
     return this.attached;
+  }
+
+  get muted(): boolean {
+    return this.attached ? this.audio.muted : (this.video?.muted ?? false);
+  }
+
+  setMuted(muted: boolean): boolean {
+    if (!this.attached) return false;
+    this.videoMutedBeforeExternal = muted;
+    this.audio.muted = muted;
+    // The video element must remain muted while the external track is mixed in;
+    // the saved preference is applied to the separate audio element instead.
+    if (this.video) this.video.muted = true;
+    return true;
   }
 
   private startWatchdog(): void {
