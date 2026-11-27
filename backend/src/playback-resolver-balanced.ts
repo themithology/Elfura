@@ -25,7 +25,6 @@ type Node = {
   badChecks: number;
   consecutiveFailures: number;
   inFlight: number;
-  ewmaMs: number;
   attempts: number;
   failures: number;
   lastSuccess: number;
@@ -46,7 +45,7 @@ export function createBalancedPlaybackResolver(
   const log = options.log ?? console.warn;
   const nodes: Node[] = [first, second, ...(options.additionalClients ?? [])].map(client => ({
     client, available: true, generation: 0, goodChecks: 0, badChecks: 0,
-    consecutiveFailures: 0, inFlight: 0, ewmaMs: 0, attempts: 0, failures: 0, lastSuccess: 0,
+    consecutiveFailures: 0, inFlight: 0, attempts: 0, failures: 0, lastSuccess: 0,
   }));
   const affinity = new Map<string, { node: Node; expires: number }>();
   const remember = (key: string, node: Node) => {
@@ -127,12 +126,12 @@ export function createBalancedPlaybackResolver(
         const primaryIdx = titleHash(request) % available.length;
         const primaryNode = available[primaryIdx];
         const tieStart = turn++ % available.length;
-        const knownMs = available.filter(n => n.ewmaMs > 0).map(n => n.ewmaMs);
-        const coldMs = knownMs.length ? Math.min(...knownMs) : 10;
         order = available
           .map((node, i) => {
-            const baseMs = node.ewmaMs > 0 ? node.ewmaMs : coldMs;
-            const loadScore = (node.inFlight + 1) * baseMs * (node === primaryNode ? 0.85 : 1);
+            // Prefer the title's stable hash owner when idle, but don't pile
+            // concurrent discoveries onto it. RTT must not bias traffic toward
+            // one fast node; only current in-flight work affects this order.
+            const loadScore = node.inFlight * (available.length + 1) + (node === primaryNode ? 0 : 1);
             const tie = (i - tieStart + available.length) % available.length;
             return { node, loadScore, tie };
           })
@@ -152,12 +151,9 @@ export function createBalancedPlaybackResolver(
         if (remaining <= 0) break;
         const generation = node.generation;
         const attempt = ++node.attempts;
-        const started = Date.now();
         node.inFlight++;
         try {
           const result = await node.client.resolve(request, remaining, true);
-          const elapsed = Math.max(1, Date.now() - started);
-          node.ewmaMs = node.ewmaMs === 0 ? elapsed : node.ewmaMs * 0.75 + elapsed * 0.25;
           node.consecutiveFailures = 0;
           node.lastSuccess = Math.max(node.lastSuccess, attempt);
           if (key && !request.late && (!request.sourceId || !pinned || !pinned.node.available)) remember(key, node);
