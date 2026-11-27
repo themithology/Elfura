@@ -236,13 +236,13 @@ export class ElfuraPlayer {
 
   private sources: SourceOption[] = [];
   // Generic source groups supplied by the backend; fallback supports older servers.
-  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+  private sourceGroups: string[] = ['source-1', 'source-2', 'source-3', 'source-4'];
   private pendingSourceGroups: string[] = [];
   private lateHydrationToken = 0;
   private currentSource: SourceOption | null = null;
-  // Source 17 is an aggregator: its rows can be independent upstream servers.
-  // Honor a manual Source 17 selection through its other rows before leaving it.
-  private manualAggregatorGroup: string | null = null;
+  // A manual server choice is a group preference: try its sibling options before
+  // silently hopping to another provider when the selected option fails.
+  private manualSourceGroup: string | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
   private measuredRttByFp = new Map<string, number>();
@@ -495,9 +495,9 @@ export class ElfuraPlayer {
     this.activeProbe = null;
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
-    this.manualAggregatorGroup = opt.traits?.includes('aggregator') ? opt.sourceId : null;
-    if (opt.audioLang && opt.audioLang !== 'und') {
-      this.desiredAudioLang = canonLang(opt.audioLang);
+    this.manualSourceGroup = opt.sourceId;
+    if ((opt.audioLang ?? opt.claimedAudioLang) && canonLang(opt.audioLang ?? opt.claimedAudioLang) !== 'und') {
+      this.desiredAudioLang = canonLang(opt.audioLang ?? opt.claimedAudioLang);
     } else if (
       this.desiredAudioLang &&
       (opt.multiAudio ||
@@ -573,6 +573,7 @@ export class ElfuraPlayer {
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+          (s.claimedAudioLang && matchScore(lang, s.claimedAudioLang) >= 0) ||
           (s.availableAudioLangs ?? []).some((l) => matchScore(lang, l) >= 0) ||
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         // Keep Multi-Audio streams whose internal tracks haven't been ruled out right in Tier 0
@@ -581,7 +582,7 @@ export class ElfuraPlayer {
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang);
+      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
@@ -616,13 +617,14 @@ export class ElfuraPlayer {
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+          (s.claimedAudioLang && matchScore(lang, s.claimedAudioLang) >= 0) ||
           (s.availableAudioLangs ?? []).some((l) => matchScore(lang, l) >= 0) ||
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang);
+      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
@@ -958,7 +960,7 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
 
     const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
-    const isBackendTicket = /\/(?:api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
+    const isBackendTicket = /\/(?:api\/v1\/stream|api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
         ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
@@ -1254,7 +1256,7 @@ export class ElfuraPlayer {
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
-    this.manualAggregatorGroup = null;
+    this.manualSourceGroup = null;
     this.resolveAbort?.abort();
     const controller = new AbortController();
     this.resolveAbort = controller;
@@ -1406,7 +1408,7 @@ export class ElfuraPlayer {
       if (Array.isArray(data.sourceGroups)) {
         this.sourceGroups = [...new Set(data.sourceGroups.filter((id): id is string => typeof id === 'string' && /^source-[1-9]\d{0,3}$/.test(id)))].slice(0, 32);
       } else {
-        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4', 'source-5'];
+        this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4'];
       }
       if (data.media) {
         this.mediaInfo = data.media;
@@ -1782,7 +1784,7 @@ export class ElfuraPlayer {
       if (
         this.currentSource &&
         !this.currentSource.multiAudio &&
-        matchScore(targetLang, this.currentSource.audioLang ?? 'und') >= 0 &&
+        matchScore(targetLang, this.currentSource.audioLang ?? this.currentSource.claimedAudioLang ?? 'und') >= 0 &&
         (this.video.readyState >= 1 || this.qualityLevels.length > 0)
       ) {
         const activeTrack =
@@ -1852,6 +1854,8 @@ export class ElfuraPlayer {
       .filter((s) => !this.isCandidateFailed(s) && !excludeIds.has(s.id) && matchesOrCanCarryLang(s))
       .sort(
         (a, b) =>
+          Number(Boolean(this.manualSourceGroup && b.sourceId === this.manualSourceGroup)) -
+            Number(Boolean(this.manualSourceGroup && a.sourceId === this.manualSourceGroup)) ||
           Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
           Number(Boolean(providerVariantLanguage(a))) - Number(Boolean(providerVariantLanguage(b))) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
@@ -1869,6 +1873,7 @@ export class ElfuraPlayer {
 
     const finalizeChosenCandidate = (cand: SourceOption): boolean => {
       this.shell.dataset.buffering = 'false';
+      if (this.manualSourceGroup && cand.sourceId !== this.manualSourceGroup) this.manualSourceGroup = null;
       if (targetLang && targetLang !== 'und' && !providerVariantLanguage(cand)) {
         this.recordDiscoveredAudioLangs(cand, [targetLang]);
       }
@@ -1928,54 +1933,86 @@ export class ElfuraPlayer {
     const rejectedFingerprints = new Set<string>();
     const triedEngineIds = new Set<string>();
 
-    // Phase A: 8-way concurrent parallel race across BOTH Multi-Audio & Direct servers (fastest wins!)
+    // Phase A: race each manually selected provider family first, then allow
+    // cross-provider fallback. Within either tier the fastest candidates win.
     const fetchPool = candidates.filter((c) => this.canPreProbeViaFetch(c));
-    let cursor = 0;
-    while (cursor < fetchPool.length) {
-      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+    const fetchPools = this.manualSourceGroup
+      ? [
+          fetchPool.filter((candidate) => candidate.sourceId === this.manualSourceGroup),
+          fetchPool.filter((candidate) => candidate.sourceId !== this.manualSourceGroup),
+        ]
+      : [fetchPool];
+    for (let poolIndex = 0; poolIndex < fetchPools.length; poolIndex++) {
+      const pool = fetchPools[poolIndex];
+      let cursor = 0;
+      while (cursor < pool.length) {
+        if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
-      const wave: SourceOption[] = [];
-      const waveFps = new Set<string>();
-      while (cursor < fetchPool.length && wave.length < 8) {
-        const c = fetchPool[cursor++];
-        if (this.isCandidateFailed(c)) continue;
-        const fp = c.fingerprint || c.id;
-        if (rejectedFingerprints.has(fp) || waveFps.has(fp)) continue;
-        waveFps.add(fp);
-        wave.push(c);
-      }
-      if (!wave.length) continue;
-
-      const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
-      if (this.destroyed || this.audioSearchSeq !== seq) return false;
-
-      for (const f of failed) this.markCandidateFailed(f);
-      for (const r of rejected) {
-        triedEngineIds.add(r.id);
-        if (r.fingerprint) rejectedFingerprints.add(r.fingerprint);
-      }
-
-      if (winners.length > 0) {
-        for (const w of winners) {
-          if (this.destroyed || this.audioSearchSeq !== seq) return false;
-          if (this.isCandidateFailed(w)) continue;
-          const fp = w.fingerprint;
-          if (fp && rejectedFingerprints.has(fp)) continue;
-
-          triedEngineIds.add(w.id);
-          const attachRes = await this.probeRawCandidateForLanguage(w, targetLang, seq);
-          if (this.destroyed || this.audioSearchSeq !== seq) return false;
-          if (attachRes.ok) {
-            if (finalizeChosenCandidate(w)) return true;
-            if (fp) rejectedFingerprints.add(fp);
-            continue;
-          }
-          if (attachRes.loadFailed) this.markCandidateFailed(w);
-          if (fp) rejectedFingerprints.add(fp);
+        const wave: SourceOption[] = [];
+        const waveFps = new Set<string>();
+        while (cursor < pool.length && wave.length < 8) {
+          const candidate = pool[cursor++];
+          if (this.isCandidateFailed(candidate)) continue;
+          const fp = candidate.fingerprint || candidate.id;
+          if (rejectedFingerprints.has(fp) || waveFps.has(fp)) continue;
+          waveFps.add(fp);
+          wave.push(candidate);
         }
-        // Do NOT reject the other wave entries here. raceCandidatesBatch may
-        // have aborted them before their manifests answered. Phase B below must
-        // still give every untried candidate a real engine-level opportunity.
+        if (!wave.length) continue;
+
+        const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
+        if (this.destroyed || this.audioSearchSeq !== seq) return false;
+
+        for (const failedOption of failed) this.markCandidateFailed(failedOption);
+        for (const rejectedOption of rejected) {
+          triedEngineIds.add(rejectedOption.id);
+          if (rejectedOption.fingerprint) rejectedFingerprints.add(rejectedOption.fingerprint);
+        }
+
+        if (winners.length > 0) {
+          for (const winner of winners) {
+            if (this.destroyed || this.audioSearchSeq !== seq) return false;
+            if (this.isCandidateFailed(winner)) continue;
+            const fp = winner.fingerprint;
+            if (fp && rejectedFingerprints.has(fp)) continue;
+
+            triedEngineIds.add(winner.id);
+            const attachRes = await this.probeRawCandidateForLanguage(winner, targetLang, seq);
+            if (this.destroyed || this.audioSearchSeq !== seq) return false;
+            if (attachRes.ok) {
+              if (finalizeChosenCandidate(winner)) return true;
+              if (fp) rejectedFingerprints.add(fp);
+              continue;
+            }
+            if (attachRes.loadFailed) this.markCandidateFailed(winner);
+            if (fp) rejectedFingerprints.add(fp);
+          }
+          // Do NOT reject the other wave entries here. raceCandidatesBatch may
+          // have aborted them before their manifests answered. Phase B below must
+          // still give every untried candidate a real engine-level opportunity.
+        }
+      }
+      if (this.manualSourceGroup && poolIndex === 0) {
+        // A cross-origin selected provider may not be fetch-probeable. Give its
+        // remaining candidates an engine-level attempt before racing other
+        // providers, so a manual choice is not bypassed just because of CORS.
+        for (const candidate of candidates) {
+          if (candidate.sourceId !== this.manualSourceGroup) continue;
+          if (triedEngineIds.has(candidate.id) || this.isCandidateFailed(candidate)) continue;
+          if (candidate.fingerprint && rejectedFingerprints.has(candidate.fingerprint)) continue;
+
+          triedEngineIds.add(candidate.id);
+          const result = await this.probeRawCandidateForLanguage(candidate, targetLang, seq);
+          if (this.destroyed || this.audioSearchSeq !== seq) return false;
+          if (result.ok) {
+            if (finalizeChosenCandidate(candidate)) return true;
+            if (candidate.fingerprint) rejectedFingerprints.add(candidate.fingerprint);
+          } else if (result.loadFailed) {
+            this.markCandidateFailed(candidate);
+          } else if (candidate.fingerprint) {
+            rejectedFingerprints.add(candidate.fingerprint);
+          }
+        }
       }
     }
 
@@ -2001,9 +2038,11 @@ export class ElfuraPlayer {
       }
     }
 
-    // All candidate raw sources were searched and none could play targetLang.
+    // All current candidates were searched and none could play targetLang.
+    // Keep it as the viewer's requested preference: the actual audio state below
+    // still reflects the fallback stream, while a later manual server pick or
+    // late source discovery can retry this language instead of forgetting it.
     this.activeProbe = null;
-    this.desiredAudioLang = null;
 
     const cleanName = displayLabel || languageLabel(targetLang);
     const unavailableMessage = `Sorry, we searched all sources yet didn't find it in "${cleanName}"`;
@@ -2011,6 +2050,9 @@ export class ElfuraPlayer {
     // Restore playable video so the player does not remain on a dead/unloaded screen
     const fallbackOpt =
       prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
+    if (fallbackOpt && this.manualSourceGroup && fallbackOpt.sourceId !== this.manualSourceGroup) {
+      this.manualSourceGroup = null;
+    }
     if (!fallbackOpt) {
       this.recoverExhaustedSources();
     }
@@ -3042,7 +3084,7 @@ export class ElfuraPlayer {
           probe.settle({ ok: true });
         } else if (probe.opt.multiAudio || dashAudio.length > 1) {
           probe.settle({ ok: false, loadFailed: false });
-        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0) {
+        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
@@ -3074,7 +3116,7 @@ export class ElfuraPlayer {
     if (probe && this.currentSource?.id === probe.opt.id) {
       const onLoaded = () => {
         this.video.removeEventListener('loadedmetadata', onLoaded);
-        if (matchScore(probe.targetLang, probe.opt.audioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
+        if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
@@ -3249,24 +3291,6 @@ export class ElfuraPlayer {
 
       if (this.desiredAudioLang) {
         const lang = this.desiredAudioLang;
-        if (this.manualAggregatorGroup && this.currentSource?.sourceId === this.manualAggregatorGroup) {
-          // Do not claim that unknown rows carry the requested language. Only
-          // try the selected aggregator's remaining language-matched rows;
-          // otherwise retain the existing cross-provider language search.
-          const sameGroup = this.sources.filter(s => s.sourceId === this.manualAggregatorGroup &&
-            !this.isCandidateFailed(s) &&
-            ((s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
-             (s.availableAudioLangs ?? []).some(code => matchScore(lang, code) >= 0) ||
-             (s.audioTracks ?? []).some(track => matchScore(lang, track.lang) >= 0)))
-            .sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
-          const next = sameGroup[0];
-          if (next) {
-            this.emit('server:switch', { from: this.currentSource?.label ?? null, to: next.label, reason: 'fatal-error' });
-            void this.activateSourceOption(next, true);
-            return;
-          }
-          this.manualAggregatorGroup = null;
-        }
         void this.searchRawSourcesForLanguage(lang, languageLabel(lang), new Set(this.failedSourceIds));
         return;
       }
@@ -3275,19 +3299,17 @@ export class ElfuraPlayer {
       const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
         (s) => !this.isCandidateFailed(s),
       );
-      // Normally a different provider group is the safer fallback. Source 17
-      // is an aggregator of distinct upstreams, though: if the viewer manually
-      // chose it, try its remaining rows first rather than immediately switching
-      // away from the chosen group after one of its servers fails.
-      const selectedAggregator = this.currentSource?.sourceId === this.manualAggregatorGroup
-        ? this.manualAggregatorGroup : null;
+      // A manual server choice is a preference for that provider family, not
+      // just one row. Try its remaining options before crossing to another one.
+      const selectedManualGroup = this.currentSource?.sourceId === this.manualSourceGroup
+        ? this.manualSourceGroup : null;
       ordered.sort((a, b) =>
-        (selectedAggregator
-          ? Number(b.sourceId === selectedAggregator) - Number(a.sourceId === selectedAggregator)
+        (selectedManualGroup
+          ? Number(b.sourceId === selectedManualGroup) - Number(a.sourceId === selectedManualGroup)
           : Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId)) ||
         (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
-      if (selectedAggregator && next?.sourceId !== selectedAggregator) this.manualAggregatorGroup = null;
+      if (selectedManualGroup && next?.sourceId !== selectedManualGroup) this.manualSourceGroup = null;
       if (!next) {
         this.recoverExhaustedSources();
         return;
