@@ -2,8 +2,10 @@
 // title-wide language inventory must not turn each standalone stream into a
 // fake multi-audio row, and the row's claim must survive to the player's picker.
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import { build } from 'esbuild';
 import { loadBackendConfig } from '../../dist/backend/config.js';
+import { handleStreamRelay } from '../../dist/backend/relay.js';
 import { openStreamTicket } from '../../dist/backend/security.js';
 import { greyboxCandidates } from '../../dist/backend/sources/greybox.js';
 import { selectPlaybackCandidates } from '../../dist/backend/sources/selection.js';
@@ -36,6 +38,64 @@ const ticketValue = new URL(option.url, 'https://elfura.test').searchParams.get(
 const ticket = openStreamTicket(cfg.secret, ticketValue);
 assert.equal(ticket?.l, 'hi', 'a standalone provider language claim must reach the manifest rewriter');
 assert.equal(ticket?.lang, undefined, 'the ticket uses the relay schema key `l`');
+assert.equal(ticket?.k, 'm', 'HLS choices must be marked as manifests so the relay rewrites query-shaped playlists');
+
+// Exercise the exact switching path: the provider URL has no `.m3u8` suffix
+// and returns a generic content type. The ticket kind is what lets the relay
+// recognize and rewrite it before the browser switches onto the candidate.
+{
+  const originalFetch = globalThis.fetch;
+  const manifest = ['#EXTM3U', '#EXTINF:5,', 'segment.ts', '#EXT-X-ENDLIST'].join('\n');
+  const relayServer = createServer((req, res) => {
+    const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
+    void handleStreamRelay(req, res, {
+      secret: cfg.secret,
+      allowOrigin: '*',
+      ticketParam: requestUrl.searchParams.get('t') || '',
+      streamPath: '/api/v1/stream',
+      relayMode: 'full',
+      requireHttpsOffload: false,
+    });
+  });
+  globalThis.fetch = async (input, init) => String(input) === ticket.u
+    ? new Response(manifest, { headers: { 'content-type': 'application/octet-stream' } })
+    : originalFetch(input, init);
+  try {
+    await new Promise((resolve, reject) => {
+      relayServer.once('error', reject);
+      relayServer.listen(0, '127.0.0.1', resolve);
+    });
+    const address = relayServer.address();
+    const response = await originalFetch(`http://127.0.0.1:${address.port}${option.url}`);
+    assert.equal(response.status, 200);
+    const rewrittenManifest = await response.text();
+    assert.match(response.headers.get('content-type') || '', /application\/vnd\.apple\.mpegurl/i);
+    assert.match(rewrittenManifest, /\/api\/v1\/stream\?t=/, 'segment URLs must be proxied before switching');
+    assert.doesNotMatch(rewrittenManifest, /segment\.ts/, 'the upstream segment path must not leak to the browser');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (relayServer.listening) {
+      await new Promise((resolve) => relayServer.close(resolve));
+    }
+  }
+}
+
+const typedCandidate = {
+  ...rows.candidates[0],
+  audioTracks: [{ lang: 'en', label: 'English', url: 'https://cdn.example/audio.m4a' }],
+};
+const mp4Option = registry.sealCandidate(adapter, { ...typedCandidate, type: 'mp4' }, 2, new Map(), '/api/v1/stream');
+const mp4Ticket = openStreamTicket(cfg.secret, new URL(mp4Option.url, 'https://elfura.test').searchParams.get('t'));
+assert.equal(mp4Ticket?.k, 'a', 'MP4 source choices must be marked as media assets');
+const audioTicket = openStreamTicket(cfg.secret, new URL(mp4Option.audioTracks[0].url, 'https://elfura.test').searchParams.get('t'));
+assert.equal(audioTicket?.k, 'a', 'external audio tickets must preserve range/asset handling');
+const animeAdapter = { id: 'source-29', label: 'Anime', traits: ['animeEpisode'] };
+const animeOption = registry.sealCandidate(animeAdapter, {
+  ...rows.candidates[0],
+  subtitles: [{ lang: 'hi', label: 'Hindi', url: 'https://cdn.example/subtitles.vtt' }],
+}, 3, new Map(), '/api/v1/stream');
+const subtitleTicket = openStreamTicket(cfg.secret, new URL(animeOption.subtitles[0].url, 'https://elfura.test').searchParams.get('t'));
+assert.equal(subtitleTicket?.k, 's', 'subtitle tickets must retain subtitle-specific relay handling');
 
 const singleUntaggedMaster = [
   '#EXTM3U',

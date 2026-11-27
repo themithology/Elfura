@@ -954,7 +954,11 @@ export class SourceRegistry {
                     lang: s.lang,
                     label: s.label,
                     ...(s.format ? { format: s.format } : {}),
-                    url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: s.url, h: s.headers }))}`,
+                    url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                        u: s.url,
+                        ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
+                        k: 's',
+                    }))}`,
                 }));
                 for (const opt of uniformOptions) {
                     const lane = this.adapters.find((adapter) => adapter.id === opt.sourceId);
@@ -977,7 +981,11 @@ export class SourceRegistry {
                 lang: track.lang,
                 label: track.label,
                 format: 'vtt',
-                url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers }))}`,
+                url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                    u: track.url,
+                    ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+                    k: 's',
+                }))}`,
             }));
             for (const opt of uniformOptions) {
                 const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
@@ -1208,7 +1216,11 @@ export class SourceRegistry {
         const audioTracks = (cand.audioTracks ?? []).map((t) => ({
             lang: t.lang,
             label: t.label,
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: t.url, h: t.headers }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: t.url,
+                ...(t.headers && Object.keys(t.headers).length ? { h: t.headers } : {}),
+                k: 'a',
+            }))}`,
         }));
         // Only the new anime lane opts into source-specific, episode-aligned
         // subtitles. Keep the existing subtitle policy for every other adapter.
@@ -1216,7 +1228,13 @@ export class SourceRegistry {
             lang: track.lang,
             label: track.label,
             ...(track.format ? { format: track.format } : {}),
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: track.url,
+                ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+                k: 's',
+                ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}),
+                ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}),
+            }))}`,
         })) : [];
         const latencyHintMs = typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
             ? Math.round(cand.latencyMs)
@@ -1226,7 +1244,17 @@ export class SourceRegistry {
             sourceId: adapter.id,
             label: displayLabel,
             type: cand.type,
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: cand.url, h: cand.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: cand.url,
+                ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
+                // The relay uses this marker to rewrite root manifests and to
+                // apply byte ranges / segment transforms correctly. Without `m`,
+                // query-shaped or octet-stream HLS URLs were passed through as
+                // raw playlists, so choosing that server could not start playback.
+                k: cand.type === 'mp4' ? 'a' : 'm',
+                ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}),
+                ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}),
+            }))}`,
             quality: cand.quality || 'auto',
             ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
             ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
