@@ -30,9 +30,9 @@ async function node(id, useHttps) {
   const resolverPort=await listen(real);
   const state={blocked:false,hang:false,delay:0};
   const handler=(req,res)=>{
+    if(req.url==='/resolver/api/playback') requestCounts[id-1]++;
     if(state.blocked && req.url !== '/resolver/api/health') {res.writeHead(403,{'content-type':'text/html'});return res.end('Access denied');}
     if(req.url==='/resolver/api/playback') {
-      requestCounts[id-1]++;
       if(state.hang) { req.resume(); return; }
     }
     const forward=()=>{
