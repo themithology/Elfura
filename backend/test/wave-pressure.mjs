@@ -14,14 +14,16 @@ globalThis.fetch=async input=>String(input).startsWith('https://waves.example/')
  ? new Response(new Uint8Array(2048),{status:206,headers:{'content-type':'video/mp4'}})
  : new Response('',{status:404});
 try {
- // With a large board, adapters close behind the first three should still
- // join the initial response, without waiting on an indefinitely hung source.
+ // A verified playable source should be returned quickly; slower adapters
+ // remain in the pending late wave rather than holding up first playback.
  const broad=new SourceRegistry(cfg);
  broad.adapters=[...['source-1','source-2','source-3'].map(id=>adapter(id,async q=>({candidates:[candidate(id,q.tmdbId)]}))),
    ...['source-4','source-5'].map(id=>adapter(id,async q=>{await wait(1800);return {candidates:[candidate(id,q.tmdbId)]};})),
    ...['source-6','source-7','source-8'].map(id=>adapter(id,()=>new Promise(()=>{})))];
  const broadInitial=await broad.resolvePlayback({type:'movie',tmdbId:'39999'});
- assert(broadInitial.sources.some(x=>x.sourceId==='source-4')&&broadInitial.sources.some(x=>x.sourceId==='source-5'),'nearby sources join first wave');
+ assert(broadInitial.sources.some(x=>x.sourceId==='source-1'),'a playable first-wave source is returned');
+ assert(broadInitial.pendingSources.includes('source-4')&&broadInitial.pendingSources.includes('source-5'),
+   'slow nearby sources remain discoverable in the late wave');
 
  // Memory stays bounded by payload size as well as title count; a stale
  // callback cannot recreate an evicted wave.
@@ -43,7 +45,7 @@ try {
    adapter('source-29',async q=>{calls.set(q.tmdbId,(calls.get(q.tmdbId)??0)+1);await wait(3000);return {candidates:[candidate('source-29',q.tmdbId)]};})];
  const first=await Promise.all(Array.from({length:12},(_,i)=>reg.resolvePlayback({type:'movie',tmdbId:String(40000+i)})));
  assert(first.every(x=>x?.pendingSources.includes('source-29')));
- await wait(1650);
+ await wait(2400);
  const late=await Promise.all(first.map((_,i)=>reg.resolvePlayback({type:'movie',tmdbId:String(40000+i),late:true})));
  assert(late.every(x=>x?.sources.some(s=>s.sourceId==='source-29')),'late waves must survive a burst of distinct titles');
  assert.equal([...calls.values()].reduce((a,b)=>a+b,0),12);

@@ -30,8 +30,10 @@ try {
  start=Date.now();const fair=await reg.resolvePlayback({type:'movie',tmdbId:'999005'});const fairMs=Date.now()-start;
  const fairIds=(fair?.sources??[]).map(s=>s.sourceId);
  assert(fairIds.includes('source-1'),`Fast source missing: ${fairIds.join(',')}`);
- assert(fairIds.includes('source-14'),`Slow source must not be cut by a fast one: ${fairIds.join(',')}`);
- assert(fairMs<3000,`Fairness window too slow: ${fairMs}ms`);
+ // Do not delay a playable first response for a slow adapter. It must remain in
+ // the response's pending list so the existing late-wave request can append it.
+ if (!fairIds.includes('source-14')) assert(fair?.pendingSources?.includes('source-14'),`Slow source was neither listed nor left pending: ${JSON.stringify(fair?.pendingSources)}`);
+ assert(fairMs<1800,`Fast first response was held by the late adapter: ${fairMs}ms`);
 
- console.log(`✓ Startup budget: fast ${fastMs}ms, no sources ${failMs}ms, stalled verification ${probeMs}ms, new sources stalled ${newSourcesMs}ms, fair join ${fairMs}ms (${fairIds.join(',')}).`);
+ console.log(`✓ Startup budget: fast ${fastMs}ms, no sources ${failMs}ms, stalled verification ${probeMs}ms, new sources stalled ${newSourcesMs}ms, fast-first join ${fairMs}ms (${fairIds.join(',')}; pending=${fair?.pendingSources?.join(',')}).`);
 }finally{globalThis.fetch=original;clearInterval(keepAlive)}

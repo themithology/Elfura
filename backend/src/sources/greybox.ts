@@ -223,7 +223,10 @@ export function greyboxCandidates(body, origin = DEFAULT_ORIGIN) {
             quality,
             ...(Number.isFinite(height) && height >= 200 ? { qualityLadder: [height], qualityOptions: 1 } : {}),
             claimedAudioLang: lang,
-            ...(languages.size ? { availableAudioLangs: [...languages] } : {}),
+            // `languages` is title-level coverage across separate rows, not the
+            // audio tracks inside this one stream. Do not advertise every dubbed
+            // row as a multi-audio manifest; liveness will fill this only when
+            // the candidate's own manifest proves multiple renditions.
             ...(tracks.length ? { subtitles: tracks } : {}),
             headers,
             rank: candidates.length,

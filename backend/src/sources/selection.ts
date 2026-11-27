@@ -23,6 +23,12 @@ export const MAX_LISTED_SOURCES = 200;
 export const MAX_SINGLE_TRACK_FALLBACKS = MAX_LISTED_SOURCES;
 export const MAX_SEPARATE_DUBS = 24;
 
+function singleAudioLanguage(candidate: RawStreamCandidate): string {
+  const verified = candidate.audioLang;
+  if (verified && normalizeLang(verified).code !== 'und') return verified;
+  return candidate.claimedAudioLang || verified || 'und';
+}
+
 /** Keep manifest-proven multilingual streams, diverse generic fallbacks, and
  * separately labelled language streams (not claimed as multi-audio).
  * A manifest/child check is evidence of reachability, not proof of full playback. */
@@ -80,8 +86,13 @@ export function selectPlaybackCandidates(
       tier:rankHint ? rankHint(c.url) : 0});
   }
   const preferred = preferredLang ? normalizeLang(preferredLang).code : 'und';
-  const matches = (item: typeof single[number]) => preferred !== 'und' &&
-    !!item.candidate.audioLang && item.candidate.audioLang.split('-')[0] === preferred.split('-')[0];
+  const matches = (item: typeof single[number]) => {
+    if (preferred === 'und') return false;
+    const direct = singleAudioLanguage(item.candidate);
+    return (!!direct && normalizeLang(direct).code.split('-')[0] === preferred.split('-')[0]) ||
+      (item.candidate.availableAudioLangs ?? []).some(lang =>
+        normalizeLang(lang).code.split('-')[0] === preferred.split('-')[0]);
+  };
   const variantOrder: ('sub' | 'dub')[] = preferred.split('-')[0] === 'en' ? ['dub', 'sub'] : ['sub', 'dub'];
   // Correctness before speed: a duration-verified lane outranks an unmeasured
   // one, and latency only decides between lanes of equal standing.
@@ -106,11 +117,11 @@ export function selectPlaybackCandidates(
   const selected: typeof single = ordered.slice(0, MAX_LISTED_SOURCES);
   // Preserve individually labelled dubs like the older working build. They
   // remain separate streams, never synthetic tracks in a multi-audio manifest.
-  const languages = new Set(selected.map(item => normalizeLang(item.candidate.audioLang || 'und').code).filter(lang => lang !== 'und'));
+  const languages = new Set(selected.map(item => normalizeLang(singleAudioLanguage(item.candidate)).code).filter(lang => lang !== 'und'));
   let dubsAdded = 0;
   for (const item of ordinarySingle) {
     if (!item.alive || selected.includes(item)) continue;
-    const lang = normalizeLang(item.candidate.audioLang || 'und').code;
+    const lang = normalizeLang(singleAudioLanguage(item.candidate)).code;
     if (lang === 'und' || languages.has(lang)) continue;
     selected.push(item); languages.add(lang);
     if (++dubsAdded >= MAX_SEPARATE_DUBS) break;

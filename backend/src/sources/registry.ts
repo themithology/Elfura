@@ -25,10 +25,10 @@ import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from 
 // spike re-resolving the same episode and the first one paying for it.
 const MAX_ADAPTER_CACHE_ENTRIES = 1024;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
-/** Extra time given to still-running adapters once the first source has candidates. */
-const EARLY_GRACE_MS = 700;
-/** No adapter may be cut before this point, however fast the first one was. */
-const MIN_JOIN_MS = 1400;
+/** Briefly collect a second source before the first response; slower adapters remain in the late wave. */
+const EARLY_GRACE_MS = 300;
+/** Do not hold first playback for slow discovery when the late-wave can append it. */
+const MIN_JOIN_MS = 800;
 /** Floor for a single verification probe window (ms), independent of the budget. */
 const PROBE_MIN_WINDOW_MS = 1200;
 /** One-off extension granted when nothing has verified at the end of the budget. */
@@ -73,6 +73,12 @@ const VERIFY_BREADTH_TARGET = 84;
 const MAX_LANES_PER_SOURCE = 200;
 const MAX_WAVE_TITLES = 256;
 const MAX_WAVE_BYTES = 32 * 1024 * 1024;
+function candidateSingleAudioLang(candidate) {
+    const verified = candidate.audioLang;
+    if (verified && normalizeLang(verified).code !== 'und')
+        return verified;
+    return candidate.claimedAudioLang || verified || 'und';
+}
 export class SourceRegistry {
     adapters;
     cfg;
@@ -787,10 +793,10 @@ export class SourceRegistry {
         // A brief opportunistic window retains metadata and skip markers when
         // they're already close, without making their upstream timeout additive.
         if (!lateOnly && remaining() > 0) {
-            // Once something is playable, metadata is pure polish: keep the window
-            // short so a slow TMDB call cannot add a second of dead air to a stream
-            // that is already verified. With nothing playable yet, wait longer.
-            const enrichmentWindow = verifiedBatch.verifiedLive > 0 ? 700 : 1200;
+            // Once something is playable, metadata is pure polish: give it only a
+            // tiny opportunistic window. Artwork, skip markers and late sources keep
+            // warming in the background; none should add dead air to first playback.
+            const enrichmentWindow = verifiedBatch.verifiedLive > 0 ? 150 : 1200;
             await Promise.race([
                 Promise.allSettled([mediaPromise, ...segmentTasks]),
                 wait(Math.min(enrichmentWindow, remaining())),
@@ -1149,7 +1155,7 @@ export class SourceRegistry {
             const requested = normalizeLang(params.preferredLang).code;
             const requestedPrimary = requested.split('-')[0];
             const carries = (option) => {
-                const lang = option.audioLang ?? option.claimedAudioLang;
+                const lang = candidateSingleAudioLang(option);
                 if (!lang)
                     return false;
                 if (lang.split('-')[0] === requestedPrimary)
@@ -1250,7 +1256,10 @@ export class SourceRegistry {
             .update(cand.fingerprint || cand.url)
             .digest('hex')
             .slice(0, 12);
-        const singleDubHint = !cand.multiAudio && cand.audioLang && cand.audioLang !== 'und' ? cand.audioLang : undefined;
+        const candidateAudioHint = candidateSingleAudioLang(cand);
+        const singleDubHint = !cand.multiAudio && candidateAudioHint && candidateAudioHint !== 'und'
+            ? candidateAudioHint
+            : undefined;
         const proxyOptions = {
             ...(cand.restrictedOrigin ? { restrictedOrigin: cand.restrictedOrigin } : {}),
             ...(singleDubHint ? { audioLang: singleDubHint } : {}),
@@ -1266,7 +1275,7 @@ export class SourceRegistry {
             lang: track.lang,
             label: track.label,
             ...(track.format ? { format: track.format } : {}),
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}) }))}`,
         })) : [];
         const latencyHintMs = typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
             ? Math.round(cand.latencyMs)
@@ -1276,7 +1285,7 @@ export class SourceRegistry {
             sourceId: adapter.id,
             label: displayLabel,
             type: cand.type,
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: cand.url, h: cand.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: cand.url, h: cand.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}) }))}`,
             quality: cand.quality || 'auto',
             ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
             ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
@@ -1295,7 +1304,7 @@ export class SourceRegistry {
                 ? { declaredBitrateBps: cand.declaredBitrateBps }
                 : {}),
             ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
-            ...(cand.claimedAudioLang && !cand.audioLang ? { claimedAudioLang: cand.claimedAudioLang } : {}),
+            ...(cand.claimedAudioLang && (!cand.audioLang || normalizeLang(cand.audioLang).code === 'und') ? { claimedAudioLang: cand.claimedAudioLang } : {}),
             ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
             ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
             ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),

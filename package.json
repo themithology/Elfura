@@ -18,7 +18,7 @@
     "typecheck": "npm run typecheck:player && npm run typecheck:backend",
     "typecheck:player": "tsc --noEmit",
     "typecheck:backend": "tsc -p backend/tsconfig.json --noEmit",
-    "test:zip": "npm run build:pterodactyl && python3 scripts/test-pterodactyl-zip.py"
+    "test:zip": "npm run build:pterodactyl && node backend/test/solo-language-source.mjs && node backend/test/resolver-balance-integration.mjs && node backend/test/startup-budget.mjs && python3 scripts/test-pterodactyl-zip.py"
   },
   "dependencies": {
     "tweetnacl": "^1.0.3",
