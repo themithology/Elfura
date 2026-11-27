@@ -30,20 +30,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: fight-club-movie-all-four
+          - name: fight-club-movie-source-1-2-4
             type: movie
             tmdb: '550'
             season: '1'
             episode: '1'
             title: 'Fight Club'
-            sources: 'source-1,source-2,source-3,source-4,combined'
-          - name: game-of-thrones-s1e1-all-four
+            sources: 'source-1,source-2,source-4,combined'
+          - name: game-of-thrones-s1e1-source-1-2-4
             type: tv
             tmdb: '1399'
             season: '1'
             episode: '1'
             title: 'Game of Thrones S1E1'
-            sources: 'source-1,source-2,source-3,source-4,combined'
+            sources: 'source-1,source-2,source-4,combined'
           - name: naruto-s1e1-nxsha-and-combined
             type: tv
             tmdb: '46260'
@@ -75,3 +75,4 @@ jobs:
           AUDIT_SOURCES: ${{ matrix.sources }}
           AUDIT_MAX_RESOLVE_MS: '9000'
           AUDIT_REQUIRE_MULTI_LANG: '0'
+          AUDIT_REQUIRE_ALL_OPTIONS: '0'

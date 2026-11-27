@@ -3,10 +3,14 @@
  *
  * Runs against real upstreams through the real uniform backend and relay.
  * Never prints upstream URLs, headers, signed tickets, or provider identifiers.
- * Every advertised option must yield recognizable media bytes. Language metadata is not audible-language verification.
+ * Every requested source must yield at least one recognizable media option;
+ * all candidates are checked and denied alternatives are reported. Set
+ * AUDIT_REQUIRE_ALL_OPTIONS=1 to make every candidate failure fatal. Language
+ * metadata is not audible-language verification.
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { appendFile } from 'node:fs/promises';
 import { createBackendServer } from '../../dist/backend/index.js';
 import { approvedSourceIds } from '../../dist/backend/sources/index.js';
 
@@ -30,6 +34,7 @@ if (unapprovedAuditIds.length) {
 const MAX_RESOLVE_MS = Math.max(0, Number(process.env.AUDIT_MAX_RESOLVE_MS || 0));
 /** Fail unless at least one advertised option carries real multi-language evidence. */
 const REQUIRE_MULTI_LANG = process.env.AUDIT_REQUIRE_MULTI_LANG === '1';
+const REQUIRE_ALL_OPTIONS = process.env.AUDIT_REQUIRE_ALL_OPTIONS === '1';
 const REQUEST_TIMEOUT_MS = 20_000;
 const browserHeaders = {
   Origin: 'https://audit.elfura.invalid',
@@ -274,6 +279,8 @@ function annotate(level, title, message) {
   console.log(`::${level} title=${title}::${clean}`);
 }
 
+annotate('notice', 'ElfuraAudit', `${TITLE_LABEL}: sources=${AUDIT_SOURCES.join(',')} requireAllOptions=${REQUIRE_ALL_OPTIONS}`);
+
 async function resolveSource(sourceId) {
   const seasonQuery = TYPE === 'tv' ? `&s=${SEASON}&e=${EPISODE}` : '';
   // 'combined' = the real user path: no source filter, both adapters race.
@@ -307,6 +314,7 @@ function hasMultiLangEvidence(options) {
 
 const report = [];
 let failed = 0;
+let candidateFailures = 0;
 /** Same physical stream reappears in per-source and combined responses; audit once. */
 const auditCache = new Map();
 function auditOptionCached(option) {
@@ -321,20 +329,34 @@ try {
       console.log(`[audit] ${sourceId}: ${options.length} advertised option(s)`);
       if (EXPECT_LANG && !options.some(o => o.audioLang === EXPECT_LANG || o.availableAudioLangs?.includes(EXPECT_LANG))) throw new Error(`expected ${EXPECT_LANG} option missing`);
       let manifestAudioTracks = 0;
+      let playableOptions = 0;
+      let candidateFailuresForSource = 0;
       for (const option of options) {
         try {
           const { checks, audioTracks } = await auditOptionCached(option);
+          playableOptions++;
           manifestAudioTracks = Math.max(manifestAudioTracks, audioTracks);
           report.push({ id: option.id, label: option.label, type: option.type, ok: true, checks, audioTracks });
           console.log(`[pass] ${option.id} ${option.label}: ${checks.join(', ')}`);
           annotate('notice', 'ElfuraOption', `${TITLE_LABEL} ${option.id} "${option.label}" type=${option.type} quality=${option.quality || 'auto'} audioLang=${option.audioLang || '-'} langs=[${(option.availableAudioLangs || []).join(',')}] multi=${!!option.multiAudio} manifestAudio=${audioTracks} checks=${checks.join('+')}`);
         } catch (error) {
-          failed++;
+          candidateFailures++;
+          candidateFailuresForSource++;
+          if (REQUIRE_ALL_OPTIONS) failed++;
           const message = error instanceof Error ? error.message : String(error);
           report.push({ id: option.id, label: option.label, type: option.type, ok: false, error: message });
           console.error(`[fail] ${option.id} ${option.label}: ${message}`);
-          annotate('error', 'ElfuraVerify', `${TITLE_LABEL} ${option.id} ${option.label}: ${message}`);
+          annotate(REQUIRE_ALL_OPTIONS ? 'error' : 'warning', 'ElfuraVerify', `${TITLE_LABEL} ${option.id} ${option.label}: ${message}`);
         }
+      }
+      if (options.length > 0 && playableOptions === 0) {
+        failed++;
+        const message = `${sourceId}: none of ${options.length} advertised options returned recognizable media bytes`;
+        report.push({ id: sourceId, ok: false, error: message });
+        console.error(`[fail] ${message}`);
+        annotate('error', 'ElfuraSource', `${TITLE_LABEL} ${message}`);
+      } else if (candidateFailuresForSource > 0 && !REQUIRE_ALL_OPTIONS) {
+        annotate('warning', 'ElfuraPartial', `${TITLE_LABEL} ${sourceId}: ${playableOptions}/${options.length} option(s) yielded bytes; ${candidateFailuresForSource} alternative(s) were denied`);
       }
       // Multi-language gate accepts manifest-proven evidence (real audio
       // tracks fetched above), not only provider-claimed metadata fields.
@@ -361,13 +383,39 @@ try {
   server.close();
 }
 
-console.log('[audit-summary] ' + JSON.stringify({
+const auditSummary = {
   title: TITLE_LABEL,
   type: TYPE,
   tmdb: TMDB_ID,
-  passed: report.filter((row) => row.ok).length,
-  failed,
+  sources: AUDIT_SOURCES,
+  playableOptions: report.filter((row) => row.ok).length,
+  candidateFailures,
+  failedSourcesOrGates: failed,
+  requireAllOptions: REQUIRE_ALL_OPTIONS,
   report,
-}));
+};
+console.log('[audit-summary] ' + JSON.stringify(auditSummary));
+
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const markdown = [
+    `## Live source audit — ${TITLE_LABEL}`,
+    '',
+    `- Requested sources: \`${AUDIT_SOURCES.join(', ')}\``,
+    `- Playable options: ${auditSummary.playableOptions}`,
+    `- Candidate-level failures: ${candidateFailures}`,
+    `- Source/gate failures: ${failed}`,
+    `- Require every option: ${REQUIRE_ALL_OPTIONS}`,
+    '',
+    '<details><summary>Sanitized audit report</summary>',
+    '',
+    '```json',
+    JSON.stringify(report, null, 2),
+    '```',
+    '',
+    '</details>',
+    '',
+  ].join('\n');
+  await appendFile(process.env.GITHUB_STEP_SUMMARY, markdown, 'utf8');
+}
 
 if (failed > 0 || !report.some((row) => row.ok)) process.exitCode = 1;

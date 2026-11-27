@@ -102,6 +102,7 @@ export function createBalancedPlaybackResolver(
     }, interval);
     timer.unref();
   };
+  log('[elfura-resolver] periodic health checks enabled; no speculative hedges');
   schedule();
 
   return {
