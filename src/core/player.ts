@@ -496,8 +496,8 @@ export class ElfuraPlayer {
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
     this.manualAggregatorGroup = opt.traits?.includes('aggregator') ? opt.sourceId : null;
-    if (opt.audioLang && opt.audioLang !== 'und') {
-      this.desiredAudioLang = canonLang(opt.audioLang);
+    if ((opt.audioLang ?? opt.claimedAudioLang) && canonLang(opt.audioLang ?? opt.claimedAudioLang) !== 'und') {
+      this.desiredAudioLang = canonLang(opt.audioLang ?? opt.claimedAudioLang);
     } else if (
       this.desiredAudioLang &&
       (opt.multiAudio ||
@@ -573,6 +573,7 @@ export class ElfuraPlayer {
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+          (s.claimedAudioLang && matchScore(lang, s.claimedAudioLang) >= 0) ||
           (s.availableAudioLangs ?? []).some((l) => matchScore(lang, l) >= 0) ||
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         // Keep Multi-Audio streams whose internal tracks haven't been ruled out right in Tier 0
@@ -581,7 +582,7 @@ export class ElfuraPlayer {
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang);
+      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
@@ -616,13 +617,14 @@ export class ElfuraPlayer {
         const hasConfirmedMatch =
           (this.currentSource?.id === s.id && this.desiredAudioLang === lang) ||
           (s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
+          (s.claimedAudioLang && matchScore(lang, s.claimedAudioLang) >= 0) ||
           (s.availableAudioLangs ?? []).some((l) => matchScore(lang, l) >= 0) ||
           (s.audioTracks ?? []).some((a) => matchScore(lang, a.lang) >= 0);
         if (hasConfirmedMatch || s.multiAudio) return 0;
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang);
+      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
