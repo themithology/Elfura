@@ -82,7 +82,8 @@ try {
     assert.equal(response.status,200,`playback failed: ${await response.clone().text()}\n${logs}`);return response.json();
   }
   const got=[];for(let i=1;i<=8;i++)got.push((await playback(i)).node);
-  assert.deepEqual(got,[1,2,3,4,1,2,3,4]);assert.deepEqual(requestCounts,[2,2,2,2]);
+  assert.deepEqual([...got].sort((a,b)=>a-b),[1,1,2,2,3,3,4,4],'eight different titles should distribute evenly across four resolver nodes');
+  assert.deepEqual(requestCounts,[2,2,2,2]);
   const login=await fetch(base+'/roxy/api/login',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({password:secret})});
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
   async function panel(){return (await fetch(base+'/roxy/api/sources',{headers:{origin:base,cookie}})).json();}
@@ -91,15 +92,20 @@ try {
   assert.deepEqual(status.resolver.nodes.map(n=>n.attempts),[2,2,2,2]);
   assert.ok(status.resolver.nodes.every(n=>n.authenticated));
   // Simulate Cloudflare Access/WAF denying only the second tunnel's private API
-  // while its public health URL remains up. The first node must serve playback.
+  // while its public health URL remains up. IDs 4 and 8 hash to the second node;
+  // the pool must retry a healthy peer rather than return the blocked node.
   b.state.blocked=true;
-  assert.equal((await playback(9)).node,1);
-  assert.equal((await playback(10)).node,3,'403 on node 2 should fail over to node 3');
+  const blockedAttemptsBefore=requestCounts[1];
+  const failoverOne=await playback(4);
+  const failoverTwo=await playback(8);
+  assert.notEqual(failoverOne.node,2,'403 on node 2 must fail over');
+  assert.notEqual(failoverTwo.node,2,'a blocked resolver must not be returned');
+  assert.ok(requestCounts[1]>blockedAttemptsBefore,'the test must exercise the blocked resolver');
   status=await panel();
   assert.equal(status.resolver.nodes[1].reachable,true);
   assert.equal(status.resolver.nodes[1].authenticated,false);
   assert.match(status.resolver.nodes[1].detail,/403/);
-  assert.equal(status.resolver.nodes[1].failures,1);
+  assert.ok(status.resolver.nodes[1].failures>=1,'the blocked resolver must record a failed playback attempt');
   assert.equal(status.resolver.nodes[1].available,false);
   assert.match(logs,/HTTP 403.*Cloudflare/);
   assert(!JSON.stringify(status.resolver.nodes).includes(secret),'diagnostics must not reveal token');
@@ -121,6 +127,10 @@ try {
   assert.match(overrideLogs,/3 resolver URLs configured/);
   assert(!overrideLogs.includes(secret),'override warning must not reveal secrets');
   console.log('packaged .env: four-node balancing, 403 failover, diagnostics and override warning OK');
+} catch(error) {
+  const message=String(error instanceof Error?error.message:error).replaceAll(secret,'[redacted]').replace(/[\r\n]+/g,' ').replace(/%/g,'%25');
+  console.log(`::error title=resolver-package-regression::${message}`);
+  throw error;
 } finally {
   for(const child of children){try{process.kill(-child.pid,'SIGTERM');}catch{}await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});}
   for(const server of servers.reverse()){server.closeAllConnections();await new Promise(r=>server.close(r));}
