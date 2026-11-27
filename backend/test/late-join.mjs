@@ -53,8 +53,10 @@ try {
   assert(earlyMs < 1500, `late pass must not wait for unfinished sources: ${earlyMs}ms`);
   assert(early === null || !early.sources.some((s) => s.sourceId === 'source-14'));
 
-  // After it finishes, the same late pass returns it from RAM cache.
-  await sleep(4200);
+  // After it finishes, the same late pass returns it from RAM cache. Measure
+  // from the original discovery start so a faster first response does not make
+  // this wait expire before the provider's six-second delay does.
+  await sleep(Math.max(0, 6200 - (Date.now() - started)));
   const lateStarted = Date.now();
   const late = await registry.resolvePlayback({ type: 'movie', tmdbId: '424242', late: true });
   const lateMs = Date.now() - lateStarted;

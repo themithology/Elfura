@@ -4,6 +4,13 @@ A small, fast, embeddable HLS/DASH player. JW-Player-grade restraint on the
 outside; a fully dynamic input schema, real multi-language audio and a
 completely customisable subtitle renderer underneath.
 
+### Icon attribution
+
+Player chrome includes an inline subset of the **Solar** icon set by **480 Design**,
+via [Iconify](https://icon-sets.iconify.design/solar/). Source: [Solar Figma community
+file](https://www.figma.com/community/file/1166831539721848736). The SVGs are adapted
+to local path snippets; the icon artwork is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 **Size:** initial chunk **22.9 KB gzip**. `hls.js` and `dash.js` are separate
 chunks loaded on demand — an HLS title never downloads the DASH engine.
 

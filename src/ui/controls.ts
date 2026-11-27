@@ -17,10 +17,10 @@
  *     cartoony title fallback), `PAUSED`, italic `"Tagline"`, `Year • ★ Rating`,
  *     and synopsis paragraph.
  *   - Top-right `Quality` and `Screen Lock`; bottom-navigation Episodes with
- *     thumbnail drawer; integrated current-language Audio & Subtitles; inline
- *     capsule-thumb seekbar; animated Play/Pause & 4-corner Fullscreen; left/
- *     right double-tap 10s skip; press-and-hold for 2× speed; zero center skip
- *     clutter.
+ *     thumbnail drawer; integrated current-language Audio & Subtitles; neutral,
+ *     cut-marked seekbar with tabular time; Solar Bold controls and Duotone panel
+ *     headings; springy Play/Pause, replayable skip twists and sliding segmented
+ *     style controls; 4-corner Fullscreen, double-tap skips and hold-for-2×.
  *
  * Strictly zero hardcoded audio tracks or static language lists.
  */
@@ -31,6 +31,7 @@ import { FONT_CHOICES, opacityToTransparency, transparencyToOpacity } from '../s
 import { canonLang, languageLabel, type AudioTrack } from '../core/audio';
 import { SubtitleRenderer } from '../subs/renderer';
 import { mountDvdBounce, type DvdBounce } from './dvd-bounce';
+import { solarIcon } from './solar-icons';
 
 /* ---------------------------------------------------------------------- */
 /* Brand Mark (`icon-maskable-512.png`, lossless 64x64 RGBA, 377 bytes)   */
@@ -50,17 +51,6 @@ const skipBarSvg = (dir: 'back' | 'fwd', step: number) =>
     ? `<span class="elf-skip10-inner" data-dir="back"><svg class="elf-skip10-chev" viewBox="0 0 20 20" fill="none"><path d="M10.8 4.5 5.3 10l5.5 5.5M16.2 4.5 10.7 10l5.5 5.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="elf-skip10-num">${step}</span></span>`
     : `<span class="elf-skip10-inner" data-dir="fwd"><span class="elf-skip10-num">${step}</span><svg class="elf-skip10-chev" viewBox="0 0 20 20" fill="none"><path d="M3.8 4.5 9.3 10l-5.5 5.5M9.2 4.5 14.7 10l-5.5 5.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></span>`;
 
-const PLAY_PAUSE_MORPH_SVG = `
-<svg class="elf-pp-svg" viewBox="0 0 24 24" aria-hidden="true">
-  <g class="elf-pp-play">
-    <path d="M7.2 4.6c0-1 .9-1.6 1.8-1.1l11.4 7.4c.8.5.8 1.7 0 2.2L9 20.5c-.9.5-1.8-.1-1.8-1.1V4.6z" fill="currentColor"/>
-  </g>
-  <g class="elf-pp-pause">
-    <rect x="6" y="4" width="4.4" height="16" rx="1.5" fill="currentColor"/>
-    <rect x="13.6" y="4" width="4.4" height="16" rx="1.5" fill="currentColor"/>
-  </g>
-</svg>`;
-
 const FULLSCREEN_ANIM_SVG = `
 <svg class="elf-fs-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
   <path class="elf-fs-c elf-fs-tl" d="M4 9V4h5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -70,50 +60,50 @@ const FULLSCREEN_ANIM_SVG = `
 </svg>`;
 
 const I = {
-  playSolid:
-    '<svg viewBox="0 0 24 24"><path d="M7.5 4.8c0-1 .9-1.6 1.8-1.1l11.2 7.2c.8.5.8 1.7 0 2.2L9.3 20.3c-.9.5-1.8-.1-1.8-1.1V4.8z" fill="currentColor"/></svg>',
-  pauseSolid:
-    '<svg viewBox="0 0 24 24"><rect x="6.2" y="4.2" width="4.3" height="15.6" rx="1.4" fill="currentColor"/><rect x="13.5" y="4.2" width="4.3" height="15.6" rx="1.4" fill="currentColor"/></svg>',
-  volHigh:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6.5 8.8H3.8a1 1 0 0 0-1 1v4.4a1 1 0 0 0 1 1h2.7L11 19V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path class="elf-vol-w1" d="M15.2 9.2a4.2 4.2 0 0 1 0 5.6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path class="elf-vol-w2" d="M18.2 6.6a7.8 7.8 0 0 1 0 10.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  volMute:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M11 5 6.5 8.8H3.8a1 1 0 0 0-1 1v4.4a1 1 0 0 0 1 1h2.7L11 19V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m15.5 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  qualityTv:
-    '<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="12.5" rx="2.4" stroke="currentColor" stroke-width="2"/><path d="M8.5 20h7M12 16.5V20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.4 8.1v4.3l3.7-2.15-3.7-2.15z" fill="currentColor"/></svg>',
-  audioSubsBox:
-    '<svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4.5" width="18" height="15" rx="2.8" stroke="currentColor" stroke-width="2"/><path d="M7 10h3.2M13 10h4M7 14h6.2M15.8 14H17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  pip:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M21 11V6.8A2.3 2.3 0 0 0 18.7 4.5H5.3A2.3 2.3 0 0 0 3 6.8v10.4a2.3 2.3 0 0 0 2.3 2.3H11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="13" y="13" width="8" height="6.5" rx="1.6" stroke="currentColor" stroke-width="2"/></svg>',
-  lockOpen:
-    '<svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4" stroke="currentColor" stroke-width="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 6.7-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  lockClosed:
-    '<svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10.5" width="15" height="10" rx="2.4" stroke="currentColor" stroke-width="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  layers:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4zm-8.5 8.5L12 17l8.5-4.5M3.5 16.5 12 21l8.5-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  gauge:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M4.8 18a9 9 0 1 1 14.4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="m12 13 4-4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/><circle cx="12" cy="13" r="1.6" fill="currentColor"/></svg>',
-  langSpark:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M4 6h10M9 4v2m3.5 0c-.5 4.2-3 7.6-6.8 9.6M6.8 9.5c1.3 2.2 3.4 4.2 6.2 5.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="m13.5 19.5 3.3-8.5 3.3 8.5M14.7 17h4.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  close:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>',
-  check:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="m5 12.5 4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  back:
-    '<svg viewBox="0 0 24 24" fill="none"><path d="M19 12H5m6-6-6 6 6 6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  star:
-    '<svg viewBox="0 0 24 24"><path d="m12 2.6 2.84 5.76 6.36.92-4.6 4.48 1.09 6.33L12 17.1l-5.69 2.99 1.09-6.33-4.6-4.48 6.36-.92L12 2.6z" fill="currentColor"/></svg>',
+  playSolid: solarIcon('play-bold'),
+  pauseSolid: solarIcon('pause-bold'),
+  volHigh: solarIcon('volume-loud-bold'),
+  volMute: solarIcon('volume-cross-bold'),
+  qualityTv: solarIcon('high-definition-bold-duotone'),
+  audioSubsBox: solarIcon('subtitles-bold-duotone'),
+  pip: solarIcon('pip-bold'),
+  lockOpen: solarIcon('lock-keyhole-minimalistic-unlocked-bold'),
+  lockClosed: solarIcon('lock-keyhole-minimalistic-bold'),
+  layers: solarIcon('server-bold-duotone'),
+  gauge: solarIcon('playback-speed-bold-duotone'),
+  langSpark: solarIcon('translation-bold-duotone'),
+  close: solarIcon('close-circle-bold-duotone'),
+  check: solarIcon('check-circle-bold'),
+  back: solarIcon('arrow-left-bold'),
+  star: solarIcon('star-bold'),
   doubleChevRight:
     '<svg viewBox="0 0 24 24" fill="none"><path class="elf-c1" d="m6 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="elf-c2" d="m13 7 5 5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   doubleChevLeft:
     '<svg viewBox="0 0 24 24" fill="none"><path class="elf-c2" d="m18 7-5 5 5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="elf-c1" d="m11 7-5 5 5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  episodesTray:
-    '<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="4" width="17" height="16" rx="3.2" stroke="currentColor" stroke-width="2"/><path d="M3.8 14h4.7a1.5 1.5 0 0 1 1.3.8l.4.8a1.5 1.5 0 0 0 1.3.8h1a1.5 1.5 0 0 0 1.3-.8l.4-.8a1.5 1.5 0 0 1 1.3-.8h4.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  playingScreen:
-    '<svg viewBox="0 0 20 20" fill="none"><rect x="2.2" y="3.5" width="15.6" height="10.8" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M6.8 17.2h6.4M10 14.3v2.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 7v3.8l3.3-1.9L8.5 7z" fill="currentColor"/></svg>',
-  info:
-    '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 11v6M12 7.2v.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-  nextEp:
-    '<svg viewBox="0 0 20 20" fill="none"><path d="M4.5 4.6c0-.8.8-1.3 1.5-.8l7.5 5.4c.6.4.6 1.2 0 1.6L6 16.2c-.7.5-1.5 0-1.5-.8V4.6z" fill="currentColor"/><path d="M15.5 4.8v10.4" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>',
+  episodesTray: solarIcon('video-library-bold'),
+  playingScreen: solarIcon('play-bold'),
+  info: solarIcon('info-circle-bold-duotone'),
+  nextEp: solarIcon('skip-next-bold'),
+  rewindBack5: solarIcon('rewind-5-seconds-back-bold'),
+  rewindForward5: solarIcon('rewind-5-seconds-forward-bold'),
+  rewindBack10: solarIcon('rewind-10-seconds-back-bold'),
+  rewindForward10: solarIcon('rewind-10-seconds-forward-bold'),
+  rewindBack15: solarIcon('rewind-15-seconds-back-bold'),
+  rewindForward15: solarIcon('rewind-15-seconds-forward-bold'),
+  headphonesDuotone: solarIcon('headphones-round-bold-duotone'),
+  subtitlesDuotone: solarIcon('subtitles-bold-duotone'),
+  paletteDuotone: solarIcon('palette-bold-duotone'),
+  textFieldDuotone: solarIcon('text-field-bold-duotone'),
+  positionDuotone: solarIcon('maximize-square-minimalistic-bold-duotone'),
+};
+
+const rewindIcon = (direction: 'back' | 'forward', step: number): string => {
+  const rewind = {
+    back: { 5: I.rewindBack5, 10: I.rewindBack10, 15: I.rewindBack15 },
+    forward: { 5: I.rewindForward5, 10: I.rewindForward10, 15: I.rewindForward15 },
+  } as const;
+  if (step === 5 || step === 10 || step === 15) return rewind[direction][step];
+  return skipBarSvg(direction === 'back' ? 'back' : 'fwd', step);
 };
 
 export function fmtTime(s: number): string {
@@ -317,6 +307,8 @@ export class PlayerUI {
   private searchingTimer = 0;
   private hasRenderedAudioSelection = false;
   private flashTimer = 0;
+  private skipTwistTimers = new Map<HTMLButtonElement, number>();
+  private segmentObservers: ResizeObserver[] = [];
   private dragging = false;
 
   /* Gesture state (double-tap 10s + hold for 2x + two-finger pinch-to-zoom) */
@@ -594,15 +586,15 @@ export class PlayerUI {
     const step = Number(cfg.skipStep ?? 10);
     this.bar = el('div', 'elf-bar');
 
-    this.back10 = el('button', 'elf-btn elf-skip10-btn', skipBarSvg('back', step)) as HTMLButtonElement;
+    this.back10 = el('button', 'elf-btn elf-skip10-btn', rewindIcon('back', step)) as HTMLButtonElement;
     this.back10.title = `Rewind ${step} seconds`;
     this.back10.setAttribute('aria-label', `Rewind ${step} seconds`);
 
-    this.playBtn = el('button', 'elf-btn elf-play-btn', PLAY_PAUSE_MORPH_SVG) as HTMLButtonElement;
+    this.playBtn = el('button', 'elf-btn elf-play-btn', I.playSolid) as HTMLButtonElement;
     this.playBtn.title = 'Play / Pause';
     this.playBtn.setAttribute('aria-label', 'Play');
 
-    this.fwd10 = el('button', 'elf-btn elf-skip10-btn', skipBarSvg('fwd', step)) as HTMLButtonElement;
+    this.fwd10 = el('button', 'elf-btn elf-skip10-btn', rewindIcon('forward', step)) as HTMLButtonElement;
     this.fwd10.title = `Forward ${step} seconds`;
     this.fwd10.setAttribute('aria-label', `Forward ${step} seconds`);
 
@@ -1154,14 +1146,8 @@ export class PlayerUI {
       this.player.toggle();
     };
 
-    this.back10.onclick = () => {
-      this.triggerSkipBtnAnim(this.back10);
-      this.player.skipBy(-step);
-    };
-    this.fwd10.onclick = () => {
-      this.triggerSkipBtnAnim(this.fwd10);
-      this.player.skipBy(step);
-    };
+    this.back10.onclick = () => this.skipAndTwist('back', -step);
+    this.fwd10.onclick = () => this.skipAndTwist('fwd', step);
 
     this.volBtn.onclick = () => {
       this.triggerBtnPop(this.volBtn);
@@ -1287,6 +1273,7 @@ export class PlayerUI {
       shell.dataset.pauseScreen = 'false';
       shell.dataset.playing = 'true';
       shell.dataset.paused = 'false';
+      this.playBtn.innerHTML = I.pauseSolid;
       this.playBtn.setAttribute('aria-label', 'Pause');
 
       // Brand pill: 100% opacity when started, then fades smoothly while playing!
@@ -1313,6 +1300,7 @@ export class PlayerUI {
       shell.dataset.paused = 'true';
       // When paused: brand logo & TheOGPirateBot opacity is 100%!
       shell.dataset.brandFull = 'true';
+      this.playBtn.innerHTML = I.playSolid;
       this.playBtn.setAttribute('aria-label', 'Play');
       this.flashIcon(I.pauseSolid);
 
@@ -1365,6 +1353,9 @@ export class PlayerUI {
       this.rebuildPanelIfOpen();
       const ev = d as { label?: string; manual?: boolean } | undefined;
       if (ev?.manual && ev.label) this.showToast(ev.label);
+    });
+    bus.on('server:switch', () => {
+      this.showToast('Server failed. Trying another option…', 3500, 'warn');
     });
     bus.on('qualityLevels', () => {
       this.syncCapabilities();
@@ -1692,7 +1683,7 @@ export class PlayerUI {
 
   private triggerDoubleTapSkip(side: 'left' | 'right', step: number): void {
     const delta = side === 'left' ? -step : step;
-    this.player.skipBy(delta);
+    this.skipAndTwist(side === 'left' ? 'back' : 'fwd', delta);
 
     this.dtapAccumSec += step;
     clearTimeout(this.dtapResetTimer);
@@ -1897,10 +1888,24 @@ export class PlayerUI {
     btn.dataset.pop = 'true';
   }
 
-  private triggerSkipBtnAnim(btn: HTMLElement): void {
-    btn.dataset.kick = 'false';
-    void btn.offsetWidth;
-    btn.dataset.kick = 'true';
+  private skipAndTwist(direction: 'back' | 'fwd', delta: number): void {
+    const button = direction === 'back' ? this.back10 : this.fwd10;
+    const previousTimer = this.skipTwistTimers.get(button);
+    if (previousTimer !== undefined) clearTimeout(previousTimer);
+    delete button.dataset.twist;
+    void button.offsetWidth;
+    button.dataset.twist = direction;
+    const timer = window.setTimeout(() => {
+      if (button.dataset.twist === direction) delete button.dataset.twist;
+      this.skipTwistTimers.delete(button);
+    }, 460);
+    this.skipTwistTimers.set(button, timer);
+    this.player.skipBy(delta);
+  }
+
+  private clearSegmentObservers(): void {
+    for (const observer of this.segmentObservers) observer.disconnect();
+    this.segmentObservers = [];
   }
 
   /* ------------------------------------------------------------------ */
@@ -2030,8 +2035,8 @@ export class PlayerUI {
       if (this.locked) return;
       const d = Number.isFinite(v.duration) ? v.duration : 0;
       const step = Number(this.player.config.skipStep ?? 10);
-      if (e.key === 'ArrowRight') this.player.skipBy(step);
-      else if (e.key === 'ArrowLeft') this.player.skipBy(-step);
+      if (e.key === 'ArrowRight') this.skipAndTwist('fwd', step);
+      else if (e.key === 'ArrowLeft') this.skipAndTwist('back', -step);
       else if (e.key === 'Home') this.player.seek(0);
       else if (e.key === 'End') this.player.seek(d);
       else return;
@@ -2367,6 +2372,7 @@ export class PlayerUI {
   private renderPanelBody(): void {
     this.previewRenderer?.destroy();
     this.previewRenderer = null;
+    this.clearSegmentObservers();
     this.panelBody.replaceChildren();
 
     switch (this.panelMode) {
@@ -2399,12 +2405,12 @@ export class PlayerUI {
 
     /* ---- Column 1: Dynamic Audio Tracks + Phone Speaker Boost (200%) ---- */
     const colAudio = el('div', 'elf-as-col');
-    colAudio.appendChild(el('div', 'elf-col-heading', 'Audio'));
+    colAudio.appendChild(this.drawerHeading('Audio', I.headphonesDuotone));
     const listAudio = el('div', 'elf-col-list');
     if (audioTracks.length > 0) {
       for (const t of audioTracks) {
         const selected = st.audioId ? t.id === st.audioId : t.lang === st.audioLang;
-        const row = this.row(t.label, selected ? (t.providerHint ? 'Selected · Provider label' : 'Selected') : t.providerHint ? 'Provider label' : '', selected, () => {
+        const row = this.row(t.label, selected ? 'Selected' : '', selected, () => {
           this.hasRenderedAudioSelection = true;
           void this.player.setAudio(t.id);
           this.renderPanelBody();
@@ -2464,7 +2470,7 @@ export class PlayerUI {
 
     /* ---- Column 2: Dynamic Subtitles + Subtitle Sync Fixer (-0.5s / +0.5s) ---- */
     const colSubs = el('div', 'elf-as-col');
-    colSubs.appendChild(el('div', 'elf-col-heading', 'Subtitles'));
+    colSubs.appendChild(this.drawerHeading('Subtitles', I.subtitlesDuotone));
     const listSubs = el('div', 'elf-col-list');
     listSubs.appendChild(
       this.row('Off', '', !st.subtitleId && !st.subtitleLang, () => {
@@ -2559,7 +2565,13 @@ export class PlayerUI {
     const st = this.player.getState();
     for (const s of this.player.getSources()) {
       const qualityBadge = s.quality && s.quality !== 'auto' && !s.label.toUpperCase().includes(s.quality.toUpperCase()) ? s.quality.toUpperCase() : '';
-      const audioBadge = s.audioLang && canonLang(s.audioLang) !== 'und' ? languageLabel(s.audioLang) : '';
+      const langCode =
+        s.audioLang && canonLang(s.audioLang) !== 'und'
+          ? s.audioLang
+          : s.claimedAudioLang && canonLang(s.claimedAudioLang) !== 'und'
+            ? s.claimedAudioLang
+            : '';
+      const audioBadge = langCode ? languageLabel(langCode) : 'Unknown';
       const languageSuffix = audioBadge && !s.label.toLowerCase().includes(audioBadge.toLowerCase()) ? audioBadge : '';
       // Only the active engine knows which manifest representations the
       // current browser can actually select. Do not promise a ladder for an
@@ -2719,8 +2731,27 @@ export class PlayerUI {
 
   /* --------------------------- Field Helpers ------------------------ */
 
+  private drawerHeading(label: string, icon: string): HTMLElement {
+    const heading = el('div', 'elf-col-heading elf-col-heading-with-icon');
+    heading.innerHTML = `<span class="elf-col-heading-ico">${icon}</span><span>${esc(label)}</span>`;
+    return heading;
+  }
+
   private label(text: string): void {
-    this.panelBody.appendChild(el('div', 'elf-section-label', esc(text)));
+    const icons: Record<string, string> = {
+      'Color & Opacity': I.paletteDuotone,
+      Typography: I.textFieldDuotone,
+      'Edge & Shadow': I.textFieldDuotone,
+      Position: I.positionDuotone,
+    };
+    const icon = icons[text];
+    const heading = el('div', icon ? 'elf-section-label elf-section-label-with-icon' : 'elf-section-label');
+    if (icon) {
+      heading.innerHTML = `<span class="elf-section-label-ico">${icon}</span><span>${esc(text)}</span>`;
+    } else {
+      heading.textContent = text;
+    }
+    this.panelBody.appendChild(heading);
   }
 
   private slider(
@@ -2774,16 +2805,47 @@ export class PlayerUI {
     const wrap = el('div', 'elf-field');
     wrap.appendChild(el('div', 'elf-field-head', `<span class="elf-field-label">${esc(label)}</span>`));
     const group = el('div', 'elf-seg-group');
-    for (const o of opts) {
-      const b = el('button', '', esc(o.label)) as HTMLButtonElement;
-      b.dataset.on = String(o.value === value);
-      b.onclick = () => {
-        group.querySelectorAll('button').forEach((x) => (x.dataset.on = 'false'));
-        b.dataset.on = 'true';
-        onChange(o.value);
-      };
-      group.appendChild(b);
+    const activeIndex = Math.max(0, opts.findIndex((option) => option.value === value));
+    group.style.setProperty('--seg-count', String(Math.max(1, opts.length)));
+    group.style.setProperty('--seg-idx', String(activeIndex));
+
+    const glider = el('span', 'elf-pill-glider');
+    glider.setAttribute('aria-hidden', 'true');
+    group.appendChild(glider);
+
+    const syncGliderPosition = () => {
+      const selected = group.querySelector<HTMLButtonElement>("button[data-on='true']");
+      if (!selected) return;
+      // offset* values stay in the group's untransformed CSS coordinate space,
+      // unlike client rects captured while the spring panel is still scaling in.
+      group.style.setProperty('--glider-x', `${selected.offsetLeft}px`);
+      group.style.setProperty('--glider-width', `${selected.offsetWidth}px`);
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(syncGliderPosition);
+      observer.observe(group);
+      this.segmentObservers.push(observer);
     }
+
+    opts.forEach((option, index) => {
+      const button = el('button', '', esc(option.label)) as HTMLButtonElement;
+      button.type = 'button';
+      button.dataset.on = String(index === activeIndex);
+      button.setAttribute('aria-pressed', String(index === activeIndex));
+      button.onclick = () => {
+        group.style.setProperty('--seg-idx', String(index));
+        group.querySelectorAll<HTMLButtonElement>('button').forEach((item, itemIndex) => {
+          const selected = itemIndex === index;
+          item.dataset.on = String(selected);
+          item.setAttribute('aria-pressed', String(selected));
+        });
+        syncGliderPosition();
+        onChange(option.value);
+      };
+      group.appendChild(button);
+    });
+
+    window.requestAnimationFrame(syncGliderPosition);
     wrap.appendChild(group);
     return wrap;
   }
@@ -2944,7 +3006,7 @@ export class PlayerUI {
         'span',
         'elf-epw-status',
         isPlaying
-          ? `<span class="elf-epw-live">Playing</span><span class="elf-epw-ico">${I.playingScreen}</span>`
+          ? `<span class="elf-epw-live">Playing</span><span class="elf-epw-ico">${I.check}</span>`
           : `<span class="elf-epw-queue">Queue</span><span class="elf-epw-dash">—</span>`,
       );
 
@@ -3080,6 +3142,9 @@ export class PlayerUI {
     clearTimeout(this.toastTimer);
     clearTimeout(this.searchingTimer);
     clearTimeout(this.flashTimer);
+    for (const timer of this.skipTwistTimers.values()) clearTimeout(timer);
+    this.skipTwistTimers.clear();
+    this.clearSegmentObservers();
     clearTimeout(this.singleTapTimer);
     clearTimeout(this.dtapResetTimer);
     clearTimeout(this.dtapHideLeftTimer);

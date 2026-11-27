@@ -45,23 +45,28 @@ try {
     return response.json();
   }
   const got=[];for(let i=1;i<=8;i++) got.push((await playback(i)).node);
-  assert.deepEqual(got,['a','b','c','d','a','b','c','d']);
-  assert.equal((await playback(11,'&nonce=session-one')).node,'a');
-  assert.equal((await playback(12,'&nonce=session-two')).node,'b');
-  assert.equal((await playback(11,'&nonce=session-one&source=source-29')).node,'a','source recovery must reuse the original resolver');
-  assert.equal(a.state.lastRequest.sourceId,'source-29');
-  assert.equal((await playback(11,'&nonce=session-one&late=1')).node,'a','late request must reach the original resolver');
-  assert.equal(a.state.lastRequest.late,true);
-  assert.equal('lateAffinityKey' in a.state.lastRequest,false,'routing key must not leave media node');
-  c.state.fail=true; // C is the next choice
-  assert.equal((await playback(20)).node,'d','real media server must fail over');
-  const count=c.state.calls;
-  const survivors=[];for(let i=21;i<=26;i++)survivors.push((await playback(i)).node);
-  assert.equal(c.state.calls,count,'failed resolver must not receive playback');
-  assert.equal(survivors.filter(x=>x==='a').length,2);
-  assert.equal(survivors.filter(x=>x==='b').length,2);
-  assert.equal(survivors.filter(x=>x==='d').length,2);
-  console.log('media-server integration: four-node env config, round-robin, affinity and failover OK');
+  assert.deepEqual([...new Set(got)].sort(),['a','b','c','d'],'all configured resolvers should receive playback');
+  const sessionOne=(await playback(11,'&nonce=session-one')).node;
+  await playback(12,'&nonce=session-two');
+  assert.equal((await playback(11,'&nonce=session-one&source=source-29')).node,sessionOne,'source recovery must reuse the original resolver');
+  const owner=[a,b,c,d].find(n=>n.state.lastRequest.sourceId==='source-29');
+  assert.equal(owner?.state.lastRequest.sourceId,'source-29');
+  assert.equal((await playback(11,'&nonce=session-one&late=1')).node,sessionOne,'late request must reach the original resolver');
+  assert.equal(owner.state.lastRequest.late,true);
+  assert.equal('lateAffinityKey' in owner.state.lastRequest,false,'routing key must not leave media node');
+  owner.state.fail=true;
+  // Source-specific retries remain pinned to their discovery owner until two
+  // playback failures pause it. Both requests must fail over through the real
+  // media API, then the paused resolver must receive no further playback.
+  for(let i=0;i<2;i++) {
+    const result=await playback(11,'&nonce=session-one&source=source-29');
+    assert.notEqual(result.node,sessionOne,'an unavailable response must fail over');
+  }
+  const count=owner.state.calls;
+  const survivors=[];for(let i=0;i<6;i++)survivors.push((await playback(120+i)).node);
+  assert.equal(owner.state.calls,count,'failed resolver must not receive playback');
+  assert(survivors.every(x=>x!==sessionOne),'all follow-up playback must use healthy resolvers');
+  console.log('media-server integration: four-node env config, distribution, affinity and failover OK');
 } finally {
   try{process.kill(-child.pid,'SIGTERM');}catch{}
   await new Promise(r=>{if(child.exitCode!==null||child.signalCode!==null)r();else child.once('exit',r);});

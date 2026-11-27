@@ -1057,6 +1057,13 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const headerTok = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
       const pltoken = headerTok || pick(['pltoken']);
       const nonce = pick(['nonce']) || undefined;
+      // Keep source recovery and late waves on the resolver that owns this
+      // playback's discovery. The raw nonce stays on the media node; only its
+      // scoped digest is passed through the in-process resolver pool, and remote
+      // clients strip the routing key before making their HTTP request.
+      const lateAffinityKey = nonce
+        ? crypto.createHash('sha256').update(`${mediaType}:${tokenScopeId}:${season ?? ''}:${episode ?? ''}:${nonce}`).digest('hex')
+        : undefined;
 
       if (cfg.requireToken) {
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, {
@@ -1108,6 +1115,7 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
+          lateAffinityKey,
         });
       } catch (error) {
         // A resolver that cannot be reached is an outage, not an answer. Saying
@@ -1544,7 +1552,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
         `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
-        `source2VidRift=${hostOf(cfg.source1.riftOrigin)} source3VidSync=${hostOf(cfg.source3.origin)} source1VidBolt=${hostOf(cfg.source1.vidboltOrigin)} ${runtimeSummary()}`,
+        `sources=${registry.listPublicSources().map((s) => s.id).join(',') || 'none'} ${runtimeSummary()}`,
     );
     // One bounded outbound check, logged once per boot. When every source
     // reports "no rows" the first question is whether this container can reach

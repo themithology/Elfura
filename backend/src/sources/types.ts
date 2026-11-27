@@ -92,7 +92,7 @@ export interface RawStreamCandidate {
   qualityLabelsUnreliable?: boolean;
   /** Primary BCP-47 language if single-dub stream, verified from manifest evidence. */
   audioLang?: string;
-  /** Provider-declared language only; never use as verified audio or for language selection. */
+  /** Provider-declared language for this single-language row; usable for selection unless manifest evidence contradicts it. */
   claimedAudioLang?: string;
   /** Probe bounded MP4 metadata for actual single-track audio language. */
   probeMp4Audio?: boolean;
