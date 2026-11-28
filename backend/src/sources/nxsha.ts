@@ -32,8 +32,8 @@
  *   - rows with no readable language when a language was asked for;
  *   - non-HTTPS, credentialed, or non-manifest URLs.
  *
- * Measured before this was written (research/nxsha-source3.md): four titles,
- * zero media objects shared with the board, across three of its own lanes.
+ * Adapter bring-up sampled four titles across three of nxsha's own lanes and
+ * found no media objects shared with the other approved sources.
  */
 import crypto from 'node:crypto';
 import { sourceEnv } from './index.js';
@@ -49,8 +49,8 @@ export const PASSES = [
 /**
  * Lanes this board will accept, in the site's own reliability order.
  *
- * This list is MEASURED, not inherited. A survey of all 30 of its non-RiveStream
- * scrapers (research/nxsha-lanes.json, 2026-11-25) found:
+ * This list is measured, not inherited. An initial survey of all 30 of its
+ * non-RiveStream scrapers (2026-11-25) found:
  *
  *   6 served media   nitro, watchout, awsind, purstream, ophim, zoko
  *   2 were relays    castle, vixolity — both on *.nxstreamhub.workers.dev

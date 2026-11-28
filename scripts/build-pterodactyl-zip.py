@@ -62,19 +62,10 @@ RUNTIME_PACKAGE_JSON = json.dumps(
             "start": "node index.js",
         },
         "dependencies": {
-            # Declared as a file: dependency so an egg that runs `npm install`
-            # at boot does not classify undici as extraneous and prune it. The
-            # same copy is also shipped at vendor/undici, which the runtime
-            # loader falls back to if node_modules is wiped anyway.
+            # Compatibility shim for eggs that invoke ts-node instead of the
+            # compiled `node index.js` entrypoint. No provider-specific network
+            # package is required by the four-source runtime.
             "typescript": "file:./vendor/ts-shim",
-            "undici": "file:./vendor/undici",
-            "tweetnacl": "file:./vendor/tweetnacl",
-        },
-        # wreq-js is only used by one AniVortex provider and needs a native
-        # build, so a panel where that build fails must not abort the install
-        # and take undici with it.
-        "optionalDependencies": {
-            "wreq-js": "3.2.0",
         },
     },
     indent=2,
@@ -278,19 +269,11 @@ def main() -> None:
         write_entry(zf, ".npmrc", NPMRC_CONTENT.encode("utf-8"))
         write_entry(zf, "package.json", RUNTIME_PACKAGE_JSON.encode("utf-8"))
         write_entry(zf, "tsconfig.json", RUNTIME_TSCONFIG_JSON.encode("utf-8"))
-        # The relay Worker ships with the bundle: the operator who needs it is on a
-        # panel with no shell, so "deploy this file" must not mean "clone the repo".
-        for worker_file in ("worker.js", "README.md"):
-            source = ROOT / "cloudflare-worker" / worker_file
-            if source.is_file():
-                write_entry(zf, f"cloudflare-worker/{worker_file}", source.read_bytes())
-
         write_entry(zf, "README.md", (ROOT / "README.md").read_bytes())
         write_entry(zf, "RULES.md", (ROOT / "RULES.md").read_bytes())
 
-        # Operator tooling that depends on the pre-built dist/: mint per-install
-        # AniVortex credentials inside the container, and probe them.
-        for helper in ("anivortex-register.mjs", "anivortex-probe.mjs", "env-audit.mjs", "egress-report.mjs", "source-selftest.mjs"):
+        # Small operator tools that use the four-source runtime.
+        for helper in ("env-audit.mjs", "source-selftest.mjs"):
             helper_path = ROOT / "scripts" / helper
             if helper_path.is_file():
                 write_entry(zf, f"scripts/{helper}", helper_path.read_bytes())
@@ -308,111 +291,9 @@ def main() -> None:
             write_entry(zf, f"{prefix}/package.json", TS_SHIM_PKG_JSON.encode("utf-8"))
             write_entry(zf, f"{prefix}/index.cjs", TS_SHIM_INDEX_CJS.encode("utf-8"))
 
-        # undici is a real runtime dependency now, not a shim: the DNS rescue
-        # installs its fetch with an Agent whose connector resolves through
-        # explicit name servers, which is the only supported seam Node exposes.
-        #
-        # Its manifest is REPLACED, not copied. Publishing undici's own
-        # package.json inside the archive is what made `npm install` fail in a
-        # Pterodactyl panel: npm runs the `prepare` lifecycle script of every
-        # `file:` dependency, and undici's prepare is
-        # `husky && node ./scripts/platform-shell.js`. Neither husky nor the
-        # scripts/ directory ship with the package, so the install died with
-        # "Cannot find module .../scripts/platform-shell.js" *before* finishing
-        # — undici was never linked, the egress profile and the proxy pool never
-        # started, and every console line said the sources were simply offline.
-        # Stripping scripts/devDependencies keeps the resolution fields
-        # (main, exports, engines) that `import('undici')` needs and leaves
-        # nothing for npm to execute.
-        undici_dir = ROOT / "node_modules" / "undici"
-        if undici_dir.is_dir():
-            source_manifest = json.loads((undici_dir / "package.json").read_text("utf-8"))
-            runtime_manifest = {
-                key: value
-                for key, value in source_manifest.items()
-                if key
-                not in (
-                    "scripts",
-                    "devDependencies",
-                    "husky",
-                    "lint-staged",
-                    "workspaces",
-                    "packageManager",
-                    "funding",
-                    "repository",
-                    "bugs",
-                    "homepage",
-                )
-            }
-            runtime_manifest["description"] = "undici (vendored, lifecycle scripts removed for the Pterodactyl bundle)"
-            # A file: dependency runs whatever lifecycle scripts its manifest
-            # declares, so an accidental `scripts` key here breaks `npm install`
-            # in the panel — the exact failure this bundle exists to avoid.
-            for forbidden in ("scripts", "devDependencies", "workspaces"):
-                assert forbidden not in runtime_manifest, (
-                    f"vendored undici manifest still declares {forbidden}; npm install in the panel would run it"
-                )
-            stripped_manifest = (json.dumps(runtime_manifest, indent=2) + "\n").encode("utf-8")
-            for file_path in sorted(undici_dir.rglob("*")):
-                if file_path.is_file():
-                    rel = file_path.relative_to(undici_dir).as_posix()
-                    content = stripped_manifest if rel == "package.json" else file_path.read_bytes()
-                    write_entry(zf, f"node_modules/undici/{rel}", content)
-                    # Second copy outside node_modules: an egg that runs
-                    # `npm install` can prune or recreate that directory, and
-                    # the proxy, egress profile and DNS rescue all need undici.
-                    write_entry(zf, f"vendor/undici/{rel}", content)
-
-        # VidLink token generation uses TweetNaCl. Keep both the initial
-        # node_modules copy and the file: dependency so panel npm installs do
-        # not remove it. Strip lifecycle scripts as for undici.
-        nacl_dir = ROOT / "node_modules" / "tweetnacl"
-        if not nacl_dir.is_dir():
-            raise SystemExit("tweetnacl is required to build the bundle; run npm ci")
-        for file_path in sorted(nacl_dir.rglob("*")):
-            if not file_path.is_file():
-                continue
-            rel = file_path.relative_to(nacl_dir).as_posix()
-            if rel == "package.json":
-                manifest = json.loads(file_path.read_text("utf-8"))
-                manifest.pop("scripts", None)
-                manifest.pop("devDependencies", None)
-                content = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
-            else:
-                content = file_path.read_bytes()
-            write_entry(zf, f"node_modules/tweetnacl/{rel}", content)
-            write_entry(zf, f"vendor/tweetnacl/{rel}", content)
-
-        # Ship the native client and the bindings installed for the build host.
-        # Without this, the resolver-only installer (which deliberately does not
-        # run npm) would silently skip the multi-audio anime source. Other
-        # architectures can install the optional dependency on the target.
-        wreq_dir = ROOT / "node_modules" / "wreq-js"
-        bindings_dir = ROOT / "node_modules" / "@wreq-js"
-        bindings = sorted(p for p in bindings_dir.glob("binding-*") if p.is_dir()) if bindings_dir.is_dir() else []
-        if not wreq_dir.is_dir() or not bindings:
-            raise SystemExit("wreq-js and a native binding are required to build the bundle; run npm ci on the target platform")
-        for package_dir, prefix in [(wreq_dir, "node_modules/wreq-js"), *[(p, f"node_modules/@wreq-js/{p.name}") for p in bindings]]:
-            for file_path in sorted(package_dir.rglob("*")):
-                if not file_path.is_file():
-                    continue
-                rel = file_path.relative_to(package_dir).as_posix()
-                if rel == "package.json":
-                    manifest = json.loads(file_path.read_text("utf-8"))
-                    manifest.pop("scripts", None)
-                    manifest.pop("devDependencies", None)
-                    content = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
-                else:
-                    content = file_path.read_bytes()
-                write_entry(zf, f"{prefix}/{rel}", content)
-
         for file_path in sorted(DIST_DIR.rglob("*")):
             if file_path.is_file():
                 rel = file_path.relative_to(ROOT).as_posix()
-                # Legacy VidStuck/Nxsha adapter remains in the repo only for
-                # historical unit tests; it is not part of the runtime bundle.
-                if rel in ("dist/backend/sources/source2.js", "dist/backend/sources/source2.js.map"):
-                    continue
                 write_entry(zf, rel, file_path.read_bytes())
 
     os.replace(tmp_zip, OUT_ZIP)

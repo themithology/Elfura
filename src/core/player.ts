@@ -106,9 +106,9 @@ export interface SourceOption {
   animeUnverified?: boolean;
   audioLang?: string;
   /**
-   * The language the provider labelled this stream with. Shown in the source
-   * picker, never treated as verified audio: only `audioLang` carries a
-   * measurement.
+   * The language the provider labelled this single-language stream with.
+   * Used for selection when no non-`und` manifest language is known; a
+   * contradictory measured language still wins.
    */
   claimedAudioLang?: string;
   /**
@@ -130,6 +130,13 @@ export interface SourceOption {
    * new lane needs no player change at all.
    */
   traits?: string[];
+}
+
+/** Prefer measured language, but let a row claim survive an untagged `und` result. */
+function sourceSingleAudioLang(source: Pick<SourceOption, 'audioLang' | 'claimedAudioLang'>): string {
+  const verified = source.audioLang;
+  if (verified && canonLang(verified) !== 'und') return verified;
+  return source.claimedAudioLang || verified || 'und';
 }
 
 export interface SeasonSummaryInfo {
@@ -173,7 +180,11 @@ export interface TitleMediaInfo {
   rawTitle?: string;
   year?: string;
   tagline?: string;
+  /** TMDB community vote average; this is not an age/content classification. */
   rating?: number | null;
+  /** Real content certification from the metadata source, kept separate from rating. */
+  certification?: string;
+  runtime?: number | null;
   genres?: string[];
   overview?: string;
   poster?: string | null;
@@ -229,6 +240,7 @@ export class ElfuraPlayer {
 
   private input: ResolvedInput;
   private HlsClass: HlsCtor | null = null;
+  private DashClass: typeof import('dashjs').MediaPlayer | null = null;
   private engineKind: EngineKind | null = null;
   private hls: Hls | null = null;
   private dash: MediaPlayerClass | null = null;
@@ -240,9 +252,9 @@ export class ElfuraPlayer {
   private pendingSourceGroups: string[] = [];
   private lateHydrationToken = 0;
   private currentSource: SourceOption | null = null;
-  // An aggregator lane (traits: ['aggregator']) fronts multiple upstreams.
-  // Honor a manual aggregator selection through its other rows before leaving it.
-  private manualAggregatorGroup: string | null = null;
+  // A manual server choice is a group preference: try its sibling options before
+  // silently hopping to another provider when the selected option fails.
+  private manualSourceGroup: string | null = null;
   private failedSourceIds = new Set<string>();
   private failedFingerprints = new Set<string>();
   private measuredRttByFp = new Map<string, number>();
@@ -285,6 +297,7 @@ export class ElfuraPlayer {
   private initialAudioApplied = false;
   private desiredAudioLang: string | null = null;
   private audioSearchSeq = 0;
+  private audioRequestSeq = 0;
   private activeProbe: {
     seq: number;
     targetLang: string;
@@ -308,7 +321,7 @@ export class ElfuraPlayer {
     this.shell = options.root ?? document.createElement('div');
     this.shell.classList.add('elf-shell');
     this.shell.dataset.skin = cfg.skin ?? 'dark';
-    this.shell.style.setProperty('--elf-accent', cfg.color ?? '#ff5c39');
+    this.shell.style.setProperty('--elf-accent', cfg.color ?? '#f4f4f4');
 
     this.surface = document.createElement('div');
     this.surface.className = 'elf-surface';
@@ -378,7 +391,7 @@ export class ElfuraPlayer {
       duration: Number.isFinite(v.duration) ? v.duration : 0,
       buffered: v.buffered.length ? v.buffered.end(v.buffered.length - 1) : 0,
       volume: v.volume,
-      muted: v.muted,
+      muted: this.externalAudio.muted,
       speed: v.playbackRate,
       qualityMode: this.qualityMode,
       effectiveHeight: this.effectiveHeight,
@@ -495,9 +508,10 @@ export class ElfuraPlayer {
     this.activeProbe = null;
     this.failedSourceIds.clear();
     this.failedFingerprints.clear();
-    this.manualAggregatorGroup = opt.traits?.includes('aggregator') ? opt.sourceId : null;
-    if ((opt.audioLang ?? opt.claimedAudioLang) && canonLang(opt.audioLang ?? opt.claimedAudioLang) !== 'und') {
-      this.desiredAudioLang = canonLang(opt.audioLang ?? opt.claimedAudioLang);
+    this.manualSourceGroup = opt.sourceId;
+    const optionAudioLang = sourceSingleAudioLang(opt);
+    if (canonLang(optionAudioLang) !== 'und') {
+      this.desiredAudioLang = canonLang(optionAudioLang);
     } else if (
       this.desiredAudioLang &&
       (opt.multiAudio ||
@@ -582,7 +596,7 @@ export class ElfuraPlayer {
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
+      const c = canonLang(sourceSingleAudioLang(s));
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
@@ -624,7 +638,7 @@ export class ElfuraPlayer {
         return 2;
       }
       if (s.multiAudio || s.animePriority) return 0;
-      const c = canonLang(s.audioLang ?? s.claimedAudioLang);
+      const c = canonLang(sourceSingleAudioLang(s));
       if (c === 'und' || c === 'en') return 0;
       return 1;
     };
@@ -660,10 +674,14 @@ export class ElfuraPlayer {
       existing.audioLang = undefined;
       existing.label = candidate.label;
       changed = true;
-    } else if (!existing.multiAudio && !existing.audioLang && candidate.audioLang && candidate.audioLang !== 'und') {
+    } else if (!existing.multiAudio && canonLang(sourceSingleAudioLang(existing)) === 'und' && candidate.audioLang && candidate.audioLang !== 'und') {
       existing.audioLang = candidate.audioLang;
       existing.availableAudioLangs = candidate.availableAudioLangs;
       existing.label = candidate.label;
+      changed = true;
+    }
+    if (!existing.multiAudio && canonLang(sourceSingleAudioLang(existing)) === 'und' && !existing.claimedAudioLang && candidate.claimedAudioLang && candidate.claimedAudioLang !== 'und') {
+      existing.claimedAudioLang = candidate.claimedAudioLang;
       changed = true;
     }
     return changed;
@@ -760,9 +778,10 @@ export class ElfuraPlayer {
           const currentMatches = !!wanted && (
             (this.currentAudio?.kind === 'native' && matchScore(wanted, this.currentAudio.lang) >= 0) ||
             (!!this.currentSource && !this.currentSource.multiAudio &&
-              matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
+              matchScore(wanted, sourceSingleAudioLang(this.currentSource)) >= 0));
           if (wanted && wanted !== 'und' && !currentMatches && this.sources.some(s =>
               (s.audioLang && matchScore(wanted, s.audioLang) >= 0) ||
+              (s.claimedAudioLang && matchScore(wanted, s.claimedAudioLang) >= 0) ||
               (s.availableAudioLangs ?? []).some(lang => matchScore(wanted, lang) >= 0))) {
             void this.setAudio(wanted);
           }
@@ -790,7 +809,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Playback responses intentionally use root-relative `/api/proxy` URLs.
+   * Playback responses use root-relative `/api/v1/stream` tickets.
    * When an SDK consumer resolves through an absolute cross-origin `api` URL,
    * those tickets belong to that API origin, not to the site hosting the player.
    */
@@ -801,14 +820,18 @@ export class ElfuraPlayer {
   private async prefetchArtwork(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || cfg.src) return;
+    const mediaType = cfg.mediaType || (cfg.anilist ? 'tv' : 'movie');
+    const tmdbId = String(cfg.tmdb);
+    const season = mediaType === 'tv' ? cfg.season ?? 1 : undefined;
+    const episode = mediaType === 'tv' ? cfg.episode ?? 1 : undefined;
     try {
       const base = new URL(cfg.api || '/api/v1/playback', window.location.href);
       const artUrl = new URL('/api/v1/art', base);
-      artUrl.searchParams.set('type', cfg.mediaType || (cfg.anilist ? 'tv' : 'movie'));
-      artUrl.searchParams.set('tmdb', String(cfg.tmdb));
-      if ((cfg.mediaType || '') === 'tv' || cfg.anilist) {
-        artUrl.searchParams.set('s', String(cfg.season ?? 1));
-        artUrl.searchParams.set('e', String(cfg.episode ?? 1));
+      artUrl.searchParams.set('type', mediaType);
+      artUrl.searchParams.set('tmdb', tmdbId);
+      if (mediaType === 'tv') {
+        artUrl.searchParams.set('s', String(season));
+        artUrl.searchParams.set('e', String(episode));
       }
       const res = await fetch(artUrl.toString(), {
         headers: { Accept: 'application/json' },
@@ -817,22 +840,66 @@ export class ElfuraPlayer {
       if (this.destroyed || !res.ok) return;
       const data = (await res.json()) as {
         ok?: boolean;
-        media?: { title?: string; year?: string; logo?: string | null; backdrop?: string | null; poster?: string | null };
+        media?: {
+          type?: 'movie' | 'tv';
+          tmdbId?: string;
+          season?: number;
+          episode?: number;
+          title?: string;
+          year?: string;
+          certification?: string;
+          runtime?: number | null;
+          logo?: string | null;
+          backdrop?: string | null;
+          poster?: string | null;
+        };
       };
       if (this.destroyed || !data?.ok || !data.media) return;
       const art = data.media;
-      if (!art.backdrop && !art.logo && !art.title) return;
+      const currentType = cfg.mediaType || (cfg.anilist ? 'tv' : 'movie');
+      if (
+        String(cfg.tmdb) !== tmdbId ||
+        currentType !== mediaType ||
+        (season !== undefined && (cfg.season ?? 1) !== season) ||
+        (episode !== undefined && (cfg.episode ?? 1) !== episode) ||
+        (art.tmdbId && art.tmdbId !== tmdbId) ||
+        (art.type && art.type !== mediaType) ||
+        (art.season !== undefined && art.season !== season) ||
+        (art.episode !== undefined && art.episode !== episode)
+      ) return;
+      if (!art.backdrop && !art.logo && !art.title && !art.certification && !art.runtime) return;
+
+      const artType = art.type ?? (mediaType as 'movie' | 'tv');
+      const artTmdbId = art.tmdbId ?? tmdbId;
+      const artSeason = art.season ?? (artType === 'tv' ? cfg.season ?? 1 : undefined);
+      const artEpisode = art.episode ?? (artType === 'tv' ? cfg.episode ?? 1 : undefined);
+      const current = this.mediaInfo;
+      const sameTitle = current?.type === artType && current?.tmdbId === artTmdbId;
+      const sameEpisode =
+        sameTitle && current?.season === artSeason && current?.episode === artEpisode;
       const merged: TitleMediaInfo = {
-        ...(this.mediaInfo ?? {
-          type: (cfg.mediaType || (cfg.anilist ? 'tv' : 'movie')) as 'movie' | 'tv',
-          tmdbId: String(cfg.tmdb),
-        }),
-        ...(art.title && !this.mediaInfo?.title ? { title: art.title } : {}),
-        ...(art.year && !this.mediaInfo?.year ? { year: art.year } : {}),
+        ...(sameTitle ? current : { type: artType, tmdbId: artTmdbId }),
+        type: artType,
+        tmdbId: artTmdbId,
+        ...(artSeason !== undefined ? { season: artSeason } : {}),
+        ...(artEpisode !== undefined ? { episode: artEpisode } : {}),
+        ...(art.title && (!sameTitle || !current?.title) ? { title: art.title } : {}),
+        ...(art.year && (!sameTitle || !current?.year) ? { year: art.year } : {}),
+        ...(art.certification
+          ? { certification: art.certification }
+          : sameTitle && current?.certification
+            ? { certification: current.certification }
+            : {}),
+        runtime:
+          typeof art.runtime === 'number' && art.runtime > 0
+            ? art.runtime
+            : sameEpisode && current?.runtime
+              ? current.runtime
+              : null,
         ...(art.logo ? { logo: art.logo } : {}),
         ...(art.backdrop ? { backdrop: art.backdrop } : {}),
-        ...(art.poster && !this.mediaInfo?.poster ? { poster: art.poster } : {}),
-      } as TitleMediaInfo;
+        ...(art.poster && (!sameTitle || !current?.poster) ? { poster: art.poster } : {}),
+      };
       this.mediaInfo = merged;
       if (!cfg.poster && (art.backdrop || art.poster)) {
         cfg.poster = String(art.backdrop || art.poster);
@@ -941,7 +1008,7 @@ export class ElfuraPlayer {
   }
 
   /**
-   * Lightweight concurrent probe against our uniform `/api/proxy` stream proxy.
+   * Lightweight concurrent probe against our uniform `/api/v1/stream` relay.
    * Measures true end-to-end upstream latency, verifies the stream is alive
    * (and actually carries `targetLang` when probing multi-audio HLS), and
    * warms the backend RAM manifest cache so `hls.js` / `dash.js` starts in <2ms.
@@ -960,7 +1027,7 @@ export class ElfuraPlayer {
     if (cfg.pltoken) headers['X-Playback-Token'] = String(cfg.pltoken);
 
     const resolvedUrl = new URL(this.decorate(opt.url), window.location.href).toString();
-    const isBackendTicket = /\/(?:api\/v1\/stream|api\/proxy|api\/public\/stream-proxy|proxy)(?:[/?#]|$)/.test(resolvedUrl);
+    const isBackendTicket = /\/api\/v1\/stream(?:[/?#]|$)/.test(resolvedUrl);
     const timeoutSig =
       typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
         ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
@@ -984,7 +1051,7 @@ export class ElfuraPlayer {
         this.recordMeasuredLatency(opt, rtt);
         if (targetLang && targetLang !== 'und') {
           const matches =
-            matchScore(targetLang, opt.audioLang ?? opt.claimedAudioLang ?? 'und') >= 0 ||
+            matchScore(targetLang, sourceSingleAudioLang(opt)) >= 0 ||
             (opt.audioTracks ?? []).some((a) => matchScore(targetLang, a.lang) >= 0) ||
             !!opt.multiAudio;
           if (!matches) return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
@@ -1071,7 +1138,11 @@ export class ElfuraPlayer {
             });
             const hint = providerVariantLanguage(opt);
             const possibleHint = !hasTaggedAudio && hint && matchScore(targetLang, hint) >= 0;
-            if (!foundInManifest && matchScore(targetLang, opt.audioLang ?? opt.claimedAudioLang ?? 'und') < 0 && !possibleHint) {
+            const directClaimMatches = matchScore(targetLang, sourceSingleAudioLang(opt)) >= 0;
+            // Manifest evidence wins over provider labels. A row-level single-language
+            // claim remains usable when its sole rendition is untagged, but cannot
+            // override a manifest that explicitly names a different language.
+            if (!foundInManifest && (hasTaggedAudio || (!directClaimMatches && !possibleHint))) {
               return { ok: false, loadFailed: false, rttMs: rtt, languageRejected: true };
             }
           }
@@ -1081,7 +1152,7 @@ export class ElfuraPlayer {
         }
       }
 
-      // Backend `/api/proxy` playlists were ALREADY deep-verified (including child playlists)
+      // Backend `/api/v1/stream` playlists were already deep-verified (including child playlists)
       // by `liveness.ts` on the server — only double-check child playlists for raw non-proxy URLs!
       if (streamInfLines.length > 0 && !isBackendTicket) {
         let variantChildUri: string | null = null;
@@ -1256,7 +1327,7 @@ export class ElfuraPlayer {
   private async resolveFromBackend(): Promise<void> {
     const cfg = this.input.config;
     if (!cfg.tmdb || this.destroyed) return;
-    this.manualAggregatorGroup = null;
+    this.manualSourceGroup = null;
     this.resolveAbort?.abort();
     const controller = new AbortController();
     this.resolveAbort = controller;
@@ -1411,7 +1482,36 @@ export class ElfuraPlayer {
         this.sourceGroups = ['source-1', 'source-2', 'source-3', 'source-4'];
       }
       if (data.media) {
-        this.mediaInfo = data.media;
+        const previousMedia = this.mediaInfo;
+        const sameTitle = Boolean(
+          data.media.type &&
+            data.media.tmdbId &&
+            previousMedia?.type === data.media.type &&
+            previousMedia?.tmdbId === data.media.tmdbId,
+        );
+        const sameEpisode =
+          sameTitle &&
+          previousMedia?.season === data.media.season &&
+          previousMedia?.episode === data.media.episode;
+        this.mediaInfo = {
+          ...data.media,
+          ...(sameTitle && !data.media.title && previousMedia?.title ? { title: previousMedia.title } : {}),
+          ...(sameTitle && !data.media.year && previousMedia?.year ? { year: previousMedia.year } : {}),
+          ...(sameTitle && !data.media.rawTitle && previousMedia?.rawTitle
+            ? { rawTitle: previousMedia.rawTitle }
+            : {}),
+          ...(sameTitle && !data.media.certification && previousMedia?.certification
+            ? { certification: previousMedia.certification }
+            : {}),
+          ...(sameEpisode && !(data.media.runtime && data.media.runtime > 0) && previousMedia?.runtime
+            ? { runtime: previousMedia.runtime }
+            : {}),
+          ...(sameTitle && !data.media.logo && previousMedia?.logo ? { logo: previousMedia.logo } : {}),
+          ...(sameTitle && !data.media.backdrop && previousMedia?.backdrop
+            ? { backdrop: previousMedia.backdrop }
+            : {}),
+          ...(sameTitle && !data.media.poster && previousMedia?.poster ? { poster: previousMedia.poster } : {}),
+        };
       }
       if (!cfg.title && data.media?.title) {
         cfg.title = data.media.title;
@@ -1474,6 +1574,7 @@ export class ElfuraPlayer {
           (s) =>
             !!s.multiAudio ||
             (s.audioLang && matchScore(storedLang, s.audioLang) >= 0) ||
+            (s.claimedAudioLang && matchScore(storedLang, s.claimedAudioLang) >= 0) ||
             (s.availableAudioLangs ?? []).some((l) => matchScore(storedLang, l) >= 0) ||
             (s.audioTracks ?? []).some((a) => matchScore(storedLang, a.lang) >= 0),
         );
@@ -1555,10 +1656,11 @@ export class ElfuraPlayer {
               const currentLanguageMatches = !!wanted && (
                 (this.currentAudio?.kind === 'native' && matchScore(wanted, this.currentAudio.lang) >= 0) ||
                 (!!this.currentSource && !this.currentSource.multiAudio &&
-                  matchScore(wanted, this.currentSource.audioLang ?? 'und') >= 0));
+                  matchScore(wanted, sourceSingleAudioLang(this.currentSource)) >= 0));
               if (wanted && wanted !== 'und' && !currentLanguageMatches &&
                   this.sources.some((s) => s.sourceId === recoveryId &&
                     ((s.audioLang && matchScore(wanted, s.audioLang) >= 0) ||
+                    (s.claimedAudioLang && matchScore(wanted, s.claimedAudioLang) >= 0) ||
                     (s.availableAudioLangs ?? []).some((lang) => matchScore(wanted, lang) >= 0)))) {
                 void this.setAudio(wanted);
               }
@@ -1579,10 +1681,17 @@ export class ElfuraPlayer {
         this.desiredAudioLang = canonLang(effectiveBootLang);
         const matches = (s: SourceOption) =>
           (s.audioLang && matchScore(effectiveBootLang, s.audioLang) >= 0) ||
+          (s.claimedAudioLang && matchScore(effectiveBootLang, s.claimedAudioLang) >= 0) ||
           (s.availableAudioLangs ?? []).some((lang) => matchScore(effectiveBootLang, lang) >= 0) ||
           (s.audioTracks ?? []).some((track) => matchScore(effectiveBootLang, track.lang) >= 0);
-        const initial = this.sources.find(matches) ?? data.primary ?? this.sources[0];
+        const languageMatch = this.sources.find(matches) ?? null;
+        const initial = languageMatch ?? data.primary ?? this.sources[0];
         await this.activateSourceOption(initial, false);
+        // An explicit/stored language request may have no row-level label in the
+        // first response (for example, a multi-audio manifest still being measured).
+        // Start a playable fallback immediately, then actually probe the request;
+        // do not silently mark the preference selected while playing another dub.
+        if (!languageMatch && isCurrent()) void this.setAudio(effectiveBootLang);
       } else {
         // The backend already ranked and checked the candidates. Attach its
         // primary immediately rather than spending a second network race
@@ -1698,13 +1807,125 @@ export class ElfuraPlayer {
     this.video.volume = Math.max(0, Math.min(1, v));
   }
   setMuted(m: boolean): void {
+    if (this.externalAudio.setMuted(m)) {
+      this.emit('volumechange', { volume: this.video.volume, muted: m });
+      return;
+    }
     this.video.muted = m;
   }
   setSpeed(s: number): void {
     this.video.playbackRate = Math.max(0.25, Math.min(4, s));
   }
 
+  private dashAudioLang(track: MediaInfo | null | undefined): string {
+    if (!track) return 'und';
+    const declared = canonLang(track.lang);
+    if (declared !== 'und') return declared;
+    for (const label of track.labels ?? []) {
+      const fromLabel = canonLang(String(label.text ?? ''));
+      if (fromLabel !== 'und') return fromLabel;
+    }
+    return 'und';
+  }
+
+  private sameDashAudioTrack(a: MediaInfo | null | undefined, b: MediaInfo | null | undefined): boolean {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (a.id && b.id) return a.id === b.id;
+    if (a.index !== null && a.index !== undefined && b.index !== null && b.index !== undefined) {
+      return a.index === b.index;
+    }
+    const labels = (track: MediaInfo) => (track.labels ?? []).map((label) => String(label.text ?? '').trim().toLowerCase()).join('|');
+    return this.dashAudioLang(a) === this.dashAudioLang(b) && labels(a) === labels(b);
+  }
+
+  private switchHlsAudioTrack(trackId: number, requestSeq: number, timeoutMs = 6_000): Promise<boolean> {
+    const hls = this.hls;
+    const Hls = this.HlsClass;
+    if (!hls || !Hls) return Promise.resolve(false);
+    const target = hls.audioTracks.find((track, index) => (track.id ?? index) === trackId);
+    if (!target) return Promise.resolve(false);
+    const previousTrackId = hls.audioTrack;
+    if (previousTrackId === trackId) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = 0;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        hls.off(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+        if (
+          !ok &&
+          requestSeq === this.audioRequestSeq &&
+          this.hls === hls &&
+          hls.audioTrack === trackId
+        ) {
+          hls.audioTrack = previousTrackId;
+        }
+        resolve(ok && requestSeq === this.audioRequestSeq);
+      };
+      const onSwitched = (_event: unknown, data: { id?: number }) => {
+        if (data.id === trackId) finish(true);
+      };
+
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+      timer = window.setTimeout(() => finish(false), timeoutMs);
+      try {
+        hls.audioTrack = trackId;
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
+  private switchDashAudioTrack(track: MediaInfo, requestSeq: number, timeoutMs = 6_000): Promise<boolean> {
+    const dash = this.dash;
+    const Dash = this.DashClass;
+    if (!dash || !Dash) return Promise.resolve(false);
+    const previousTrack = dash.getCurrentTrackFor('audio');
+    if (this.sameDashAudioTrack(previousTrack, track)) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = 0;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        dash.off(Dash.events.TRACK_CHANGE_RENDERED, onRendered);
+        if (
+          !ok &&
+          previousTrack &&
+          requestSeq === this.audioRequestSeq &&
+          this.dash === dash
+        ) {
+          dash.setCurrentTrack(previousTrack);
+        }
+        resolve(ok && requestSeq === this.audioRequestSeq);
+      };
+      const onRendered = (event: { mediaType?: string; newMediaInfo?: MediaInfo }) => {
+        if (event.mediaType === 'audio' && this.sameDashAudioTrack(event.newMediaInfo, track)) finish(true);
+      };
+
+      dash.on(Dash.events.TRACK_CHANGE_RENDERED, onRendered);
+      timer = window.setTimeout(() => finish(false), timeoutMs);
+      try {
+        dash.setCurrentTrack(track);
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
   async setAudio(idOrLang: string): Promise<boolean> {
+    const requestSeq = ++this.audioRequestSeq;
+    // A new manual request must invalidate an older source race, including when
+    // this request can be handled directly by the active engine.
+    this.audioSearchSeq++;
+    this.activeProbe?.settle({ ok: false, loadFailed: false });
+    this.activeProbe = null;
     const exactTrack = this.audioTracks.find((t) => t.id === idOrLang);
     const targetLang = exactTrack ? exactTrack.lang : canonLang(idOrLang);
     const displayLabel = exactTrack
@@ -1734,27 +1955,40 @@ export class ElfuraPlayer {
         exactTrack?.kind === 'native'
           ? exactTrack
           : this.audioTracks.find((t) => t.kind === 'native' && matchScore(targetLang, t.lang) >= 0);
+      let nativeSwitchFailed = false;
 
       if (nativeMatch) {
-        this.externalAudio.deactivate();
+        let switched = false;
         if (this.hls && typeof nativeMatch.ref === 'number') {
-          this.hls.audioTrack = nativeMatch.ref;
+          switched = await this.switchHlsAudioTrack(nativeMatch.ref, requestSeq);
         } else if (this.dash) {
-          const native = this.dash
-            .getTracksFor('audio')
-            .find((t) => matchScore(targetLang, t.lang ?? '') >= 0);
-          if (native) this.dash.setCurrentTrack(native);
+          const dashTracks = this.dash.getTracksFor('audio');
+          const indexedTrack = typeof nativeMatch.ref === 'number' ? dashTracks[nativeMatch.ref] : undefined;
+          const native =
+            indexedTrack && matchScore(targetLang, this.dashAudioLang(indexedTrack)) >= 0
+              ? indexedTrack
+              : dashTracks.find((track) => matchScore(targetLang, this.dashAudioLang(track)) >= 0);
+          if (native) switched = await this.switchDashAudioTrack(native, requestSeq);
         }
-        this.currentAudio = nativeMatch;
-        if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
-        this.reorderSourcesHierarchy(targetLang);
-        this.emit('audioChange', {
-          id: nativeMatch.id,
-          lang: nativeMatch.lang,
-          label: nativeMatch.label,
-          kind: nativeMatch.kind,
-        });
-        return true;
+        if (requestSeq !== this.audioRequestSeq) return false;
+        if (switched) {
+          // Keep an active sidecar intact until the in-manifest rendition has
+          // actually switched; otherwise a failed native selection becomes silence.
+          this.externalAudio.deactivate();
+          this.currentAudio = nativeMatch;
+          if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
+          this.reorderSourcesHierarchy(targetLang);
+          this.emit('audioChange', {
+            id: nativeMatch.id,
+            lang: nativeMatch.lang,
+            label: nativeMatch.label,
+            kind: nativeMatch.kind,
+          });
+          return true;
+        }
+        nativeSwitchFailed = true;
+        // A listed engine track that does not acknowledge the switch is not a
+        // successful selection. Continue to sidecars/source search instead.
       }
 
       // 2) Try sidecar external audio file on the currently active stream
@@ -1765,6 +1999,7 @@ export class ElfuraPlayer {
 
       if (externalMatch) {
         const res = await this.externalAudio.activate(externalMatch);
+        if (requestSeq !== this.audioRequestSeq) return false;
         if (res.ok) {
           this.currentAudio = externalMatch;
           if (this.input.config.persistAudio && targetLang !== 'und') savePreferredAudio(targetLang);
@@ -1782,9 +2017,10 @@ export class ElfuraPlayer {
 
       // 3) Check if current healthy single-dub stream already matches targetLang
       if (
+        !nativeSwitchFailed &&
         this.currentSource &&
         !this.currentSource.multiAudio &&
-        matchScore(targetLang, this.currentSource.audioLang ?? this.currentSource.claimedAudioLang ?? 'und') >= 0 &&
+        matchScore(targetLang, sourceSingleAudioLang(this.currentSource)) >= 0 &&
         (this.video.readyState >= 1 || this.qualityLevels.length > 0)
       ) {
         const activeTrack =
@@ -1854,6 +2090,8 @@ export class ElfuraPlayer {
       .filter((s) => !this.isCandidateFailed(s) && !excludeIds.has(s.id) && matchesOrCanCarryLang(s))
       .sort(
         (a, b) =>
+          Number(Boolean(this.manualSourceGroup && b.sourceId === this.manualSourceGroup)) -
+            Number(Boolean(this.manualSourceGroup && a.sourceId === this.manualSourceGroup)) ||
           Number(Boolean(b.multiAudio)) - Number(Boolean(a.multiAudio)) ||
           Number(Boolean(providerVariantLanguage(a))) - Number(Boolean(providerVariantLanguage(b))) ||
           this.effectiveSpeedScore(a) - this.effectiveSpeedScore(b) ||
@@ -1871,6 +2109,7 @@ export class ElfuraPlayer {
 
     const finalizeChosenCandidate = (cand: SourceOption): boolean => {
       this.shell.dataset.buffering = 'false';
+      if (this.manualSourceGroup && cand.sourceId !== this.manualSourceGroup) this.manualSourceGroup = null;
       if (targetLang && targetLang !== 'und' && !providerVariantLanguage(cand)) {
         this.recordDiscoveredAudioLangs(cand, [targetLang]);
       }
@@ -1896,7 +2135,7 @@ export class ElfuraPlayer {
       // the current engine enumerated native tracks and none matches, a
       // multi-audio candidate did not switch, whatever its metadata claims.
       const nativeTracks = this.audioTracks.filter((t) => t.kind === 'native');
-      const declaredMatches = matchScore(targetLang, cand.audioLang ?? cand.claimedAudioLang ?? 'und') >= 0;
+      const declaredMatches = matchScore(targetLang, sourceSingleAudioLang(cand)) >= 0;
       if (!realTrack && cand.multiAudio && nativeTracks.length > 0 && !declaredMatches) return false;
       const matchedTrack =
         realTrack ?? {
@@ -1930,54 +2169,86 @@ export class ElfuraPlayer {
     const rejectedFingerprints = new Set<string>();
     const triedEngineIds = new Set<string>();
 
-    // Phase A: 8-way concurrent parallel race across BOTH Multi-Audio & Direct servers (fastest wins!)
+    // Phase A: race each manually selected provider family first, then allow
+    // cross-provider fallback. Within either tier the fastest candidates win.
     const fetchPool = candidates.filter((c) => this.canPreProbeViaFetch(c));
-    let cursor = 0;
-    while (cursor < fetchPool.length) {
-      if (this.destroyed || this.audioSearchSeq !== seq) return false;
+    const fetchPools = this.manualSourceGroup
+      ? [
+          fetchPool.filter((candidate) => candidate.sourceId === this.manualSourceGroup),
+          fetchPool.filter((candidate) => candidate.sourceId !== this.manualSourceGroup),
+        ]
+      : [fetchPool];
+    for (let poolIndex = 0; poolIndex < fetchPools.length; poolIndex++) {
+      const pool = fetchPools[poolIndex];
+      let cursor = 0;
+      while (cursor < pool.length) {
+        if (this.destroyed || this.audioSearchSeq !== seq) return false;
 
-      const wave: SourceOption[] = [];
-      const waveFps = new Set<string>();
-      while (cursor < fetchPool.length && wave.length < 8) {
-        const c = fetchPool[cursor++];
-        if (this.isCandidateFailed(c)) continue;
-        const fp = c.fingerprint || c.id;
-        if (rejectedFingerprints.has(fp) || waveFps.has(fp)) continue;
-        waveFps.add(fp);
-        wave.push(c);
-      }
-      if (!wave.length) continue;
-
-      const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
-      if (this.destroyed || this.audioSearchSeq !== seq) return false;
-
-      for (const f of failed) this.markCandidateFailed(f);
-      for (const r of rejected) {
-        triedEngineIds.add(r.id);
-        if (r.fingerprint) rejectedFingerprints.add(r.fingerprint);
-      }
-
-      if (winners.length > 0) {
-        for (const w of winners) {
-          if (this.destroyed || this.audioSearchSeq !== seq) return false;
-          if (this.isCandidateFailed(w)) continue;
-          const fp = w.fingerprint;
-          if (fp && rejectedFingerprints.has(fp)) continue;
-
-          triedEngineIds.add(w.id);
-          const attachRes = await this.probeRawCandidateForLanguage(w, targetLang, seq);
-          if (this.destroyed || this.audioSearchSeq !== seq) return false;
-          if (attachRes.ok) {
-            if (finalizeChosenCandidate(w)) return true;
-            if (fp) rejectedFingerprints.add(fp);
-            continue;
-          }
-          if (attachRes.loadFailed) this.markCandidateFailed(w);
-          if (fp) rejectedFingerprints.add(fp);
+        const wave: SourceOption[] = [];
+        const waveFps = new Set<string>();
+        while (cursor < pool.length && wave.length < 8) {
+          const candidate = pool[cursor++];
+          if (this.isCandidateFailed(candidate)) continue;
+          const fp = candidate.fingerprint || candidate.id;
+          if (rejectedFingerprints.has(fp) || waveFps.has(fp)) continue;
+          waveFps.add(fp);
+          wave.push(candidate);
         }
-        // Do NOT reject the other wave entries here. raceCandidatesBatch may
-        // have aborted them before their manifests answered. Phase B below must
-        // still give every untried candidate a real engine-level opportunity.
+        if (!wave.length) continue;
+
+        const { winners, failed, rejected } = await this.raceCandidatesBatch(wave, targetLang);
+        if (this.destroyed || this.audioSearchSeq !== seq) return false;
+
+        for (const failedOption of failed) this.markCandidateFailed(failedOption);
+        for (const rejectedOption of rejected) {
+          triedEngineIds.add(rejectedOption.id);
+          if (rejectedOption.fingerprint) rejectedFingerprints.add(rejectedOption.fingerprint);
+        }
+
+        if (winners.length > 0) {
+          for (const winner of winners) {
+            if (this.destroyed || this.audioSearchSeq !== seq) return false;
+            if (this.isCandidateFailed(winner)) continue;
+            const fp = winner.fingerprint;
+            if (fp && rejectedFingerprints.has(fp)) continue;
+
+            triedEngineIds.add(winner.id);
+            const attachRes = await this.probeRawCandidateForLanguage(winner, targetLang, seq);
+            if (this.destroyed || this.audioSearchSeq !== seq) return false;
+            if (attachRes.ok) {
+              if (finalizeChosenCandidate(winner)) return true;
+              if (fp) rejectedFingerprints.add(fp);
+              continue;
+            }
+            if (attachRes.loadFailed) this.markCandidateFailed(winner);
+            if (fp) rejectedFingerprints.add(fp);
+          }
+          // Do NOT reject the other wave entries here. raceCandidatesBatch may
+          // have aborted them before their manifests answered. Phase B below must
+          // still give every untried candidate a real engine-level opportunity.
+        }
+      }
+      if (this.manualSourceGroup && poolIndex === 0) {
+        // A cross-origin selected provider may not be fetch-probeable. Give its
+        // remaining candidates an engine-level attempt before racing other
+        // providers, so a manual choice is not bypassed just because of CORS.
+        for (const candidate of candidates) {
+          if (candidate.sourceId !== this.manualSourceGroup) continue;
+          if (triedEngineIds.has(candidate.id) || this.isCandidateFailed(candidate)) continue;
+          if (candidate.fingerprint && rejectedFingerprints.has(candidate.fingerprint)) continue;
+
+          triedEngineIds.add(candidate.id);
+          const result = await this.probeRawCandidateForLanguage(candidate, targetLang, seq);
+          if (this.destroyed || this.audioSearchSeq !== seq) return false;
+          if (result.ok) {
+            if (finalizeChosenCandidate(candidate)) return true;
+            if (candidate.fingerprint) rejectedFingerprints.add(candidate.fingerprint);
+          } else if (result.loadFailed) {
+            this.markCandidateFailed(candidate);
+          } else if (candidate.fingerprint) {
+            rejectedFingerprints.add(candidate.fingerprint);
+          }
+        }
       }
     }
 
@@ -2003,9 +2274,11 @@ export class ElfuraPlayer {
       }
     }
 
-    // All candidate raw sources were searched and none could play targetLang.
+    // All current candidates were searched and none could play targetLang.
+    // Keep it as the viewer's requested preference: the actual audio state below
+    // still reflects the fallback stream, while a later manual server pick or
+    // late source discovery can retry this language instead of forgetting it.
     this.activeProbe = null;
-    this.desiredAudioLang = null;
 
     const cleanName = displayLabel || languageLabel(targetLang);
     const unavailableMessage = `Sorry, we searched all sources yet didn't find it in "${cleanName}"`;
@@ -2013,6 +2286,9 @@ export class ElfuraPlayer {
     // Restore playable video so the player does not remain on a dead/unloaded screen
     const fallbackOpt =
       prevWorkingSource ?? this.sources.find((s) => !this.isCandidateFailed(s)) ?? null;
+    if (fallbackOpt && this.manualSourceGroup && fallbackOpt.sourceId !== this.manualSourceGroup) {
+      this.manualSourceGroup = null;
+    }
     if (!fallbackOpt) {
       this.recoverExhaustedSources();
     }
@@ -2594,9 +2870,31 @@ export class ElfuraPlayer {
 
     if (pre && pre.season === season && pre.episode === episode && pre.sources.length > 0) {
       if (pre.media) {
-        this.mediaInfo = pre.media;
-        if (pre.media.title) cfg.title = pre.media.title;
-        const posterCand = pre.media.backdrop || pre.media.poster;
+        const previousMedia = this.mediaInfo;
+        const sameTitle = Boolean(
+          pre.media.type &&
+            pre.media.tmdbId &&
+            previousMedia?.type === pre.media.type &&
+            previousMedia?.tmdbId === pre.media.tmdbId,
+        );
+        this.mediaInfo = {
+          ...pre.media,
+          ...(sameTitle && !pre.media.title && previousMedia?.title ? { title: previousMedia.title } : {}),
+          ...(sameTitle && !pre.media.rawTitle && previousMedia?.rawTitle
+            ? { rawTitle: previousMedia.rawTitle }
+            : {}),
+          ...(sameTitle && !pre.media.year && previousMedia?.year ? { year: previousMedia.year } : {}),
+          ...(sameTitle && !pre.media.certification && previousMedia?.certification
+            ? { certification: previousMedia.certification }
+            : {}),
+          ...(sameTitle && !pre.media.logo && previousMedia?.logo ? { logo: previousMedia.logo } : {}),
+          ...(sameTitle && !pre.media.backdrop && previousMedia?.backdrop
+            ? { backdrop: previousMedia.backdrop }
+            : {}),
+          ...(sameTitle && !pre.media.poster && previousMedia?.poster ? { poster: previousMedia.poster } : {}),
+        };
+        if (this.mediaInfo.title) cfg.title = this.mediaInfo.title;
+        const posterCand = this.mediaInfo.backdrop || this.mediaInfo.poster;
         if (posterCand) {
           cfg.poster = posterCand;
           this.video.poster = posterCand;
@@ -2635,6 +2933,7 @@ export class ElfuraPlayer {
       // carry its ending timestamp into the new episode's language search.
       const matches = (s: SourceOption) => Boolean(keepLang && (
         (s.audioLang && matchScore(keepLang, s.audioLang) >= 0) ||
+        (s.claimedAudioLang && matchScore(keepLang, s.claimedAudioLang) >= 0) ||
         (s.availableAudioLangs ?? []).some(lang => matchScore(keepLang, lang) >= 0) ||
         (s.audioTracks ?? []).some(track => matchScore(keepLang, track.lang) >= 0)
       ));
@@ -2771,24 +3070,31 @@ export class ElfuraPlayer {
       return true;
     }
 
-    // Manifest truth beats provider metadata. If the manifest exposes audio
-    // renditions, only their real languages can match (handled by `hit`).
-    // With zero or one untagged rendition, accept ONLY a direct single-dub
-    // claim (candidate's own audioLang): a candidate claiming several
-    // languages whose manifest exposes at most one track cannot actually
-    // switch — accepting it fakes a language change in the UI.
+    // Manifest truth beats provider metadata. If the manifest names the requested
+    // language, `hit` selected it above. A single direct-language row may also be
+    // used when its sole rendition is untagged; a different explicit manifest
+    // language is a hard refusal, not something a provider label can override.
     const hasSidecarMatch = (probe.opt.audioTracks ?? []).some(
       (track) => matchScore(probe.targetLang, track.lang) >= 0,
     );
-    const claimsMulti =
-      !!probe.opt.multiAudio || (probe.opt.availableAudioLangs?.length ?? 0) > 1;
+    const directClaimMatches =
+      matchScore(probe.targetLang, sourceSingleAudioLang(probe.opt)) >= 0;
+    // `availableAudioLangs` is sometimes title-level metadata, not proof this row
+    // carries all those tracks. Its multi-track claim applies only when the row
+    // itself has no matching single-language label; a measured `multiAudio` flag
+    // always remains strict.
+    const claimsMulti = !!probe.opt.multiAudio ||
+      ((probe.opt.availableAudioLangs?.length ?? 0) > 1 && !directClaimMatches);
     if (claimsMulti && !hasSidecarMatch) return false;
     const hint = providerVariantLanguage(probe.opt);
-    const hasTaggedTrack = manifestAudioTracks.some(track => canonLang(track.lang) !== 'und' || canonLang(track.name) !== 'und');
+    const hasTaggedTrack = manifestAudioTracks.some(
+      track => canonLang(track.lang) !== 'und' || canonLang(track.name) !== 'und',
+    );
+    const hasOnlyUnlabelledManifest = manifestAudioTracks.length <= 1 && !hasTaggedTrack;
     return (
-      manifestAudioTracks.length <= 1 &&
-      (hasSidecarMatch || matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0 ||
-        (!!hint && !hasTaggedTrack && matchScore(probe.targetLang, hint) >= 0))
+      (hasSidecarMatch && manifestAudioTracks.length <= 1) ||
+      (hasOnlyUnlabelledManifest && directClaimMatches) ||
+      (!!hint && hasOnlyUnlabelledManifest && matchScore(probe.targetLang, hint) >= 0)
     );
   }
 
@@ -2866,20 +3172,50 @@ export class ElfuraPlayer {
       if (probe && this.currentSource?.id === probe.opt.id) {
         queueMicrotask(() => {
           if (this.activeProbe?.seq !== probe.seq || this.hls !== hls) return;
+          const previousTrackId = hls.audioTrack;
+          let expectedTrackId: number | null = null;
+          let trackConfirmed = false;
+          let mediaConfirmed = false;
+          const switchedIds = new Set<number>();
+          const cleanup = () => {
+            hls.off(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+            hls.off(Hls.Events.FRAG_LOADED, onMediaLoaded);
+            hls.off(Hls.Events.BUFFER_APPENDED, onMediaAppended);
+          };
+          const originalSettle = probe.settle;
+          probe.settle = (result) => {
+            cleanup();
+            originalSettle(result);
+          };
+          const maybeConfirm = () => {
+            if (trackConfirmed && mediaConfirmed) probe.settle({ ok: true });
+          };
+          const onSwitched = (_event: unknown, switched: { id?: number }) => {
+            if (typeof switched.id === 'number') switchedIds.add(switched.id);
+            if (expectedTrackId !== null && switched.id === expectedTrackId) {
+              trackConfirmed = true;
+              maybeConfirm();
+            }
+          };
+          const onMediaLoaded = () => {
+            mediaConfirmed = true;
+            maybeConfirm();
+          };
+          const onMediaAppended = () => {
+            mediaConfirmed = true;
+            maybeConfirm();
+          };
+          hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, onSwitched);
+          hls.on(Hls.Events.FRAG_LOADED, onMediaLoaded);
+          hls.on(Hls.Events.BUFFER_APPENDED, onMediaAppended);
+
           if (!this.applyHlsProbeAudioSelection(probe, data.audioTracks ?? [], hls)) {
             probe.settle({ ok: false, loadFailed: false });
             return;
           }
-
-          // Require an actual media fragment / buffer append before confirming alive
-          // so dead segments (403/404) or codec errors never falsely pass probing!
-          const confirmAlive = () => {
-            hls.off(Hls.Events.FRAG_LOADED, confirmAlive);
-            hls.off(Hls.Events.BUFFER_APPENDED, confirmAlive);
-            probe.settle({ ok: true });
-          };
-          hls.on(Hls.Events.FRAG_LOADED, confirmAlive);
-          hls.on(Hls.Events.BUFFER_APPENDED, confirmAlive);
+          expectedTrackId = hls.audioTrack;
+          trackConfirmed = expectedTrackId === previousTrackId || switchedIds.has(expectedTrackId);
+          maybeConfirm();
         });
       }
     });
@@ -2978,8 +3314,8 @@ export class ElfuraPlayer {
 
   private async loadDash(url: string, loadSeq = this.engineLoadSeq): Promise<void> {
     const cfg = this.input.config;
-    // TGVIDX can offer HEVC-only DASH that dash.js otherwise plays as audio
-    // with no picture. Preserve those streams on capable devices; on others,
+    // HEVC-only DASH can otherwise play as audio with no picture in dash.js.
+    // Preserve those streams on capable devices; on others,
     // inspect the manifest before attaching the engine and fall back only when
     // every advertised video representation is definitively HEVC. A timeout or
     // unknown/mixed manifest remains eligible rather than being discarded.
@@ -2999,6 +3335,7 @@ export class ElfuraPlayer {
     }
     const Dash = await getDash();
     if (this.destroyed || loadSeq !== this.engineLoadSeq) return;
+    this.DashClass = Dash;
     const player = Dash().create();
     this.dash = player;
     const extras = player as unknown as DashExtras;
@@ -3019,13 +3356,17 @@ export class ElfuraPlayer {
     }
     player.on(Dash.events.STREAM_INITIALIZED, () => {
       const dashAudio = player.getTracksFor('audio');
-      const preferredDashAudio = this.desiredAudioLang && dashAudio.find((t: MediaInfo) => matchScore(this.desiredAudioLang!, t.lang ?? '') >= 0);
-      if (!this.activeProbe && preferredDashAudio) player.setCurrentTrack(preferredDashAudio);
+      const preferredDashAudio = this.desiredAudioLang
+        ? dashAudio.find((track: MediaInfo) => matchScore(this.desiredAudioLang!, this.dashAudioLang(track)) >= 0)
+        : undefined;
+      if (!this.activeProbe && preferredDashAudio) {
+        void this.switchDashAudioTrack(preferredDashAudio, this.audioRequestSeq);
+      }
       this.mergeNativeAudio(
-        dashAudio.map((t: MediaInfo, i: number) => ({
+        dashAudio.map((track: MediaInfo, i: number) => ({
           id: i,
-          lang: t.lang ?? 'und',
-          label: t.labels?.length ? String(t.labels[0].text) : undefined,
+          lang: this.dashAudioLang(track),
+          label: track.labels?.length ? String(track.labels[0].text) : undefined,
           default: i === 0,
         })),
       );
@@ -3038,13 +3379,16 @@ export class ElfuraPlayer {
 
       const probe = this.activeProbe;
       if (probe && this.currentSource?.id === probe.opt.id) {
-        const match = dashAudio.find((t: MediaInfo) => matchScore(probe.targetLang, t.lang ?? '') >= 0);
+        const match = dashAudio.find((track: MediaInfo) => matchScore(probe.targetLang, this.dashAudioLang(track)) >= 0);
         if (match) {
-          player.setCurrentTrack(match);
-          probe.settle({ ok: true });
+          void this.switchDashAudioTrack(match, this.audioRequestSeq, 3_500).then((ok) => {
+            if (this.activeProbe?.seq === probe.seq && this.dash === player) {
+              probe.settle({ ok, loadFailed: false });
+            }
+          });
         } else if (probe.opt.multiAudio || dashAudio.length > 1) {
           probe.settle({ ok: false, loadFailed: false });
-        } else if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0) {
+        } else if (matchScore(probe.targetLang, sourceSingleAudioLang(probe.opt)) >= 0) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
@@ -3076,7 +3420,7 @@ export class ElfuraPlayer {
     if (probe && this.currentSource?.id === probe.opt.id) {
       const onLoaded = () => {
         this.video.removeEventListener('loadedmetadata', onLoaded);
-        if (matchScore(probe.targetLang, probe.opt.audioLang ?? probe.opt.claimedAudioLang ?? 'und') >= 0 || probe.opt.multiAudio) {
+        if (matchScore(probe.targetLang, sourceSingleAudioLang(probe.opt)) >= 0 || probe.opt.multiAudio) {
           probe.settle({ ok: true });
         } else {
           probe.settle({ ok: false, loadFailed: false });
@@ -3251,24 +3595,6 @@ export class ElfuraPlayer {
 
       if (this.desiredAudioLang) {
         const lang = this.desiredAudioLang;
-        if (this.manualAggregatorGroup && this.currentSource?.sourceId === this.manualAggregatorGroup) {
-          // Do not claim that unknown rows carry the requested language. Only
-          // try the selected aggregator's remaining language-matched rows;
-          // otherwise retain the existing cross-provider language search.
-          const sameGroup = this.sources.filter(s => s.sourceId === this.manualAggregatorGroup &&
-            !this.isCandidateFailed(s) &&
-            ((s.audioLang && matchScore(lang, s.audioLang) >= 0) ||
-             (s.availableAudioLangs ?? []).some(code => matchScore(lang, code) >= 0) ||
-             (s.audioTracks ?? []).some(track => matchScore(lang, track.lang) >= 0)))
-            .sort((a, b) => (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
-          const next = sameGroup[0];
-          if (next) {
-            this.emit('server:switch', { from: this.currentSource?.label ?? null, to: next.label, reason: 'fatal-error' });
-            void this.activateSourceOption(next, true);
-            return;
-          }
-          this.manualAggregatorGroup = null;
-        }
         void this.searchRawSourcesForLanguage(lang, languageLabel(lang), new Set(this.failedSourceIds));
         return;
       }
@@ -3277,19 +3603,17 @@ export class ElfuraPlayer {
       const ordered = [...this.sources.slice(curIdx + 1), ...this.sources.slice(0, Math.max(0, curIdx))].filter(
         (s) => !this.isCandidateFailed(s),
       );
-      // Normally a different provider group is the safer fallback. Source 17
-      // is an aggregator of distinct upstreams, though: if the viewer manually
-      // chose it, try its remaining rows first rather than immediately switching
-      // away from the chosen group after one of its servers fails.
-      const selectedAggregator = this.currentSource?.sourceId === this.manualAggregatorGroup
-        ? this.manualAggregatorGroup : null;
+      // A manual server choice is a preference for that provider family, not
+      // just one row. Try its remaining options before crossing to another one.
+      const selectedManualGroup = this.currentSource?.sourceId === this.manualSourceGroup
+        ? this.manualSourceGroup : null;
       ordered.sort((a, b) =>
-        (selectedAggregator
-          ? Number(b.sourceId === selectedAggregator) - Number(a.sourceId === selectedAggregator)
+        (selectedManualGroup
+          ? Number(b.sourceId === selectedManualGroup) - Number(a.sourceId === selectedManualGroup)
           : Number(a.sourceId === this.currentSource?.sourceId) - Number(b.sourceId === this.currentSource?.sourceId)) ||
         (a.latencyHintMs ?? 600) - (b.latencyHintMs ?? 600));
       const next = ordered[0];
-      if (selectedAggregator && next?.sourceId !== selectedAggregator) this.manualAggregatorGroup = null;
+      if (selectedManualGroup && next?.sourceId !== selectedManualGroup) this.manualSourceGroup = null;
       if (!next) {
         this.recoverExhaustedSources();
         return;
@@ -3334,9 +3658,10 @@ export class ElfuraPlayer {
 
     // Single-dub HLS/DASH manifests (e.g. `NAME="Audio"` with no LANGUAGE attribute)
     // inherit the known canonical language of `this.currentSource` so no bogus "Original" track appears.
+    const activeSingleLanguage = this.currentSource ? sourceSingleAudioLang(this.currentSource) : undefined;
     const singleSourceCanon =
-      this.currentSource && !this.currentSource.multiAudio && this.currentSource.audioLang
-        ? canonLang(this.currentSource.audioLang)
+      this.currentSource && !this.currentSource.multiAudio && activeSingleLanguage
+        ? canonLang(activeSingleLanguage)
         : 'und';
     const normalizedNative =
       native.length === 1 &&
@@ -3356,21 +3681,24 @@ export class ElfuraPlayer {
     const discoveredSourceLangs: { lang: string; label?: string; active?: boolean; providerHint?: boolean }[] = [];
     if (this.currentSource && !this.currentSource.multiAudio) {
       const hint = providerVariantLanguage(this.currentSource);
+      const claimed = sourceSingleAudioLang(this.currentSource);
+      const hasVerifiedLanguage = !!this.currentSource.audioLang && canonLang(this.currentSource.audioLang) !== 'und';
       discoveredSourceLangs.push({
-        lang: hint ?? this.currentSource.audioLang ?? 'und',
+        lang: hint ?? claimed,
         active: true,
-        ...(hint ? { providerHint: true } : {}),
+        ...(hint || (!hasVerifiedLanguage && !!this.currentSource.claimedAudioLang) ? { providerHint: true } : {}),
       });
     }
     for (const s of this.sources) {
       if (this.isCandidateFailed(s)) continue;
       const hint = providerVariantLanguage(s);
-      const declaredLang = hint ?? s.audioLang ?? s.claimedAudioLang;
+      const declaredLang = hint ?? sourceSingleAudioLang(s);
+      const hasVerifiedLanguage = !!s.audioLang && canonLang(s.audioLang) !== 'und';
       if (!s.multiAudio && declaredLang && declaredLang !== 'und') {
         discoveredSourceLangs.push({
           lang: declaredLang,
           active: s.id === this.currentSource?.id,
-          ...(hint || !s.audioLang ? { providerHint: true } : {}),
+          ...(hint || !hasVerifiedLanguage ? { providerHint: true } : {}),
         });
       }
       for (const l of s.availableAudioLangs ?? []) {
@@ -3471,7 +3799,7 @@ export class ElfuraPlayer {
 
   /**
    * Native HLS subtitles arrive as a media playlist of subtitle segments, not one
-   * file. Resolve all non-comment segment URIs (including `/api/proxy?u=...`
+   * file. Resolve all non-comment segment URIs (including `/api/v1/stream?t=...`
    * URLs), concatenate in order, and parse with our own subtitle engine.
    */
   private async loadSubtitleCues(track: SubtitleTrack): Promise<void> {
@@ -3586,7 +3914,7 @@ export class ElfuraPlayer {
         void this.prewarmNextEpisode();
       }
     });
-    v.addEventListener('volumechange', () => this.emit('volumechange', { volume: v.volume, muted: v.muted }));
+    v.addEventListener('volumechange', () => this.emit('volumechange', { volume: v.volume, muted: this.externalAudio.muted }));
     v.addEventListener('ratechange', () => this.emit('speedchange', { speed: v.playbackRate }));
     document.addEventListener('fullscreenchange', () => {
       const isFs = document.fullscreenElement === this.shell;

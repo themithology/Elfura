@@ -1,14 +1,7 @@
-process.env.ELFURA_MAPPLE_ENABLED = '0';
-process.env.ELFURA_RIVE_CITADEL_ENABLED = '0';
-process.env.ELFURA_XPASS_ENABLED = '0';
-process.env.ELFURA_VIDZEN_ENABLED = '0';
-process.env.ELFURA_VAPLAYER_ENABLED = '0';
-process.env.ELFURA_VIDNEST_ENABLED = '0';
-process.env.ELFURA_SCREENSCAPE_ENABLED = '0';
-process.env.ELFURA_VIDZEE_ENABLED = '0';
-process.env.ELFURA_VIXSRC_ENABLED = '0';
-process.env.ELFURA_NXSHA_ENABLED = '0';
-process.env.ELFURA_BINGR_ENABLED = '0'; // isolate fixture tests from the live research lane
+process.env.ELFURA_CITADEL_ENABLED = '1';
+process.env.ELFURA_GREYBOX_ENABLED = '1';
+process.env.ELFURA_NXSHA_ENABLED = '1';
+process.env.ELFURA_VIDLY_ENABLED = '1';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -18,16 +11,14 @@ import { ROXY_PAGE } from '../../dist/backend/roxy-page.js';
 import { roxySourceWebsites } from '../../dist/backend/roxy-source-requests.js';
 import { loadBackendConfig } from '../../dist/backend/config.js';
 new Function(ROXY_PAGE.match(/<script>([\s\S]*)<\/script>/)[1]);
-const adminSourceList = roxySourceWebsites(loadBackendConfig({
-  ELFURA_SECRET: 'admin-source-test-secret',
-  ELFURA_RIVE_CITADEL_ENABLED: '1',
-  ELFURA_MAPPLE_ENABLED: '1',
-}));
-assert(adminSourceList.some(site => site.id === 'citadel' && site.source === 'Source 14'));
-assert(adminSourceList.some(site => site.id === 'mapple' && site.source === 'Source 15'));
-assert(adminSourceList.some(site => site.id === 'tgvidx' && site.source === 'Source 17'));
-assert(!roxySourceWebsites(loadBackendConfig({ELFURA_SECRET: 'test', ELFURA_TGVIDX_ENABLED: '0'})).some(site => site.id === 'tgvidx'));
-assert(!adminSourceList.some(site => site.id === 'desidub' || site.id === 'anikoto' || site.id === 'anivexa'), 'operator website checks do not claim playback verification for bundled aggregators');
+const adminSourceList = roxySourceWebsites(loadBackendConfig({ ELFURA_SECRET: 'admin-source-test-secret' }));
+assert.deepEqual(adminSourceList.map(site => site.id), ['source-1', 'source-2', 'source-3', 'source-4']);
+assert.deepEqual(adminSourceList.map(site => site.source), ['source-1', 'source-2', 'source-3', 'source-4']);
+assert.deepEqual(adminSourceList.map(site => site.name), ['RiveStream', 'Greybox', 'Nxsha', 'Vidly']);
+assert(!ROXY_PAGE.includes('Outbound Proxy Pool'));
+assert(!ROXY_PAGE.includes('Egress relay'));
+assert(!ROXY_PAGE.includes('/roxy/api/proxies'));
+assert(!ROXY_PAGE.includes('/roxy/api/relay'));
 const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'elfura-roxy-'));
 process.env.ROXY_DATA_DIR=tmp;process.env.ELFURA_SECRET='roxy-test-secret';
 const start=async()=>{const app=createBackendServer();await new Promise(r=>app.server.listen(0,'127.0.0.1',r));return {...app,base:`http://127.0.0.1:${app.server.address().port}`}};
@@ -41,10 +32,14 @@ try {
  let health=await (await call('/api/v1/health')).json();assert.equal(health.features.roxy,true);assert.equal(health.sources,undefined,'public health must not list sources');assert.equal(typeof health.sourceCount,'number');assert.ok(health.sourceCount>0,'some sources are configured');
  assert.equal((await call('/dl/')).status,404);assert.equal((await call('/dl/api/resolve?type=movie&tmdb=550')).status,404);
  let res=await call('/roxy');assert.equal(res.status,200);assert.equal(res.headers.get('x-frame-options'),'DENY');assert.match(await res.text(),/Playback, at a glance/);
+ assert.equal((await call('/api/v1/egress')).status,404);
+ assert.equal((await call('/diagnose/egress')).status,404);
  res=await call('/roxy/api/overview');assert.equal(res.status,401);assert.equal(res.headers.get('access-control-allow-origin'),null);
  assert.equal((await post('/roxy/api/login',{password:'wrong'})).status,401);
  assert.equal((await post('/roxy/api/login',{password:process.env.ELFURA_SECRET},undefined,'https://evil.example')).status,403);
  res=await post('/roxy/api/login',{password:process.env.ELFURA_SECRET});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie').split(';')[0];assert.match(res.headers.get('set-cookie'),/HttpOnly/);assert.match(res.headers.get('set-cookie'),/SameSite=Strict/);
+ assert.equal((await call('/roxy/api/proxies',{headers:{Cookie:cookie}})).status,404);
+ assert.equal((await call('/roxy/api/relay',{headers:{Cookie:cookie}})).status,404);
  res=await call('/roxy/api/overview',{headers:{Cookie:cookie}});let d=await res.json();assert.equal(d.playsToday,0);assert.equal(d.hours.length,72);
  res=await call('/embed/movie/872585',{headers:{Referer:'https://example.com/article?private=yes'}});const html=await res.text();const boot=JSON.parse(html.match(/window\.__ELFURA_BOOT__=(.*?);<\/script>/)[1]);assert.ok(boot.analyticsTicket);
  assert.equal((await post('/api/v1/analytics',{ticket:boot.analyticsTicket,event:'play',title:'Jawan'})).status,200);

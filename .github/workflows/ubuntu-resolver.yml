@@ -1,7 +1,6 @@
 name: Ubuntu resolver installer
 on:
   push:
-    branches: [arena/124b7afe-elfura]
     paths:
       - 'scripts/install-ubuntu-resolver.sh'
       - 'backend/test/ubuntu-resolver-install.mjs'

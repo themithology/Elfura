@@ -29,13 +29,6 @@ export interface SourceQuery {
   diag?: DiagEntry[];
   /** Warm the adapter cache with lanes that finish after a fast initial result. */
   onLateResult?: (result: RawSourceResult) => void;
-  /**
-   * Subtitle-only adapters (they produce no stream of their own) append their
-   * tracks here; the registry attaches them to the streams it already found for
-   * this title. A subtitle lane must never fabricate a video candidate to carry
-   * them — that would rank as a playable stream.
-   */
-  extraSubtitles?: RawTrackRef[];
   imdbId?: string | null;
   title?: string;
   year?: string;
@@ -92,7 +85,7 @@ export interface RawStreamCandidate {
   qualityLabelsUnreliable?: boolean;
   /** Primary BCP-47 language if single-dub stream, verified from manifest evidence. */
   audioLang?: string;
-  /** Provider-declared language only; never use as verified audio or for language selection. */
+  /** Provider-declared language for this single-language row; usable for selection unless manifest evidence contradicts it. */
   claimedAudioLang?: string;
   /** Probe bounded MP4 metadata for actual single-track audio language. */
   probeMp4Audio?: boolean;

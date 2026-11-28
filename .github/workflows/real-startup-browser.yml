@@ -1,7 +1,6 @@
 name: Real provider startup browser matrix
 on:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [backend/test/real-startup-browser.mjs, .github/workflows/real-startup-browser.yml]
 permissions:
   contents: read

@@ -4,8 +4,8 @@
  * ===================================================================
  * Orchestrates registered `SourceAdapter` modules concurrently with TMDB
  * metadata resolution, caches raw results in bounded RAM (zero disk writes),
- * strips all internal provider strings, and shapes every URL into one
- * stateless raw-stream proxy URL (`/api/proxy?u=...`).
+ * strips upstream identifiers and seals every stream URL into a stateless
+ * `/api/v1/stream?t=...` playback ticket.
  */
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -25,19 +25,15 @@ import { selectPlaybackCandidates, MAX_LISTED_SOURCES, MAX_SEPARATE_DUBS } from 
 // spike re-resolving the same episode and the first one paying for it.
 const MAX_ADAPTER_CACHE_ENTRIES = 1024;
 const ADAPTER_CACHE_TTL_MS = 4 * 60_000;
-/** Extra time given to still-running adapters once the first source has candidates. */
-const EARLY_GRACE_MS = 700;
-/** No adapter may be cut before this point, however fast the first one was. */
-const MIN_JOIN_MS = 1400;
-/** Floor for a single verification probe window (ms), independent of the budget. */
-const PROBE_MIN_WINDOW_MS = 1200;
-/** One-off extension granted when nothing has verified at the end of the budget. */
-const RESCUE_EXTENSION_MS = 700;
-/** Wall-clock ceiling for a resolve that has not verified anything yet (ms). */
-const RESCUE_CEILING_MS = 5200;
-/** Upper bound for the adapter race when nothing has candidates yet. */
-const ADAPTER_RACE_MS = 3600;
-/** Window for a single-adapter recovery call (`?source=source-N`). */
+/** Tiny collection grace; slow sources are returned by the existing late-wave path. */
+const EARLY_GRACE_MS = 150;
+/** First playable resolution does not wait for every source to finish. */
+const MIN_JOIN_MS = 350;
+/** Floor for one probe window; an inconclusive lane stays available as fallback. */
+const PROBE_MIN_WINDOW_MS = 1000;
+/** Upper bound for the first answer when no adapter has produced candidates yet. */
+const ADAPTER_RACE_MS = 1800;
+/** Window for a focused single-source recovery call. */
 const SINGLE_SOURCE_BUDGET_MS = 6500;
 /** End-to-end budget for one playback resolve (operator tunable, 3 s floor). */
 /** Diagnostics only: the environment variable that can switch each source off. */
@@ -46,16 +42,10 @@ const resolveBudgetMs = () => {
     return Number.isFinite(raw) ? Math.max(3000, Math.min(20_000, raw)) : 5000;
 };
 /**
- * Candidates probed in the shared verification batch, spread across sources.
- *
- * With 21 adapters this divided down to the floor of 2 lanes per source, so a
- * multi-language source had 2 of its 21 lanes verified and the rest reached the
- * player unprobed. 84 gives roughly four each at the current board size.
- *
- * 160 was tried first and was too greedy: the probe ran long enough to eat the
- * resolve budget, and slower adapters that had candidates never got sealed at
- * all - two whole sources were lost to gain thirteen slots. Four per source,
- * language-aware, is the balance.
+ * Candidate target for the shared verification batch. Work is spread across
+ * the four approved adapters so a prolific language/server lane cannot starve
+ * another source; liveness budgets, rather than a provider-specific cap, bound
+ * the total work.
  */
 const VERIFY_BREADTH_TARGET = 84;
 /**
@@ -63,16 +53,19 @@ const VERIFY_BREADTH_TARGET = 84;
  * verified set. Verified lanes are not counted, so this only limits how much a
  * single prolific source can pad the tail of the list.
  *
- * This was 12 and it was measurably losing streams. A multi-language source
- * returns one lane per language (Greybox: 21 for a film, 14 for an episode;
- * bingr: 10), and a cap of 12 cut that to five, so the language variety a
- * source was chosen for never reached the player. Set to 200: the intended
- * ceiling here is "all of them", and the real limits are the liveness probe and
- * the per-adapter candidate caps upstream of this point.
+ * A small cap can hide useful alternate languages or server lanes from a
+ * currently approved source. Keep this comfortably above observed results; the
+ * liveness probe and adapter parsers provide the meaningful bounds.
  */
 const MAX_LANES_PER_SOURCE = 200;
 const MAX_WAVE_TITLES = 256;
 const MAX_WAVE_BYTES = 32 * 1024 * 1024;
+function candidateSingleAudioLang(candidate) {
+    const verified = candidate.audioLang;
+    if (verified && normalizeLang(verified).code !== 'und')
+        return verified;
+    return candidate.claimedAudioLang || verified || 'und';
+}
 export class SourceRegistry {
     adapters;
     cfg;
@@ -101,11 +94,10 @@ export class SourceRegistry {
         // Record what each adapter actually talked to, so a resolve that yields
         // nothing can explain itself in the console.
         installNetTap();
-        // The board is the manifest, and nothing else. An adapter that is not in
-        // APPROVED_SOURCES cannot serve traffic, and one that is there has passed
-        // backend/test/source-contract.mjs — real titles, a real manifest, real
-        // segment bytes. Thirty adapters that answer nothing is worse than none,
-        // because the console reports coverage instead of streams.
+        // The manifest is the only adapter registry. An adapter that is not in
+        // APPROVED_SOURCES cannot serve traffic. The four-source contract verifies
+        // this exact manifest, adapter parsing, and Vidly's origin-scoped tickets;
+        // live media-byte verification runs separately in GitHub Actions.
         this.adapters = APPROVED_SOURCES.map((source) => source.create());
     }
     /**
@@ -636,22 +628,11 @@ export class SourceRegistry {
         }
         if (lagTimer)
             clearTimeout(lagTimer);
-        // Only confirmed Japanese animation gets the short additional join window.
-        // All adapters were already launched; never block the late-join mechanism or
-        // use this window for a source-specific recovery request.
+        // Confirmed Japanese animation prioritizes anime lanes during verification,
+        // but it never extends the first-paint wait for unfinished providers.
         const isPriorityAnime = () => params.type === 'tv' && (params.season ?? 1) === 1 &&
             readyMedia?.originalLanguage === 'ja' &&
             !!readyMedia.genres?.some(g => g.toLowerCase() === 'animation');
-        // Lanes that declare themselves anime-episode lanes get a short extra join
-        // window once TMDB confirms the title is Japanese animation. The list used
-        // to be three hardcoded ids here and in two other files.
-        if (!lateOnly && !singleSource && isPriorityAnime() && remaining() > 1400) {
-            const priorityTasks = adapterTasks.filter((_, idx) => isAnimeLane(activeAdapters[idx]));
-            if (priorityTasks.length)
-                await Promise.race([
-                    Promise.allSettled(priorityTasks), wait(Math.min(2300, Math.max(0, remaining() - 1400))),
-                ]);
-        }
         const verifyCurrentSlots = async (probeFloorMs = PROBE_MIN_WINDOW_MS) => {
             const ready = slots.filter((x) => x !== null);
             // Breadth first: probe each adapter's best lanes before any adapter's
@@ -697,11 +678,11 @@ export class SourceRegistry {
                         tagged.push({ ...cand, key: `${adapterIdx}::${cand.key}` });
                 }
             }
-            const { candidates: vFlat, verifiedAliveCount, probedDead } = await verifyAndFilterCandidatesDetailed(tagged, 
+            const { candidates: vFlat, verifiedAliveCount, probedDead } = await verifyAndFilterCandidatesDetailed(tagged,
             // The probe decides whether a title is playable at all, so it gets a
             // real floor even when the response budget is nearly spent. Collapsing
             // this to a few milliseconds turned short budgets into empty lists.
-            AbortSignal.timeout(Math.max(lateOnly ? 900 : probeFloorMs, Math.min(lateOnly ? 1_300 : 2_000, remaining()))), isPriorityAnime() ? new Set(tagged.filter(c => {
+            AbortSignal.timeout(Math.max(lateOnly ? 900 : probeFloorMs, Math.min(lateOnly ? 1_200 : 1_100, remaining()))), isPriorityAnime() ? new Set(tagged.filter(c => {
                 const idx = Number(c.key.slice(0, c.key.indexOf('::')));
                 return priorityIds.has(ready[idx].adapter.id);
             }).map(c => c.url)) : undefined);
@@ -726,74 +707,30 @@ export class SourceRegistry {
                 probedDead,
             };
         };
-        // A short source list is worse than a slightly slower start: when fewer than
-        // three sources have produced candidates, keep listening for the adapters
-        // that are still working instead of shipping what happened to arrive first.
-        const readySources = () => slots.filter((slot) => slot !== null && slot.result.candidates.length > 0).length;
-        // A late pass snapshots the completed wave entries; empty results are
-        // recorded too, while adapters not yet settled remain pending.
-        const lateStash = lateOnly ? [...(currentWave?.entries.values() ?? [])] : [];
-        const stillPending = lateOnly
-            ? activeAdapters.filter((adapter) => !lateStash.some((entry) => entry.adapter.id === adapter.id)).length
-            : activeAdapters.length - doneCount;
-        if (stillPending >= 2 && readySources() < 3 && remaining() > 1500) {
-            await Promise.race([
-                Promise.allSettled(adapterTasks),
-                wait(Math.min(1300, Math.max(0, remaining() - 1400))),
-            ]);
-        }
-        // With a large provider board, three fast answers are not a full first
-        // wave. Give the other already-running adapters a small bounded chance to
-        // join, while retaining time for verification and fast two-source starts.
-        if (!lateOnly && !singleSource && activeAdapters.length >= 5 &&
-            readySources() >= 3 && readySources() < Math.min(8, Math.ceil(activeAdapters.length / 2)) && remaining() > 1500) {
-            await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(700, remaining() - 1400))]);
-        }
+        // Verify what has arrived; unfinished providers stay in the late wave.
+        // Only when no candidate has verified may we spend one short extra window
+        // on pending discovery, regardless of AniList or source-board size.
         let verifiedBatch = await verifyCurrentSlots();
-        // An AniList lookup must not let Anivexa monopolize the startup window.
-        // If no candidate has verified yet, give every outstanding adapter most of
-        // the remaining budget; if playback is already verified, allow a short
-        // grace period for the standard sources to join the response.
-        if (!lateOnly && params.anilistId && doneCount < activeAdapters.length && remaining() > 1500) {
-            const waitBudget = verifiedBatch.verifiedLive > 0
-                ? Math.min(3000, Math.max(0, remaining() - 1300))
-                : Math.max(0, remaining() - 1300);
+        const hasUnverifiedCandidate = verifiedBatch.entries.some(({ result }) =>
+            result.candidates.some(candidate => !verifiedBatch.probedDead.has(candidate.url)));
+        if (!lateOnly && verifiedBatch.verifiedLive === 0 && !hasUnverifiedCandidate &&
+            doneCount < activeAdapters.length && remaining() > 400) {
+            // If every arrived lane is confirmed dead, allow a little longer for
+            // one alternative. With no lane at all, use a shorter bound. Never
+            // wait on the full board when an unknown playable fallback exists.
+            const maxWait = verifiedBatch.probedDead.size ? 1800 : 1400;
+            const waitBudget = Math.min(maxWait, Math.max(0, remaining() - 100));
             await Promise.race([Promise.allSettled(adapterTasks), wait(waitBudget)]);
             verifiedBatch = await verifyCurrentSlots();
         }
-        else if (!lateOnly && doneCount < activeAdapters.length && verifiedBatch.verifiedLive === 0 && remaining() > 400) {
-            await Promise.race([Promise.allSettled(adapterTasks), wait(Math.min(800, Math.max(0, remaining() - 300)))]);
-            verifiedBatch = await verifyCurrentSlots();
-        }
-        // Rescue pass. If the clock is the only reason the list is empty, buy one
-        // bounded extension instead of reporting "no sources" for a title that is
-        // merely late. Deliberately unconditional on the remaining budget: an empty
-        // answer is always worse than ~1.2 s of extra wait.
-        if (!lateOnly &&
-            !params.anilistId &&
-            verifiedBatch.verifiedLive === 0 &&
-            doneCount < activeAdapters.length) {
-            const slack = RESCUE_CEILING_MS - (Date.now() - resolveStartedAt);
-            if (slack > 300) {
-                await Promise.race([
-                    Promise.allSettled(adapterTasks),
-                    wait(Math.min(RESCUE_EXTENSION_MS, slack)),
-                ]);
-                verifiedBatch = await verifyCurrentSlots(Math.min(800, slack));
-            }
-        }
-        // Metadata, skip markers and subtitles are enrichments; none may hold the
-        // first playable stream hostage. Their requests continue warming caches.
-        // A brief opportunistic window retains metadata and skip markers when
-        // they're already close, without making their upstream timeout additive.
+        // Metadata, skip markers and subtitles are enrichments; let only the
+        // already-finished requests join the first response. Slow lookups keep
+        // warming in the background and never add dead air, even if verification
+        // could not confirm a source yet.
         if (!lateOnly && remaining() > 0) {
-            // Once something is playable, metadata is pure polish: keep the window
-            // short so a slow TMDB call cannot add a second of dead air to a stream
-            // that is already verified. With nothing playable yet, wait longer.
-            const enrichmentWindow = verifiedBatch.verifiedLive > 0 ? 700 : 1200;
             await Promise.race([
                 Promise.allSettled([mediaPromise, ...segmentTasks]),
-                wait(Math.min(enrichmentWindow, remaining())),
+                wait(Math.min(100, remaining())),
             ]);
         }
         const media = readyMedia ?? {
@@ -898,7 +835,7 @@ export class SourceRegistry {
         // Coverage pass: every adapter that answered contributes its usable lanes,
         // not only the ones whose probe finished inside the budget. Verified lanes
         // are already in `candidateEntries` and sort first downstream; these fill in
-        // behind them so a title never shows two streams when nineteen sources
+        // behind them so a title keeps usable candidates from every source that
         // actually replied. Candidates probed and found dead are never added, and
         // the last rail keeps a total verification blackout from emptying the list.
         {
@@ -995,11 +932,9 @@ export class SourceRegistry {
             console.warn(`[elfura-resolve] NO STREAMS type=${params.type} tmdb=${params.tmdbId} s=${params.season ?? '-'} e=${params.episode ?? '-'} meta=${media.title ? 'ok' : 'missing'} ms=${Date.now() - resolveStartedAt} :: ${detail}`);
             return null;
         }
-        // Only OpenSubtitles tracks are exposed by default. No provider subtitle
-        // fallback — with one exception: the Vidly index (source-22), which is a
-        // separate, unauthenticated subtitle catalogue. It is used only when
-        // OpenSubtitles produced nothing, so it can add languages but can never
-        // displace a working OpenSubtitles track.
+        // OpenSubtitles is the only separate subtitle fallback in the active
+        // runtime. It is used only when the stream manifest provides no track for
+        // a language, so it can add coverage without replacing a working track.
         if (shouldResolveOpenSubtitles && media.imdbId) {
             const rawFallbackSubs = subtitleState.value ?? [];
             if (rawFallbackSubs.length > 0) {
@@ -1007,7 +942,11 @@ export class SourceRegistry {
                     lang: s.lang,
                     label: s.label,
                     ...(s.format ? { format: s.format } : {}),
-                    url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: s.url, h: s.headers }))}`,
+                    url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                        u: s.url,
+                        ...(s.headers && Object.keys(s.headers).length ? { h: s.headers } : {}),
+                        k: 's',
+                    }))}`,
                 }));
                 for (const opt of uniformOptions) {
                     const lane = this.adapters.find((adapter) => adapter.id === opt.sourceId);
@@ -1019,25 +958,6 @@ export class SourceRegistry {
                         opt.subtitles = [...sealedFallbackSubs];
                     }
                 }
-            }
-        }
-        // Vidly subtitle index: a language fallback, never a replacement.
-        // `query.extraSubtitles` was filled in by the source-22 lane during the same
-        // resolve, so this costs no extra request and no extra wait.
-        const vidlyTracks = query.extraSubtitles ?? [];
-        if (vidlyTracks.length && uniformOptions.length) {
-            const sealedVidly = vidlyTracks.map((track) => ({
-                lang: track.lang,
-                label: track.label,
-                format: 'vtt',
-                url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers }))}`,
-            }));
-            for (const opt of uniformOptions) {
-                const already = new Set((opt.subtitles ?? []).map((track) => track.lang));
-                const added = sealedVidly.filter((track) => !already.has(track.lang));
-                // Never overwrite a language we already have: OpenSubtitles wins.
-                if (added.length)
-                    opt.subtitles = [...(opt.subtitles ?? []), ...added];
             }
         }
         // Hierarchy: genuine multi-audio streams (several languages muxed in one
@@ -1149,7 +1069,7 @@ export class SourceRegistry {
             const requested = normalizeLang(params.preferredLang).code;
             const requestedPrimary = requested.split('-')[0];
             const carries = (option) => {
-                const lang = option.audioLang ?? option.claimedAudioLang;
+                const lang = candidateSingleAudioLang(option);
                 if (!lang)
                     return false;
                 if (lang.split('-')[0] === requestedPrimary)
@@ -1250,7 +1170,10 @@ export class SourceRegistry {
             .update(cand.fingerprint || cand.url)
             .digest('hex')
             .slice(0, 12);
-        const singleDubHint = !cand.multiAudio && cand.audioLang && cand.audioLang !== 'und' ? cand.audioLang : undefined;
+        const candidateAudioHint = candidateSingleAudioLang(cand);
+        const singleDubHint = !cand.multiAudio && candidateAudioHint && candidateAudioHint !== 'und'
+            ? candidateAudioHint
+            : undefined;
         const proxyOptions = {
             ...(cand.restrictedOrigin ? { restrictedOrigin: cand.restrictedOrigin } : {}),
             ...(singleDubHint ? { audioLang: singleDubHint } : {}),
@@ -1258,7 +1181,11 @@ export class SourceRegistry {
         const audioTracks = (cand.audioTracks ?? []).map((t) => ({
             lang: t.lang,
             label: t.label,
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: t.url, h: t.headers }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: t.url,
+                ...(t.headers && Object.keys(t.headers).length ? { h: t.headers } : {}),
+                k: 'a',
+            }))}`,
         }));
         // Only the new anime lane opts into source-specific, episode-aligned
         // subtitles. Keep the existing subtitle policy for every other adapter.
@@ -1266,7 +1193,13 @@ export class SourceRegistry {
             lang: track.lang,
             label: track.label,
             ...(track.format ? { format: track.format } : {}),
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: track.url, h: track.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: track.url,
+                ...(track.headers && Object.keys(track.headers).length ? { h: track.headers } : {}),
+                k: 's',
+                ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}),
+                ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}),
+            }))}`,
         })) : [];
         const latencyHintMs = typeof cand.latencyMs === 'number' && Number.isFinite(cand.latencyMs) && cand.latencyMs > 0
             ? Math.round(cand.latencyMs)
@@ -1276,7 +1209,17 @@ export class SourceRegistry {
             sourceId: adapter.id,
             label: displayLabel,
             type: cand.type,
-            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, { u: cand.url, h: cand.headers, ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}), ...(proxyOptions.audioLang ? { lang: proxyOptions.audioLang } : {}) }))}`,
+            url: `${streamBase}?t=${encodeURIComponent(sealStreamTicket(this.cfg.secret, {
+                u: cand.url,
+                ...(cand.headers && Object.keys(cand.headers).length ? { h: cand.headers } : {}),
+                // The relay uses this marker to rewrite root manifests and to
+                // apply byte ranges / segment transforms correctly. Without `m`,
+                // query-shaped or octet-stream HLS URLs were passed through as
+                // raw playlists, so choosing that server could not start playback.
+                k: cand.type === 'mp4' ? 'a' : 'm',
+                ...(proxyOptions.restrictedOrigin ? { ro: proxyOptions.restrictedOrigin } : {}),
+                ...(proxyOptions.audioLang ? { l: proxyOptions.audioLang } : {}),
+            }))}`,
             quality: cand.quality || 'auto',
             ...(cand.qualityLabelsUnreliable ? { qualityLabelsUnreliable: true } : {}),
             ...(cand.qualityLadder?.length ? { qualityLadder: cand.qualityLadder } : {}),
@@ -1295,7 +1238,7 @@ export class SourceRegistry {
                 ? { declaredBitrateBps: cand.declaredBitrateBps }
                 : {}),
             ...(cand.audioLang ? { audioLang: cand.audioLang } : {}),
-            ...(cand.claimedAudioLang && !cand.audioLang ? { claimedAudioLang: cand.claimedAudioLang } : {}),
+            ...(cand.claimedAudioLang && (!cand.audioLang || normalizeLang(cand.audioLang).code === 'und') ? { claimedAudioLang: cand.claimedAudioLang } : {}),
             ...(adapter.traits?.length ? { traits: [...adapter.traits] } : {}),
             ...(cand.audioVariant ? { audioVariant: cand.audioVariant } : {}),
             ...(cand.availableAudioLangs?.length ? { availableAudioLangs: cand.availableAudioLangs } : {}),

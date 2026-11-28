@@ -1,7 +1,6 @@
 name: Startup recovery browser regression
 on:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [src/core/player.ts, backend/test/startup-recovery-browser.mjs, .github/workflows/startup-recovery-browser.yml]
 permissions:
   contents: read

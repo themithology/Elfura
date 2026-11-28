@@ -2,7 +2,6 @@ name: Production measured startup matrix
 on:
   workflow_dispatch:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [backend/test/production-startup-matrix.mjs, .github/workflows/production-startup-matrix.yml]
 permissions:
   contents: read

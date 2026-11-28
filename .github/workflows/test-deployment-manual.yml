@@ -1,7 +1,6 @@
 name: Test deployment manual playback
 on:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [backend/test/test-deployment-manual.mjs, .github/workflows/test-deployment-manual.yml]
 permissions:
   contents: read

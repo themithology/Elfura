@@ -110,19 +110,16 @@ streaming VPS's actual outbound IP where possible, keep the token strong, and
 rotate any credentials previously committed to the repository. Cloudflare
 Access requiring interactive login or a service-token header will block the
 current resolver client unless compatible authentication is configured.
-### Source 25 / Greybox connectivity
+### Source-2 (Greybox) connectivity
 
-Source 25 is enabled by default. If a resolver cannot connect to
-`greyboxtv.duckdns.org` (for example, it reports a TLS reset), verify connectivity
-from that resolver; a healthy resolver endpoint alone does not test the provider.
-A separately deployed, token-protected Cloudflare Worker egress relay can be
-configured on each resolver with `ELFURA_UPSTREAM_RELAY` and `ELFURA_RELAY_TOKEN`
-in its preserved `.env` (see `cloudflare-worker/worker.js` for deployment).
-The Worker must contain the current code: older versions do not allow Greybox by
-default. Restart each resolver after changing its environment, one at a time.
-The relay moves discovery to the Worker, not the media-server playback traffic;
-it cannot guarantee that the Worker or media server can reach the provider, or
-that a browser supports the returned codec. Never share the relay token.
+Greybox is enabled by default. If a resolver cannot connect to
+`greyboxtv.duckdns.org` (for example, it reports a TLS reset), verify from the
+resolver host or use the GitHub Actions live-source workflow. A reachable
+resolver endpoint alone does not test provider connectivity. Source discovery
+uses the resolver's native Node networking; no Worker egress relay, outbound
+proxy pool, or DNS-rescue setting is supported. A restricted agent sandbox may
+not have public egress, so its connection failures are not evidence that Greybox
+is down. The `/api/v1/stream` relay remains the separate playback path.
 
 Tokenless `ELFURA_RESOLVER_OPEN=1` is unsafe behind a local reverse proxy: the
 proxy connects from loopback, so the installer explicitly disables it.

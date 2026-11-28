@@ -1,7 +1,6 @@
 name: Skip and next episode browser regression
 on:
   push:
-    branches: [arena/dcf86284-elfura]
     paths: [src/core/player.ts, src/ui/controls.ts, src/ui/styles.css, backend/src/segments.ts, backend/src/index.ts, backend/test/skip-browser.mjs, backend/test/segments.mjs, backend/test/segments-live.mjs, .github/workflows/skip-browser.yml]
 permissions:
   contents: read

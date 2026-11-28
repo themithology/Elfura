@@ -27,7 +27,8 @@ try {
  assert.equal(r.status,0,`${r.stdout}\n${r.stderr}`);
  assert(!r.stdout.includes(secret) && !r.stderr.includes(secret),'installer leaked secret');
  assert.equal(readFileSync(path.join(dest,'.env'),'utf8'),original);
- assert(readFileSync(path.join(dest,'dist/backend/sources/source26.js'),'utf8').includes('source-26'));
+ const sourceManifest=readFileSync(path.join(dest,'dist/backend/sources/index.js'),'utf8');
+ assert.deepEqual([...sourceManifest.matchAll(/id: 'source-(\\d+)'/g)].map(match=>`source-${match[1]}`),['source-1','source-2','source-3','source-4']);
  const service=readFileSync(unit,'utf8');
  for(const required of ['ELFURA_RESOLVER_LISTEN=127.0.0.1','ELFURA_RESOLVER_PORT=3002','ELFURA_RESOLVER_OPEN=0','--resolver','Restart=on-failure']) assert(service.includes(required),required);
  writeFileSync(path.join(dest,'data','keep.json'),'persistent');

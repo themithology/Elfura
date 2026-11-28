@@ -115,7 +115,7 @@ const withEnv = (values) => {
   );
 
   const playback = await fetch(
-    `http://127.0.0.1:${port}/api/v1/playback?type=tv&tmdbId=1399&season=1&episode=1`,
+    `http://127.0.0.1:${port}/api/v1/playback?type=tv&tmdbId=1399&season=1&episode=1&source=__offline_fixture__`,
   );
   assert.notEqual(
     playback.status,

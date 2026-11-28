@@ -5,7 +5,7 @@
  * a 403 from a challenge page, a DNS failure and a six-second timeout look
  * identical from the outside. This module records every outgoing request an
  * adapter makes through global fetch, scoped with AsyncLocalStorage, so the resolve log can say
- * "source-7: 4 req, cdn.example 403 ×3, api.site timeout ×1".
+ * "fixture-fast: 4 req, cdn.example 403 ×3, api.site timeout ×1" in a test report.
  *
  * It is diagnostic only: the wrapped fetch behaves exactly like the original,
  * no headers or bodies are inspected, and only `host + status/error` is kept.

@@ -29,23 +29,10 @@
  */
 import assert from 'node:assert/strict';
 
-// Every source the registry mounts by default. Kept in one place so a row
-// silently disappearing is a loud failure rather than a soft `>=` that a
-// duplicate row could satisfy.
-//
-// 19 -> 20 when source-24 (VidLink) was added. The earlier 20 was a different
-// 20: it counted a dead vidbolt-only stub alongside the real adapter, so the
-// number matching is a coincidence, not a regression.
-//
-// 21 -> 19 when the retired Hindi/credential lanes were removed: source-16
-// (Anivexa), source-17 (Anivortex) and source-19 (DesiDub) each made zero
-// network requests without credentials or a title, and were replaced by the
-// single Mikaza lane now occupying source-16. 21 - 3 + 1 = 19.
-// Source 26 was removed after real-browser audio-only playback failures.
-// Source 28 adds verified multi-audio anime: 19 -> 20. The two additional
-// direct anime providers add independent source boards: 20 -> 22.
-// Source 17 adds the dynamic TGVIDX server inventory.
-const MIN_LISTED_SOURCES = 23;
+// The resolver API must expose exactly the production manifest, not the old
+// research inventory. Exact ids make both additions and accidental removals loud.
+const EXPECTED_SOURCE_IDS = ['source-1', 'source-2', 'source-3', 'source-4'];
+const MIN_LISTED_SOURCES = EXPECTED_SOURCE_IDS.length;
 import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -230,12 +217,9 @@ await check('public health exposes a count, never a list', async () => {
 });
 
 await check('resolver lists every source with health', () => {
-  // Each row is one source group; the broken MovieBox lane is not registered.
+  // Each row is one source group, and only the four approved source groups exist.
   assert.equal(listed.sources.length, MIN_LISTED_SOURCES, 'the configured board');
-  assert(!listed.sources.some(source => source.id === 'source-26'), 'audio-only MovieBox lane must stay removed');
-  assert(listed.sources.some(source => source.id === 'source-28'), 'verified multi-audio anime lane is registered');
-  assert(listed.sources.some(source => source.id === 'source-29'), 'Novus lane is registered');
-  assert(listed.sources.some(source => source.id === 'source-30'), 'MegaPlay lane is registered');
+  assert.deepEqual(listed.sources.map(source => source.id), EXPECTED_SOURCE_IDS);
   for (const source of listed.sources) {
     assert.equal(typeof source.id, 'string');
     assert.equal(typeof source.paused, 'boolean');
@@ -331,8 +315,12 @@ await check('control panel kill switch works', async () => {
 // ---- A playback token, minted the way the player mints one ----------------
 const embed = await fetch(`${mediaBase}/embed/movie/550`, { headers: { 'Sec-Fetch-Site': 'none' } });
 const boot = JSON.parse(/window\.__ELFURA_BOOT__=(\{[^<]+\});/.exec(await embed.text())[1]);
+// An unknown source selector deliberately produces a deterministic empty
+// answer without contacting any public provider. Real-source acceptance is a
+// separate GitHub Actions workflow; this test exercises only resolver transport
+// and recovery behavior in restricted/offline sandboxes.
 const askPlayback = () =>
-  fetch(`${mediaBase}/api/v1/playback?type=movie&tmdb=550&nonce=${boot.nonce}`, {
+  fetch(`${mediaBase}/api/v1/playback?type=movie&tmdb=550&source=__offline_fixture__&nonce=${boot.nonce}`, {
     headers: { origin: mediaBase, 'X-Playback-Token': boot.pltoken },
   });
 

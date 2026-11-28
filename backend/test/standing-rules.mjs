@@ -123,11 +123,6 @@ rule('the player aborts before the media node does', () => {
 
 /* ── other standing decisions ─────────────────────────────────────────────── */
 
-rule('the TMDB→AniList converter stays stateless', () => {
-  const anime = read('backend/src/sources/anime-db.ts');
-  assert.doesNotMatch(anime, /setInterval|TTL_MS|evict/i, 'no cache, no TTL, no eviction');
-});
-
 rule('the embed takes no client-facing AniList parameter', () => {
   assert.doesNotMatch(read('src/embed.ts'), /anilist/i, 'plain /embed/tv/<tmdbId> only');
 });

@@ -45,7 +45,7 @@ async function probeViewer(env) {
   try {
     const bundle = await (await fetch(`http://127.0.0.1:${port}/api/v1/diagnose-bundle`)).json();
     const playback = await fetch(
-      `http://127.0.0.1:${port}/api/v1/playback?type=tv&tmdbId=1399&season=1&episode=1`,
+      `http://127.0.0.1:${port}/api/v1/playback?type=tv&tmdbId=1399&season=1&episode=1&source=__offline_fixture__`,
     );
     return { mode: bundle.resolver.mode, why: bundle.resolver.localBecause, status: playback.status };
   } finally {

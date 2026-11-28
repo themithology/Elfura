@@ -2,7 +2,6 @@ name: Production playback audit
 on:
   workflow_dispatch:
   push:
-    branches: [arena/124b7afe-elfura]
     paths: [backend/test/production-playback-audit.mjs, .github/workflows/production-playback-audit.yml]
 permissions:
   contents: read

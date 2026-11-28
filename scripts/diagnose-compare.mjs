@@ -18,7 +18,7 @@
 import dns from 'node:dns';
 
 try {
-  if (process.env.ELFURA_DNS_ORDER !== 'verbatim') dns.setDefaultResultOrder('ipv4first');
+  dns.setDefaultResultOrder('ipv4first');
 } catch {
   /* older runtimes */
 }

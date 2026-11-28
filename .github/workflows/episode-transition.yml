@@ -1,7 +1,6 @@
 name: Episode transition and host event
 on:
   push:
-    branches: [arena/124b7afe-elfura]
     paths:
       - 'src/core/**'
       - 'src/index.ts'

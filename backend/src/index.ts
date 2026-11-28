@@ -4,16 +4,10 @@
  * Zero-dependency Node HTTP server engineered for Pterodactyl + Cloudflare:
  *   - Listens on 0.0.0.0:${SERVER_PORT || PORT || 8787}
  *   - Single uniform resolution endpoint: GET/POST /api/v1/playback
- *   - Single uniform stream ingress/egress relay: GET/HEAD /api/v1/stream?t=...
+ *   - Single uniform playback stream relay: GET/HEAD /api/v1/stream?t=...
  *   - Session token bootstrap: POST /api/v1/session & SSR-injected /embed/*
  *   - Zero local disk writes, logs, SQLite files, or temp media caches
  */
-
-// Container networks very often advertise IPv6 without routing it. Node then
-// hands the AAAA record to the socket first and every request stalls until its
-// timeout — which looks exactly like "every source is down". Prefer A records;
-// ELFURA_DNS_ORDER=verbatim restores the platform default.
-import dns from 'node:dns';
 
 import './compat.js';
 import http from 'node:http';
@@ -26,19 +20,13 @@ import {
   hasConfiguredSecret,
   hydrateProcessEnvFromDotEnv,
   loadBackendConfig,
-  readDotEnvOverlay,
   type BackendConfig,
 } from './config.js';
 import { RoxyStore, siteOrigin } from './roxy-store.js';
 import { ALWAYS_AD_FREE, AdSettingsStore, decideAds, popunderSrc, popunderTag } from './ads.js';
 import { ROXY_PAGE } from './roxy-page.js';
 import { roxySourceWebsites, requestSourceWebsite } from './roxy-source-requests.js';
-import { checkRelay, proxyProbeTarget } from './proxy-check.js';
-import { collectDiagnostics, probeOutbound, readBuildInfo, reportEgress } from './diagnostics.js';
-import { installDnsRescue } from './dns-rescue.js';
-import { egressProblem, installEgressProfile, isEgressProfileInstalled, relayStatus, reportRelayProbe, testProxyConnection } from './egress.js';
-import { proxyPool, type ProxyMode } from './proxy-pool.js';
-import { clearRelayUrl, currentRelayUrl, readRelayToken, relaySource, saveRelayUrl } from './relay-config.js';
+import { collectDiagnostics, readBuildInfo } from './diagnostics.js';
 import { runtimeSummary } from './compat.js';
 import {
   applyCorsHeaders,
@@ -168,32 +156,9 @@ export function matchEmbedPath(pathname: string): ParsedEmbedRoute | null {
   return null;
 }
 
-try {
-  if (process.env.ELFURA_DNS_ORDER !== 'verbatim') dns.setDefaultResultOrder('ipv4first');
-} catch {
-  /* older runtimes: keep the default order */
-}
-
-/**
- * Prefer IPv4 for outbound resolves unless an operator says otherwise.
- *
- * A container with an IPv6 route that black-holes is a classic half-broken
- * egress: every host with an AAAA record hangs until the connect attempt times
- * out, while a host that answers only on IPv4 loads instantly. It looks exactly
- * like "some sources just stopped working". IPv4-first removes that class of
- * failure and costs nothing when IPv6 is healthy.
- */
-if ((process.env.ELFURA_DNS_ORDER ?? 'ipv4first') === 'ipv4first') {
-  try {
-    dns.setDefaultResultOrder('ipv4first');
-  } catch {
-    /* older runtime: keep the default */
-  }
-}
-
 export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   // Publish .env into process.env BEFORE anything reads it directly. Modules
-  // below (resolver split, DNS, runtime toggles) read process.env themselves and
+  // below (resolver split and runtime toggles) read process.env themselves and
   // used to be blind to the .env file entirely - which is how ELFURA_RESOLVER_URL
   // in .env produced a silent local fallback. Real env vars still win.
   const dotEnv = hydrateProcessEnvFromDotEnv();
@@ -234,11 +199,20 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
     // NOTE: no `local` resolver is passed. With a resolver configured, this node
     // NEVER scrapes - that is the whole point of the split, and a fallback here
     // was what made it start fetching providers mid-stream.
+    const configuredResolvers = [
+      remote,
+      ...(['backup', 'third', 'fourth'] as const)
+        .map(slot => resolverBackupConfig(process.env, slot))
+        .filter((x): x is { url: string; token: string } => Boolean(x)),
+    ];
+    // A repeated URL is one resolver, not extra capacity. Deduplication matters
+    // when a Pterodactyl startup variable overrides an optional .env entry.
+    const uniqueResolvers = configuredResolvers.filter((candidate, index, all) =>
+      all.findIndex(other => other.url === candidate.url) === index,
+    );
+    console.log(`[elfura-resolver] ${uniqueResolvers.length} resolver URLs configured${uniqueResolvers.length > 1 ? ' (balanced)' : ''}`);
     const primaryRemote = new RemotePlaybackResolver(remote.url, remote.token);
-    const extras = (['backup', 'third', 'fourth'] as const)
-      .map(slot => resolverBackupConfig(process.env, slot))
-      .filter((x): x is { url: string; token: string } => Boolean(x))
-      .map(x => new RemotePlaybackResolver(x.url, x.token));
+    const extras = uniqueResolvers.slice(1).map(x => new RemotePlaybackResolver(x.url, x.token));
     const remoteResolver = extras.length
       ? createBalancedPlaybackResolver(primaryRemote, extras[0], { additionalClients: extras.slice(1) })
       : primaryRemote;
@@ -301,36 +275,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const ads = new AdSettingsStore();
   const loginLimiter = new SlidingWindowLimiter(5);
   const roxyWebsiteLimiter = new SlidingWindowLimiter(20);
-  const proxyCheckLimiter = new SlidingWindowLimiter(20);
-  /**
-   * What the operator needs to know about the proxy list, with no credential in
-   * it: how many entries exist, where they came from, and whether the network
-   * layer that would use them is actually installed.
-   */
-  const proxySummary = () => {
-    const envProxy = (
-      process.env.ELFURA_UPSTREAM_PROXY ??
-      readDotEnvOverlay().ELFURA_UPSTREAM_PROXY ??
-      ''
-    ).trim();
-    return {
-      envProxyConfigured: !!envProxy,
-      applied: isEgressProfileInstalled(),
-      problem: egressProblem(),
-      probeTarget: proxyProbeTarget(),
-      // The relay is a single URL, so its state is a small object rather than a
-      // list: is one set, where did it come from, and did it work last time.
-      relay: {
-        ...relayStatus(),
-        url: currentRelayUrl(),
-        source: relaySource(),
-        installed: isEgressProfileInstalled(),
-        // Whether a token exists, never the token: without this the panel cannot
-        // tell "you never saved it" from "you saved the wrong one".
-        tokenSaved: !!readRelayToken(),
-      },
-    };
-  };
   const sameOrigin = (req: http.IncomingMessage) => {
     const origin = typeof req.headers.origin === 'string' ? siteOrigin(req.headers.origin) : '';
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
@@ -355,10 +299,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
   const diagnosticLimiter = new SlidingWindowLimiter(6);
   /** 4/min: each call samples for two seconds, so it is a real cost. */
   const diagnoseBundleLimiter = new SlidingWindowLimiter(4);
-  // The light egress report is cheap and is exactly what an operator reaches for
-  // when sources look dead, so it gets its own per-IP window instead of the
-  // process-wide six-a-minute budget the heavy report uses.
-  const egressLimiter = new SlidingWindowLimiter(30);
 
   let cachedEmbedTemplate: string | null = null;
   const getEmbedTemplate = async (): Promise<string | null> => {
@@ -578,121 +518,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
         return;
       }
 
-      if (pathname === '/roxy/api/egress' && method === 'GET') {
-        // The one question worth answering before any proxy, relay or header
-        // work: can this server reach the internet at all, and is the failure
-        // specific to the provider hosts? A network filter that resets by
-        // hostname looks exactly like "every source is blocked", which is how an
-        // operator ends up buying proxies for a problem that is not theirs.
-        if (!proxyCheckLimiter.allow('egress-check')) { reply(429, { error: 'Check limit reached; retry shortly' }); return; }
-        try {
-          const report = await reportEgress();
-          reply(200, report);
-        } catch { reply(500, { error: 'Egress check failed' }); }
-        return;
-      }
-      if (pathname === '/roxy/api/proxies' && method === 'GET') {
-        reply(200, proxyPool.listPublic());
-        return;
-      }
-      if (pathname === '/roxy/api/proxies' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const created = proxyPool.add({
-          kind: body?.kind === 'fetch-api' ? 'fetch-api' : 'connect',
-          label: typeof body?.label === 'string' ? body.label : undefined,
-          url: typeof body?.url === 'string' ? body.url : '',
-          apiKey: typeof body?.apiKey === 'string' ? body.apiKey : undefined,
-          weight: typeof body?.weight === 'number' ? body.weight : undefined,
-        });
-        if (!created) { reply(400, { error: 'Invalid proxy URL (must be http:// or https://)' }); return; }
-        reply(200, { ok: true, proxy: created, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/mode' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const mode = body?.mode as ProxyMode;
-        if (mode !== 'direct' && mode !== 'proxy-pool' && mode !== 'hybrid') {
-          reply(400, { error: 'Invalid mode' }); return;
-        }
-        proxyPool.setMode(mode);
-        reply(200, { ok: true, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/toggle' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        const enabled = typeof body?.enabled === 'boolean' ? body.enabled : undefined;
-        const updated = proxyPool.update(id, { enabled });
-        if (!updated) { reply(404, { error: 'Proxy not found' }); return; }
-        reply(200, { ok: true, proxy: updated, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/delete' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        if (!proxyPool.remove(id)) { reply(404, { error: 'Proxy not found' }); return; }
-        reply(200, { ok: true, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/proxies/test' && method === 'POST') {
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === 'string' ? body.id : '';
-        const entry = proxyPool.getById(id);
-        if (!entry) { reply(404, { error: 'Proxy not found' }); return; }
-        const result = await testProxyConnection(entry.url, entry.kind, entry.apiKey);
-        entry.stats.lastCheckedAt = Date.now();
-        entry.stats.lastLatencyMs = result.latencyMs;
-        entry.stats.lastEgressIp = result.egressIp;
-        entry.stats.lastError = result.error;
-        entry.stats.healthy = result.ok;
-        reply(200, { ok: result.ok, result, pool: proxyPool.listPublic() });
-        return;
-      }
-      if (pathname === '/roxy/api/relay' && method === 'GET') { reply(200, proxySummary().relay); return; }
-      if (pathname === '/roxy/api/relay' && method === 'POST') {
-        // The panel is the intended input here: a beginner should not have to
-        // learn that the right place is a line in .env.
-        try {
-          const body = await readJsonBody(req, 4096);
-          if ('clear' in body && body.clear) {
-            if (relaySource() === 'environment' || relaySource() === 'dotenv') {
-              reply(400, { error: 'The relay URL is set in the environment or .env, which takes precedence. Remove it there to use the panel.' });
-              return;
-            }
-            const ok = clearRelayUrl();
-            reply(ok ? 200 : 500, { ...proxySummary().relay, ...(ok ? {} : { error: 'Could not save the change' }) });
-            return;
-          }
-          if (typeof body.url !== 'string') { reply(400, { error: 'expected {url}' }); return; }
-          const url = body.url.trim().replace(/\/+$/, '');
-          if (!url) { reply(400, { error: 'Paste the Worker URL first' }); return; }
-          // A real Worker is always https. Loopback http is allowed only so the
-          // relay path can be exercised locally; a public http relay would send
-          // the token in clear text.
-          const loopback = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i.test(url);
-          if (!/^https:\/\/[^\s]+$/i.test(url) && !loopback) {
-            reply(400, { error: 'The URL must start with https:// and contain no spaces' });
-            return;
-          }
-          if (relaySource() === 'environment' || relaySource() === 'dotenv') {
-            reply(400, { error: 'The relay URL is set in the environment or .env, which takes precedence. Remove it there to use the panel.' });
-            return;
-          }
-          const token = typeof body.token === 'string' ? body.token.trim() : '';
-          if (!saveRelayUrl(url, token)) { reply(500, { error: 'Could not save the relay URL; check the data directory is writable' }); return; }
-          reply(200, proxySummary().relay);
-        } catch { reply(400, { error: 'Invalid request' }); }
-        return;
-      }
-      if (pathname === '/roxy/api/relay/test' && method === 'POST') {
-        if (!proxyCheckLimiter.allow('relay-check')) { reply(429, { error: 'Test limit reached; retry shortly' }); return; }
-        const url = currentRelayUrl();
-        if (!url) { reply(400, { error: 'No relay URL saved yet' }); return; }
-        const result = await checkRelay(url);
-        reportRelayProbe(result.ok, result.ip, result.ms, result.error);
-        reply(200, { ...result, relay: proxySummary().relay });
-        return;
-      }
       if (pathname === '/roxy/api/source-websites' && method === 'GET') { reply(200, { sites: roxySourceWebsites(cfg) }); return; }
       if (pathname === '/roxy/api/source-websites/request' && method === 'POST') {
         if (!roxyWebsiteLimiter.allow('global')) { reply(429,{error:'Test limit reached; retry shortly'}); return; }
@@ -758,32 +583,6 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       }
       const catalog = await fetchTmdbCatalog(cfg.tmdb);
       sendJson(res, 200, { ok: true, ...catalog }, allowOrigin, 'manifest');
-      return;
-    }
-
-    // 2b-bis. Connection-stage report on its own.
-    //
-    // The full /diagnose races twenty adapters before it answers, so it takes ten
-    // to twenty seconds and it is capped at six requests a minute for the whole
-    // process. This answers the one question "can this server open a connection to
-    // the hosts the adapters use, and at which stage does it fail" in a couple of
-    // seconds, on its own small per-IP window.
-    if (method === 'GET' && (pathname === '/diagnose/egress' || pathname === '/api/v1/egress')) {
-      if (!egressLimiter.allow(`egress:${getClientIp(req)}`)) {
-        sendJson(res, 429, { ok: false, error: 'too many requests; try again in a minute' });
-        return;
-      }
-      try {
-        const egress = await reportEgress();
-        sendJson(res, 200, {
-          ok: true,
-          build: readBuildInfo().commit,
-          generatedAt: new Date().toISOString(),
-          egress,
-        });
-      } catch (err) {
-        sendJson(res, 200, { ok: false, error: err instanceof Error ? err.message : 'egress check failed' });
-      }
       return;
     }
 
@@ -980,8 +779,12 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
             media: {
               type,
               tmdbId,
+              ...(media.season ? { season: media.season } : {}),
+              ...(media.episode ? { episode: media.episode } : {}),
               title: media.title,
               year: media.year,
+              certification: media.certification,
+              runtime: media.runtime,
               logo: media.logo,
               backdrop: media.backdrop,
               poster: media.poster,
@@ -1057,6 +860,13 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
       const headerTok = typeof req.headers['x-playback-token'] === 'string' ? req.headers['x-playback-token'] : '';
       const pltoken = headerTok || pick(['pltoken']);
       const nonce = pick(['nonce']) || undefined;
+      // Keep source recovery and late waves on the resolver that owns this
+      // playback's discovery. The raw nonce stays on the media node; only its
+      // scoped digest is passed through the in-process resolver pool, and remote
+      // clients strip the routing key before making their HTTP request.
+      const lateAffinityKey = nonce
+        ? crypto.createHash('sha256').update(`${mediaType}:${tokenScopeId}:${season ?? ''}:${episode ?? ''}:${nonce}`).digest('hex')
+        : undefined;
 
       if (cfg.requireToken) {
         const verified = verifyPlaybackToken(cfg.secret, req, pltoken, nonce, {
@@ -1108,6 +918,8 @@ export function createBackendServer(overrides: Partial<BackendConfig> = {}) {
           sourceId,
           preferredLang,
           late: url.searchParams.get('late') === '1',
+          retryMissing: url.searchParams.get('retryMissing') === '1',
+          lateAffinityKey,
         });
       } catch (error) {
         // A resolver that cannot be reached is an outage, not an answer. Saying
@@ -1479,10 +1291,6 @@ export function installProcessGuards(): void {
 
 export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   installProcessGuards();
-  // Before anything resolves a hostname: if this container's resolver is dead
-  // (Docker's 127.0.0.11 stops forwarding and every upstream hangs), route our
-  // own lookups through public DNS so the adapters can work at all.
-  void installDnsRescue().then(() => installEgressProfile());
   const { server, cfg, registry } = createBackendServer(overrides);
   // A port that cannot be bound is not a survivable state: the guards below
   // deliberately keep the process alive through unexpected throws, which would
@@ -1496,8 +1304,7 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
   });
   server.listen(cfg.port, cfg.host, () => {
     console.log(
-      `[elfura-backend] dns order: ${process.env.ELFURA_DNS_ORDER === 'verbatim' ? 'verbatim' : 'ipv4first'}` +
-        ` · adapter timeout: ${cfg.resolveTimeoutMs}ms` +
+      `[elfura-backend] adapter timeout: ${cfg.resolveTimeoutMs}ms` +
         ` (RESOLVE_TIMEOUT_MS${process.env.RESOLVE_TIMEOUT_MS ? `=${process.env.RESOLVE_TIMEOUT_MS}` : ' unset'})` +
         ` · first-response budget: ${process.env.ELFURA_RESOLVE_BUDGET_MS || 5000}ms`,
     );
@@ -1518,11 +1325,6 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
       `[elfura-backend] listening on ${cfg.host}:${cfg.port} ` +
         `(${state.enabled.length}/${state.enabled.length + state.disabled.length} sources${named}; roxy: enabled)`,
     );
-    if (process.env.ELFURA_SELF_TEST !== '0') {
-      void import('./sources/self-test.js')
-        .then((mod) => mod.runSourceSelfTest(registry))
-        .catch(() => {});
-    }
     if (state.disabled.length) {
       console.warn(
         `[elfura-backend] disabled sources: ${state.disabled
@@ -1543,39 +1345,9 @@ export function startBackendServer(overrides: Partial<BackendConfig> = {}) {
     console.log(
       `[elfura-config] tmdbBase=${hostOf(cfg.tmdb.apiBase)} tmdbKey=${cfg.tmdb.apiKey || cfg.tmdb.bearerToken ? 'set' : 'unset(fallback)'} ` +
         `allowedOrigins=${cfg.allowedOrigins.join(',') || '*'} ` +
-        `relay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
+        `streamRelay=${cfg.relayMode} resolveTimeoutMs=${cfg.resolveTimeoutMs} ` +
         `sources=${registry.listPublicSources().map((s) => s.id).join(',') || 'none'} ${runtimeSummary()}`,
     );
-    // One bounded outbound check, logged once per boot. When every source
-    // reports "no rows" the first question is whether this container can reach
-    // the internet at all — this answers it without opening a browser.
-    void probeOutbound(cfg)
-      .then((net) => {
-        const parts = Object.entries(net).map(
-          ([label, r]) => `${label}=${r.ok ? `ok/${r.status}` : `fail(${r.code})`} ${r.ms}ms`,
-        );
-        console.log(`[elfura-net] ${parts.join(' ')}`);
-      })
-      .catch(() => {});
-    // The same question, one layer deeper: if the adapters all report zero
-    // candidates, the console should say at which stage the outbound connection
-    // dies instead of leaving "timeout" as the only clue.
-    void reportEgress()
-      .then((report) => {
-        const rows = report.targets.map((t) => {
-          const where = !t.dns?.ok
-            ? `dns-fail(${t.dns?.error ?? '?'})`
-            : !t.tcp?.ok
-              ? `tcp-fail(${t.tcp?.error ?? '?'})`
-              : !t.tls?.ok
-                ? `tls-fail(${t.tls?.error ?? '?'})`
-                : `http-${t.http?.status ?? '?'}`;
-          return `${t.label}=${where}`;
-        });
-        console.log(`[elfura-egress] ${rows.join(' ')}`);
-        for (const line of report.verdict) console.log(`[elfura-egress] ${line}`);
-      })
-      .catch(() => {});
   });
   return { server, cfg, registry };
 }
@@ -1633,9 +1405,6 @@ export function startResolverServer(overrides: Partial<BackendConfig> = {}) {
     );
   }
   const { server } = createResolverServer({ cfg, registry, token });
-  // The egress profile must be installed before the first provider request, and
-  // the DNS rescue before the first hostname lookup — exactly as in media mode.
-  void installDnsRescue().then(() => installEgressProfile());
   // Same reasoning as the media server: an unbound port must not masquerade as
   // a running process.
   server.on('error', (error: NodeJS.ErrnoException) => {

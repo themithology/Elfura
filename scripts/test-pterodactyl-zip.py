@@ -5,6 +5,7 @@ import http.cookiejar
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import tempfile
@@ -36,18 +37,31 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
     assert (target / 'data/roxy.json').read_text() == persisted
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-    # Panels that run `npm install` at boot must succeed. Vendoring undici as a
-    # `file:` dependency made npm execute undici's own `prepare` script
-    # (`husky && node ./scripts/platform-shell.js`), which aborted the whole
-    # install and left the proxy layer permanently unavailable. Offline check:
-    # the archive must carry no lifecycle scripts at all.
+    # Panels may run `npm install` at boot. The archive carries only the local
+    # TypeScript compatibility shim (for nonstandard eggs), no external network
+    # transport, discovery relay, proxy, or source-specific native package.
     with zipfile.ZipFile(bundle) as archive:
-        for name in archive.namelist():
+        names = set(archive.namelist())
+        for name in names:
             if name.endswith('/package.json'):
                 manifest = json.loads(archive.read(name))
                 assert not manifest.get('scripts'), f'{name} still declares lifecycle scripts: {manifest["scripts"]}'
-        assert 'vendor/undici/index.js' in archive.namelist(), 'the undici fallback copy is missing'
-        assert 'node_modules/undici/index.js' in archive.namelist(), 'the bundled undici is missing'
+        for prefix in (
+            'node_modules/undici/', 'vendor/undici/',
+            'node_modules/wreq-js/', 'node_modules/@wreq-js/',
+            'node_modules/tweetnacl/', 'vendor/tweetnacl/',
+            'cloudflare-worker/',
+        ):
+            assert not any(name.startswith(prefix) for name in names), f'obsolete runtime payload remains: {prefix}'
+        for legacy in (
+            'dist/backend/egress.js', 'dist/backend/dns-rescue.js',
+            'dist/backend/proxy-pool.js', 'dist/backend/proxy-check.js',
+            'dist/backend/relay-config.js',
+        ):
+            assert legacy not in names, f'obsolete runtime module remains: {legacy}'
+        source_index = archive.read('dist/backend/sources/index.js').decode('utf-8')
+        source_ids = re.findall(r"id: 'source-(\d+)'", source_index)
+        assert source_ids == ['1', '2', '3', '4'], f'unexpected active source manifest: {source_ids}'
 
     env = dict(os.environ, HOST='127.0.0.1', SERVER_PORT=str(port))
     env.pop('ELFURA_SECRET', None); env.pop('ROXY_DATA_DIR', None)
@@ -64,27 +78,30 @@ with tempfile.TemporaryDirectory(prefix='elfura-deploy-test-') as tmp:
         else: raise RuntimeError('backend did not start')
         assert health['features']['roxy'] is True
         page = urllib.request.urlopen(base + '/roxy')
-        assert page.status == 200 and b'PRIVATE CONTROL ROOM' in page.read()
+        assert page.status == 200
+        page_text = page.read().decode('utf-8')
+        assert 'PRIVATE CONTROL ROOM' in page_text
         client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         req = urllib.request.Request(base + '/roxy/api/login', data=json.dumps({'password':'test-deploy-password'}).encode(), headers={'Origin':base,'Content-Type':'application/json'})
         assert client.open(req).status == 200
         overview = json.load(client.open(base + '/roxy/api/overview'))
         assert overview['bans'] == ['https://example.org']
 
-        # The proxy uploader is the feature an operator reaches for when a source
-        # has gone quiet, so it is exercised against the real extracted bundle:
-        # The proxy-list uploader used to be asserted here. That feature is gone
-        # on purpose: the proxy route was abandoned in favour of the Cloudflare
-        # worker, and /roxy/api/proxies no longer exists. Asserting on it made
-        # this test fail for a reason unrelated to the archive, so what is
-        # checked now is that the endpoint is really gone and that the panel
-        # still authenticates and reports state.
-        with client.open(base + '/roxy/api/proxies') as res:
-            assert res.status == 200, f'expected 200 for /roxy/api/proxies, got {res.status}'
-            pool = json.loads(res.read().decode('utf-8'))
-            assert 'mode' in pool and 'proxies' in pool
+        assert 'Outbound Proxy Pool' not in page_text and 'Egress relay' not in page_text
 
-        print('✓ ZIP upgrade overwrites older backend, preserves .env and data, and runs Roxy login and overview, and confirms the abandoned proxy uploader is gone.')
+        def status(path):
+            try:
+                with client.open(base + path) as response:
+                    return response.status
+            except urllib.error.HTTPError as error:
+                return error.code
+
+        assert status('/roxy/api/proxies') == 404
+        assert status('/roxy/api/relay') == 404
+        assert status('/api/v1/egress') == 404
+        assert status('/diagnose/egress') == 404
+
+        print('✓ ZIP upgrade preserves operator data, serves the four-source runtime, and omits legacy egress/proxy routes and packages.')
     finally:
         process.terminate()
         try: process.wait(timeout=5)

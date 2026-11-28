@@ -19,8 +19,9 @@ const base = `http://127.0.0.1:${server.address().port}`;
 try {
   const registry = new SourceRegistry(loadBackendConfig({TMDB_API_BASE:base, ELFURA_SECRET:'test'}));
   const seen = [];
-  registry.adapters = ['source-28','source-29','source-30'].map(id => ({
-    id, enabled:()=>true,
+  // These synthetic lanes exercise the generic episode-trait skip and shared metadata lookup.
+  registry.adapters = ['fixture-anime-a','fixture-anime-b','fixture-anime-c'].map(id => ({
+    id, label:`Fixture ${id}`, traits:['animeEpisode'], enabled:()=>true,
     resolve:async query=>{
       seen.push([id,query.type]);
       const meta=await query.resolveMetaFallback();
@@ -43,7 +44,7 @@ try {
   try { await runSourceSelfTest({selfTestAll:async()=>movies}); } finally {console.log=original;}
   assert.ok(logs.some(s=>s.includes('skipped: TV anime only')));
   assert.ok(logs.some(s=>s.includes('not playback verification')));
-  assert.ok(!logs.some(s=>s.includes('source-29')&&s.includes('raw=0')));
+  assert.ok(!logs.some(s=>s.includes('fixture-anime-b')&&s.includes('raw=0')));
   const remote=new RemotePlaybackResolver(base,'token',()=>{});
   await assert.rejects(remote.resolve({type:'movie',tmdbId:'1'},40), /timed out after 40ms before a complete response/);
   console.log('source self-test and resolver timeout diagnostics passed');

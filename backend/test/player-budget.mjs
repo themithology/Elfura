@@ -75,7 +75,9 @@ try {
   assert.ok(artworkOk > 0, 'artwork is served at all');
 
   // Now play. The viewer must not be told their sources vanished.
-  const playback = await call(port, '/api/v1/playback?type=movie&tmdb=550');
+  // Unknown source selector keeps this route/rate-limit test offline. Live
+  // source and media-byte verification runs separately in GitHub Actions.
+  const playback = await call(port, '/api/v1/playback?type=movie&tmdb=550&source=__offline_fixture__');
   assert.notEqual(playback.status, 429, 'a viewer is never 429ed out of playback after browsing');
   assert.notEqual(playback.status, 403, 'and the player origin is not forbidden');
 
